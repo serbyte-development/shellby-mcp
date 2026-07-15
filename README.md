@@ -1,0 +1,92 @@
+# ChatGPT Local Shell MCP
+
+An intentionally unauthenticated MCP server that lets ChatGPT Developer mode run commands in one persistent shell on this computer.
+
+> **Danger:** anyone who can reach the public MCP URL can execute arbitrary commands with your user account's permissions. Run this only for temporary testing, stop it when finished, and never expose it on a trusted production machine.
+
+## How it works
+
+```text
+ChatGPT web -> HTTPS tunnel -> localhost:3333/mcp -> persistent /bin/zsh
+```
+
+The shell lives in the local Node process. Its working directory, exported environment variables, functions, and background processes remain available between MCP calls. State is lost whenever the server or shell resets.
+
+## Requirements
+
+- Node.js 22 or newer
+- A public HTTPS tunnel such as [ngrok](https://ngrok.com/)
+- ChatGPT Developer mode access
+
+## Run it
+
+```bash
+cd ~/Desktop/chatgpt-local-shell-mcp
+npm install
+npm run dev
+```
+
+In a second terminal:
+
+```bash
+npm run tunnel
+```
+
+The included ngrok traffic policy rewrites the origin Host header so ngrok can reach the server while its local Host validation protects against DNS-rebinding attacks. It is not authentication, a CORS policy, or a caller restriction: anyone who can reach the public tunnel URL can still invoke the shell tools.
+
+Copy the resulting HTTPS URL and append `/mcp`, for example:
+
+```text
+https://example.ngrok.app/mcp
+```
+
+Opening the free ngrok URL in Chrome shows ngrok's **You are about to visit** warning. That is expected and does not block MCP: ngrok applies the warning to browser HTML traffic, not programmatic API requests such as ChatGPT's MCP calls. Do not use a browser visit as the connection test; paste the `/mcp` URL directly into ChatGPT.
+
+In ChatGPT:
+
+1. Enable **Settings -> Security and login -> Developer mode**.
+2. Open **Settings -> Plugins** and create a developer-mode app.
+3. Enter the HTTPS `/mcp` URL and choose **No Authentication**.
+4. Add the app to a conversation from the composer.
+5. If ChatGPT offers it and you accept the risk, choose **Always allow** for the app's tool calls.
+
+There is no CORS allowlist, authentication middleware, command approval layer, hosted relay, UI, or database.
+
+## Tools
+
+- `shell_run`: executes a command. Every new command needs a unique `request_id`; retrying the same ID and command does not execute it twice while that request remains in recent history.
+- `shell_poll`: reads additional output using `next_cursor`.
+- `shell_reset`: kills the entire shell process group and starts a clean shell. Every new reset needs a unique `request_id`; retrying the same ID and reason returns the original reset result instead of resetting again.
+
+Recent command and reset records are bounded in memory. Once an old record has been evicted, its `request_id` is no longer available for retry deduplication, so always generate a fresh ID for a genuinely new operation.
+
+Only one foreground command runs at a time. To start a long-running process and keep using the shell, use normal shell backgrounding and redirect its log:
+
+```bash
+npm run dev > /tmp/my-app.log 2>&1 &
+echo $!
+```
+
+Then inspect it with later commands such as `tail -n 100 /tmp/my-app.log` or `ps -p <pid>`.
+
+## Configuration
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `HOST` | `127.0.0.1` | Local HTTP bind address |
+| `PORT` | `3333` | Local HTTP port |
+| `MCP_SHELL` | `/bin/zsh` | Persistent shell executable |
+| `MCP_CWD` | current directory | Initial shell working directory |
+| `MCP_TRANSCRIPT_CHARS` | `1048576` | Retained rolling transcript size |
+| `MCP_OUTPUT_CHARS` | `65536` | Maximum output returned per tool call |
+| `MCP_RECORD_LIMIT` | `1024` | Maximum recent command and reset records retained for idempotency |
+
+The shell is non-interactive and has no PTY. Commands that require terminal input are unsupported; stdin is `/dev/null` so a command cannot consume the MCP control stream. A login shell does not necessarily load interactive `.zshrc` aliases.
+
+## Validate
+
+```bash
+npm test
+npm run typecheck
+npm run build
+```
