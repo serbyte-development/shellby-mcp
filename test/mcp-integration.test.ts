@@ -13,6 +13,11 @@ test("serves shell tools through Streamable HTTP and retains state across MCP se
   t.after(() => running.close());
 
   const first = await connectClient(running.url, "integration-client-1");
+  const instructions = first.client.getInstructions() ?? "";
+  assert.match(instructions, /Default workspace:/);
+  assert.ok(instructions.includes(running.shell.initialCwd));
+  assert.match(instructions, /clone repositories and create new project directories/);
+
   const tools = await first.client.listTools();
   assert.deepEqual(
     tools.tools.map((tool) => tool.name).sort(),

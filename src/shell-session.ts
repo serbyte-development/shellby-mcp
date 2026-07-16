@@ -56,6 +56,8 @@ export interface ShellSessionOptions {
   transcriptLimit?: number;
   readLimit?: number;
   recordLimit?: number;
+  logCommands?: boolean;
+  logger?: (message: string) => void;
 }
 
 interface CommandRecord {
@@ -180,6 +182,7 @@ export class PersistentShellSession {
   private readonly transcript: TranscriptBuffer;
   private readonly readLimit: number;
   private readonly recordLimit: number;
+  private readonly logger: ((message: string) => void) | null;
   private readonly records = new Map<string, CommandRecord>();
   private readonly resetRecords = new Map<string, ResetRecord>();
   private readonly stopReasons = new WeakMap<
@@ -211,6 +214,13 @@ export class PersistentShellSession {
     );
     this.readLimit = positiveInteger(options.readLimit, DEFAULT_READ_LIMIT);
     this.recordLimit = positiveInteger(options.recordLimit, DEFAULT_RECORD_LIMIT);
+    this.logger = options.logCommands
+      ? (options.logger ?? ((message) => console.log(message)))
+      : null;
+  }
+
+  get initialCwd(): string {
+    return this.cwd;
   }
 
   async start(): Promise<void> {
@@ -286,6 +296,7 @@ export class PersistentShellSession {
     this.pruneCommandRecords();
     this.records.set(record.requestId, record);
     this.active = record;
+    this.logCommand(input.command);
     const version = this.updateVersion;
 
     try {
@@ -715,6 +726,15 @@ export class PersistentShellSession {
       shell_generation: this.generation,
       active_request_id: this.active?.requestId ?? null,
     };
+  }
+
+  private logCommand(command: string): void {
+    if (!this.logger) return;
+    try {
+      this.logger(command);
+    } catch {
+      // Logging must never interfere with shell execution.
+    }
   }
 
   private pruneCommandRecords(): void {

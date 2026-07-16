@@ -87,6 +87,28 @@ test("deduplicates retries and rejects request id conflicts", { timeout: 10_000 
   );
 });
 
+test("logs each accepted command once without duplicating retries", { timeout: 10_000 }, async (t) => {
+  const messages: string[] = [];
+  const shell = new PersistentShellSession({
+    logCommands: true,
+    logger: (message) => messages.push(message),
+  });
+  t.after(() => shell.close());
+
+  await runToCompletion(
+    shell,
+    "logged-command",
+    "printf logged",
+  );
+  await runToCompletion(
+    shell,
+    "logged-command",
+    "printf logged",
+  );
+
+  assert.deepEqual(messages, ["printf logged"]);
+});
+
 test("keeps a completed retry bounded after later commands", { timeout: 10_000 }, async (t) => {
   const shell = new PersistentShellSession();
   t.after(() => shell.close());
@@ -338,7 +360,11 @@ async function runToCompletion(
   requestId: string,
   command: string,
 ): Promise<{ output: string; snapshot: ShellSnapshot }> {
-  const first = await shell.runCommand({ requestId, command, waitMs: 1_000 });
+  const first = await shell.runCommand({
+    requestId,
+    command,
+    waitMs: 1_000,
+  });
   let output = first.output;
   let snapshot = first;
 

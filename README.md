@@ -12,6 +12,8 @@ ChatGPT web -> HTTPS tunnel -> localhost:3333/mcp -> persistent /bin/zsh
 
 The shell lives in the local Node process. Its working directory, exported environment variables, functions, and background processes remain available between MCP calls. State is lost whenever the server or shell resets.
 
+By default, new repositories and generated projects belong in `~/Desktop/chatgpt-workspace`. The server creates that directory automatically, starts every fresh shell there, and tells the model to return there before cloning or creating a project unless you explicitly provide another location.
+
 ## Requirements
 
 - Node.js 22 or newer
@@ -34,10 +36,10 @@ npm run tunnel
 
 The included ngrok traffic policy rewrites the origin Host header so ngrok can reach the server while its local Host validation protects against DNS-rebinding attacks. It is not authentication, a CORS policy, or a caller restriction: anyone who can reach the public tunnel URL can still invoke the shell tools.
 
-Copy the resulting HTTPS URL and append `/mcp`, for example:
+This project is configured to use the account's fixed ngrok development domain. The ChatGPT MCP URL is:
 
 ```text
-https://example.ngrok.app/mcp
+https://geologic-catalog-deodorant.ngrok-free.dev/mcp
 ```
 
 Opening the free ngrok URL in Chrome shows ngrok's **You are about to visit** warning. That is expected and does not block MCP: ngrok applies the warning to browser HTML traffic, not programmatic API requests such as ChatGPT's MCP calls. Do not use a browser visit as the connection test; paste the `/mcp` URL directly into ChatGPT.
@@ -76,12 +78,21 @@ Then inspect it with later commands such as `tail -n 100 /tmp/my-app.log` or `ps
 | `HOST` | `127.0.0.1` | Local HTTP bind address |
 | `PORT` | `3333` | Local HTTP port |
 | `MCP_SHELL` | `/bin/zsh` | Persistent shell executable |
-| `MCP_CWD` | current directory | Initial shell working directory |
+| `MCP_CWD` | `~/Desktop/chatgpt-workspace` | Default workspace and initial shell working directory |
 | `MCP_TRANSCRIPT_CHARS` | `1048576` | Retained rolling transcript size |
 | `MCP_OUTPUT_CHARS` | `65536` | Maximum output returned per tool call |
 | `MCP_RECORD_LIMIT` | `1024` | Maximum recent command and reset records retained for idempotency |
+| `MCP_LOG_COMMANDS` | `true` | Print each newly executed command to the server terminal |
 
 The shell is non-interactive and has no PTY. Commands that require terminal input are unsupported; stdin is `/dev/null` so a command cannot consume the MCP control stream. A login shell does not necessarily load interactive `.zshrc` aliases.
+
+`MCP_CWD` is a default and model instruction, not a filesystem sandbox. An explicit task can still use another path. After changing the workspace or server instructions, restart this server and refresh the app from its ChatGPT plugin settings so ChatGPT reloads the MCP metadata.
+
+## Activity log
+
+Every newly accepted `shell_run` prints only its raw command text to the server terminal. There are no timestamps, request IDs, completion lines, reset or polling entries, or duplicated retry entries. Command output is not copied into the log, so the performance impact is negligible.
+
+Command text can contain tokens, passwords, or other secrets. Logs are terminal-only by default and are not written to a file. Set `MCP_LOG_COMMANDS=false` to disable them.
 
 ## Validate
 

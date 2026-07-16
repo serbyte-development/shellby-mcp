@@ -26,14 +26,17 @@ const shellSnapshotSchema = {
 };
 
 export function createMcpServer(shell: PersistentShellSession): McpServer {
+  const workspace = JSON.stringify(shell.initialCwd);
   const server = new McpServer(
     {
       name: "chatgpt-local-shell",
       version: "0.1.0",
     },
     {
-      instructions:
-        "Run local commands with shell_run. Generate a unique request_id for every new shell_run or shell_reset operation, and reuse it only when retrying the exact same operation. If status is running or has_more is true, call shell_poll with next_cursor. Only one foreground command can run at once. Use normal shell '&' syntax for background processes. shell_reset destroys all current shell state.",
+      instructions: [
+        `Default workspace: ${workspace}. Unless the user explicitly gives another location, clone repositories and create new project directories only as children of this workspace. Keep work for an existing project inside that project. Before cloning or creating, return to the default workspace if necessary. Do not create projects inside the MCP server source tree or /tmp. Other paths may be used when the user or task requires them.`,
+        "Run local commands with shell_run. Generate a unique request_id for every new shell_run or shell_reset operation, and reuse it only when retrying the exact same operation. If status is running or has_more is true, call shell_poll with next_cursor. Only one foreground command can run at once. Use normal shell '&' syntax for background processes. shell_reset destroys all current shell state and returns to the default workspace.",
+      ].join(" "),
     },
   );
 
@@ -41,8 +44,7 @@ export function createMcpServer(shell: PersistentShellSession): McpServer {
     "shell_run",
     {
       title: "Run a local shell command",
-      description:
-        "Execute a command in the persistent local login shell. Use this for terminal work on the connected computer. The command may read or modify any local or network-accessible resource. Commands share working directory and environment. Generate a unique request_id for every new command; reuse it only to safely retry the exact same call.",
+      description: `Execute a command in the persistent local login shell. Use this for terminal work on the connected computer. The command may read or modify any local or network-accessible resource. Commands share working directory and environment. The default workspace for new projects and clones is ${workspace}; use another location only when the user or task requires it. Generate a unique request_id for every new command; reuse it only to safely retry the exact same call.`,
       inputSchema: {
         request_id: z
           .string()

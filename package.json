@@ -10,7 +10,7 @@
     "build": "tsc -p tsconfig.json",
     "dev": "tsx watch src/index.ts",
     "start": "node dist/index.js",
-    "tunnel": "ngrok http 3333 --traffic-policy-file ./ngrok-traffic-policy.yml",
+    "tunnel": "ngrok http 3333 --url=geologic-catalog-deodorant.ngrok-free.dev --traffic-policy-file ./ngrok-traffic-policy.yml",
     "test": "tsx --test test/*.test.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
