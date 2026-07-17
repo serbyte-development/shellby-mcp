@@ -109,6 +109,25 @@ test("logs each accepted command once without duplicating retries", { timeout: 1
   assert.deepEqual(messages, ["printf logged"]);
 });
 
+test("does not leak errexit into later commands", { timeout: 10_000 }, async (t) => {
+  const shell = new PersistentShellSession();
+  t.after(() => shell.close());
+
+  const enabled = await runToCompletion(shell, "enable-errexit", "set -e");
+  const after = await runToCompletion(
+    shell,
+    "after-errexit",
+    "false; printf survived",
+  );
+
+  assert.equal(after.output, "survived");
+  assert.equal(after.snapshot.exit_code, 0);
+  assert.equal(
+    after.snapshot.shell_generation,
+    enabled.snapshot.shell_generation,
+  );
+});
+
 test("keeps a completed retry bounded after later commands", { timeout: 10_000 }, async (t) => {
   const shell = new PersistentShellSession();
   t.after(() => shell.close());
@@ -165,7 +184,10 @@ test("admits only one concurrent command without corrupting the active record", 
 });
 
 test("polls bounded output without duplicates", { timeout: 10_000 }, async (t) => {
-  const shell = new PersistentShellSession({ readLimit: 7 });
+  const shell = new PersistentShellSession({
+    defaultOutputBytes: 7,
+    maxOutputBytes: 7,
+  });
   t.after(() => shell.close());
 
   const result = await runToCompletion(
@@ -176,6 +198,33 @@ test("polls bounded output without duplicates", { timeout: 10_000 }, async (t) =
   assert.equal(result.output, "abcdefghijklmnopqrstuvwxyz");
   assert.equal(result.snapshot.status, "completed");
   assert.equal(result.snapshot.exit_code, 0);
+});
+
+test("caps UTF-8 bytes without splitting characters and allows an override", { timeout: 10_000 }, async (t) => {
+  const shell = new PersistentShellSession({
+    defaultOutputBytes: 4,
+    maxOutputBytes: 16,
+  });
+  t.after(() => shell.close());
+
+  const first = await shell.runCommand({
+    requestId: "utf8-byte-cap",
+    command: "printf '🙂éA'",
+    waitMs: 1_000,
+  });
+  assert.equal(first.output, "🙂");
+  assert.equal(Buffer.byteLength(first.output, "utf8"), 4);
+  assert.equal(first.has_more, true);
+
+  const rest = await shell.pollCommand({
+    requestId: "utf8-byte-cap",
+    cursor: first.next_cursor,
+    waitMs: 0,
+    maxOutputBytes: 16,
+  });
+  assert.equal(rest.output, "éA");
+  assert.equal(Buffer.byteLength(rest.output, "utf8"), 3);
+  assert.equal(rest.has_more, false);
 });
 
 test("wakes a foreground long-poll when delayed output arrives", { timeout: 10_000 }, async (t) => {
@@ -258,6 +307,35 @@ test("reports shell loss and automatically starts a clean generation", { timeout
     recovered.snapshot.shell_generation,
     exited.snapshot.shell_generation,
   );
+});
+
+test("recovers when process-group cleanup is denied", { timeout: 10_000 }, async (t) => {
+  const shell = new PersistentShellSession();
+  t.after(() => shell.close());
+
+  const originalKill = process.kill;
+  let injected = false;
+  process.kill = ((pid: number, signal?: NodeJS.Signals | number) => {
+    if (!injected && pid < 0 && signal === "SIGKILL") {
+      injected = true;
+      const error = new Error("kill EPERM") as NodeJS.ErrnoException;
+      error.code = "EPERM";
+      throw error;
+    }
+    return originalKill(pid, signal);
+  }) as typeof process.kill;
+
+  let exited: Awaited<ReturnType<typeof runUntilTerminal>>;
+  try {
+    exited = await runUntilTerminal(shell, "eperm-exit", "exit 7");
+  } finally {
+    process.kill = originalKill;
+  }
+
+  assert.equal(injected, true);
+  assert.equal(exited.snapshot.status, "shell_exited");
+  const recovered = await runToCompletion(shell, "after-eperm", "printf recovered");
+  assert.equal(recovered.output, "recovered");
 });
 
 test("reset cancels a stuck command and creates a clean shell", { timeout: 10_000 }, async (t) => {

@@ -60,7 +60,17 @@ There is no CORS allowlist, authentication middleware, command approval layer, h
 - `shell_poll`: reads additional output using `next_cursor`.
 - `shell_reset`: kills the entire shell process group and starts a clean shell. Every new reset needs a unique `request_id`; retrying the same ID and reason returns the original reset result instead of resetting again.
 
+`shell_run` and `shell_poll` return at most 4096 UTF-8 output bytes by default. The model may set `max_output_bytes` for a specific response when more is necessary, up to the hard 32768-byte maximum. Byte limits never split a UTF-8 character. Additional retained output is indicated by `has_more` and remains available through `shell_poll` until it leaves the rolling transcript.
+
+The server instructs the model to prefer installed RTK equivalents for noisy supported commands such as tests, builds, diffs, logs, searches, file reads, JSON, and package-manager output. RTK is guidance only: the server does not rewrite or wrap commands, and raw shell commands remain available for persistent state changes and unsupported operations.
+
 Recent command and reset records are bounded in memory. Once an old record has been evicted, its `request_id` is no longer available for retry deduplication, so always generate a fresh ID for a genuinely new operation.
+
+### Reusable generated tools
+
+Reusable tools live in `~/Desktop/chatgpt-workspace/tools`, with a compact catalog at `~/Desktop/chatgpt-workspace/TOOLS.md`. The model can create, validate, document, and execute these tools through `shell_run`. They are ordinary local executables rather than dynamically registered MCP tools, so creating one does not require restarting the server or refreshing ChatGPT's MCP metadata.
+
+Each tool has its own directory containing an executable `run` entrypoint and a `TOOL.md` contract. The model is instructed to inspect the catalog before creating a new tool, avoid turning one-off commands into tools, validate new tools before cataloging them, and never store secrets in tool code or documentation.
 
 Only one foreground command runs at a time. To start a long-running process and keep using the shell, use normal shell backgrounding and redirect its log:
 
@@ -80,11 +90,14 @@ Then inspect it with later commands such as `tail -n 100 /tmp/my-app.log` or `ps
 | `MCP_SHELL` | `/bin/zsh` | Persistent shell executable |
 | `MCP_CWD` | `~/Desktop/chatgpt-workspace` | Default workspace and initial shell working directory |
 | `MCP_TRANSCRIPT_CHARS` | `1048576` | Retained rolling transcript size |
-| `MCP_OUTPUT_CHARS` | `65536` | Maximum output returned per tool call |
+| `MCP_OUTPUT_BYTES` | `4096` | Default UTF-8 output bytes returned per tool call |
+| `MCP_MAX_OUTPUT_BYTES` | `32768` | Hard maximum for a per-call `max_output_bytes` override |
 | `MCP_RECORD_LIMIT` | `1024` | Maximum recent command and reset records retained for idempotency |
 | `MCP_LOG_COMMANDS` | `true` | Print each newly executed command to the server terminal |
 
 The shell is non-interactive and has no PTY. Commands that require terminal input are unsupported; stdin is `/dev/null` so a command cannot consume the MCP control stream. A login shell does not necessarily load interactive `.zshrc` aliases.
+
+The command wrapper clears `errexit` (`set -e`) before and after each tool call so it cannot leak into later commands. A command that explicitly enables `set -e` can still end its current shell on failure; the server reports the lost state and starts a clean shell without terminating the MCP HTTP server.
 
 `MCP_CWD` is a default and model instruction, not a filesystem sandbox. An explicit task can still use another path. After changing the workspace or server instructions, restart this server and refresh the app from its ChatGPT plugin settings so ChatGPT reloads the MCP metadata.
 

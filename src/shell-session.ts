@@ -3,7 +3,8 @@ import { createHash, randomUUID } from "node:crypto";
 import { StringDecoder } from "node:string_decoder";
 
 const DEFAULT_TRANSCRIPT_LIMIT = 1024 * 1024;
-const DEFAULT_READ_LIMIT = 64 * 1024;
+const DEFAULT_OUTPUT_BYTES = 4 * 1024;
+const MAX_OUTPUT_BYTES = 32 * 1024;
 const DEFAULT_WAIT_MS = 1_500;
 const MAX_WAIT_MS = 10_000;
 const READY_TIMEOUT_MS = 10_000;
@@ -34,6 +35,7 @@ export interface RunCommandInput {
   requestId: string;
   command: string;
   waitMs?: number;
+  maxOutputBytes?: number;
   signal?: AbortSignal;
 }
 
@@ -41,6 +43,7 @@ export interface PollCommandInput {
   requestId: string;
   cursor: number;
   waitMs?: number;
+  maxOutputBytes?: number;
   signal?: AbortSignal;
 }
 
@@ -54,7 +57,8 @@ export interface ShellSessionOptions {
   cwd?: string;
   env?: NodeJS.ProcessEnv;
   transcriptLimit?: number;
-  readLimit?: number;
+  defaultOutputBytes?: number;
+  maxOutputBytes?: number;
   recordLimit?: number;
   logCommands?: boolean;
   logger?: (message: string) => void;
@@ -136,7 +140,7 @@ class TranscriptBuffer {
     }
   }
 
-  read(cursor: number, limit: number, upperBound?: number): {
+  read(cursor: number, maxBytes: number, upperBound?: number): {
     output: string;
     cursor: number;
     nextCursor: number;
@@ -161,8 +165,9 @@ class TranscriptBuffer {
       availableEnd,
     );
     const localStart = effectiveCursor - this.start;
-    const outputLength = Math.min(limit, availableEnd - effectiveCursor);
-    const output = this.value.slice(localStart, localStart + outputLength);
+    const localEnd = availableEnd - this.start;
+    const outputEnd = utf8BoundedEnd(this.value, localStart, localEnd, maxBytes);
+    const output = this.value.slice(localStart, outputEnd);
     const nextCursor = effectiveCursor + output.length;
 
     return {
@@ -175,12 +180,43 @@ class TranscriptBuffer {
   }
 }
 
+function utf8BoundedEnd(
+  value: string,
+  start: number,
+  end: number,
+  maxBytes: number,
+): number {
+  let offset = start;
+  let bytes = 0;
+
+  while (offset < end) {
+    const codePoint = value.codePointAt(offset);
+    if (codePoint === undefined) break;
+    const codeUnits = codePoint > 0xffff ? 2 : 1;
+    if (offset + codeUnits > end) break;
+    const codePointBytes =
+      codePoint <= 0x7f
+        ? 1
+        : codePoint <= 0x7ff
+          ? 2
+          : codePoint <= 0xffff
+            ? 3
+            : 4;
+    if (bytes + codePointBytes > maxBytes) break;
+    bytes += codePointBytes;
+    offset += codeUnits;
+  }
+
+  return offset;
+}
+
 export class PersistentShellSession {
   private readonly shellPath: string;
   private readonly cwd: string;
   private readonly env: NodeJS.ProcessEnv;
   private readonly transcript: TranscriptBuffer;
-  private readonly readLimit: number;
+  private readonly defaultOutputBytes: number;
+  private readonly maxOutputBytes: number;
   private readonly recordLimit: number;
   private readonly logger: ((message: string) => void) | null;
   private readonly records = new Map<string, CommandRecord>();
@@ -212,7 +248,17 @@ export class PersistentShellSession {
     this.transcript = new TranscriptBuffer(
       positiveInteger(options.transcriptLimit, DEFAULT_TRANSCRIPT_LIMIT),
     );
-    this.readLimit = positiveInteger(options.readLimit, DEFAULT_READ_LIMIT);
+    this.maxOutputBytes = positiveInteger(
+      options.maxOutputBytes,
+      MAX_OUTPUT_BYTES,
+    );
+    this.defaultOutputBytes = positiveInteger(
+      options.defaultOutputBytes,
+      DEFAULT_OUTPUT_BYTES,
+    );
+    if (this.defaultOutputBytes > this.maxOutputBytes) {
+      throw new Error("defaultOutputBytes cannot exceed maxOutputBytes.");
+    }
     this.recordLimit = positiveInteger(options.recordLimit, DEFAULT_RECORD_LIMIT);
     this.logger = options.logCommands
       ? (options.logger ?? ((message) => console.log(message)))
@@ -221,6 +267,14 @@ export class PersistentShellSession {
 
   get initialCwd(): string {
     return this.cwd;
+  }
+
+  get defaultReadBytes(): number {
+    return this.defaultOutputBytes;
+  }
+
+  get maximumReadBytes(): number {
+    return this.maxOutputBytes;
   }
 
   async start(): Promise<void> {
@@ -240,6 +294,7 @@ export class PersistentShellSession {
     validateRequestId(input.requestId);
     validateCommand(input.command);
     const waitMs = normalizeWaitMs(input.waitMs);
+    const maxOutputBytes = this.normalizeOutputBytes(input.maxOutputBytes);
     const commandHash = hashCommand(input.command);
 
     await this.start();
@@ -256,7 +311,7 @@ export class PersistentShellSession {
       if (existing.status === "running") {
         await this.waitForUpdate(version, waitMs, input.signal);
       }
-      return this.snapshot(existing, existing.startCursor, true);
+      return this.snapshot(existing, existing.startCursor, true, maxOutputBytes);
     }
 
     if (this.resetInFlight) {
@@ -315,7 +370,7 @@ export class PersistentShellSession {
     }
 
     await this.waitForUpdate(version, waitMs, input.signal);
-    return this.snapshot(record, record.startCursor, true);
+    return this.snapshot(record, record.startCursor, true, maxOutputBytes);
   }
 
   async pollCommand(input: PollCommandInput): Promise<ShellSnapshot> {
@@ -336,13 +391,14 @@ export class PersistentShellSession {
     }
 
     const waitMs = normalizeWaitMs(input.waitMs);
+    const maxOutputBytes = this.normalizeOutputBytes(input.maxOutputBytes);
     const version = this.updateVersion;
-    const initialRead = this.transcript.read(input.cursor, this.readLimit);
+    const initialRead = this.transcript.read(input.cursor, maxOutputBytes);
     if (initialRead.output.length === 0 && !initialRead.cursorExpired) {
       await this.waitForUpdate(version, waitMs, input.signal);
     }
 
-    return this.snapshot(record, input.cursor, false);
+    return this.snapshot(record, input.cursor, false, maxOutputBytes);
   }
 
   async reset(input: ResetShellInput): Promise<ResetResult> {
@@ -695,8 +751,10 @@ export class PersistentShellSession {
     try {
       if (process.platform === "win32") child.kill(signal);
       else process.kill(-child.pid, signal);
-    } catch (error) {
-      if (!isMissingProcessError(error)) throw error;
+    } catch {
+      // Process-group cleanup is best effort. A descendant with a different
+      // effective user can make killpg return EPERM on macOS; cleanup must not
+      // escape a child-process callback and crash the MCP server.
     }
   }
 
@@ -704,10 +762,11 @@ export class PersistentShellSession {
     record: CommandRecord,
     cursor: number,
     boundedToCommand: boolean,
+    maxOutputBytes: number,
   ): ShellSnapshot {
     const read = this.transcript.read(
       cursor,
-      this.readLimit,
+      maxOutputBytes,
       boundedToCommand ? (record.endCursor ?? undefined) : undefined,
     );
     return {
@@ -726,6 +785,13 @@ export class PersistentShellSession {
       shell_generation: this.generation,
       active_request_id: this.active?.requestId ?? null,
     };
+  }
+
+  private normalizeOutputBytes(value: number | undefined): number {
+    if (value === undefined || !Number.isFinite(value)) {
+      return this.defaultOutputBytes;
+    }
+    return Math.min(Math.max(Math.trunc(value), 1), this.maxOutputBytes);
   }
 
   private logCommand(command: string): void {
@@ -807,8 +873,10 @@ function buildCommandScript(command: string, token: string): string {
   const statusVariable = `__mcp_status_${token}`;
   return [
     `${commandVariable}=${singleQuote(command)}`,
+    "set +e",
     `builtin eval -- "$${commandVariable}" </dev/null 1>&1 2>&1`,
     `${statusVariable}=$?`,
+    "set +e",
     `unset ${commandVariable}`,
     `builtin printf '\\036__MCP_DONE_${token}__:%s\\037' "$${statusVariable}"`,
     `unset ${statusVariable}`,
@@ -886,14 +954,6 @@ function waitForExit(
     };
     child.once("exit", onExit);
   });
-}
-
-function isMissingProcessError(error: unknown): boolean {
-  return (
-    error instanceof Error &&
-    "code" in error &&
-    (error as NodeJS.ErrnoException).code === "ESRCH"
-  );
 }
 
 function errorMessage(error: unknown): string {

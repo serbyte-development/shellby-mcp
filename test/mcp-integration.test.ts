@@ -17,6 +17,10 @@ test("serves shell tools through Streamable HTTP and retains state across MCP se
   assert.match(instructions, /Default workspace:/);
   assert.ok(instructions.includes(running.shell.initialCwd));
   assert.match(instructions, /clone repositories and create new project directories/);
+  assert.match(instructions, /TOOLS\.md/);
+  assert.match(instructions, /New filesystem tools do not require MCP metadata refresh/);
+  assert.match(instructions, /Prefer RTK equivalents/);
+  assert.match(instructions, /Output defaults to 4096 UTF-8 bytes/);
 
   const tools = await first.client.listTools();
   assert.deepEqual(
@@ -28,6 +32,11 @@ test("serves shell tools through Streamable HTTP and retains state across MCP se
   assert.equal(runTool?.annotations?.readOnlyHint, false);
   assert.equal(runTool?.annotations?.destructiveHint, true);
   assert.equal(runTool?.annotations?.openWorldHint, true);
+  const maxOutputSchema = (
+    runTool?.inputSchema.properties as Record<string, Record<string, unknown>>
+  ).max_output_bytes;
+  assert.equal(maxOutputSchema.default, 4096);
+  assert.equal(maxOutputSchema.maximum, 32768);
 
   const firstResult = await callUntilComplete(first.client, "mcp-state-1", [
     "cd /tmp",

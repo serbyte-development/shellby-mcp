@@ -8,6 +8,14 @@ import { startMcpHttpServer } from "./http-server.js";
 const host = process.env.HOST ?? "127.0.0.1";
 const port = parsePositiveInteger(process.env.PORT, 3333);
 const logCommands = parseBoolean(process.env.MCP_LOG_COMMANDS, true);
+const defaultOutputBytes = parsePositiveInteger(
+  process.env.MCP_OUTPUT_BYTES,
+  4 * 1024,
+);
+const maxOutputBytes = parsePositiveInteger(
+  process.env.MCP_MAX_OUTPUT_BYTES,
+  32 * 1024,
+);
 const cwd =
   process.env.MCP_CWD ?? join(homedir(), "Desktop", "chatgpt-workspace");
 await mkdir(cwd, { recursive: true });
@@ -19,7 +27,8 @@ const shell = new PersistentShellSession({
     process.env.MCP_TRANSCRIPT_CHARS,
     1024 * 1024,
   ),
-  readLimit: parsePositiveInteger(process.env.MCP_OUTPUT_CHARS, 64 * 1024),
+  defaultOutputBytes,
+  maxOutputBytes,
   recordLimit: parsePositiveInteger(process.env.MCP_RECORD_LIMIT, 1024),
   logCommands,
 });
