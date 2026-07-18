@@ -19,6 +19,7 @@ By default, new repositories and generated projects belong in `~/Desktop/chatgpt
 - Node.js 22 or newer
 - A public HTTPS tunnel such as [ngrok](https://ngrok.com/)
 - ChatGPT Developer mode access
+- The Codex binary bundled with ChatGPT for the optional `apply_patch` command
 
 ## Run it
 
@@ -56,13 +57,32 @@ There is no CORS allowlist, authentication middleware, command approval layer, h
 
 ## Tools
 
-- `shell_run`: executes a command. Every new command needs a unique `request_id`; retrying the same ID and command does not execute it twice while that request remains in recent history.
+- `shell_run`: executes a command. Every new command needs a unique `request_id`; a short six-character lowercase alphanumeric value such as `a7k2q9` is recommended but not enforced. Retrying the same ID and command does not execute it twice while that request remains in recent history.
 - `shell_poll`: reads additional output using `next_cursor`.
 - `shell_reset`: kills the entire shell process group and starts a clean shell. Every new reset needs a unique `request_id`; retrying the same ID and reason returns the original reset result instead of resetting again.
 
 `shell_run` and `shell_poll` return at most 4096 UTF-8 output bytes by default. The model may set `max_output_bytes` for a specific response when more is necessary, up to the hard 32768-byte maximum. Byte limits never split a UTF-8 character. Additional retained output is indicated by `has_more` and remains available through `shell_poll` until it leaves the rolling transcript.
 
+`shell_run` waits for completion until `wait_ms` expires or the output byte cap is reached. Once a command completes, later polls are bounded to that command and cannot consume output from subsequent commands. Background processes should therefore redirect their output to a file for later inspection.
+
 The server instructs the model to prefer installed RTK equivalents for noisy supported commands such as tests, builds, diffs, logs, searches, file reads, JSON, and package-manager output. RTK is guidance only: the server does not rewrite or wrap commands, and raw shell commands remain available for persistent state changes and unsupported operations.
+
+### Patching files
+
+On startup, the server creates `~/Desktop/chatgpt-workspace/bin/apply_patch` as a stable symlink to the Codex binary bundled with ChatGPT and prepends that directory to the persistent shell's `PATH`. The model is instructed to prefer it for manual source-file edits:
+
+```bash
+apply_patch <<'PATCH'
+*** Begin Patch
+*** Update File: src/example.ts
+@@
+-old
++new
+*** End Patch
+PATCH
+```
+
+This uses the same patch engine as Codex's local `apply_patch`, but it runs as a normal `shell_run` command rather than a native MCP tool. Run it from the relevant project root and use relative paths. If the Codex binary is unavailable, the MCP server continues to start and prints a warning; ordinary shell editing remains available.
 
 Recent command and reset records are bounded in memory. Once an old record has been evicted, its `request_id` is no longer available for retry deduplication, so always generate a fresh ID for a genuinely new operation.
 
@@ -89,6 +109,7 @@ Then inspect it with later commands such as `tail -n 100 /tmp/my-app.log` or `ps
 | `PORT` | `3333` | Local HTTP port |
 | `MCP_SHELL` | `/bin/zsh` | Persistent shell executable |
 | `MCP_CWD` | `~/Desktop/chatgpt-workspace` | Default workspace and initial shell working directory |
+| `MCP_CODEX_BIN` | `/Applications/ChatGPT.app/Contents/Resources/codex` | Codex binary targeted by the workspace `apply_patch` symlink |
 | `MCP_TRANSCRIPT_CHARS` | `1048576` | Retained rolling transcript size |
 | `MCP_OUTPUT_BYTES` | `4096` | Default UTF-8 output bytes returned per tool call |
 | `MCP_MAX_OUTPUT_BYTES` | `32768` | Hard maximum for a per-call `max_output_bytes` override |

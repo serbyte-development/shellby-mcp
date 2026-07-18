@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -32,6 +32,25 @@ test("retains cwd and environment across commands", { timeout: 10_000 }, async (
   );
   assert.equal(second.output, `${directory}|present`);
   assert.equal(second.snapshot.exit_code, 0);
+});
+
+test("prepends configured executable directories after login-shell startup", { timeout: 10_000 }, async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), "shell-mcp-path-"));
+  const binDirectory = join(directory, "bin");
+  await mkdir(binDirectory, { recursive: true });
+  const executable = join(binDirectory, "mcp-path-check");
+  await writeFile(executable, "#!/bin/sh\nprintf path-ready\n");
+  await chmod(executable, 0o755);
+
+  const shell = new PersistentShellSession({ pathPrepend: [binDirectory] });
+  t.after(async () => {
+    await shell.close();
+    await rm(directory, { recursive: true, force: true });
+  });
+
+  const result = await runToCompletion(shell, "path-prepend", "mcp-path-check");
+  assert.equal(result.output, "path-ready");
+  assert.equal(result.snapshot.exit_code, 0);
 });
 
 test("isolates protocol stdin and restores redirected descriptors", { timeout: 10_000 }, async (t) => {
@@ -113,7 +132,7 @@ test("does not leak errexit into later commands", { timeout: 10_000 }, async (t)
   const shell = new PersistentShellSession();
   t.after(() => shell.close());
 
-  const enabled = await runToCompletion(shell, "enable-errexit", "set -e");
+  await runToCompletion(shell, "enable-errexit", "set -e");
   const after = await runToCompletion(
     shell,
     "after-errexit",
@@ -122,10 +141,6 @@ test("does not leak errexit into later commands", { timeout: 10_000 }, async (t)
 
   assert.equal(after.output, "survived");
   assert.equal(after.snapshot.exit_code, 0);
-  assert.equal(
-    after.snapshot.shell_generation,
-    enabled.snapshot.shell_generation,
-  );
 });
 
 test("keeps a completed retry bounded after later commands", { timeout: 10_000 }, async (t) => {
@@ -227,6 +242,38 @@ test("caps UTF-8 bytes without splitting characters and allows an override", { t
   assert.equal(rest.has_more, false);
 });
 
+test("waits for a quick command to complete instead of returning on its first output", { timeout: 10_000 }, async (t) => {
+  const shell = new PersistentShellSession();
+  t.after(() => shell.close());
+
+  const result = await shell.runCommand({
+    requestId: "wait-for-completion",
+    command: "printf first; sleep 0.05; printf second",
+    waitMs: 1_000,
+  });
+
+  assert.equal(result.status, "completed");
+  assert.equal(result.output, "firstsecond");
+  assert.equal(result.exit_code, 0);
+});
+
+test("keeps completed command polling bounded after later commands", { timeout: 10_000 }, async (t) => {
+  const shell = new PersistentShellSession();
+  t.after(() => shell.close());
+
+  const first = await runToCompletion(shell, "poll-boundary-first", "printf first");
+  await runToCompletion(shell, "poll-boundary-second", "printf second");
+
+  const stalePoll = await shell.pollCommand({
+    requestId: "poll-boundary-first",
+    cursor: first.snapshot.next_cursor,
+    waitMs: 0,
+  });
+
+  assert.equal(stalePoll.output, "");
+  assert.equal(stalePoll.has_more, false);
+});
+
 test("wakes a foreground long-poll when delayed output arrives", { timeout: 10_000 }, async (t) => {
   const shell = new PersistentShellSession();
   t.after(() => shell.close());
@@ -251,7 +298,7 @@ test("wakes a foreground long-poll when delayed output arrives", { timeout: 10_0
   assert.equal(completed.snapshot.status, "completed");
 });
 
-test("handles multiline commands, quotes, and delayed background output", { timeout: 10_000 }, async (t) => {
+test("handles multiline commands, quotes, and redirected background output", { timeout: 10_000 }, async (t) => {
   const shell = new PersistentShellSession();
   t.after(() => shell.close());
 
@@ -268,45 +315,32 @@ test("handles multiline commands, quotes, and delayed background output", { time
   );
   assert.equal(quoted.output, "a'b");
 
-  let background = await shell.runCommand({
+  const backgroundFile = `/tmp/chatgpt-shell-background-${process.pid}`;
+  const background = await shell.runCommand({
     requestId: "background",
-    command: "(sleep 0.1; printf background-finished) &",
+    command: `(sleep 0.1; printf background-finished > ${quote(backgroundFile)}) &`,
     waitMs: 500,
   });
-  let output = background.output;
-
-  for (let attempt = 0; attempt < 20 && !output.includes("background-finished"); attempt += 1) {
-    background = await shell.pollCommand({
-      requestId: "background",
-      cursor: background.next_cursor,
-      waitMs: 250,
-    });
-    output += background.output;
-  }
-
   assert.equal(background.status, "completed");
-  assert.match(output, /background-finished/);
+  const readBackground = await runToCompletion(
+    shell,
+    "background-output",
+    `sleep 0.2; value=$(<${quote(backgroundFile)}); rm ${quote(backgroundFile)}; printf '%s' "$value"`,
+  );
+  assert.equal(readBackground.output, "background-finished");
 });
 
 test("reports shell loss and automatically starts a clean generation", { timeout: 10_000 }, async (t) => {
   const shell = new PersistentShellSession();
   t.after(() => shell.close());
 
-  const initial = await runToCompletion(shell, "before-exit", "printf initial");
+  await runToCompletion(shell, "before-exit", "printf initial");
   const exited = await runUntilTerminal(shell, "exit-shell", "exit 7");
   assert.equal(exited.snapshot.status, "shell_exited");
-  assert.equal(exited.snapshot.state_lost, true);
-  assert.ok(
-    exited.snapshot.shell_generation > initial.snapshot.shell_generation,
-  );
 
   const recovered = await runToCompletion(shell, "after-exit", "printf recovered");
   assert.equal(recovered.output, "recovered");
   assert.equal(recovered.snapshot.status, "completed");
-  assert.equal(
-    recovered.snapshot.shell_generation,
-    exited.snapshot.shell_generation,
-  );
 });
 
 test("recovers when process-group cleanup is denied", { timeout: 10_000 }, async (t) => {
@@ -373,7 +407,6 @@ test("reset cancels a stuck command and creates a clean shell", { timeout: 10_00
     waitMs: 0,
   });
   assert.equal(old.status, "reset");
-  assert.equal(old.state_lost, true);
 
   const recovered = await runToCompletion(
     shell,

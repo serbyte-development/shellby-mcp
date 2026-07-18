@@ -20,7 +20,11 @@ test("serves shell tools through Streamable HTTP and retains state across MCP se
   assert.match(instructions, /TOOLS\.md/);
   assert.match(instructions, /New filesystem tools do not require MCP metadata refresh/);
   assert.match(instructions, /Prefer RTK equivalents/);
+  assert.match(instructions, /Protect context aggressively/);
+  assert.match(instructions, /never use a top-level exit/);
   assert.match(instructions, /Output defaults to 4096 UTF-8 bytes/);
+  assert.match(instructions, /six-character lowercase alphanumeric request_id/);
+  assert.match(instructions, /Prefer apply_patch for manual source-file edits/);
 
   const tools = await first.client.listTools();
   assert.deepEqual(
@@ -37,8 +41,18 @@ test("serves shell tools through Streamable HTTP and retains state across MCP se
   ).max_output_bytes;
   assert.equal(maxOutputSchema.default, 4096);
   assert.equal(maxOutputSchema.maximum, 32768);
+  const requestIdSchema = (
+    runTool?.inputSchema.properties as Record<string, Record<string, unknown>>
+  ).request_id;
+  assert.equal(requestIdSchema.pattern, undefined);
+  assert.equal(requestIdSchema.minLength, 1);
+  assert.equal(requestIdSchema.maxLength, 128);
+  assert.deepEqual(
+    Object.keys((runTool?.outputSchema?.properties ?? {}) as Record<string, unknown>).sort(),
+    ["cursor_expired", "exit_code", "has_more", "next_cursor", "output", "request_id", "status"],
+  );
 
-  const firstResult = await callUntilComplete(first.client, "mcp-state-1", [
+  const firstResult = await callUntilComplete(first.client, "mcp001", [
     "cd /tmp",
     "export MCP_HTTP_RETAINED=yes",
     "printf initialized",
@@ -52,7 +66,7 @@ test("serves shell tools through Streamable HTTP and retains state across MCP se
   t.after(() => second.client.close());
   const secondResult = await callUntilComplete(
     second.client,
-    "mcp-state-2",
+    "MCP-State-2",
     `printf '%s|%s' "$PWD" "$MCP_HTTP_RETAINED"`,
   );
   assert.equal(secondResult.output, "/tmp|yes");

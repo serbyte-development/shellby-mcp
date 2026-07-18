@@ -4,6 +4,7 @@ import { join } from "node:path";
 
 import { PersistentShellSession } from "./shell-session.js";
 import { startMcpHttpServer } from "./http-server.js";
+import { prepareApplyPatch } from "./workspace-tools.js";
 
 const host = process.env.HOST ?? "127.0.0.1";
 const port = parsePositiveInteger(process.env.PORT, 3333);
@@ -19,10 +20,12 @@ const maxOutputBytes = parsePositiveInteger(
 const cwd =
   process.env.MCP_CWD ?? join(homedir(), "Desktop", "chatgpt-workspace");
 await mkdir(cwd, { recursive: true });
+const applyPatch = await prepareApplyPatch(cwd, process.env.MCP_CODEX_BIN);
 
 const shell = new PersistentShellSession({
   shellPath: process.env.MCP_SHELL ?? "/bin/zsh",
   cwd,
+  pathPrepend: [applyPatch.binDirectory],
   transcriptLimit: parsePositiveInteger(
     process.env.MCP_TRANSCRIPT_CHARS,
     1024 * 1024,
@@ -37,6 +40,11 @@ const running = await startMcpHttpServer({ host, port, shell });
 console.log(`Local shell MCP server: ${running.url}`);
 console.log(`Shell: ${process.env.MCP_SHELL ?? "/bin/zsh"}`);
 console.log(`Default workspace: ${cwd}`);
+if (applyPatch.available) {
+  console.log(`apply_patch: ${applyPatch.executable}`);
+} else {
+  console.warn(`apply_patch unavailable: ${applyPatch.warning}`);
+}
 
 let shuttingDown = false;
 const shutdown = async (signal: string) => {

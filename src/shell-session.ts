@@ -22,13 +22,9 @@ export interface ShellSnapshot extends Record<string, unknown> {
   status: CommandStatus;
   exit_code: number | null;
   output: string;
-  cursor: number;
   next_cursor: number;
   has_more: boolean;
   cursor_expired: boolean;
-  state_lost: boolean;
-  shell_generation: number;
-  active_request_id: string | null;
 }
 
 export interface RunCommandInput {
@@ -56,6 +52,7 @@ export interface ShellSessionOptions {
   shellPath?: string;
   cwd?: string;
   env?: NodeJS.ProcessEnv;
+  pathPrepend?: string[];
   transcriptLimit?: number;
   defaultOutputBytes?: number;
   maxOutputBytes?: number;
@@ -67,7 +64,6 @@ export interface ShellSessionOptions {
 interface CommandRecord {
   requestId: string;
   commandHash: string;
-  generation: number;
   startCursor: number;
   endCursor: number | null;
   status: CommandStatus;
@@ -142,7 +138,6 @@ class TranscriptBuffer {
 
   read(cursor: number, maxBytes: number, upperBound?: number): {
     output: string;
-    cursor: number;
     nextCursor: number;
     hasMore: boolean;
     cursorExpired: boolean;
@@ -153,7 +148,6 @@ class TranscriptBuffer {
     if (availableEnd <= this.start) {
       return {
         output: "",
-        cursor: availableEnd,
         nextCursor: availableEnd,
         hasMore: false,
         cursorExpired,
@@ -172,7 +166,6 @@ class TranscriptBuffer {
 
     return {
       output,
-      cursor: effectiveCursor,
       nextCursor,
       hasMore: nextCursor < availableEnd,
       cursorExpired,
@@ -214,6 +207,7 @@ export class PersistentShellSession {
   private readonly shellPath: string;
   private readonly cwd: string;
   private readonly env: NodeJS.ProcessEnv;
+  private readonly pathPrepend: string[];
   private readonly transcript: TranscriptBuffer;
   private readonly defaultOutputBytes: number;
   private readonly maxOutputBytes: number;
@@ -245,6 +239,9 @@ export class PersistentShellSession {
     this.shellPath = options.shellPath ?? "/bin/zsh";
     this.cwd = options.cwd ?? process.cwd();
     this.env = options.env ?? process.env;
+    this.pathPrepend = (options.pathPrepend ?? []).filter(
+      (entry) => entry.length > 0,
+    );
     this.transcript = new TranscriptBuffer(
       positiveInteger(options.transcriptLimit, DEFAULT_TRANSCRIPT_LIMIT),
     );
@@ -307,9 +304,14 @@ export class PersistentShellSession {
         );
       }
 
-      const version = this.updateVersion;
       if (existing.status === "running") {
-        await this.waitForUpdate(version, waitMs, input.signal);
+        await this.waitForCommandResult(
+          existing,
+          existing.startCursor,
+          maxOutputBytes,
+          waitMs,
+          input.signal,
+        );
       }
       return this.snapshot(existing, existing.startCursor, true, maxOutputBytes);
     }
@@ -340,7 +342,6 @@ export class PersistentShellSession {
     const record: CommandRecord = {
       requestId: input.requestId,
       commandHash,
-      generation: this.generation,
       startCursor: this.transcript.end,
       endCursor: null,
       status: "running",
@@ -352,8 +353,6 @@ export class PersistentShellSession {
     this.records.set(record.requestId, record);
     this.active = record;
     this.logCommand(input.command);
-    const version = this.updateVersion;
-
     try {
       await writeToStdin(child, buildCommandScript(input.command, token));
     } catch (error) {
@@ -369,7 +368,13 @@ export class PersistentShellSession {
       );
     }
 
-    await this.waitForUpdate(version, waitMs, input.signal);
+    await this.waitForCommandResult(
+      record,
+      record.startCursor,
+      maxOutputBytes,
+      waitMs,
+      input.signal,
+    );
     return this.snapshot(record, record.startCursor, true, maxOutputBytes);
   }
 
@@ -393,12 +398,20 @@ export class PersistentShellSession {
     const waitMs = normalizeWaitMs(input.waitMs);
     const maxOutputBytes = this.normalizeOutputBytes(input.maxOutputBytes);
     const version = this.updateVersion;
-    const initialRead = this.transcript.read(input.cursor, maxOutputBytes);
-    if (initialRead.output.length === 0 && !initialRead.cursorExpired) {
+    const initialRead = this.transcript.read(
+      input.cursor,
+      maxOutputBytes,
+      record.endCursor ?? undefined,
+    );
+    if (
+      record.status === "running" &&
+      initialRead.output.length === 0 &&
+      !initialRead.cursorExpired
+    ) {
       await this.waitForUpdate(version, waitMs, input.signal);
     }
 
-    return this.snapshot(record, input.cursor, false, maxOutputBytes);
+    return this.snapshot(record, input.cursor, true, maxOutputBytes);
   }
 
   async reset(input: ResetShellInput): Promise<ResetResult> {
@@ -564,7 +577,15 @@ export class PersistentShellSession {
       this.readyState = { child, marker, resolve, reject, timer };
       writeToStdin(
         child,
-        `builtin printf '\\036__MCP_READY_${token}__\\037'\n`,
+        [
+          this.pathPrepend.length > 0
+            ? `builtin export PATH=${singleQuote(this.pathPrepend.join(":"))}:"$PATH"`
+            : null,
+          `builtin printf '\\036__MCP_READY_${token}__\\037'`,
+          "",
+        ]
+          .filter((line) => line !== null)
+          .join("\n"),
       ).catch((error) => {
         clearTimeout(timer);
         this.readyState = null;
@@ -774,17 +795,41 @@ export class PersistentShellSession {
       status: record.status,
       exit_code: record.exitCode,
       output: read.output,
-      cursor: read.cursor,
       next_cursor: read.nextCursor,
       has_more: read.hasMore,
       cursor_expired: read.cursorExpired,
-      state_lost:
-        record.status === "shell_exited" ||
-        record.status === "reset" ||
-        record.generation !== this.generation,
-      shell_generation: this.generation,
-      active_request_id: this.active?.requestId ?? null,
     };
+  }
+
+  private async waitForCommandResult(
+    record: CommandRecord,
+    cursor: number,
+    maxOutputBytes: number,
+    waitMs: number,
+    signal?: AbortSignal,
+  ): Promise<void> {
+    const deadline = Date.now() + waitMs;
+
+    while (record.status === "running" && !signal?.aborted) {
+      const read = this.transcript.read(
+        cursor,
+        maxOutputBytes,
+        record.endCursor ?? undefined,
+      );
+      if (
+        read.cursorExpired ||
+        read.hasMore ||
+        Buffer.byteLength(read.output, "utf8") >= maxOutputBytes
+      ) {
+        return;
+      }
+
+      const remainingMs = deadline - Date.now();
+      if (remainingMs <= 0) return;
+
+      const version = this.updateVersion;
+      await this.waitForUpdate(version, remainingMs, signal);
+    }
   }
 
   private normalizeOutputBytes(value: number | undefined): number {
