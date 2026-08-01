@@ -1,10 +1,10 @@
 # Architecture Map
 
-Verified 2026-07-19.
+Verified 2026-08-01.
 
 ## What This Is
 
-ChatGPT Local Shell MCP is a private Node.js/TypeScript service that exposes bounded named persistent shells through four MCP tools over Streamable HTTP (`package.json`, `src/index.ts`, `src/mcp-server.ts`).
+ChatGPT Local Shell MCP is a private Node.js/TypeScript service that exposes bounded named persistent shells and webpage extraction through seven MCP tools over Streamable HTTP (`package.json`, `src/index.ts`, `src/mcp-server.ts`).
 
 ## Layers
 
@@ -16,6 +16,7 @@ ChatGPT Local Shell MCP is a private Node.js/TypeScript service that exposes bou
 | Shell manager         | Lazily create, route, limit, idle-evict, and close named shell runtimes                | `src/shell-session-manager.ts` |
 | Shell runtime         | Own the child shell, marker protocol, transcript, command records, reset, and recovery | `src/shell-session.ts`         |
 | Workspace integration | Make the bundled Codex patch executable available through `PATH`                       | `src/workspace-tools.ts`       |
+| Webpage extraction    | Render pages, extract Markdown, and retain bounded cursor-addressed documents           | `src/web-open.ts`              |
 
 ## Request Lifecycle
 

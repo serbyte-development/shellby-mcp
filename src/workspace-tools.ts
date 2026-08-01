@@ -1,6 +1,7 @@
 import { constants } from "node:fs";
 import { access, lstat, mkdir, symlink, unlink } from "node:fs/promises";
-import { join } from "node:path";
+import { homedir } from "node:os";
+import { join, resolve } from "node:path";
 
 export const DEFAULT_CODEX_BINARY =
   "/Applications/ChatGPT.app/Contents/Resources/codex";
@@ -10,6 +11,17 @@ export interface ApplyPatchSetup {
   executable: string;
   available: boolean;
   warning?: string;
+}
+
+export function resolveWorkspacePath(configured?: string): string {
+  if (configured === undefined) {
+    return join(homedir(), "Desktop", "chatgpt-workspace");
+  }
+  if (configured === "~") return homedir();
+  if (configured.startsWith("~/")) {
+    return join(homedir(), configured.slice(2));
+  }
+  return resolve(configured);
 }
 
 export async function prepareApplyPatch(

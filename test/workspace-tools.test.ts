@@ -1,10 +1,30 @@
 import assert from "node:assert/strict";
 import { chmod, mkdtemp, readlink, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { homedir, tmpdir } from "node:os";
+import { join, resolve } from "node:path";
 import test from "node:test";
 
-import { prepareApplyPatch } from "../src/workspace-tools.js";
+import {
+  prepareApplyPatch,
+  resolveWorkspacePath,
+} from "../src/workspace-tools.js";
+
+test("resolves configured workspace paths to absolute paths", () => {
+  assert.equal(
+    resolveWorkspacePath(),
+    join(homedir(), "Desktop", "chatgpt-workspace"),
+  );
+  assert.equal(resolveWorkspacePath("~"), homedir());
+  assert.equal(
+    resolveWorkspacePath("~/custom-workspace"),
+    join(homedir(), "custom-workspace"),
+  );
+  assert.equal(
+    resolveWorkspacePath("relative-workspace"),
+    resolve("relative-workspace"),
+  );
+  assert.equal(resolveWorkspacePath(tmpdir()), tmpdir());
+});
 
 test("creates a stable workspace apply_patch symlink", async (t) => {
   const directory = await mkdtemp(join(tmpdir(), "mcp-apply-patch-"));

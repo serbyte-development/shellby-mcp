@@ -1,6 +1,6 @@
 # Workspace Tooling
 
-Verified 2026-07-19.
+Verified 2026-08-01.
 
 ## What This Is
 
@@ -8,7 +8,7 @@ Startup creates a default workspace and optionally exposes the ChatGPT-bundled C
 
 ## Default Workspace
 
-`MCP_CWD` defaults to `~/Desktop/chatgpt-workspace`. Startup creates the directory recursively and uses it as the initial shell working directory. This is a convention, not a sandbox: shell commands retain the local user's filesystem permissions (`src/index.ts`, `src/mcp-server.ts`).
+`MCP_CWD` defaults to `~/Desktop/chatgpt-workspace`. Startup expands `~`, resolves relative configuration from the startup directory, creates the resulting absolute directory recursively, and uses it consistently for the initial shell cwd and workspace tools. This is a convention, not a sandbox: shell commands retain the local user's filesystem permissions (`src/index.ts`, `src/workspace-tools.ts`, `src/mcp-server.ts`).
 
 ## `apply_patch`
 

@@ -6,7 +6,7 @@
 
 - Role: original project overview, runtime behavior, configuration reference, and user-facing setup notes.
 - Reliability: useful design intent, but explicitly treated as potentially stale.
-- Verified against code: 2026-07-19.
+- Verified against code: 2026-08-01.
 - Feeds: [[pages/Architecture Map]], [[pages/MCP Tool Surface]], [[pages/Persistent Shell Runtime]], [[pages/Transcript Polling and Idempotency]], [[pages/Workspace Tooling]], [[pages/Configuration and Startup]], and [[pages/Open Questions and Risks]].
 
 #### Staleness / conflict notes
@@ -17,7 +17,7 @@
 - Resolved in `README.md` on 2026-07-19: process-group termination is best effort when signaling is denied (`src/shell-session.ts`).
 - Resolved in `README.md` on 2026-07-19: an existing executable workspace `apply_patch` is reused without confirming its type or target (`src/workspace-tools.ts`).
 - The fixed ngrok domain and ChatGPT settings/menu instructions describe a particular external setup. They are not server architecture, are not verified by this repository, and were not promoted into maintained pages except where the local tunnel script constrains development (`package.json`, `ngrok-traffic-policy.yml`).
-- The README is current about the four MCP tools, one shared shell, output polling and truncation, request deduplication, process-group reset, native `apply_patch`, RTK guidance, and command-only logging; those claims are backed by `src/` and `test/`.
+- The README is current about the seven MCP tools, named shell manager, output polling and truncation, request deduplication, process-group reset, native `apply_patch`, webpage extraction, RTK guidance, and command-only logging; those claims are backed by `src/` and `test/`.
 
 ### Maintainer workstation app-bundle survey, 2026-07-20
 
@@ -43,6 +43,8 @@ These are current implementation evidence, not copied raw notes:
 - HTTP boundary: `src/http-server.ts`, `test/mcp-integration.test.ts`.
 - Tool contracts and model instructions: `src/mcp-server.ts`, `test/mcp-integration.test.ts`.
 - Shell, transcript, idempotency, and reset behavior: `src/shell-session.ts`, `test/shell-session.test.ts`.
+- Named-shell lifecycle: `src/shell-session-manager.ts`, `test/shell-session-manager.test.ts`.
 - Workspace `apply_patch` integration: `src/workspace-tools.ts`, `test/workspace-tools.test.ts`.
+- Webpage extraction and cached pagination: `src/web-open.ts`, `test/web-open.test.ts`, `test/mcp-integration.test.ts`.
 - Tunnel helper: `ngrok-traffic-policy.yml`, `package.json`.
-- Change tripwire: recent Git history through commit `6e19a1d`.
+- Change tripwire: recent Git history through commit `9e289d8`.

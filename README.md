@@ -69,7 +69,9 @@ There is no CORS allowlist, authentication middleware, command approval layer, h
 
 `shell_id` is optional and defaults to `default`. It accepts 1–64 characters. The server creates shells lazily and permits eight by default. A single agent can use multiple shell IDs for parallel commands, and multiple agents avoid shared cwd, environment, transcript, reset, and foreground-command state by using distinct IDs. Named shells are closed after 30 minutes without tool activity by default; `shell_list` exposes their current lifecycle state and `shell_close` releases a named shell immediately. The `default` shell is retained for backward compatibility and cannot be closed, though `shell_reset` remains available to recover it. Idle cleanup never closes a shell while it is running a foreground command or reset.
 
-`shell_run` and `shell_poll` return at most 2048 UTF-8 output bytes by default. The model may set `max_output_bytes` for a specific response when more is necessary, up to the hard 32768-byte maximum. Byte limits never split a UTF-8 character. When continuation is needed, the response includes `request_id` and `next_cursor`; `has_more` is present only when retained output remains unread. Normal completed responses omit pagination and false/zero diagnostic fields.
+`shell_run` and `shell_poll` return at most 2048 UTF-8 output bytes by default. The model may set `max_output_bytes` for a specific response when more is necessary, up to the hard 32768-byte maximum. Byte limits and rolling transcript eviction never retain only half of a Unicode surrogate pair. When continuation is needed, the response includes `request_id` and `next_cursor`; `has_more` is present only when retained output remains unread. A poll cursor must belong to the requested command, so it cannot read output from an earlier command. Normal completed responses omit pagination and false/zero diagnostic fields.
+
+This MCP targets ChatGPT web only. Tool output intentionally lives in `structuredContent`, while the text content remains a compact status summary to avoid duplicating command output in context.
 
 Each command also has a retained-output ceiling, controlled by `MCP_COMMAND_TRANSCRIPT_BYTES`. The shell continues draining and executing after that ceiling is reached, but excess output is discarded. Snapshots expose `output_truncated` and the exact UTF-8 `dropped_output_bytes`; discarded output cannot be recovered by polling.
 
@@ -149,7 +151,7 @@ Then inspect it with later commands such as `tail -n 100 /tmp/my-app.log` or `ps
 | `HOST`                         | `127.0.0.1`                                          | Local HTTP bind address                                                                      |
 | `PORT`                         | `3333`                                               | Local HTTP port                                                                              |
 | `MCP_SHELL`                    | `/bin/zsh`                                           | Persistent shell executable                                                                  |
-| `MCP_CWD`                      | `~/Desktop/chatgpt-workspace`                        | Default workspace and initial shell working directory                                        |
+| `MCP_CWD`                      | `~/Desktop/chatgpt-workspace`                        | Absolute-resolved default workspace and initial shell working directory                       |
 | `MCP_CODEX_BIN`                | `/Applications/ChatGPT.app/Contents/Resources/codex` | Codex binary targeted by the workspace `apply_patch` symlink                                 |
 | `MCP_TRANSCRIPT_CHARS`         | `1048576`                                            | Retained rolling transcript limit in JavaScript UTF-16 code units                            |
 | `MCP_COMMAND_TRANSCRIPT_BYTES` | `262144`                                             | Maximum UTF-8 command output retained before excess bytes are discarded                      |
@@ -162,6 +164,8 @@ Then inspect it with later commands such as `tail -n 100 /tmp/my-app.log` or `ps
 
 `PORT` changes only the HTTP listener. The included `npm run tunnel` command and ngrok Host rewrite are fixed to port 3333, so update `package.json` and `ngrok-traffic-policy.yml` together when using another port.
 
+`MCP_CWD` expands `~` and `~/...`; relative values are resolved from the server's startup directory. Startup uses the resulting absolute path consistently for shell cwd, workspace tooling, model instructions, and the native `apply_patch` default.
+
 The shell is non-interactive and has no PTY. Commands that require terminal input are unsupported; stdin is `/dev/null` so a command cannot consume the MCP control stream. A login shell does not necessarily load interactive `.zshrc` aliases.
 
 The command wrapper clears `errexit` (`set -e`) before and after each tool call so it cannot leak into later commands. A command that explicitly enables `set -e` can still end its current shell on failure; the server reports the lost state and starts a clean shell without terminating the MCP HTTP server.
@@ -170,9 +174,9 @@ The command wrapper clears `errexit` (`set -e`) before and after each tool call 
 
 ## Activity log
 
-By default, every newly accepted shell command prints one compact line containing the first non-comment command line plus multiline line/byte counts. Control characters are escaped, and long previews are byte-capped. Native `apply_patch` calls use the selected shell's logger. Set `MCP_LOG_COMMANDS=full` for raw multiline commands or `MCP_LOG_COMMANDS=off` to disable logging.
+By default, every newly accepted shell command prints one compact line prefixed with the server's local time in 24-hour `HH:MM` format, followed by the first non-comment command line plus multiline line/byte counts. Control characters are escaped, and long previews are byte-capped. Native `apply_patch` calls use the selected shell's logger. Set `MCP_LOG_COMMANDS=full` for raw multiline commands or `MCP_LOG_COMMANDS=off` to disable logging.
 
-There are no timestamps, request IDs, completion lines, reset or polling entries, or duplicated retry entries. Command output is not copied into the log, so the performance impact is negligible.
+There are no request IDs, completion lines, reset or polling entries, or duplicated retry entries. Command output is not copied into the log, so the performance impact is negligible.
 
 Even a summary preview can contain tokens, passwords, or other secrets from the first command line. Logs are terminal-only by default and are not written to a file.
 

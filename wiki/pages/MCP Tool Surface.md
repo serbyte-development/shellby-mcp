@@ -8,6 +8,12 @@ Verified 2026-08-01.
 
 ## Tools
 
+### `web_open`
+
+- Renders an HTTP or HTTPS page with Cloak Browser and extracts its main content as Markdown through Defuddle.
+- Returns bounded UTF-8 content chunks and an opaque cursor that reads the cached document without reopening the page.
+- Retains at most twenty extracted documents for ten minutes by default, with a 2 MiB ceiling per document (`src/web-open.ts`, `src/mcp-server.ts`, `test/web-open.test.ts`, `test/mcp-integration.test.ts`).
+
 ### `apply_patch`
 
 - Accepts a named `shell_id`, Codex-format patch, optional absolute project `cwd`, and bounded response output.
@@ -28,7 +34,7 @@ Verified 2026-08-01.
 
 ### `shell_poll`
 
-Reads output for an existing command from `next_cursor`. It must receive the same `shell_id` as the original run and observes only that shell's transcript (`src/mcp-server.ts`).
+Reads output for an existing command from `next_cursor`. It must receive the same `shell_id` as the original run. The runtime rejects cursors before that command's start, and completed reads are bounded at its terminal cursor, preventing polls from consuming earlier or later command output (`src/mcp-server.ts`, `src/shell-session.ts`, `test/shell-session.test.ts`).
 
 ### `shell_reset`
 
@@ -46,7 +52,7 @@ Terminates a selected non-default shell, discards its state and retained records
 
 ## Result and Error Shape
 
-Run and poll always return status, nullable exit code, and output. They add request ID and next cursor only when polling may be needed, `has_more` only when unread retained output exists, and cursor/truncation diagnostics only when exceptional. The human-readable content block is a compact status summary; command output lives only in `structuredContent` (`src/mcp-server.ts`).
+Run and poll always return status, nullable exit code, and output. They add request ID and next cursor only when polling may be needed, `has_more` only when unread retained output exists, and cursor/truncation diagnostics only when exceptional. This server targets ChatGPT web only, so the human-readable content block deliberately remains a compact status summary while command output lives only in `structuredContent`, avoiding duplicated model context (`src/mcp-server.ts`, `README.md`).
 
 Known `ShellSessionError` codes are converted into MCP tool errors. Unexpected errors become `internal_error`; tool handlers do not throw them through the transport (`src/mcp-server.ts`, `src/shell-session.ts`).
 

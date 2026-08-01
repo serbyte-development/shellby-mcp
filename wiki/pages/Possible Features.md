@@ -6,7 +6,6 @@ This page collects plausible additions for Unhinged Terminal MCP. These are idea
 
 - Optional server-generated `request_id` values while preserving retry safety.
 - A compact command-history tool for finding recent request IDs, statuses, and working directories.
-- Explicit per-shell close/list tools if bounded lazy creation proves insufficient.
 - Explicit command timeouts and cancellation without resetting the entire shell.
 - Optional working-directory input on `shell_run` for isolated one-off commands.
 

@@ -1,6 +1,4 @@
 import { mkdir } from "node:fs/promises";
-import { homedir } from "node:os";
-import { join } from "node:path";
 
 import {
   PersistentShellSession,
@@ -8,7 +6,10 @@ import {
 } from "./shell-session.js";
 import { ShellSessionManager } from "./shell-session-manager.js";
 import { startMcpHttpServer } from "./http-server.js";
-import { prepareApplyPatch } from "./workspace-tools.js";
+import {
+  prepareApplyPatch,
+  resolveWorkspacePath,
+} from "./workspace-tools.js";
 
 const host = process.env.HOST ?? "127.0.0.1";
 const port = parsePositiveInteger(process.env.PORT, 3333);
@@ -21,8 +22,7 @@ const maxOutputBytes = parsePositiveInteger(
   process.env.MCP_MAX_OUTPUT_BYTES,
   32 * 1024,
 );
-const cwd =
-  process.env.MCP_CWD ?? join(homedir(), "Desktop", "chatgpt-workspace");
+const cwd = resolveWorkspacePath(process.env.MCP_CWD);
 await mkdir(cwd, { recursive: true });
 const applyPatch = await prepareApplyPatch(cwd, process.env.MCP_CODEX_BIN);
 

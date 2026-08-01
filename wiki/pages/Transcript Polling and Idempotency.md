@@ -1,6 +1,6 @@
 # Transcript Polling and Idempotency
 
-Verified 2026-07-22.
+Verified 2026-08-01.
 
 ## What This Is
 
@@ -8,13 +8,13 @@ The shell runtime turns an unbounded byte stream into bounded, retry-safe comman
 
 ## Transcript and Cursors
 
-`TranscriptBuffer` stores a rolling JavaScript string with an absolute base offset. When the configured length is exceeded it drops the oldest UTF-16 code units and advances that offset. A cursor older than the retained base is clamped and reported with `cursor_expired: true` (`src/shell-session.ts`).
+`TranscriptBuffer` stores a rolling JavaScript string with an absolute base offset. When the configured length is exceeded it drops the oldest UTF-16 code units and advances that offset; if the boundary crosses a surrogate pair, it drops the whole pair rather than retaining an invalid half. A cursor older than the retained base is clamped and reported with `cursor_expired: true` (`src/shell-session.ts`, `test/shell-session.test.ts`).
 
 Response limits are measured in UTF-8 bytes. `utf8BoundedEnd` advances by Unicode code point and never splits a surrogate pair or UTF-8 character. Cursors themselves remain JavaScript string offsets, not byte offsets (`src/shell-session.ts`, `test/shell-session.test.ts`).
 
 Each active command retains at most `MCP_COMMAND_TRANSCRIPT_BYTES` UTF-8 bytes. The parser continues consuming all decoded output so it can find the completion marker, but excess confirmed command output is discarded. Internal snapshots track whether this happened and the saturated UTF-8 byte count dropped; model-facing results include those diagnostics only when output was actually discarded (`src/index.ts`, `src/shell-session.ts`, `src/mcp-server.ts`, `test/shell-session.test.ts`).
 
-Each command stores start and terminal cursors. After completion, reads are upper-bounded by that terminal cursor so polling an old command cannot consume a later command's output (`src/shell-session.ts`, `test/shell-session.test.ts`).
+Each command stores start and terminal cursors. Poll rejects a cursor before the command start, and completed reads are upper-bounded by the terminal cursor, so a poll cannot consume earlier or later command output (`src/shell-session.ts`, `test/shell-session.test.ts`).
 
 ## Waiting and Polling
 

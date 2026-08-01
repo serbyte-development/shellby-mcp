@@ -151,7 +151,8 @@ test(
     await runToCompletion(shell, "logged-command", "printf logged");
     await runToCompletion(shell, "logged-command", "printf logged");
 
-    assert.deepEqual(messages, ["printf logged"]);
+    assert.equal(messages.length, 1);
+    assert.match(messages[0], /^\[(?:[01]\d|2[0-3]):[0-5]\d\] printf logged$/);
   },
 );
 
@@ -169,7 +170,11 @@ test("summarizes multiline command logs", { timeout: 10_000 }, async (t) => {
     ["# edit files", "printf first", "printf second"].join("\n"),
   );
 
-  assert.deepEqual(messages, ["printf first … [3 lines, 39 bytes]"]);
+  assert.equal(messages.length, 1);
+  assert.match(
+    messages[0],
+    /^\[(?:[01]\d|2[0-3]):[0-5]\d\] printf first … \[3 lines, 39 bytes\]$/,
+  );
 });
 
 test(
@@ -185,7 +190,11 @@ test(
 
     await runToCompletion(shell, "control-log", "printf 'safe\rhidden'");
 
-    assert.deepEqual(messages, ["printf 'safe\\rhidden'"]);
+    assert.equal(messages.length, 1);
+    assert.match(
+      messages[0],
+      /^\[(?:[01]\d|2[0-3]):[0-5]\d\] printf 'safe\\rhidden'$/,
+    );
   },
 );
 
@@ -382,6 +391,34 @@ test(
 );
 
 test(
+  "drops a whole surrogate pair at the rolling transcript boundary",
+  { timeout: 10_000 },
+  async (t) => {
+    const shell = new PersistentShellSession({
+      transcriptLimit: 1,
+      defaultOutputBytes: 16,
+      maxOutputBytes: 16,
+    });
+    t.after(() => shell.close());
+
+    const evicted = await runToCompletion(
+      shell,
+      "surrogate-transcript-boundary",
+      "printf '🙂'",
+    );
+    assert.equal(evicted.output, "");
+    assert.equal(evicted.snapshot.cursor_expired, true);
+
+    const after = await runToCompletion(
+      shell,
+      "after-surrogate-transcript-boundary",
+      "printf A",
+    );
+    assert.equal(after.output, "A");
+  },
+);
+
+test(
   "contains readonly wrapper variables to one command",
   { timeout: 10_000 },
   async (t) => {
@@ -446,6 +483,28 @@ test(
 
     assert.equal(stalePoll.output, "");
     assert.equal(stalePoll.has_more, false);
+  },
+);
+
+test(
+  "rejects poll cursors before the requested command",
+  { timeout: 10_000 },
+  async (t) => {
+    const shell = new PersistentShellSession();
+    t.after(() => shell.close());
+
+    await runToCompletion(shell, "poll-before-first", "printf first-secret");
+    await runToCompletion(shell, "poll-before-second", "printf second");
+
+    await assert.rejects(
+      shell.pollCommand({
+        requestId: "poll-before-second",
+        cursor: 0,
+        waitMs: 0,
+      }),
+      (error: unknown) =>
+        error instanceof ShellSessionError && error.code === "invalid_cursor",
+    );
   },
 );
 

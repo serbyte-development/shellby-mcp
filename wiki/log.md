@@ -1,5 +1,13 @@
 # Wiki Maintenance Log
 
+## [2026-08-01] reconcile | enforce command output boundaries and absolute workspace paths
+
+- Rejected `shell_poll` cursors before the requested command so polling cannot return earlier command output.
+- Made rolling transcript eviction drop complete Unicode surrogate pairs.
+- Normalized `MCP_CWD` to an absolute path while expanding `~` and resolving relative values from startup cwd.
+- Recorded the ChatGPT-web-only decision to keep command output solely in `structuredContent` and avoid duplicated context.
+- Reconciled stale tool counts, named-shell transport wording, implemented lifecycle tools, source-manifest claims, and verification dates across maintained pages.
+
 ## [2026-08-01] research | document bundled MCP and local capability surfaces
 
 - Verified four ChatGPT child MCP servers and their advertised tools: Computer Use, Messages, Record & Replay event stream, and Computer History.

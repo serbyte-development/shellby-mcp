@@ -1,10 +1,10 @@
 # HTTP Transport
 
-Verified 2026-07-19.
+Verified 2026-08-01.
 
 ## What This Is
 
-The HTTP layer adapts stateless MCP Streamable HTTP requests to one process-wide shell (`src/http-server.ts`).
+The HTTP layer adapts stateless MCP Streamable HTTP requests to one process-wide `ShellSessionManager` and webpage cache (`src/http-server.ts`).
 
 ## Routes and Middleware
 
@@ -17,7 +17,7 @@ Host validation protects a localhost listener from mismatched Host headers; it i
 
 ## Connection Model
 
-Every POST creates a new `McpServer` and `StreamableHTTPServerTransport` with no session ID generator. The response's `finish` or `close` event closes that request's transport/server, while all requests share the injected `PersistentShellSession` (`src/http-server.ts`).
+Every POST creates a new `McpServer` and `StreamableHTTPServerTransport` with no session ID generator. The response's `finish` or `close` event closes that request's transport/server, while all requests share the injected `ShellSessionManager` and `WebPageOpener` (`src/http-server.ts`).
 
 In-flight request closers are tracked so startup failure and server shutdown can settle them before closing the shell. HTTP shutdown begins before shell shutdown (`src/http-server.ts`, `src/index.ts`).
 

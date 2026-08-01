@@ -1,6 +1,6 @@
 # Build and Test
 
-Verified 2026-07-19.
+Verified 2026-08-01.
 
 ## What This Is
 
@@ -21,8 +21,10 @@ The project uses TypeScript's NodeNext ESM model, Node's built-in test runner th
 ## Test Architecture
 
 - `test/shell-session.test.ts` covers state retention, descriptor isolation, idempotency, full and summary logging, control-character escaping, response and per-command output caps, polling, concurrency, marker-safe multiline commands, shell recovery, process-group failure, and reset.
-- `test/mcp-integration.test.ts` starts an ephemeral HTTP server, validates published metadata/tool schemas, proves state crosses MCP client sessions, exercises native patch quoting and shared-shell concurrency, and tests Host rejection.
-- `test/workspace-tools.test.ts` covers `apply_patch` symlink creation and graceful absence of the Codex binary.
+- `test/shell-session-manager.test.ts` covers named-shell creation, limits, listing, closure, idle eviction, default-shell protection, and manager shutdown.
+- `test/mcp-integration.test.ts` starts an ephemeral HTTP server, validates the seven-tool surface, proves state crosses MCP client sessions, exercises named-shell isolation and concurrency, native patching, webpage pagination, and Host rejection.
+- `test/web-open.test.ts` covers bounded cached Markdown pagination, redirects, cursor validation and expiry, and source truncation.
+- `test/workspace-tools.test.ts` covers absolute workspace resolution, `apply_patch` symlink creation, and graceful absence of the Codex binary.
 
 Tests use temporary directories and real local child shells; process-group tests are POSIX-specific (`test/shell-session.test.ts`).
 
@@ -30,7 +32,7 @@ Tests use temporary directories and real local child shells; process-group tests
 
 No CI workflow is present in the repository, so the three validation commands are not enforced by checked-in automation (`package.json`, repository tree).
 
-The tests do not exercise the real `src/index.ts` composition path, `/healthz`, GET/DELETE 405 responses, signal-driven graceful shutdown, the checked-in tunnel configuration, or replacement of an existing stale `apply_patch` executable (`test/`, `src/index.ts`, `src/http-server.ts`, `src/workspace-tools.ts`).
+The tests do not exercise the real `src/index.ts` composition path, `/healthz`, GET/DELETE 405 responses, signal-driven graceful shutdown, the checked-in tunnel configuration, a real Cloak Browser launch, or replacement of an existing stale `apply_patch` executable (`test/`, `src/index.ts`, `src/http-server.ts`, `src/web-open.ts`, `src/workspace-tools.ts`).
 
 ## Related
 

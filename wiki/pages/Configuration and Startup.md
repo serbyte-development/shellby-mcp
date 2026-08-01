@@ -1,6 +1,6 @@
 # Configuration and Startup
 
-Verified 2026-07-22.
+Verified 2026-08-01.
 
 ## What This Is
 
@@ -13,7 +13,7 @@ Verified 2026-07-22.
 | `HOST`                         | `127.0.0.1`                        | HTTP bind address                                       |
 | `PORT`                         | `3333`                             | HTTP port                                               |
 | `MCP_SHELL`                    | `/bin/zsh`                         | Login shell executable                                  |
-| `MCP_CWD`                      | `~/Desktop/chatgpt-workspace`      | Created workspace and initial cwd                       |
+| `MCP_CWD`                      | `~/Desktop/chatgpt-workspace`      | Absolute-resolved workspace and initial cwd             |
 | `MCP_CODEX_BIN`                | ChatGPT app's bundled `codex` path | `apply_patch` symlink target                            |
 | `MCP_TRANSCRIPT_CHARS`         | `1048576`                          | Rolling JavaScript-string length                        |
 | `MCP_COMMAND_TRANSCRIPT_BYTES` | `262144`                           | Per-command retained UTF-8 output ceiling               |
@@ -24,7 +24,7 @@ Verified 2026-07-22.
 | `MCP_SHELL_IDLE_TTL_MS`        | `1800000`                          | Idle lifetime for named shells; `0` disables cleanup    |
 | `MCP_LOG_COMMANDS`             | `summary`                          | `off`, compact `summary`, or raw `full` command logging |
 
-Positive-integer inputs fail startup when explicitly invalid. Logging accepts `off`, `summary`, and `full`; true-like legacy values select `summary`, false-like values select `off`, and other values fail fast (`src/index.ts`).
+`MCP_CWD` expands `~` and `~/...`, resolves relative values from the server startup directory, and then uses that absolute path for shell startup, workspace tooling, and MCP instructions. Numeric limits are parsed and range-checked by startup helpers. Logging accepts `off`, `summary`, and `full`; true-like legacy values select `summary`, false-like values select `off`, and other values fail fast (`src/index.ts`, `src/workspace-tools.ts`). Accepted commands are prefixed with the server's local time in 24-hour `HH:MM` format so terminal observers can follow when agent activity occurred (`src/shell-session.ts`).
 
 ## Startup and Shutdown
 

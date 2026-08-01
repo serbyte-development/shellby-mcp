@@ -135,8 +135,15 @@ class TranscriptBuffer {
     if (chunk.length === 0) return;
 
     this.value += chunk;
-    const overflow = this.value.length - this.maxLength;
+    let overflow = this.value.length - this.maxLength;
     if (overflow > 0) {
+      if (
+        overflow < this.value.length &&
+        isHighSurrogate(this.value.charCodeAt(overflow - 1)) &&
+        isLowSurrogate(this.value.charCodeAt(overflow))
+      ) {
+        overflow += 1;
+      }
       this.value = this.value.slice(overflow);
       this.baseOffset += overflow;
     }
@@ -457,6 +464,12 @@ export class PersistentShellSession {
       throw new ShellSessionError(
         "request_not_found",
         `No command exists for request_id ${JSON.stringify(input.requestId)}.`,
+      );
+    }
+    if (input.cursor < record.startCursor) {
+      throw new ShellSessionError(
+        "invalid_cursor",
+        "cursor is before the requested command's output.",
       );
     }
 
@@ -932,9 +945,10 @@ export class PersistentShellSession {
   private logCommand(command: string): void {
     if (!this.logger) return;
     try {
-      this.logger(
-        this.commandLogMode === "full" ? command : summarizeCommand(command),
-      );
+      const timestamp = formatLogTime(new Date());
+      const message =
+        this.commandLogMode === "full" ? command : summarizeCommand(command);
+      this.logger(`[${timestamp}] ${message}`);
     } catch {
       // Logging must never interfere with shell execution.
     }
@@ -1024,6 +1038,12 @@ export class PersistentShellSession {
       if (this.updateVersion !== version || signal?.aborted) done();
     });
   }
+}
+
+function formatLogTime(date: Date): string {
+  const hours = String(date.getHours()).padStart(2, "0");
+  const minutes = String(date.getMinutes()).padStart(2, "0");
+  return `${hours}:${minutes}`;
 }
 
 function buildCommandScript(command: string, token: string): string {
