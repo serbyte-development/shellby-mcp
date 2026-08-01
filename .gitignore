@@ -2,3 +2,4 @@ node_modules/
 dist/
 .env
 *.log
+/wiki/_private/

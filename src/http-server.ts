@@ -6,6 +6,8 @@ import express, { type Request, type Response } from "express";
 
 import { createMcpServer } from "./mcp-server.js";
 import { PersistentShellSession } from "./shell-session.js";
+import { ShellSessionManager } from "./shell-session-manager.js";
+import { WebPageOpener } from "./web-open.js";
 
 interface InFlightMcpRequest {
   server: ReturnType<typeof createMcpServer>;
@@ -17,6 +19,7 @@ export interface RunningMcpServer {
   host: string;
   port: number;
   url: string;
+  shells: ShellSessionManager;
   shell: PersistentShellSession;
   close: () => Promise<void>;
 }
@@ -25,6 +28,9 @@ export interface StartMcpServerOptions {
   host?: string;
   port?: number;
   shell?: PersistentShellSession;
+  shellManager?: ShellSessionManager;
+  applyPatchExecutable?: string;
+  webPageOpener?: WebPageOpener;
 }
 
 export async function startMcpHttpServer(
@@ -32,7 +38,12 @@ export async function startMcpHttpServer(
 ): Promise<RunningMcpServer> {
   const host = options.host ?? "127.0.0.1";
   const port = options.port ?? 3333;
-  const shell = options.shell ?? new PersistentShellSession();
+  const shells =
+    options.shellManager ??
+    new ShellSessionManager({ defaultShell: options.shell });
+  const shell = shells.defaultShell;
+  const applyPatchExecutable = options.applyPatchExecutable ?? "apply_patch";
+  const webPageOpener = options.webPageOpener ?? new WebPageOpener();
   const inFlightRequests = new Set<InFlightMcpRequest>();
 
   const app = express();
@@ -44,7 +55,10 @@ export async function startMcpHttpServer(
   });
 
   app.post("/mcp", async (req: Request, res: Response) => {
-    const mcpServer = createMcpServer(shell);
+    const mcpServer = createMcpServer(shells, {
+      applyPatchExecutable,
+      webPageOpener,
+    });
     const transport = new StreamableHTTPServerTransport({
       sessionIdGenerator: undefined,
     });
@@ -106,7 +120,7 @@ export async function startMcpHttpServer(
   const httpServer = createServer(app);
   let boundPort: number;
   try {
-    await shell.start();
+    await shells.startDefault();
     await listen(httpServer, port, host);
 
     const address = httpServer.address();
@@ -119,7 +133,7 @@ export async function startMcpHttpServer(
     await Promise.allSettled(
       [...inFlightRequests].map((request) => request.close()),
     );
-    await Promise.allSettled([httpClose, shell.close()]);
+    await Promise.allSettled([httpClose, shells.close()]);
     throw error;
   }
 
@@ -128,6 +142,7 @@ export async function startMcpHttpServer(
     host,
     port: boundPort,
     url: `http://${host}:${boundPort}/mcp`,
+    shells,
     shell,
     close: async () => {
       if (closed) return;
@@ -140,7 +155,7 @@ export async function startMcpHttpServer(
         );
         await httpClose;
       } finally {
-        await shell.close();
+        await shells.close();
       }
     },
   };

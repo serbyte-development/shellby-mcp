@@ -3,7 +3,8 @@ import { createHash, randomUUID } from "node:crypto";
 import { StringDecoder } from "node:string_decoder";
 
 const DEFAULT_TRANSCRIPT_LIMIT = 1024 * 1024;
-const DEFAULT_OUTPUT_BYTES = 4 * 1024;
+const DEFAULT_COMMAND_TRANSCRIPT_BYTES = 256 * 1024;
+const DEFAULT_OUTPUT_BYTES = 2 * 1024;
 const MAX_OUTPUT_BYTES = 32 * 1024;
 const DEFAULT_WAIT_MS = 1_500;
 const MAX_WAIT_MS = 10_000;
@@ -11,11 +12,7 @@ const READY_TIMEOUT_MS = 10_000;
 const STOP_GRACE_MS = 500;
 const DEFAULT_RECORD_LIMIT = 1_024;
 
-export type CommandStatus =
-  | "running"
-  | "completed"
-  | "shell_exited"
-  | "reset";
+export type CommandStatus = "running" | "completed" | "shell_exited" | "reset";
 
 export interface ShellSnapshot extends Record<string, unknown> {
   request_id: string;
@@ -25,6 +22,8 @@ export interface ShellSnapshot extends Record<string, unknown> {
   next_cursor: number;
   has_more: boolean;
   cursor_expired: boolean;
+  output_truncated: boolean;
+  dropped_output_bytes: number;
 }
 
 export interface RunCommandInput {
@@ -54,10 +53,11 @@ export interface ShellSessionOptions {
   env?: NodeJS.ProcessEnv;
   pathPrepend?: string[];
   transcriptLimit?: number;
+  commandTranscriptBytes?: number;
   defaultOutputBytes?: number;
   maxOutputBytes?: number;
   recordLimit?: number;
-  logCommands?: boolean;
+  commandLogMode?: CommandLogMode;
   logger?: (message: string) => void;
 }
 
@@ -69,7 +69,11 @@ interface CommandRecord {
   status: CommandStatus;
   exitCode: number | null;
   markerPrefix: string;
+  capturedOutputBytes: number;
+  droppedOutputBytes: number;
 }
+
+export type CommandLogMode = "off" | "summary" | "full";
 
 interface ResetRecord {
   requestId: string;
@@ -103,6 +107,8 @@ export class ShellSessionError extends Error {
       | "request_conflict"
       | "request_not_found"
       | "invalid_cursor"
+      | "shell_limit_reached"
+      | "protected_shell"
       | "shell_unavailable",
     message: string,
   ) {
@@ -136,7 +142,11 @@ class TranscriptBuffer {
     }
   }
 
-  read(cursor: number, maxBytes: number, upperBound?: number): {
+  read(
+    cursor: number,
+    maxBytes: number,
+    upperBound?: number,
+  ): {
     output: string;
     nextCursor: number;
     hasMore: boolean;
@@ -160,7 +170,12 @@ class TranscriptBuffer {
     );
     const localStart = effectiveCursor - this.start;
     const localEnd = availableEnd - this.start;
-    const outputEnd = utf8BoundedEnd(this.value, localStart, localEnd, maxBytes);
+    const outputEnd = utf8BoundedEnd(
+      this.value,
+      localStart,
+      localEnd,
+      maxBytes,
+    );
     const output = this.value.slice(localStart, outputEnd);
     const nextCursor = effectiveCursor + output.length;
 
@@ -208,18 +223,22 @@ export class PersistentShellSession {
   private readonly cwd: string;
   private readonly env: NodeJS.ProcessEnv;
   private readonly pathPrepend: string[];
+  private readonly transcriptLimit: number;
   private readonly transcript: TranscriptBuffer;
+  private readonly commandTranscriptBytes: number;
   private readonly defaultOutputBytes: number;
   private readonly maxOutputBytes: number;
   private readonly recordLimit: number;
   private readonly logger: ((message: string) => void) | null;
+  private readonly commandLogMode: CommandLogMode;
   private readonly records = new Map<string, CommandRecord>();
   private readonly resetRecords = new Map<string, ResetRecord>();
   private readonly stopReasons = new WeakMap<
     ChildProcessWithoutNullStreams,
     StopReason
   >();
-  private readonly handledChildren = new WeakSet<ChildProcessWithoutNullStreams>();
+  private readonly handledChildren =
+    new WeakSet<ChildProcessWithoutNullStreams>();
   private readonly updateWaiters = new Set<() => void>();
 
   private child: ChildProcessWithoutNullStreams | null = null;
@@ -242,8 +261,14 @@ export class PersistentShellSession {
     this.pathPrepend = (options.pathPrepend ?? []).filter(
       (entry) => entry.length > 0,
     );
-    this.transcript = new TranscriptBuffer(
-      positiveInteger(options.transcriptLimit, DEFAULT_TRANSCRIPT_LIMIT),
+    this.transcriptLimit = positiveInteger(
+      options.transcriptLimit,
+      DEFAULT_TRANSCRIPT_LIMIT,
+    );
+    this.transcript = new TranscriptBuffer(this.transcriptLimit);
+    this.commandTranscriptBytes = positiveInteger(
+      options.commandTranscriptBytes,
+      DEFAULT_COMMAND_TRANSCRIPT_BYTES,
     );
     this.maxOutputBytes = positiveInteger(
       options.maxOutputBytes,
@@ -256,10 +281,15 @@ export class PersistentShellSession {
     if (this.defaultOutputBytes > this.maxOutputBytes) {
       throw new Error("defaultOutputBytes cannot exceed maxOutputBytes.");
     }
-    this.recordLimit = positiveInteger(options.recordLimit, DEFAULT_RECORD_LIMIT);
-    this.logger = options.logCommands
-      ? (options.logger ?? ((message) => console.log(message)))
-      : null;
+    this.recordLimit = positiveInteger(
+      options.recordLimit,
+      DEFAULT_RECORD_LIMIT,
+    );
+    this.commandLogMode = options.commandLogMode ?? "off";
+    this.logger =
+      this.commandLogMode === "off"
+        ? null
+        : (options.logger ?? ((message) => console.log(message)));
   }
 
   get initialCwd(): string {
@@ -272,6 +302,34 @@ export class PersistentShellSession {
 
   get maximumReadBytes(): number {
     return this.maxOutputBytes;
+  }
+
+  get commandTranscriptByteLimit(): number {
+    return this.commandTranscriptBytes;
+  }
+
+  get hasActiveWork(): boolean {
+    return (
+      this.active !== null ||
+      this.resetInFlight !== null ||
+      this.startPromise !== null
+    );
+  }
+
+  fork(): PersistentShellSession {
+    return new PersistentShellSession({
+      shellPath: this.shellPath,
+      cwd: this.cwd,
+      env: this.env,
+      pathPrepend: [...this.pathPrepend],
+      transcriptLimit: this.transcriptLimit,
+      commandTranscriptBytes: this.commandTranscriptBytes,
+      defaultOutputBytes: this.defaultOutputBytes,
+      maxOutputBytes: this.maxOutputBytes,
+      recordLimit: this.recordLimit,
+      commandLogMode: this.commandLogMode,
+      ...(this.logger ? { logger: this.logger } : {}),
+    });
   }
 
   async start(): Promise<void> {
@@ -313,7 +371,12 @@ export class PersistentShellSession {
           input.signal,
         );
       }
-      return this.snapshot(existing, existing.startCursor, true, maxOutputBytes);
+      return this.snapshot(
+        existing,
+        existing.startCursor,
+        true,
+        maxOutputBytes,
+      );
     }
 
     if (this.resetInFlight) {
@@ -347,6 +410,8 @@ export class PersistentShellSession {
       status: "running",
       exitCode: null,
       markerPrefix: `\u001e__MCP_DONE_${token}__:`,
+      capturedOutputBytes: 0,
+      droppedOutputBytes: 0,
     };
 
     this.pruneCommandRecords();
@@ -570,7 +635,9 @@ export class PersistentShellSession {
 
     await new Promise<void>((resolve, reject) => {
       const timer = setTimeout(() => {
-        reject(new Error(`Shell did not become ready within ${READY_TIMEOUT_MS}ms.`));
+        reject(
+          new Error(`Shell did not become ready within ${READY_TIMEOUT_MS}ms.`),
+        );
         this.killProcessGroup(child, "SIGKILL");
       }, READY_TIMEOUT_MS);
 
@@ -629,7 +696,7 @@ export class PersistentShellSession {
 
       const markerIndex = this.parserBuffer.indexOf(active.markerPrefix);
       if (markerIndex < 0) {
-        this.flushSafePrefix(active.markerPrefix);
+        this.flushSafePrefix(active.markerPrefix, active);
         return;
       }
 
@@ -638,7 +705,10 @@ export class PersistentShellSession {
         markerIndex + active.markerPrefix.length,
       );
       if (markerEnd < 0) {
-        this.appendTranscript(this.parserBuffer.slice(0, markerIndex));
+        this.appendCommandOutput(
+          active,
+          this.parserBuffer.slice(0, markerIndex),
+        );
         this.parserBuffer = this.parserBuffer.slice(markerIndex);
         return;
       }
@@ -647,27 +717,41 @@ export class PersistentShellSession {
         markerIndex + active.markerPrefix.length,
         markerEnd,
       );
-      if (!/^-?\d+$/.test(statusText)) {
+      const parsedStatus = Number.parseInt(statusText, 10);
+      if (!/^-?\d+$/.test(statusText) || !Number.isSafeInteger(parsedStatus)) {
         const falsePrefixEnd = markerIndex + active.markerPrefix.length;
-        this.appendTranscript(this.parserBuffer.slice(0, falsePrefixEnd));
+        this.appendCommandOutput(
+          active,
+          this.parserBuffer.slice(0, falsePrefixEnd),
+        );
         this.parserBuffer = this.parserBuffer.slice(falsePrefixEnd);
         continue;
       }
 
-      this.appendTranscript(this.parserBuffer.slice(0, markerIndex));
+      this.appendCommandOutput(active, this.parserBuffer.slice(0, markerIndex));
       this.parserBuffer = this.parserBuffer.slice(markerEnd + 1);
       active.endCursor = this.transcript.end;
-      active.exitCode = Number.parseInt(statusText, 10);
+      active.exitCode = parsedStatus;
       active.status = "completed";
       this.active = null;
       this.notifyUpdate();
     }
   }
 
-  private flushSafePrefix(marker: string): void {
-    const safeLength = Math.max(0, this.parserBuffer.length - marker.length + 1);
+  private flushSafePrefix(marker: string, record?: CommandRecord): void {
+    let safeLength = Math.max(0, this.parserBuffer.length - marker.length + 1);
+    if (
+      safeLength > 0 &&
+      safeLength < this.parserBuffer.length &&
+      isHighSurrogate(this.parserBuffer.charCodeAt(safeLength - 1)) &&
+      isLowSurrogate(this.parserBuffer.charCodeAt(safeLength))
+    ) {
+      safeLength -= 1;
+    }
     if (safeLength === 0) return;
-    this.appendTranscript(this.parserBuffer.slice(0, safeLength));
+    const output = this.parserBuffer.slice(0, safeLength);
+    if (record) this.appendCommandOutput(record, output);
+    else this.appendTranscript(output);
     this.parserBuffer = this.parserBuffer.slice(safeLength);
   }
 
@@ -685,7 +769,9 @@ export class PersistentShellSession {
       if (stdoutTail) this.handleDecodedOutput(stdoutTail);
       if (stderrTail) this.handleDecodedOutput(stderrTail);
       if (this.parserBuffer) {
-        this.appendTranscript(this.parserBuffer);
+        if (this.active)
+          this.appendCommandOutput(this.active, this.parserBuffer);
+        else this.appendTranscript(this.parserBuffer);
         this.parserBuffer = "";
       }
 
@@ -736,7 +822,9 @@ export class PersistentShellSession {
     }
   }
 
-  private async stopChild(child: ChildProcessWithoutNullStreams): Promise<void> {
+  private async stopChild(
+    child: ChildProcessWithoutNullStreams,
+  ): Promise<void> {
     this.killProcessGroup(child, "SIGTERM");
     await waitForExit(child, STOP_GRACE_MS);
     this.killProcessGroup(child, "SIGKILL");
@@ -798,6 +886,8 @@ export class PersistentShellSession {
       next_cursor: read.nextCursor,
       has_more: read.hasMore,
       cursor_expired: read.cursorExpired,
+      output_truncated: record.droppedOutputBytes > 0,
+      dropped_output_bytes: record.droppedOutputBytes,
     };
   }
 
@@ -842,7 +932,9 @@ export class PersistentShellSession {
   private logCommand(command: string): void {
     if (!this.logger) return;
     try {
-      this.logger(command);
+      this.logger(
+        this.commandLogMode === "full" ? command : summarizeCommand(command),
+      );
     } catch {
       // Logging must never interfere with shell execution.
     }
@@ -874,6 +966,31 @@ export class PersistentShellSession {
     this.notifyUpdate();
   }
 
+  private appendCommandOutput(record: CommandRecord, chunk: string): void {
+    if (chunk.length === 0) return;
+
+    const remaining = Math.max(
+      0,
+      this.commandTranscriptBytes - record.capturedOutputBytes,
+    );
+    const capturedEnd = utf8BoundedEnd(chunk, 0, chunk.length, remaining);
+    const captured = chunk.slice(0, capturedEnd);
+    const dropped = chunk.slice(capturedEnd);
+
+    if (captured.length > 0) {
+      record.capturedOutputBytes += Buffer.byteLength(captured, "utf8");
+      this.appendTranscript(captured);
+    }
+    if (dropped.length > 0) {
+      const wasTruncated = record.droppedOutputBytes > 0;
+      record.droppedOutputBytes = Math.min(
+        Number.MAX_SAFE_INTEGER,
+        record.droppedOutputBytes + Buffer.byteLength(dropped, "utf8"),
+      );
+      if (!wasTruncated && captured.length === 0) this.notifyUpdate();
+    }
+  }
+
   private notifyUpdate(): void {
     this.updateVersion += 1;
     const waiters = [...this.updateWaiters];
@@ -886,11 +1003,7 @@ export class PersistentShellSession {
     waitMs: number,
     signal?: AbortSignal,
   ): Promise<void> {
-    if (
-      waitMs === 0 ||
-      this.updateVersion !== version ||
-      signal?.aborted
-    ) {
+    if (waitMs === 0 || this.updateVersion !== version || signal?.aborted) {
       return;
     }
 
@@ -914,17 +1027,16 @@ export class PersistentShellSession {
 }
 
 function buildCommandScript(command: string, token: string): string {
-  const commandVariable = `__mcp_command_${token}`;
-  const statusVariable = `__mcp_status_${token}`;
   return [
-    `${commandVariable}=${singleQuote(command)}`,
+    "function __mcp_eval_command {",
+    '  local __mcp_command="$1"',
+    '  builtin eval -- "$__mcp_command" </dev/null 1>&1 2>&1',
+    "}",
     "set +e",
-    `builtin eval -- "$${commandVariable}" </dev/null 1>&1 2>&1`,
-    `${statusVariable}=$?`,
+    `__mcp_eval_command ${singleQuote(command)}`,
+    `builtin printf '\\036__MCP_DONE_${token}__:%s\\037' "$?"`,
+    "unfunction __mcp_eval_command 2>/dev/null",
     "set +e",
-    `unset ${commandVariable}`,
-    `builtin printf '\\036__MCP_DONE_${token}__:%s\\037' "$${statusVariable}"`,
-    `unset ${statusVariable}`,
     "",
   ].join("\n");
 }
@@ -1003,4 +1115,49 @@ function waitForExit(
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+function isHighSurrogate(value: number): boolean {
+  return value >= 0xd800 && value <= 0xdbff;
+}
+
+function isLowSurrogate(value: number): boolean {
+  return value >= 0xdc00 && value <= 0xdfff;
+}
+
+function summarizeCommand(command: string): string {
+  const lines = command.split(/\r?\n/);
+  const first =
+    lines
+      .find((line) => {
+        const trimmed = line.trim();
+        return trimmed.length > 0 && !trimmed.startsWith("#");
+      })
+      ?.trim() ?? "(empty command)";
+  const escaped = escapeLogText(first);
+  const previewEnd = utf8BoundedEnd(escaped, 0, escaped.length, 240);
+  const preview = escaped.slice(0, previewEnd);
+  const totalBytes = Buffer.byteLength(command, "utf8");
+  if (lines.length > 1) {
+    return `${preview}${previewEnd < escaped.length ? "…" : ""} … [${lines.length} lines, ${totalBytes} bytes]`;
+  }
+  return previewEnd < escaped.length
+    ? `${preview}… [${totalBytes} bytes]`
+    : preview;
+}
+
+function escapeLogText(value: string): string {
+  let escaped = "";
+  for (const character of value) {
+    const codePoint = character.codePointAt(0);
+    if (character === "\t") escaped += "\\t";
+    else if (character === "\r") escaped += "\\r";
+    else if (
+      codePoint !== undefined &&
+      (codePoint < 0x20 || codePoint === 0x7f)
+    ) {
+      escaped += `\\u{${codePoint.toString(16)}}`;
+    } else escaped += character;
+  }
+  return escaped;
 }

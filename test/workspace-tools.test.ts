@@ -13,7 +13,10 @@ test("creates a stable workspace apply_patch symlink", async (t) => {
   await chmod(codexBinary, 0o755);
   t.after(() => rm(directory, { recursive: true, force: true }));
 
-  const setup = await prepareApplyPatch(join(directory, "workspace"), codexBinary);
+  const setup = await prepareApplyPatch(
+    join(directory, "workspace"),
+    codexBinary,
+  );
 
   assert.equal(setup.available, true);
   assert.equal(await readlink(setup.executable), codexBinary);
@@ -24,7 +27,10 @@ test("warns without preventing startup when the Codex binary is absent", async (
   t.after(() => rm(directory, { recursive: true, force: true }));
 
   const missingBinary = join(directory, "missing-codex");
-  const setup = await prepareApplyPatch(join(directory, "workspace"), missingBinary);
+  const setup = await prepareApplyPatch(
+    join(directory, "workspace"),
+    missingBinary,
+  );
 
   assert.equal(setup.available, false);
   assert.match(setup.warning ?? "", /Codex binary is not executable/);
