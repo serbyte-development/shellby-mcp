@@ -1,5 +1,11 @@
 # Wiki Maintenance Log
 
+## [2026-08-01] update | identify non-default shell responses
+
+- Added `shell_id` to `shell_run` and `shell_poll` structured responses only when a non-default shell is selected.
+- Kept default-shell responses unchanged and compact.
+- Added integration coverage for default omission and named-shell run/poll responses.
+
 ## [2026-08-01] reconcile | enforce command output boundaries and absolute workspace paths
 
 - Rejected `shell_poll` cursors before the requested command so polling cannot return earlier command output.

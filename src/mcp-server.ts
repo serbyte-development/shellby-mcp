@@ -46,6 +46,10 @@ const closableShellIdInput = z
   );
 
 const shellSnapshotSchema = {
+  shell_id: z
+    .string()
+    .optional()
+    .describe("Present only when the command uses a non-default shell."),
   status: z.enum(["running", "completed", "shell_exited", "reset"]),
   exit_code: z.number().int().nullable(),
   output: z.string(),
@@ -337,7 +341,7 @@ export function createMcpServer(
           maxOutputBytes: max_output_bytes,
           signal: extra.signal,
         });
-        return snapshotResult(snapshot);
+        return snapshotResult(snapshot, shell_id);
       } catch (error) {
         return toolError(error);
       }
@@ -477,7 +481,7 @@ export function createMcpServer(
           maxOutputBytes: max_output_bytes,
           signal: extra.signal,
         });
-        return snapshotResult(snapshot);
+        return snapshotResult(snapshot, shell_id);
       } catch (error) {
         return toolError(error);
       }
@@ -531,8 +535,8 @@ export function createMcpServer(
   return server;
 }
 
-function snapshotResult(snapshot: ShellSnapshot) {
-  const structuredContent = compactShellSnapshot(snapshot);
+function snapshotResult(snapshot: ShellSnapshot, shellId: string) {
+  const structuredContent = compactShellSnapshot(snapshot, shellId);
   return {
     structuredContent,
     content: [
@@ -545,6 +549,7 @@ function snapshotResult(snapshot: ShellSnapshot) {
 }
 
 interface CompactShellSnapshot extends Record<string, unknown> {
+  shell_id?: string;
   status: ShellSnapshot["status"];
   exit_code: number | null;
   output: string;
@@ -556,12 +561,16 @@ interface CompactShellSnapshot extends Record<string, unknown> {
   dropped_output_bytes?: number;
 }
 
-function compactShellSnapshot(snapshot: ShellSnapshot): CompactShellSnapshot {
+function compactShellSnapshot(
+  snapshot: ShellSnapshot,
+  shellId: string,
+): CompactShellSnapshot {
   const compact: CompactShellSnapshot = {
     status: snapshot.status,
     exit_code: snapshot.exit_code,
     output: snapshot.output,
   };
+  if (shellId !== DEFAULT_SHELL_ID) compact.shell_id = shellId;
   if (snapshot.status === "running" || snapshot.has_more) {
     compact.request_id = snapshot.request_id;
     compact.next_cursor = snapshot.next_cursor;

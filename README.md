@@ -67,7 +67,7 @@ There is no CORS allowlist, authentication middleware, command approval layer, h
 - `shell_close`: terminates a named shell, discards its state and retained records, and releases its slot immediately. The `default` shell cannot be closed.
 - `web_open`: opens a page in Cloak Browser, extracts the main content with Defuddle, and returns Markdown. A returned `next_cursor` reads the next cached chunk without reopening the page.
 
-`shell_id` is optional and defaults to `default`. It accepts 1–64 characters. The server creates shells lazily and permits eight by default. A single agent can use multiple shell IDs for parallel commands, and multiple agents avoid shared cwd, environment, transcript, reset, and foreground-command state by using distinct IDs. Named shells are closed after 30 minutes without tool activity by default; `shell_list` exposes their current lifecycle state and `shell_close` releases a named shell immediately. The `default` shell is retained for backward compatibility and cannot be closed, though `shell_reset` remains available to recover it. Idle cleanup never closes a shell while it is running a foreground command or reset.
+`shell_id` is optional and defaults to `default`. It accepts 1–64 characters. The server creates shells lazily and permits eight by default. A single agent can use multiple shell IDs for parallel commands, and multiple agents avoid shared cwd, environment, transcript, reset, and foreground-command state by using distinct IDs. `shell_run` and `shell_poll` echo `shell_id` only for non-default shells, keeping normal default-shell responses compact. Named shells are closed after 30 minutes without tool activity by default; `shell_list` exposes their current lifecycle state and `shell_close` releases a named shell immediately. The `default` shell is retained for backward compatibility and cannot be closed, though `shell_reset` remains available to recover it. Idle cleanup never closes a shell while it is running a foreground command or reset.
 
 `shell_run` and `shell_poll` return at most 2048 UTF-8 output bytes by default. The model may set `max_output_bytes` for a specific response when more is necessary, up to the hard 32768-byte maximum. Byte limits and rolling transcript eviction never retain only half of a Unicode surrogate pair. When continuation is needed, the response includes `request_id` and `next_cursor`; `has_more` is present only when retained output remains unread. A poll cursor must belong to the requested command, so it cannot read output from an earlier command. Normal completed responses omit pagination and false/zero diagnostic fields.
 
@@ -151,7 +151,7 @@ Then inspect it with later commands such as `tail -n 100 /tmp/my-app.log` or `ps
 | `HOST`                         | `127.0.0.1`                                          | Local HTTP bind address                                                                      |
 | `PORT`                         | `3333`                                               | Local HTTP port                                                                              |
 | `MCP_SHELL`                    | `/bin/zsh`                                           | Persistent shell executable                                                                  |
-| `MCP_CWD`                      | `~/Desktop/chatgpt-workspace`                        | Absolute-resolved default workspace and initial shell working directory                       |
+| `MCP_CWD`                      | `~/Desktop/chatgpt-workspace`                        | Absolute-resolved default workspace and initial shell working directory                      |
 | `MCP_CODEX_BIN`                | `/Applications/ChatGPT.app/Contents/Resources/codex` | Codex binary targeted by the workspace `apply_patch` symlink                                 |
 | `MCP_TRANSCRIPT_CHARS`         | `1048576`                                            | Retained rolling transcript limit in JavaScript UTF-16 code units                            |
 | `MCP_COMMAND_TRANSCRIPT_BYTES` | `262144`                                             | Maximum UTF-8 command output retained before excess bytes are discarded                      |
@@ -171,6 +171,8 @@ The shell is non-interactive and has no PTY. Commands that require terminal inpu
 The command wrapper clears `errexit` (`set -e`) before and after each tool call so it cannot leak into later commands. A command that explicitly enables `set -e` can still end its current shell on failure; the server reports the lost state and starts a clean shell without terminating the MCP HTTP server.
 
 `MCP_CWD` is a default and model instruction, not a filesystem sandbox. An explicit task can still use another path. After changing the workspace or server instructions, restart this server and refresh the app from its ChatGPT plugin settings so ChatGPT reloads the MCP metadata.
+
+The MCP HTTP transport is stateless. Rebuilding and restarting the server on the same URL does not require an existing client to reconnect before its next request. Any request in flight during the restart can fail, and all process-local shell and webpage-cache state is reset. Refresh the ChatGPT app only when tool names, schemas, descriptions, or server instructions change.
 
 ## Activity log
 

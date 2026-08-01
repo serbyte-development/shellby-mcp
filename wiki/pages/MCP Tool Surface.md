@@ -52,7 +52,7 @@ Terminates a selected non-default shell, discards its state and retained records
 
 ## Result and Error Shape
 
-Run and poll always return status, nullable exit code, and output. They add request ID and next cursor only when polling may be needed, `has_more` only when unread retained output exists, and cursor/truncation diagnostics only when exceptional. This server targets ChatGPT web only, so the human-readable content block deliberately remains a compact status summary while command output lives only in `structuredContent`, avoiding duplicated model context (`src/mcp-server.ts`, `README.md`).
+Run and poll always return status, nullable exit code, and output. They echo `shell_id` only for non-default shells, add request ID and next cursor only when polling may be needed, `has_more` only when unread retained output exists, and cursor/truncation diagnostics only when exceptional. This server targets ChatGPT web only, so the human-readable content block deliberately remains a compact status summary while command output lives only in `structuredContent`, avoiding duplicated model context (`src/mcp-server.ts`, `README.md`).
 
 Known `ShellSessionError` codes are converted into MCP tool errors. Unexpected errors become `internal_error`; tool handlers do not throw them through the transport (`src/mcp-server.ts`, `src/shell-session.ts`).
 

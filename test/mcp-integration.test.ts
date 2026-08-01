@@ -100,6 +100,7 @@ test(
       "output",
       "output_truncated",
       "request_id",
+      "shell_id",
       "status",
     ]);
     assert.deepEqual(outputSchema.required?.sort(), [
@@ -180,6 +181,40 @@ test(
     );
     assert.equal(pagedResult.output, expectedPagedOutput);
     assert.equal(Buffer.byteLength(pagedResult.output, "utf8"), 6_000);
+  },
+);
+
+test(
+  "continues serving an existing client after a stateless HTTP server restart",
+  { timeout: 20_000 },
+  async (t) => {
+    const firstServer = await startMcpHttpServer({ port: 0 });
+    const { port, url } = firstServer;
+    const connection = await connectClient(url, "restart-client");
+
+    let activeServer = firstServer;
+    t.after(async () => {
+      await connection.client.close();
+      await activeServer.close();
+    });
+
+    const beforeRestart = await callUntilComplete(
+      connection.client,
+      "before-restart",
+      "printf before",
+    );
+    assert.equal(beforeRestart.output, "before");
+
+    await firstServer.close();
+    activeServer = await startMcpHttpServer({ port });
+
+    const afterRestart = await callUntilComplete(
+      connection.client,
+      "after-restart",
+      "printf after",
+    );
+    assert.equal(afterRestart.output, "after");
+    assert.equal(afterRestart.exit_code, 0);
   },
 );
 
@@ -266,7 +301,9 @@ test(
       "beta",
     );
     assert.equal(alphaState.output, "alpha-ready");
+    assert.equal(alphaState.shell_id, "alpha");
     assert.match(betaState.output, /\|unset$/);
+    assert.equal(betaState.shell_id, "beta");
 
     const slowAlpha = connected.client.callTool({
       name: "shell_run",
@@ -299,6 +336,7 @@ test(
     assert.match(JSON.stringify(alphaBusy.content), /busy/);
 
     let alphaSnapshot = snapshotFromResult(await slowAlpha);
+    assert.equal(alphaSnapshot.shell_id, "alpha");
     let alphaOutput = alphaSnapshot.output;
     for (let attempt = 0; attempt < 20; attempt += 1) {
       if (alphaSnapshot.status !== "running" && !alphaSnapshot.has_more) break;
@@ -315,6 +353,7 @@ test(
           },
         }),
       );
+      assert.equal(alphaSnapshot.shell_id, "alpha");
       alphaOutput += alphaSnapshot.output;
     }
     assert.equal(alphaSnapshot.status, "completed");
@@ -605,6 +644,7 @@ async function connectClient(url: string, name: string) {
 }
 
 interface ToolSnapshot {
+  shell_id?: string;
   status: "running" | "completed" | "shell_exited" | "reset";
   exit_code: number | null;
   output: string;

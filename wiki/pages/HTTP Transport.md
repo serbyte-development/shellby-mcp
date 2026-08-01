@@ -19,11 +19,13 @@ Host validation protects a localhost listener from mismatched Host headers; it i
 
 Every POST creates a new `McpServer` and `StreamableHTTPServerTransport` with no session ID generator. The response's `finish` or `close` event closes that request's transport/server, while all requests share the injected `ShellSessionManager` and `WebPageOpener` (`src/http-server.ts`).
 
+Because no MCP session ID is retained by the HTTP layer, an existing client can send its next request after the server is rebuilt and restarted on the same URL without reconnecting. Requests already in flight may fail, and the restart discards process-local shell and webpage-cache state. ChatGPT still needs an app refresh when the advertised tool metadata or server instructions change.
+
 In-flight request closers are tracked so startup failure and server shutdown can settle them before closing the shell. HTTP shutdown begins before shell shutdown (`src/http-server.ts`, `src/index.ts`).
 
 ## Contract Tests
 
-The integration test connects two separate SDK clients and proves shell state survives between them. It also posts with an attacker-controlled Host value and expects HTTP 403 (`test/mcp-integration.test.ts`).
+The integration tests connect two separate SDK clients and prove shell state survives between them. They also keep one client alive across a full HTTP server stop/start cycle on the same port and prove its next tool call succeeds without reconnecting. A separate test posts with an attacker-controlled Host value and expects HTTP 403 (`test/mcp-integration.test.ts`).
 
 ## Related
 
