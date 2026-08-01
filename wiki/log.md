@@ -1,5 +1,11 @@
 # Wiki Maintenance Log
 
+## [2026-08-01] ops | keep the ngrok tunnel alive with PM2
+
+- Added `unhinged-terminal-ngrok` to the PM2 ecosystem using the existing fixed domain and traffic policy.
+- Added focused npm scripts for starting, inspecting, logging, and stopping the PM2-managed tunnel.
+- Retained the foreground `npm run tunnel` command for temporary debugging.
+
 ## [2026-08-01] update | identify non-default shell responses
 
 - Added `shell_id` to `shell_run` and `shell_poll` structured responses only when a non-default shell is selected.

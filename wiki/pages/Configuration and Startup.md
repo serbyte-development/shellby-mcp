@@ -35,12 +35,14 @@ Startup creates the workspace, prepares `apply_patch`, constructs the named-shel
 - `dev`: watch `src/index.ts` with `tsx`.
 - `build`: compile `src/` with TypeScript.
 - `start`: run `dist/index.js`.
+- `server:start|reload|status|logs|stop`: manage the MCP process through PM2.
+- `tunnel:start|status|logs|stop`: manage the fixed-domain ngrok tunnel through PM2. WARNING: THis will break your ChatGPT web session.
 - `inspect`: launch the MCP Inspector package; it does not itself pass a server command.
-- `tunnel`: expose port 3333 through a fixed ngrok development domain and traffic policy (`package.json`).
+- `tunnel`: expose port 3333 in the foreground through the same fixed ngrok development domain and traffic policy (`package.json`, `ecosystem.config.cjs`).
 
 The tunnel policy only rewrites Host for localhost validation. It is not part of MCP authentication or authorization (`ngrok-traffic-policy.yml`, `src/http-server.ts`).
 
-`PORT` configures the HTTP listener, but both the tunnel script and Host rewrite are hard-coded to 3333. A port change therefore requires coordinated edits to `package.json` and `ngrok-traffic-policy.yml` (`src/index.ts`, `package.json`, `ngrok-traffic-policy.yml`).
+`PORT` configures the HTTP listener, but the foreground tunnel script, PM2 ngrok app, and Host rewrite are hard-coded to 3333. A port change therefore requires coordinated edits to `package.json`, `ecosystem.config.cjs`, and `ngrok-traffic-policy.yml` (`src/index.ts`, `package.json`, `ecosystem.config.cjs`, `ngrok-traffic-policy.yml`).
 
 ## Related
 

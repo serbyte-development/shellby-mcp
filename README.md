@@ -31,11 +31,13 @@ npm install
 npm run dev
 ```
 
-In a second terminal:
+To keep the public tunnel alive without an open terminal, start its PM2 app:
 
 ```bash
-npm run tunnel
+npm run tunnel:start
 ```
+
+Use `npm run tunnel:status`, `npm run tunnel:logs`, and `npm run tunnel:stop` to manage it. `npm run tunnel` remains available when a foreground tunnel is useful for debugging.
 
 The included ngrok traffic policy rewrites the origin Host header so ngrok can reach the server while its local Host validation protects against DNS-rebinding attacks. It is not authentication, a CORS policy, or a caller restriction: anyone who can reach the public tunnel URL can still invoke the shell tools.
 
