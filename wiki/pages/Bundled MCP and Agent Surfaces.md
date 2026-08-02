@@ -4,7 +4,7 @@ Verified 2026-08-01.
 
 ## What This Is
 
-This page records structured MCP and agent-control surfaces bundled with the installed ChatGPT/Codex application. Computer Use is now integrated through six allowlisted wrappers. The remaining bundled surfaces are integration candidates (`src/computer-use-manager.ts`, `src/computer-use-tools.ts`, `src/mcp-server.ts`).
+This page records structured MCP and agent-control surfaces bundled with the installed ChatGPT/Codex application. They are point-in-time research, not current Computer Use dependencies. The active Computer Use implementation calls the supported Peekaboo CLI directly through ten focused tools (`src/peekaboo.ts`, `src/computer-use-tools.ts`, `src/mcp-server.ts`).
 
 Point-in-time host evidence, executable paths, and inspection commands are stored in [[raw/ChatGPT and Local Capability Survey 2026-08-01]].
 
@@ -19,7 +19,7 @@ ChatGPT bundles a launcher at `/Applications/ChatGPT.app/Contents/Resources/plug
 | `event-stream mcp`     | `event_stream_start`, `event_stream_status`, `event_stream_stop`                                                                                    | Structured Record & Replay capture for up to 30 minutes.                  |
 | `computer-history mcp` | `computer_history_pause`, `computer_history_resume`, `computer_history_status`, `computer_history_get_settings`, `computer_history_update_settings` | Computer History recorder state and settings.                             |
 
-Computer Use is bridged in place rather than reimplemented or copied. The process-level manager lazily starts one child, validates the six exposed schemas, serializes calls, forwards cancellation and complete results, captures bounded stderr, reconnects after exit on a later call, and closes the child during HTTP shutdown. The parent currently exposes `list_apps`, `get_app_state`, `click`, `type_text`, `scroll`, and `press_key` under `computer_*` names. The other four child tools remain intentionally hidden (`src/computer-use-manager.ts`, `src/computer-use-tools.ts`).
+The repository does not launch this Computer Use child MCP. Its authenticated host-process boundary made it unsuitable as a simple standalone backend, so current code uses Peekaboo through `execFile` instead. The survey remains useful for understanding the installed ChatGPT surfaces, but no launcher path or child schema participates in startup (`src/index.ts`, `src/http-server.ts`, `src/peekaboo.ts`).
 
 ## Codex MCP Server
 
@@ -62,7 +62,7 @@ The standalone workstation `web_search` command is a different pattern. It is a 
 
 ## Recommended Integration Order
 
-1. Validate Computer Use against the installed helper after each ChatGPT update, then add the remaining four actions only after tests pass.
+1. Keep Peekaboo's ten-tool adapter aligned with its supported CLI and test snapshot/coordinate behavior after upgrades.
 2. Add `sandbox_run` before expanding unrestricted execution capabilities.
 3. Add a narrow Codex app-server client for persistent threads, turns, reviews, streaming, and model inspection.
 4. Add Messages read tools separately from `send_message`; sending must require explicit user intent.
@@ -75,8 +75,8 @@ The standalone workstation `web_search` command is a different pattern. It is a 
 - **Messages:** message history is private data; sending text or attachments is an external side effect and must require explicit intent.
 - **Recording:** event streams, screenshots, accessibility trees, window titles, and Chronicle artifacts can capture credentials, health data, private conversations, and client information. Recording should be disabled by default and visibly active.
 - **App-server breadth:** do not turn a narrow adapter into a second unrestricted shell, filesystem, account, plugin, or remote-control API.
-- **Authentication inheritance:** child tools may inherit ChatGPT/Codex login or macOS permissions. Never return credential material or silently broaden access.
-- **Version drift:** every application update can alter paths, schemas, permissions, or protocol behavior. Discover and validate capabilities at runtime.
+- **Authentication inheritance:** future child tools may inherit ChatGPT/Codex login. Peekaboo instead depends on macOS capture and input permissions granted to its active local source.
+- **Version drift:** ChatGPT updates can alter bundled paths and protocols, while Peekaboo upgrades can alter CLI flags or JSON. Keep each adapter independently testable.
 - **Redistribution:** invoke installed application components in place. Do not package third-party binaries without confirming licensing and support boundaries.
 
 ## Related

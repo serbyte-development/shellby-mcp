@@ -15,7 +15,7 @@ Verified 2026-08-01.
 | `MCP_SHELL`                    | `/bin/zsh`                         | Login shell executable                                  |
 | `MCP_CWD`                      | `~/Desktop/chatgpt-workspace`      | Absolute-resolved workspace and initial cwd             |
 | `MCP_CODEX_BIN`                | ChatGPT app's bundled `codex` path | `apply_patch` symlink target                            |
-| `CHATGPT_COMPUTER_USE_LAUNCHER`| Auto-discovered                     | Explicit Computer Use child MCP launcher path           |
+| `MCP_PEEKABOO_BIN`             | `peekaboo`                          | Peekaboo executable name or absolute path                |
 | `MCP_TRANSCRIPT_CHARS`         | `1048576`                          | Rolling JavaScript-string length                        |
 | `MCP_COMMAND_TRANSCRIPT_BYTES` | `262144`                           | Per-command retained UTF-8 output ceiling               |
 | `MCP_OUTPUT_BYTES`             | `2048`                             | Default response byte cap                               |
@@ -29,30 +29,28 @@ Verified 2026-08-01.
 
 ## Startup and Shutdown
 
-Startup creates the workspace, prepares `apply_patch`, constructs the named-shell manager, resolves the Computer Use launcher, starts the default shell, and then listens. The Computer Use child remains stopped until its first wrapper call. Launcher discovery checks `CHATGPT_COMPUTER_USE_LAUNCHER`, the known ChatGPT application path, then a bounded search inside the ChatGPT plugin directory. A missing launcher disables only the six Computer Use wrappers. An incompatible child schema disables those wrappers after the first attempted connection without stopping shell or web tools (`src/computer-use-manager.ts`, `src/http-server.ts`).
+Startup creates the workspace, prepares `apply_patch`, constructs the named-shell manager and one shared `PeekabooClient`, starts the default shell, and then listens. The client uses `MCP_PEEKABOO_BIN` or resolves `peekaboo` through `PATH`; startup does not probe the binary or permissions, so all ten Computer Use schemas remain stable. A missing executable fails only the attempted Computer Use call with `PEEKABOO_NOT_FOUND` (`src/index.ts`, `src/http-server.ts`, `src/peekaboo.ts`, `src/computer-use-tools.ts`).
 
-Additional shells are created lazily. Inactive named shells are closed after the configured idle lifetime, and `shell_close` can release one immediately. The `default` shell remains available for backward compatibility, cannot be closed, and may still be reset. Active foreground commands and resets are never idle-evicted. `SIGINT` and `SIGTERM` close HTTP requests/server, every created shell, and the Computer Use child before exiting (`src/index.ts`, `src/http-server.ts`, `src/shell-session-manager.ts`, `src/computer-use-manager.ts`).
+Additional shells are created lazily. Inactive named shells are closed after the configured idle lifetime, and `shell_close` can release one immediately. The `default` shell remains available for backward compatibility, cannot be closed, and may still be reset. Active foreground commands and resets are never idle-evicted. `SIGINT` and `SIGTERM` close HTTP requests/server, every created shell, and the Peekaboo client's pending/running queue before exiting. The server does not own a child MCP or manage Peekaboo's own daemon lifecycle (`src/index.ts`, `src/http-server.ts`, `src/shell-session-manager.ts`, `src/peekaboo.ts`).
 
 ## Computer Use Permission Bootstrap
 
-The installed helper may return macOS error `-1743` or `-10000: Sender process is not authenticated` when `SkyComputerUseService` lacks Apple Events permission or cannot authenticate the process identity responsible for launching the MCP. The wrapper preserves the child error and adds a permission hint. The server never resets TCC or changes privacy settings automatically.
-
-For the simplest bootstrap, run the MCP directly from the Terminal that should own the permission:
+Install Peekaboo's supported CLI, then inspect every available local/Bridge permission source:
 
 ```bash
-cd ~/Desktop/chatgpt-local-shell-mcp
-npm run dev
+brew install steipete/tap/peekaboo
+peekaboo permissions status --all-sources --json
+peekaboo permissions grant
 ```
 
-Then refresh the ChatGPT developer app and call `computer_list_apps` or `computer_get_app_state`. Approve the macOS Automation prompt. If the permission record is stuck, reset only the Computer Use service before repeating the interactive call:
+`permissions grant` prints the current macOS setup instructions. Peekaboo also exposes direct permission prompts:
 
 ```bash
-tccutil reset AppleEvents com.openai.sky.CUAService
-pkill -x SkyComputerUseService
-open "$HOME/.codex/computer-use/Codex Computer Use.app"
+peekaboo permissions request-screen-recording
+peekaboo permissions request-event-synthesizing
 ```
 
-PM2 can work when its daemon inherits the same responsible Terminal identity, but that attribution is less obvious and can change after daemon recreation. Running `npm run dev` or `npm run build && npm start` in Terminal is the preferred diagnostic path. A stable signed host application is only necessary if TCC attribution proves unreliable in normal use.
+Follow the macOS prompts, enable Accessibility when `permissions grant` directs it, and re-run the status command. Screen Recording enables capture, Accessibility enables UI automation, and Event Synthesizing enables background synthesized input. The adapter preserves Peekaboo's JSON error instead of changing TCC automatically. If Terminal-launched and PM2-launched behavior differs, compare `peekaboo permissions status --all-sources --json` in the responsible host context before changing server code (`src/peekaboo.ts`, `src/computer-use-tools.ts`).
 
 ## Package Scripts
 
@@ -60,7 +58,7 @@ PM2 can work when its daemon inherits the same responsible Terminal identity, bu
 - `build`: compile `src/` with TypeScript.
 - `start`: run `dist/index.js`.
 - `server:start|reload|status|logs|stop`: manage the single stateful MCP process through PM2 in fork mode.
-- `tunnel:start|status|logs|stop`: manage the fixed-domain ngrok tunnel through PM2 in fork mode. WARNING: THis will break your ChatGPT web session.
+- `tunnel:start|status|logs|stop`: manage the fixed-domain ngrok tunnel through PM2 in fork mode. Warning: this will break your ChatGPT web session.
 - `inspect`: launch the MCP Inspector package; it does not itself pass a server command.
 - `tunnel`: expose port 3333 in the foreground through the same fixed ngrok development domain and traffic policy (`package.json`, `ecosystem.config.cjs`).
 

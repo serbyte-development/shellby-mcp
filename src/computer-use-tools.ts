@@ -3,10 +3,12 @@ import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
 
 import {
-  ComputerUseManager,
-  ComputerUseUnavailableError,
-  type ComputerUseChildToolName,
-} from "./computer-use-manager.js";
+  PeekabooClient,
+  PeekabooError,
+  type PeekabooObservation,
+  type PeekabooResult,
+  type PeekabooSnapshotTarget,
+} from "./peekaboo.js";
 
 const noAuthMeta = {
   securitySchemes: [{ type: "noauth" }],
@@ -15,43 +17,59 @@ const noAuthMeta = {
 const appInput = z
   .string()
   .min(1)
-  .describe("App name, full app path, or unambiguous bundle identifier.");
+  .describe("Application name, bundle identifier, or PID:12345 token.");
+const snapshotInput = z
+  .string()
+  .min(1)
+  .describe("Snapshot ID returned by computer_observe.");
+const windowIdInput = z
+  .number()
+  .int()
+  .positive()
+  .describe("CoreGraphics window ID.");
 
-const stateRequirement =
-  "Call computer_get_app_state for this app once in the current assistant turn before interacting with it. Element indexes and screenshot coordinates are valid only for the app state that produced them.";
+const targetFields = {
+  app: appInput.optional(),
+  window_id: windowIdInput.optional(),
+  snapshot_id: snapshotInput.optional(),
+};
+
+const interactionRequirement =
+  "Call computer_observe first and pass its snapshot_id when targeting an element. Element IDs and coordinates are valid only for the observed UI state.";
 
 export function registerComputerUseTools(
   server: McpServer,
-  computerUse: ComputerUseManager,
+  peekaboo: PeekabooClient,
 ): void {
-  server.registerTool(
-    "computer_list_apps",
-    {
-      title: "List computer apps",
-      description:
-        "List apps that are currently running or were recently used on this Mac.",
-      inputSchema: {},
-      annotations: {
-        readOnlyHint: true,
-        destructiveHint: false,
-        idempotentHint: true,
-        openWorldHint: false,
-      },
-      _meta: noAuthMeta,
-    },
-    async (_args, extra) =>
-      callComputerUse(computerUse, "list_apps", {}, extra.signal),
-  );
+  const listSchema = z
+    .object({
+      kind: z.enum(["apps", "windows", "screens", "permissions"]).default("apps"),
+      app: appInput.optional().describe("Required when kind is windows."),
+      include_hidden: z.boolean().optional(),
+      include_background: z.boolean().optional(),
+    })
+    .superRefine((value, context) => {
+      if (value.kind === "windows" && !value.app) {
+        context.addIssue({ code: "custom", message: "app is required for windows." });
+      }
+      if (
+        value.kind !== "apps" &&
+        (value.include_hidden !== undefined || value.include_background !== undefined)
+      ) {
+        context.addIssue({
+          code: "custom",
+          message: "include_hidden and include_background are valid only for apps.",
+        });
+      }
+    });
 
   server.registerTool(
-    "computer_get_app_state",
+    "computer_list",
     {
-      title: "Get app state",
+      title: "List computer state",
       description:
-        "Start an app-use session if needed, then return the key window screenshot and accessibility tree. Call this once per assistant turn before interacting with the app. Screenshots and accessibility data may contain private information.",
-      inputSchema: {
-        app: appInput,
-      },
+        "List running applications, an application's renderable windows, connected displays, or Peekaboo permission status.",
+      inputSchema: listSchema,
       annotations: {
         readOnlyHint: true,
         destructiveHint: false,
@@ -60,56 +78,127 @@ export function registerComputerUseTools(
       },
       _meta: noAuthMeta,
     },
-    async ({ app }, extra) =>
-      callComputerUse(computerUse, "get_app_state", { app }, extra.signal),
+    async ({ kind, app, include_hidden, include_background }, extra) => {
+      let args: string[];
+      if (kind === "apps") {
+        args = ["app", "list"];
+        if (include_hidden) args.push("--include-hidden");
+        if (include_background) args.push("--include-background");
+      } else if (kind === "windows") {
+        args = ["window", "list", "--app", app!];
+      } else if (kind === "screens") {
+        args = ["list", "screens"];
+      } else {
+        args = ["permissions", "status", "--all-sources"];
+      }
+      return callPeekaboo(peekaboo, args, extra.signal, `Listed computer ${kind}.`);
+    },
+  );
+
+  const observeSchema = z
+    .object({
+      app: appInput.optional(),
+      window_id: windowIdInput.optional(),
+      screen_index: z
+        .number()
+        .int()
+        .nonnegative()
+        .optional()
+        .describe("Zero-based display index. Omit to observe the frontmost window."),
+      annotate: z
+        .boolean()
+        .optional()
+        .describe("Overlay element IDs on the returned screenshot."),
+      element_limit: z
+        .number()
+        .int()
+        .min(1)
+        .max(500)
+        .optional()
+        .describe("Maximum actionable elements to return. Defaults to 100."),
+    })
+    .superRefine((value, context) => {
+      const targetCount = [value.app, value.window_id, value.screen_index].filter(
+        (item) => item !== undefined,
+      ).length;
+      if (targetCount > 1) {
+        context.addIssue({
+          code: "custom",
+          message: "Supply only one of app, window_id, or screen_index.",
+        });
+      }
+    });
+
+  server.registerTool(
+    "computer_observe",
+    {
+      title: "Observe the computer",
+      description:
+        "Return a screenshot, a fresh snapshot ID, and a compact accessibility map for an app, window, display, or the frontmost window. Observe again after the UI changes.",
+      inputSchema: observeSchema,
+      annotations: {
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: false,
+      },
+      _meta: noAuthMeta,
+    },
+    async ({ app, window_id, screen_index, annotate, element_limit }, extra) => {
+      const args: string[] = [];
+      if (app !== undefined) args.push("--app", app);
+      else if (window_id !== undefined) args.push("--window-id", String(window_id));
+      else if (screen_index !== undefined) {
+        args.push("--mode", "screen", "--screen-index", String(screen_index));
+      } else {
+        args.push("--mode", "frontmost");
+      }
+      args.push("--no-web-focus");
+
+      try {
+        const observation = await peekaboo.observe(
+          args,
+          { annotate: annotate ?? false },
+          extra.signal,
+        );
+        return observationResult(observation, element_limit ?? 100);
+      } catch (error) {
+        return peekabooToolError(error);
+      }
+    },
   );
 
   const clickSchema = z
     .object({
-      app: appInput,
-      click_count: z
-        .number()
-        .int()
-        .positive()
-        .optional()
-        .describe("Number of clicks. Defaults to 1."),
-      element_index: z
-        .string()
-        .min(1)
-        .optional()
-        .describe("Element index from the latest app state."),
-      mouse_button: z
-        .enum(["left", "right", "middle"])
-        .optional()
-        .describe("Mouse button. Defaults to left."),
-      x: z
-        .number()
-        .finite()
-        .optional()
-        .describe("X coordinate in the latest screenshot's pixel coordinates."),
-      y: z
-        .number()
-        .finite()
-        .optional()
-        .describe("Y coordinate in the latest screenshot's pixel coordinates."),
+      snapshot_id: snapshotInput,
+      element_id: z.string().min(1).optional(),
+      query: z.string().min(1).optional().describe("Visible label or text query."),
+      x: z.number().finite().optional(),
+      y: z.number().finite().optional(),
+      button: z.enum(["left", "right"]).optional(),
+      click_count: z.number().int().min(1).max(2).optional(),
+      long_press: z.boolean().optional(),
+      foreground: z.boolean().optional(),
+      wait_ms: z.number().int().min(0).max(30_000).optional(),
     })
     .superRefine((value, context) => {
-      const usesElement = value.element_index !== undefined;
-      const hasX = value.x !== undefined;
-      const hasY = value.y !== undefined;
-      const usesCoordinates = hasX && hasY;
-
-      if (hasX !== hasY) {
+      const hasCoordinates = value.x !== undefined && value.y !== undefined;
+      if ((value.x === undefined) !== (value.y === undefined)) {
+        context.addIssue({ code: "custom", message: "x and y must be supplied together." });
+      }
+      const targetCount = [value.element_id, value.query, hasCoordinates ? true : undefined].filter(
+        (item) => item !== undefined,
+      ).length;
+      if (targetCount !== 1) {
         context.addIssue({
           code: "custom",
-          message: "x and y must be supplied together.",
+          message: "Supply exactly one target: element_id, query, or x and y.",
         });
       }
-      if (usesElement === usesCoordinates) {
+      if (value.long_press && (value.button === "right" || value.click_count === 2)) {
         context.addIssue({
           code: "custom",
-          message:
-            "Supply either element_index or x and y coordinates, but not both.",
+          message: "long_press cannot be combined with right-click or double-click.",
         });
       }
     });
@@ -117,8 +206,8 @@ export function registerComputerUseTools(
   server.registerTool(
     "computer_click",
     {
-      title: "Click in an app",
-      description: `Click an element or screenshot coordinate. ${stateRequirement}`,
+      title: "Click the computer",
+      description: `Click an observed element, text query, or coordinate. ${interactionRequirement}`,
       inputSchema: clickSchema,
       annotations: {
         readOnlyHint: false,
@@ -128,18 +217,51 @@ export function registerComputerUseTools(
       },
       _meta: noAuthMeta,
     },
-    async (args, extra) =>
-      callComputerUse(computerUse, "click", args, extra.signal),
+    async (input, extra) => {
+      const args = ["click"];
+      let forceForeground = false;
+      if (input.element_id) {
+        args.push("--on", input.element_id, "--snapshot", input.snapshot_id);
+      } else if (input.query) {
+        args.push(input.query, "--snapshot", input.snapshot_id);
+      } else {
+        try {
+          const target = requireSnapshotTarget(peekaboo, input.snapshot_id);
+          const coordinates = clickCoordinates(target, input.x!, input.y!);
+          args.push("--coords", `${coordinates.x},${coordinates.y}`);
+          addSnapshotTargetArgs(args, target);
+          if (coordinates.global) {
+            args.push("--global-coords");
+            forceForeground = true;
+          }
+        } catch (error) {
+          return peekabooToolError(error);
+        }
+      }
+      if (input.button === "right") args.push("--right");
+      if (input.click_count === 2) args.push("--double");
+      if (input.long_press) args.push("--long-press");
+      if (input.foreground || input.click_count === 2 || input.long_press || forceForeground) {
+        args.push("--foreground");
+      }
+      if (input.wait_ms !== undefined) args.push("--wait-for", String(input.wait_ms));
+      return callPeekaboo(peekaboo, args, extra.signal, "Click completed.");
+    },
   );
 
   server.registerTool(
-    "computer_type_text",
+    "computer_type",
     {
-      title: "Type text in an app",
-      description: `Type literal text using keyboard input. ${stateRequirement}`,
+      title: "Type on the computer",
+      description:
+        "Type literal text into a targeted or focused app. Use snapshot_id or app to avoid typing into the wrong window.",
       inputSchema: {
-        app: appInput,
+        ...targetFields,
         text: z.string().min(1).describe("Literal text to type."),
+        clear: z.boolean().optional(),
+        press_return: z.boolean().optional(),
+        foreground: z.boolean().optional(),
+        delay_ms: z.number().int().min(0).max(1_000).optional(),
       },
       annotations: {
         readOnlyHint: false,
@@ -149,29 +271,101 @@ export function registerComputerUseTools(
       },
       _meta: noAuthMeta,
     },
-    async ({ app, text }, extra) =>
-      callComputerUse(computerUse, "type_text", { app, text }, extra.signal),
+    async (input, extra) => {
+      const args = ["type", "--text", input.text];
+      addTargetArgs(args, input);
+      if (input.clear) args.push("--clear");
+      if (input.press_return) args.push("--return");
+      if (input.foreground) args.push("--foreground");
+      if (input.delay_ms !== undefined) args.push("--delay", String(input.delay_ms));
+      return callPeekaboo(peekaboo, args, extra.signal, "Typing completed.");
+    },
   );
+
+  const keyToken = z
+    .string()
+    .regex(/^[A-Za-z0-9_]+$/)
+    .describe("Key token such as return, tab, escape, cmd, shift, or a letter.");
+
+  server.registerTool(
+    "computer_press",
+    {
+      title: "Press computer keys",
+      description:
+        "Press one or more special keys sequentially, such as tab, tab, return. Use computer_hotkey for simultaneous shortcuts.",
+      inputSchema: {
+        ...targetFields,
+        keys: z.array(keyToken).min(1).max(16),
+        count: z.number().int().min(1).max(100).optional(),
+        foreground: z.boolean().optional(),
+      },
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: false,
+        idempotentHint: false,
+        openWorldHint: false,
+      },
+      _meta: noAuthMeta,
+    },
+    async (input, extra) => {
+      const args = ["press", ...input.keys];
+      addTargetArgs(args, input);
+      if (input.count !== undefined) args.push("--count", String(input.count));
+      if (input.foreground) args.push("--foreground");
+      return callPeekaboo(peekaboo, args, extra.signal, "Key press completed.");
+    },
+  );
+
+  server.registerTool(
+    "computer_hotkey",
+    {
+      title: "Press a computer shortcut",
+      description:
+        "Press one simultaneous keyboard shortcut, such as cmd+shift+t. Use computer_press for sequential keys.",
+      inputSchema: {
+        ...targetFields,
+        keys: z.array(keyToken).min(1).max(8),
+        foreground: z.boolean().optional(),
+      },
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: false,
+        idempotentHint: false,
+        openWorldHint: false,
+      },
+      _meta: noAuthMeta,
+    },
+    async (input, extra) => {
+      const args = ["hotkey", "--keys", input.keys.join(",")];
+      addTargetArgs(args, input);
+      if (input.foreground) args.push("--foreground");
+      return callPeekaboo(peekaboo, args, extra.signal, "Shortcut completed.");
+    },
+  );
+
+  const scrollSchema = z
+    .object({
+      ...targetFields,
+      direction: z.enum(["up", "down", "left", "right"]),
+      amount: z.number().int().min(1).max(100).optional(),
+      element_id: z.string().min(1).optional(),
+      smooth: z.boolean().optional(),
+    })
+    .superRefine((value, context) => {
+      if (value.element_id && !value.snapshot_id) {
+        context.addIssue({
+          code: "custom",
+          message: "snapshot_id is required when element_id is supplied.",
+        });
+      }
+    });
 
   server.registerTool(
     "computer_scroll",
     {
-      title: "Scroll in an app",
-      description: `Scroll an element in a direction by a number of pages. ${stateRequirement}`,
-      inputSchema: {
-        app: appInput,
-        element_index: z
-          .string()
-          .min(1)
-          .describe("Element index from the latest app state."),
-        direction: z.enum(["up", "down", "left", "right"]),
-        pages: z
-          .number()
-          .finite()
-          .positive()
-          .optional()
-          .describe("Number of pages to scroll. Defaults to 1."),
-      },
+      title: "Scroll the computer",
+      description: `Scroll at the pointer or on an observed element. ${interactionRequirement}`,
+      inputSchema: scrollSchema,
       annotations: {
         readOnlyHint: false,
         destructiveHint: false,
@@ -180,34 +374,43 @@ export function registerComputerUseTools(
       },
       _meta: noAuthMeta,
     },
-    async ({ app, element_index, direction, pages }, extra) =>
-      callComputerUse(
-        computerUse,
-        "scroll",
-        {
-          app,
-          element_index,
-          direction,
-          ...(pages === undefined ? {} : { pages }),
-        },
-        extra.signal,
-      ),
+    async (input, extra) => {
+      const args = ["scroll", "--direction", input.direction];
+      if (input.amount !== undefined) args.push("--amount", String(input.amount));
+      if (input.element_id) args.push("--on", input.element_id);
+      addTargetArgs(args, input);
+      if (input.smooth) args.push("--smooth");
+      return callPeekaboo(peekaboo, args, extra.signal, "Scroll completed.");
+    },
   );
 
+  const dragPoint = z.union([
+    z.object({ element_id: z.string().min(1) }).strict(),
+    z.object({ x: z.number().finite(), y: z.number().finite() }).strict(),
+  ]);
+  const dragDestination = z.union([
+    dragPoint,
+    z.object({ app: appInput }).strict(),
+  ]);
+  const dragSchema = z
+    .object({
+      snapshot_id: snapshotInput,
+      from: dragPoint,
+      to: dragDestination,
+      duration_ms: z.number().int().min(50).max(10_000).optional(),
+      steps: z.number().int().min(2).max(96).optional(),
+      modifiers: z
+        .array(z.enum(["cmd", "shift", "option", "ctrl"]))
+        .max(4)
+        .optional(),
+    });
+
   server.registerTool(
-    "computer_press_key",
+    "computer_drag",
     {
-      title: "Press a key in an app",
-      description: `Press a key or key combination in an app. ${stateRequirement}`,
-      inputSchema: {
-        app: appInput,
-        key: z
-          .string()
-          .min(1)
-          .describe(
-            'Key or combination, such as "Return", "Tab", "Up", or "super+c".',
-          ),
-      },
+      title: "Drag on the computer",
+      description: `Drag between observed elements, coordinates, or an application. ${interactionRequirement}`,
+      inputSchema: dragSchema,
       annotations: {
         readOnlyHint: false,
         destructiveHint: false,
@@ -216,58 +419,431 @@ export function registerComputerUseTools(
       },
       _meta: noAuthMeta,
     },
-    async ({ app, key }, extra) =>
-      callComputerUse(computerUse, "press_key", { app, key }, extra.signal),
+    async (input, extra) => {
+      let target: PeekabooSnapshotTarget;
+      try {
+        target = requireSnapshotTarget(peekaboo, input.snapshot_id);
+      } catch (error) {
+        return peekabooToolError(error);
+      }
+
+      const args = ["drag", "--snapshot", input.snapshot_id];
+      addDragPointArgs(args, "from", input.from, target);
+      if ("app" in input.to) args.push("--to-app", input.to.app);
+      else addDragPointArgs(args, "to", input.to, target);
+      addSnapshotTargetArgs(args, target);
+      if (input.duration_ms !== undefined) args.push("--duration", String(input.duration_ms));
+      if (input.steps !== undefined) args.push("--steps", String(input.steps));
+      if (input.modifiers?.length) args.push("--modifiers", input.modifiers.join(","));
+      return callPeekaboo(peekaboo, args, extra.signal, "Drag completed.");
+    },
+  );
+
+  const appSchema = z
+    .object({
+      action: z.enum(["launch", "switch", "quit", "relaunch", "hide", "unhide"]),
+      app: appInput,
+      open: z
+        .array(z.string().min(1))
+        .max(10)
+        .optional()
+        .describe("Files or URLs to open when launching."),
+      force: z.boolean().optional().describe("Force quit or relaunch without saving."),
+    })
+    .superRefine((value, context) => {
+      if (value.open && value.action !== "launch") {
+        context.addIssue({ code: "custom", message: "open is valid only for launch." });
+      }
+      if (value.force && value.action !== "quit" && value.action !== "relaunch") {
+        context.addIssue({
+          code: "custom",
+          message: "force is valid only for quit or relaunch.",
+        });
+      }
+    });
+
+  server.registerTool(
+    "computer_app",
+    {
+      title: "Manage a computer app",
+      description:
+        "Launch, switch to, quit, relaunch, hide, or unhide a Mac application. Launch and relaunch wait until the app is ready; switch verifies focus.",
+      inputSchema: appSchema,
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: true,
+        idempotentHint: false,
+        openWorldHint: false,
+      },
+      _meta: noAuthMeta,
+    },
+    async ({ action, app, open, force }, extra) => {
+      const args = appCommandArgs(action, app, open, force ?? false);
+      return callPeekaboo(peekaboo, args, extra.signal, `Application ${action} completed.`);
+    },
+  );
+
+  const windowSchema = z
+    .object({
+      action: z.enum([
+        "focus",
+        "close",
+        "minimize",
+        "maximize",
+        "move",
+        "resize",
+        "set_bounds",
+      ]),
+      app: appInput.optional(),
+      window_id: windowIdInput.optional(),
+      window_title: z.string().min(1).optional(),
+      x: z.number().int().optional(),
+      y: z.number().int().optional(),
+      width: z.number().int().positive().optional(),
+      height: z.number().int().positive().optional(),
+    })
+    .superRefine((value, context) => {
+      if ((value.app === undefined) === (value.window_id === undefined)) {
+        context.addIssue({
+          code: "custom",
+          message: "Supply exactly one window anchor: app or window_id.",
+        });
+      }
+      if (value.window_title && !value.app) {
+        context.addIssue({
+          code: "custom",
+          message: "window_title requires app.",
+        });
+      }
+      const requiredGeometry: Record<typeof value.action, Array<keyof typeof value>> = {
+        focus: [],
+        close: [],
+        minimize: [],
+        maximize: [],
+        move: ["x", "y"],
+        resize: ["width", "height"],
+        set_bounds: ["x", "y", "width", "height"],
+      };
+      const geometryFields = ["x", "y", "width", "height"] as const;
+      for (const field of requiredGeometry[value.action]) {
+        if (value[field] === undefined) {
+          context.addIssue({
+            code: "custom",
+            message: `${String(field)} is required for ${value.action}.`,
+          });
+        }
+      }
+      for (const field of geometryFields) {
+        if (
+          value[field] !== undefined &&
+          !requiredGeometry[value.action].includes(field)
+        ) {
+          context.addIssue({
+            code: "custom",
+            message: `${field} is not valid for ${value.action}.`,
+          });
+        }
+      }
+    });
+
+  server.registerTool(
+    "computer_window",
+    {
+      title: "Manage a computer window",
+      description:
+        "Focus, close, minimize, maximize, move, resize, or set the bounds of an app window. Use computer_list with kind=windows to obtain exact window IDs.",
+      inputSchema: windowSchema,
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: true,
+        idempotentHint: false,
+        openWorldHint: false,
+      },
+      _meta: noAuthMeta,
+    },
+    async (input, extra) => {
+      const subcommand = input.action === "set_bounds" ? "set-bounds" : input.action;
+      const args = ["window", subcommand];
+      if (input.app) args.push("--app", input.app);
+      if (input.window_id !== undefined) args.push("--window-id", String(input.window_id));
+      if (input.window_title) args.push("--window-title", input.window_title);
+      if (input.x !== undefined) args.push("--x", String(input.x));
+      if (input.y !== undefined) args.push("--y", String(input.y));
+      if (input.width !== undefined) args.push("--width", String(input.width));
+      if (input.height !== undefined) args.push("--height", String(input.height));
+      if (input.action === "focus") args.push("--verify");
+      return callPeekaboo(peekaboo, args, extra.signal, `Window ${input.action} completed.`);
+    },
   );
 }
 
-async function callComputerUse(
-  computerUse: ComputerUseManager,
-  name: ComputerUseChildToolName,
-  args: Record<string, unknown>,
+function addTargetArgs(
+  args: string[],
+  target: { app?: string; window_id?: number; snapshot_id?: string },
+): void {
+  if (target.app !== undefined) args.push("--app", target.app);
+  if (target.window_id !== undefined) args.push("--window-id", String(target.window_id));
+  if (target.snapshot_id !== undefined) args.push("--snapshot", target.snapshot_id);
+}
+
+function addDragPointArgs(
+  args: string[],
+  side: "from" | "to",
+  point: { element_id: string } | { x: number; y: number },
+  target: PeekabooSnapshotTarget,
+): void {
+  if ("element_id" in point) args.push(`--${side}`, point.element_id);
+  else {
+    const coordinates = globalSnapshotCoordinates(target, point.x, point.y);
+    args.push(`--${side}-coords`, `${coordinates.x},${coordinates.y}`);
+  }
+}
+
+function requireSnapshotTarget(
+  peekaboo: PeekabooClient,
+  snapshotId: string,
+): PeekabooSnapshotTarget {
+  const target = peekaboo.getSnapshotTarget(snapshotId);
+  if (target) return target;
+  throw new PeekabooError(
+    "SNAPSHOT_TARGET_MISSING",
+    "The observation target is no longer available. Call computer_observe again.",
+  );
+}
+
+function clickCoordinates(
+  target: PeekabooSnapshotTarget,
+  x: number,
+  y: number,
+): { x: number; y: number; global: boolean } {
+  const screenCapture = target.kind?.toLowerCase().includes("screen") ?? false;
+  const needsGlobalCoordinates =
+    screenCapture || (target.windowId === undefined && !target.app);
+  if (!needsGlobalCoordinates) return { x, y, global: false };
+  if (!target.bounds) {
+    throw new PeekabooError(
+      "SNAPSHOT_BOUNDS_MISSING",
+      "The observation bounds are unavailable. Call computer_observe again.",
+    );
+  }
+  return {
+    x: x + target.bounds.x,
+    y: y + target.bounds.y,
+    global: true,
+  };
+}
+
+function globalSnapshotCoordinates(
+  target: PeekabooSnapshotTarget,
+  x: number,
+  y: number,
+): { x: number; y: number } {
+  if (!target.bounds) {
+    throw new PeekabooError(
+      "SNAPSHOT_BOUNDS_MISSING",
+      "The observation bounds are unavailable. Call computer_observe again.",
+    );
+  }
+  return { x: x + target.bounds.x, y: y + target.bounds.y };
+}
+
+function addSnapshotTargetArgs(args: string[], target: PeekabooSnapshotTarget): void {
+  const screenCapture = target.kind?.toLowerCase().includes("screen") ?? false;
+  if (screenCapture) return;
+  if (target.windowId !== undefined) {
+    args.push("--window-id", String(target.windowId));
+  } else if (target.app) {
+    args.push("--app", target.app);
+  }
+}
+
+function appCommandArgs(
+  action: "launch" | "switch" | "quit" | "relaunch" | "hide" | "unhide",
+  app: string,
+  open: string[] | undefined,
+  force: boolean,
+): string[] {
+  if (action === "launch") {
+    const args = ["app", "launch", app, "--wait-until-ready"];
+    for (const item of open ?? []) args.push("--open", item);
+    return args;
+  }
+  if (action === "switch") return ["app", "switch", "--to", app, "--verify"];
+  if (action === "quit") {
+    return ["app", "quit", "--app", app, ...(force ? ["--force"] : [])];
+  }
+  if (action === "relaunch") {
+    return [
+      "app",
+      "relaunch",
+      app,
+      "--wait-until-ready",
+      ...(force ? ["--force"] : []),
+    ];
+  }
+  return ["app", action, "--app", app];
+}
+
+async function callPeekaboo(
+  peekaboo: PeekabooClient,
+  args: string[],
   signal: AbortSignal,
+  fallbackSummary: string,
 ): Promise<CallToolResult> {
   try {
-    return addAppleEventsPermissionHint(
-      await computerUse.callTool(name, args, signal),
-    );
+    return commandResult(await peekaboo.run(args, signal), fallbackSummary);
   } catch (error) {
-    const message =
-      error instanceof ComputerUseUnavailableError
-        ? error.message
-        : error instanceof Error
-          ? error.message
-          : String(error);
+    return peekabooToolError(error);
+  }
+}
+
+function commandResult(result: PeekabooResult, fallbackSummary: string): CallToolResult {
+  const summary =
+    typeof result.summary === "string"
+      ? result.summary
+      : result.messages?.find((message) => message.trim()) ?? fallbackSummary;
+  const structuredContent = asStructuredContent(result.data);
+  return {
+    content: [{ type: "text", text: summary }],
+    ...(structuredContent ? { structuredContent } : {}),
+  };
+}
+
+function observationResult(
+  observation: PeekabooObservation,
+  elementLimit: number,
+): CallToolResult {
+  const data = asRecord(observation.data) ?? {};
+  const allElements = Array.isArray(data.ui_elements) ? data.ui_elements : [];
+  const actionable = allElements.filter((item) => asRecord(item)?.is_actionable !== false);
+  const elements = actionable
+    .slice(0, elementLimit)
+    .map((element) => compactElement(element, observation.target?.bounds));
+  const application = stringValue(data.application_name);
+  const windowTitle = stringValue(data.window_title);
+  const structuredContent = omitUndefined({
+    snapshot_id: stringValue(data.snapshot_id),
+    application_name: application,
+    window_title: windowTitle,
+    is_dialog: booleanValue(data.is_dialog),
+    capture_mode: stringValue(data.capture_mode),
+    element_count: numberValue(data.element_count),
+    interactable_count: numberValue(data.interactable_count),
+    returned_element_count: elements.length,
+    elements_truncated: actionable.length > elements.length,
+    truncation: data.truncation,
+    elements,
+  });
+  const target = [application, windowTitle].filter(Boolean).join(" — ") || "computer";
+
+  return {
+    content: [
+      {
+        type: "text",
+        text: `Observed ${target}; returned ${elements.length} actionable elements.`,
+      },
+      {
+        type: "image",
+        data: observation.imageData,
+        mimeType: observation.mimeType,
+      },
+    ],
+    structuredContent,
+  };
+}
+
+function compactElement(
+  value: unknown,
+  captureBounds: PeekabooSnapshotTarget["bounds"] | undefined,
+): Record<string, unknown> {
+  const element = asRecord(value) ?? {};
+  const name =
+    stringValue(element.label) ??
+    stringValue(element.title) ??
+    stringValue(element.description);
+  return omitUndefined({
+    id: stringValue(element.id),
+    role: stringValue(element.role),
+    name,
+    description:
+      stringValue(element.description) === name ? undefined : stringValue(element.description),
+    bounds: localElementBounds(element.bounds, captureBounds),
+    keyboard_shortcut: stringValue(element.keyboard_shortcut),
+  });
+}
+
+function localElementBounds(
+  value: unknown,
+  captureBounds: PeekabooSnapshotTarget["bounds"] | undefined,
+): Record<string, number> | undefined {
+  const bounds = asRecord(value);
+  const x = numberValue(bounds?.x);
+  const y = numberValue(bounds?.y);
+  const width = numberValue(bounds?.width);
+  const height = numberValue(bounds?.height);
+  if (
+    !captureBounds ||
+    x === undefined ||
+    y === undefined ||
+    width === undefined ||
+    height === undefined
+  ) {
+    return undefined;
+  }
+  return {
+    x: x - captureBounds.x,
+    y: y - captureBounds.y,
+    width,
+    height,
+  };
+}
+
+function peekabooToolError(error: unknown): CallToolResult {
+  if (error instanceof PeekabooError) {
     return {
-      content: [{ type: "text", text: message }],
+      content: [
+        {
+          type: "text",
+          text: `${error.code}: ${error.message}${error.details ? ` (${error.details})` : ""}`,
+        },
+      ],
       isError: true,
     };
   }
-}
-
-function addAppleEventsPermissionHint(result: CallToolResult): CallToolResult {
-  const hasBootstrapError = result.content.some(
-    (block) =>
-      block.type === "text" &&
-      (block.text.includes("-1743") ||
-        block.text.includes("-10000") ||
-        block.text.includes("Sender process is not authenticated")),
-  );
-  if (
-    result.isError !== true ||
-    !hasBootstrapError
-  ) {
-    return result;
-  }
-
   return {
-    ...result,
     content: [
-      ...result.content,
       {
         type: "text",
-        text: "macOS denied or could not authenticate the Computer Use host process. Bootstrap Computer Use from the same Terminal or stable app identity that launches this MCP server, then approve the Automation prompt.",
+        text: error instanceof Error ? error.message : String(error),
       },
     ],
+    isError: true,
   };
+}
+
+function asStructuredContent(value: unknown): Record<string, unknown> | null {
+  if (value === undefined) return null;
+  return asRecord(value) ?? { value };
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function omitUndefined(value: Record<string, unknown>): Record<string, unknown> {
+  return Object.fromEntries(Object.entries(value).filter(([, item]) => item !== undefined));
+}
+
+function stringValue(value: unknown): string | undefined {
+  return typeof value === "string" && value ? value : undefined;
+}
+
+function numberValue(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
+function booleanValue(value: unknown): boolean | undefined {
+  return typeof value === "boolean" ? value : undefined;
 }

@@ -91,3 +91,10 @@
 - Added model-facing guidance for calling the installed Codex CLI noninteractively through `shell_run`.
 - Documented CLI verification, `codex exec`, explicit-session `codex exec resume`, the `--ephemeral` continuity limitation, and the no-PTY TUI boundary.
 - Added README guidance and integration coverage so future agents receive and retain the workflow.
+
+## [2026-08-01] update | replace child Computer Use bridge with direct Peekaboo CLI
+
+- Replaced stale ChatGPT Computer Use child-MCP architecture claims with the shared serialized `PeekabooClient` and stable ten-tool `computer_*` surface.
+- Documented snapshot-first actions, screenshot-relative coordinate translation, bounded JSON/image handling, direct `execFile` invocation, and the no-retry boundary.
+- Added Homebrew installation, `MCP_PEEKABOO_BIN`, permission status/request commands, and the rule that advanced Peekaboo operations remain available through `shell_run`.
+- Updated architecture, tool, startup, test, reuse, bundled-surface, roadmap, risk, index, README, and source-manifest documentation from current `src/` and `test/` evidence.

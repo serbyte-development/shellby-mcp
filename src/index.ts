@@ -6,6 +6,7 @@ import {
 } from "./shell-session.js";
 import { ShellSessionManager } from "./shell-session-manager.js";
 import { startMcpHttpServer } from "./http-server.js";
+import { PeekabooClient } from "./peekaboo.js";
 import {
   prepareApplyPatch,
   resolveWorkspacePath,
@@ -25,6 +26,9 @@ const maxOutputBytes = parsePositiveInteger(
 const cwd = resolveWorkspacePath(process.env.MCP_CWD);
 await mkdir(cwd, { recursive: true });
 const applyPatch = await prepareApplyPatch(cwd, process.env.MCP_CODEX_BIN);
+const peekaboo = new PeekabooClient({
+  executable: process.env.MCP_PEEKABOO_BIN ?? "peekaboo",
+});
 
 const shellOptions: ShellSessionOptions = {
   shellPath: process.env.MCP_SHELL ?? "/bin/zsh",
@@ -57,6 +61,7 @@ const running = await startMcpHttpServer({
   port,
   shellManager: shells,
   applyPatchExecutable: applyPatch.executable,
+  peekaboo,
 });
 console.log(`Local shell MCP server: ${running.url}`);
 console.log(`Shell: ${process.env.MCP_SHELL ?? "/bin/zsh"}`);
@@ -67,11 +72,7 @@ if (applyPatch.available) {
 } else {
   console.warn(`apply_patch unavailable: ${applyPatch.warning}`);
 }
-if (running.computerUse) {
-  console.log(`Computer Use launcher: ${running.computerUse.launcherPath}`);
-} else {
-  console.warn("Computer Use unavailable: launcher not found.");
-}
+console.log(`Computer Use: Peekaboo CLI (${running.peekaboo.executable})`);
 
 let shuttingDown = false;
 const shutdown = async (signal: string) => {

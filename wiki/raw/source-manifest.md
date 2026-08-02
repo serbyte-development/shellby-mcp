@@ -17,7 +17,7 @@
 - Resolved in `README.md` on 2026-07-19: process-group termination is best effort when signaling is denied (`src/shell-session.ts`).
 - Resolved in `README.md` on 2026-07-19: an existing executable workspace `apply_patch` is reused without confirming its type or target (`src/workspace-tools.ts`).
 - The fixed ngrok domain and ChatGPT settings/menu instructions describe a particular external setup. They are not server architecture, are not verified by this repository, and were not promoted into maintained pages except where the local tunnel script constrains development (`package.json`, `ngrok-traffic-policy.yml`).
-- The README is current about the seven MCP tools, named shell manager, output polling and truncation, request deduplication, process-group reset, native `apply_patch`, webpage extraction, RTK guidance, and command-only logging; those claims are backed by `src/` and `test/`.
+- The README is current about the seven core tools, stable ten-tool Peekaboo Computer Use surface, named shell manager, output polling and truncation, request deduplication, process-group reset, native `apply_patch`, webpage extraction, RTK guidance, and command-only logging; those claims are backed by `src/` and `test/`.
 
 ### Maintainer workstation app-bundle survey, 2026-07-20
 
@@ -34,6 +34,15 @@
 - Stored as: [[raw/ChatGPT and Local Capability Survey 2026-08-01]].
 - Feeds: [[pages/Bundled MCP and Agent Surfaces]], [[pages/Host Application Binary Reuse]], [[pages/Possible Features]], and [[pages/Open Questions and Risks]].
 - Secret handling: no tokens, credential values, messages, screenshots, accessibility trees, recordings, history artifacts, or account data were read or stored.
+- Staleness note: its ChatGPT Computer Use child-MCP inventory remains historical evidence, but that child is not used by the current server. Direct Peekaboo integration supersedes the survey's Computer Use implementation direction (`src/index.ts`, `src/peekaboo.ts`, `src/computer-use-tools.ts`).
+
+### Peekaboo CLI documentation and installed help, 2026-08-01
+
+- Role: supported CLI contracts for installation, permissions, observation, app/window actions, and JSON output.
+- Sources: `https://peekaboo.sh/cli-command-reference.html`, `https://peekaboo.sh/permissions.html`, `https://peekaboo.sh/commands/see.html`, and local `peekaboo --help` / subcommand help.
+- Reliability: public upstream documentation plus point-in-time installed CLI help; flags and JSON shapes can change with Peekaboo upgrades.
+- Feeds: [[pages/Architecture Map]], [[pages/MCP Tool Surface]], [[pages/Configuration and Startup]], [[pages/Host Application Binary Reuse]], and [[pages/Open Questions and Risks]].
+- Secret handling: permission status may expose local host/process metadata, so no raw status output or screenshots are stored in the wiki.
 
 ## Verification Evidence
 
@@ -42,6 +51,7 @@ These are current implementation evidence, not copied raw notes:
 - Startup and configuration: `src/index.ts`, `package.json`, `tsconfig.json`.
 - HTTP boundary: `src/http-server.ts`, `test/mcp-integration.test.ts`.
 - Tool contracts and model instructions: `src/mcp-server.ts`, `test/mcp-integration.test.ts`.
+- Peekaboo invocation, snapshots, coordinate mapping, and focused Computer Use schemas: `src/peekaboo.ts`, `src/computer-use-tools.ts`, `test/peekaboo.test.ts`, `test/mcp-integration.test.ts`.
 - Shell, transcript, idempotency, and reset behavior: `src/shell-session.ts`, `test/shell-session.test.ts`.
 - Named-shell lifecycle: `src/shell-session-manager.ts`, `test/shell-session-manager.test.ts`.
 - Workspace `apply_patch` integration: `src/workspace-tools.ts`, `test/workspace-tools.test.ts`.

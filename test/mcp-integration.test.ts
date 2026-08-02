@@ -10,8 +10,8 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { LATEST_PROTOCOL_VERSION } from "@modelcontextprotocol/sdk/types.js";
 
-import { ComputerUseManager } from "../src/computer-use-manager.js";
 import { startMcpHttpServer } from "../src/http-server.js";
+import { PeekabooClient } from "../src/peekaboo.js";
 import { PersistentShellSession } from "../src/shell-session.js";
 import { WebPageOpener } from "../src/web-open.js";
 
@@ -19,10 +19,7 @@ test(
   "serves shell tools through Streamable HTTP and retains state across MCP sessions",
   { timeout: 20_000 },
   async (t) => {
-    const running = await startMcpHttpServer({
-      port: 0,
-      computerUseManager: null,
-    });
+    const running = await startMcpHttpServer({ port: 0 });
     t.after(() => running.close());
 
     const first = await connectClient(running.url, "integration-client-1");
@@ -53,6 +50,16 @@ test(
     const tools = await first.client.listTools();
     assert.deepEqual(tools.tools.map((tool) => tool.name).sort(), [
       "apply_patch",
+      "computer_app",
+      "computer_click",
+      "computer_drag",
+      "computer_hotkey",
+      "computer_list",
+      "computer_observe",
+      "computer_press",
+      "computer_scroll",
+      "computer_type",
+      "computer_window",
       "shell_close",
       "shell_list",
       "shell_poll",
@@ -191,22 +198,29 @@ test(
 );
 
 test(
-  "exposes allowlisted Computer Use wrappers and preserves child content",
+  "exposes a stable Peekaboo Computer Use surface and preserves semantic errors",
   { timeout: 10_000 },
   async (t) => {
+    const root = await mkdtemp(join(tmpdir(), "peekaboo-mcp-integration-"));
+    t.after(() => rm(root, { recursive: true, force: true }));
     const fixture = join(
       fileURLToPath(new URL(".", import.meta.url)),
-      "fixtures/fake-computer-use-mcp.mjs",
+      "fixtures/fake-peekaboo.mjs",
     );
-    const computerUse = new ComputerUseManager({
-      launcherPath: process.execPath,
-      args: [fixture],
-      env: { FAKE_ERROR_TOOL: "list_apps" },
-      requestTimeoutMs: 2_000,
+    const peekaboo = new PeekabooClient({
+      executable: process.execPath,
+      baseArgs: [fixture],
+      env: {
+        ...process.env,
+        FAKE_PEEKABOO_FAIL_COMMAND: "app",
+        FAKE_PEEKABOO_FAIL_SUBCOMMAND: "switch",
+        FAKE_PEEKABOO_LOG: join(root, "peekaboo.jsonl"),
+      },
+      timeoutMs: 2_000,
     });
     const running = await startMcpHttpServer({
       port: 0,
-      computerUseManager: computerUse,
+      peekaboo,
     });
     t.after(() => running.close());
 
@@ -222,26 +236,20 @@ test(
       .filter((name) => name.startsWith("computer_"))
       .sort();
     assert.deepEqual(computerTools, [
+      "computer_app",
       "computer_click",
-      "computer_get_app_state",
-      "computer_list_apps",
-      "computer_press_key",
+      "computer_drag",
+      "computer_hotkey",
+      "computer_list",
+      "computer_observe",
+      "computer_press",
       "computer_scroll",
-      "computer_type_text",
+      "computer_type",
+      "computer_window",
     ]);
 
-    const apps = await connected.client.callTool({
-      name: "computer_list_apps",
-      arguments: {},
-    });
-    assert.equal(apps.isError, true);
-    assert.match(
-      JSON.stringify(apps.content),
-      /Bootstrap Computer Use from the same Terminal/,
-    );
-
     const state = await connected.client.callTool({
-      name: "computer_get_app_state",
+      name: "computer_observe",
       arguments: { app: "Finder" },
     });
     assert.equal(state.isError, undefined);
@@ -249,19 +257,279 @@ test(
       state.content.map((block) => block.type),
       ["text", "image"],
     );
+    assert.equal(state.content[0]?.type, "text");
+    assert.equal(
+      state.content[0]?.type === "text" ? state.content[0].text : undefined,
+      "Observed computer; returned 1 actionable elements.",
+    );
+    assert.equal(state.content[1]?.type, "image");
+    assert.equal(
+      state.content[1]?.type === "image" ? state.content[1].mimeType : undefined,
+      "image/png",
+    );
+    assert.ok(
+      state.content[1]?.type === "image" && state.content[1].data.length > 0,
+    );
     assert.deepEqual(state.structuredContent, {
-      app: "Finder",
-      accessibilityTree: [{ index: "42" }],
+      snapshot_id: "snapshot-42",
+      returned_element_count: 1,
+      elements_truncated: false,
+      elements: [
+        {
+          id: "B1",
+          role: "AXButton",
+          name: "Continue",
+          bounds: { x: 10, y: 20, width: 100, height: 40 },
+        },
+      ],
     });
 
     const invalidClick = await connected.client.callTool({
       name: "computer_click",
-      arguments: { app: "Finder" },
+      arguments: { element_id: "B1" },
     });
     assert.equal(invalidClick.isError, true);
     assert.match(
       JSON.stringify(invalidClick.content),
-      /Supply either element_index or x and y coordinates/,
+      /snapshot_id/,
+    );
+
+    const click = await connected.client.callTool({
+      name: "computer_click",
+      arguments: { snapshot_id: "snapshot-42", element_id: "B1" },
+    });
+    assert.equal(click.isError, undefined);
+    assert.deepEqual(click.content, [{ type: "text", text: "click:ok" }]);
+    assert.deepEqual(click.structuredContent, {
+      command: "click",
+      args: ["click", "--on", "B1", "--snapshot", "snapshot-42", "--json"],
+    });
+
+    const windowCoordinateClick = await connected.client.callTool({
+      name: "computer_click",
+      arguments: { snapshot_id: "snapshot-42", x: 10, y: 20 },
+    });
+    assert.deepEqual(windowCoordinateClick.structuredContent, {
+      command: "click",
+      args: ["click", "--coords", "10,20", "--window-id", "4242", "--json"],
+    });
+
+    const windowCoordinateDrag = await connected.client.callTool({
+      name: "computer_drag",
+      arguments: {
+        snapshot_id: "snapshot-42",
+        from: { x: 10, y: 20 },
+        to: { x: 30, y: 40 },
+      },
+    });
+    assert.deepEqual(windowCoordinateDrag.structuredContent, {
+      command: "drag",
+      args: [
+        "drag",
+        "--snapshot",
+        "snapshot-42",
+        "--from-coords",
+        "60,95",
+        "--to-coords",
+        "80,115",
+        "--window-id",
+        "4242",
+        "--json",
+      ],
+    });
+
+    const screenState = await connected.client.callTool({
+      name: "computer_observe",
+      arguments: { screen_index: 1 },
+    });
+    assert.deepEqual(
+      (screenState.structuredContent as { elements: unknown[] }).elements,
+      [
+        {
+          id: "B1",
+          role: "AXButton",
+          name: "Continue",
+          bounds: { x: 10, y: 20, width: 100, height: 40 },
+        },
+      ],
+    );
+    const screenCoordinateClick = await connected.client.callTool({
+      name: "computer_click",
+      arguments: { snapshot_id: "snapshot-screen", x: 10, y: 20 },
+    });
+    assert.deepEqual(screenCoordinateClick.structuredContent, {
+      command: "click",
+      args: [
+        "click",
+        "--coords",
+        "1090,1620",
+        "--global-coords",
+        "--foreground",
+        "--json",
+      ],
+    });
+
+    const forwardingCases = [
+      {
+        name: "computer_list",
+        arguments: { kind: "apps", include_hidden: true },
+        expected: ["app", "list", "--include-hidden", "--json"],
+      },
+      {
+        name: "computer_type",
+        arguments: {
+          snapshot_id: "snapshot-42",
+          text: "hello",
+          clear: true,
+          press_return: true,
+          foreground: true,
+          delay_ms: 5,
+        },
+        expected: [
+          "type",
+          "--text",
+          "hello",
+          "--snapshot",
+          "snapshot-42",
+          "--clear",
+          "--return",
+          "--foreground",
+          "--delay",
+          "5",
+          "--json",
+        ],
+      },
+      {
+        name: "computer_press",
+        arguments: { window_id: 4242, keys: ["tab", "return"], count: 2 },
+        expected: [
+          "press",
+          "tab",
+          "return",
+          "--window-id",
+          "4242",
+          "--count",
+          "2",
+          "--json",
+        ],
+      },
+      {
+        name: "computer_hotkey",
+        arguments: { app: "Finder", keys: ["cmd", "shift", "g"] },
+        expected: [
+          "hotkey",
+          "--keys",
+          "cmd,shift,g",
+          "--app",
+          "Finder",
+          "--json",
+        ],
+      },
+      {
+        name: "computer_scroll",
+        arguments: {
+          snapshot_id: "snapshot-42",
+          element_id: "B1",
+          direction: "down",
+          amount: 3,
+          smooth: true,
+        },
+        expected: [
+          "scroll",
+          "--direction",
+          "down",
+          "--amount",
+          "3",
+          "--on",
+          "B1",
+          "--snapshot",
+          "snapshot-42",
+          "--smooth",
+          "--json",
+        ],
+      },
+      {
+        name: "computer_app",
+        arguments: { action: "launch", app: "TextEdit", open: ["/tmp/note.txt"] },
+        expected: [
+          "app",
+          "launch",
+          "TextEdit",
+          "--wait-until-ready",
+          "--open",
+          "/tmp/note.txt",
+          "--json",
+        ],
+      },
+      {
+        name: "computer_window",
+        arguments: {
+          action: "set_bounds",
+          window_id: 4242,
+          x: 10,
+          y: 20,
+          width: 800,
+          height: 600,
+        },
+        expected: [
+          "window",
+          "set-bounds",
+          "--window-id",
+          "4242",
+          "--x",
+          "10",
+          "--y",
+          "20",
+          "--width",
+          "800",
+          "--height",
+          "600",
+          "--json",
+        ],
+      },
+    ] as const;
+    for (const forwarding of forwardingCases) {
+      const result = await connected.client.callTool({
+        name: forwarding.name,
+        arguments: forwarding.arguments,
+      });
+      assert.equal(result.isError, undefined);
+      assert.deepEqual(result.structuredContent, {
+        command: forwarding.expected[0],
+        args: [...forwarding.expected],
+      });
+    }
+
+    for (const argumentsValue of [
+      { action: "move", window_id: 4242, x: 10.5, y: 20 },
+      { action: "focus", window_id: 4242, width: 800 },
+    ]) {
+      const invalidWindow = await connected.client.callTool({
+        name: "computer_window",
+        arguments: argumentsValue,
+      });
+      assert.equal(invalidWindow.isError, true);
+    }
+
+    const failedApp = await connected.client.callTool({
+      name: "computer_app",
+      arguments: { action: "switch", app: "Finder" },
+    });
+    assert.equal(failedApp.isError, true);
+    assert.deepEqual(failedApp.content, [
+      {
+        type: "text",
+        text: "FAKE_COMMAND_FAILED: Fake Peekaboo failure for app (fixture requested failure)",
+      },
+    ]);
+
+    const toolsAfterFailure = await connected.client.listTools();
+    assert.deepEqual(
+      toolsAfterFailure.tools
+        .map((tool) => tool.name)
+        .filter((name) => name.startsWith("computer_"))
+        .sort(),
+      computerTools,
     );
   },
 );

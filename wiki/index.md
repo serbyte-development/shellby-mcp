@@ -6,12 +6,12 @@ Maintainer-oriented architecture documentation. Start with [[pages/Architecture 
 
 - [[pages/Architecture Map]] — system layers, dependency direction, and the request lifecycle.
 - [[pages/HTTP Transport]] — Express, Streamable HTTP, host validation, and connection lifecycle.
-- [[pages/MCP Tool Surface]] — schemas, annotations, instructions, and error behavior for seven core tools and six optional Computer Use wrappers.
+- [[pages/MCP Tool Surface]] — schemas, annotations, instructions, and error behavior for seven core tools and ten stable Peekaboo Computer Use tools.
 - [[pages/Persistent Shell Runtime]] — process lifecycle, marker protocol, retained state, reset, and recovery.
 - [[pages/Transcript Polling and Idempotency]] — output buffering, UTF-8 caps, cursors, retries, and concurrency.
 - [[pages/Workspace Tooling]] — default workspace and the optional `apply_patch` integration.
-- [[pages/Host Application Binary Reuse]] — app-bundle CLI discovery, reuse patterns, current candidates, and integration risks.
-- [[pages/Bundled MCP and Agent Surfaces]] — ChatGPT child MCPs, Codex app-server, bundled utilities, safety boundaries, and recommended adapter architecture.
+- [[pages/Host Application Binary Reuse]] — direct Peekaboo and `apply_patch` integrations, reuse patterns, current candidates, and integration risks.
+- [[pages/Bundled MCP and Agent Surfaces]] — historical ChatGPT child MCP research, Codex app-server, bundled utilities, and remaining candidates.
 
 ## Development
 

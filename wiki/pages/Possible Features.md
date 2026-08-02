@@ -39,7 +39,6 @@ This page collects plausible additions for Unhinged Terminal MCP. These are idea
 ## Optional Local Capability Adapters
 
 - A generic child-MCP bridge with executable discovery, schema allowlists, bounded output, lifecycle management, and explicit read/write annotations.
-- ChatGPT Computer Use read-state tools, with click/type/keypress/value actions separately gated.
 - Messages search/read tools, with `send_message` isolated as an explicit external side effect.
 - Record & Replay and Computer History only after visible recording state, short retention, pause, and deletion behavior are designed.
 - `sandbox_run` backed by `codex sandbox` and explicit permission profiles.
@@ -56,7 +55,7 @@ See [[pages/Bundled MCP and Agent Surfaces]] and [[pages/Host Application Binary
 - Optional macOS `launchd` setup for automatic startup and a one-command build-and-restart flow. ngrok would remain a separate process forwarding the fixed endpoint to the restarted local server.
 - Runtime discovery of supported local agent and developer CLIs.
 - Runtime discovery and compatibility checks for bundled child MCP servers and protocol versions.
-- A diagnostic command that checks authentication, executable paths, tunnel configuration, and MCP connectivity.
+- A diagnostic command that checks Peekaboo availability and permissions, executable paths, tunnel configuration, and MCP connectivity.
 - Example configurations for ChatGPT, Claude, Cursor, and other MCP clients.
 
 ## Security Options

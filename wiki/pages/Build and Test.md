@@ -22,8 +22,8 @@ The project uses TypeScript's NodeNext ESM model, Node's built-in test runner th
 
 - `test/shell-session.test.ts` covers state retention, descriptor isolation, idempotency, full and summary logging, control-character escaping, response and per-command output caps, polling, concurrency, marker-safe multiline commands, shell recovery, process-group failure, and reset.
 - `test/shell-session-manager.test.ts` covers named-shell creation, limits, listing, closure, idle eviction, default-shell protection, and manager shutdown.
-- `test/computer-use-manager.test.ts` launches a fake stdio child MCP and covers lazy startup, schema compatibility, serialization, image and structured-content preservation, child exit recovery, and no automatic retry of mutating actions.
-- `test/mcp-integration.test.ts` starts an ephemeral HTTP server, validates the seven core tools and six optional Computer Use wrappers, proves state crosses MCP client sessions, exercises named-shell isolation and concurrency, native patching, webpage pagination, Computer Use forwarding, and Host rejection.
+- `test/peekaboo.test.ts` drives a fake Peekaboo CLI and covers PATH/explicit executable selection, literal argv, JSON-envelope failures, malformed and oversized output, serialization, queued cancellation, timeouts without retry, screenshot return/cleanup, and retained snapshot targets.
+- `test/mcp-integration.test.ts` starts an ephemeral HTTP server, validates the seven core tools and stable ten-tool Computer Use surface, proves state crosses MCP client sessions, exercises named-shell isolation and concurrency, native patching, webpage pagination, compact screenshot/action results, validation failures, Peekaboo semantic errors, and Host rejection.
 - `test/web-open.test.ts` covers bounded cached Markdown pagination, redirects, cursor validation and expiry, and source truncation.
 - `test/workspace-tools.test.ts` covers absolute workspace resolution, `apply_patch` symlink creation, and graceful absence of the Codex binary.
 
@@ -33,7 +33,7 @@ Tests use temporary directories and real local child shells; process-group tests
 
 No CI workflow is present in the repository, so the three validation commands are not enforced by checked-in automation (`package.json`, repository tree).
 
-The tests do not exercise the real `src/index.ts` composition path, `/healthz`, GET/DELETE 405 responses, signal-driven graceful shutdown, the checked-in tunnel configuration, a real Cloak Browser launch, the installed proprietary Computer Use helper and macOS TCC permissions, or replacement of an existing stale `apply_patch` executable (`test/`, `src/index.ts`, `src/http-server.ts`, `src/web-open.ts`, `src/workspace-tools.ts`).
+The tests do not exercise the real `src/index.ts` composition path, `/healthz`, GET/DELETE 405 responses, signal-driven graceful shutdown, the checked-in tunnel configuration, a real Cloak Browser launch, the installed Peekaboo binary and macOS permission path, or replacement of an existing stale `apply_patch` executable (`test/`, `src/index.ts`, `src/http-server.ts`, `src/web-open.ts`, `src/peekaboo.ts`, `src/workspace-tools.ts`).
 
 ## Related
 

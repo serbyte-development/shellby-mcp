@@ -9,7 +9,7 @@ Maintainers: start with the [architecture wiki](wiki/index.md) before changing t
 ## How it works
 
 ```text
-ChatGPT web -> HTTPS tunnel -> localhost:3333/mcp -> shells, webpage extraction, optional Computer Use child MCP
+ChatGPT web -> HTTPS tunnel -> localhost:3333/mcp -> shells, webpage extraction, direct Peekaboo Computer Use
 ```
 
 Each named shell lives in the local Node process. Its working directory, exported environment variables, functions, transcript, command lock, and background processes remain available between MCP calls. Omit `shell_id` to use `default`, or reuse another stable ID for independent state. Different shells can run foreground commands concurrently. State is lost when that shell resets or exits; after an unexpected exit, the server automatically starts a clean generation for that shell.
@@ -22,7 +22,11 @@ By default, new repositories and generated projects belong in `~/Desktop/chatgpt
 - A public HTTPS tunnel such as [ngrok](https://ngrok.com/)
 - ChatGPT Developer mode access
 - The Codex binary bundled with ChatGPT for the optional `apply_patch` command
-- The installed ChatGPT Computer Use plugin for the optional `computer_*` tools
+- [Peekaboo](https://peekaboo.sh/) for the `computer_*` tools:
+
+  ```bash
+  brew install steipete/tap/peekaboo
+  ```
 
 ## Run it
 
@@ -69,11 +73,33 @@ There is no CORS allowlist, authentication middleware, command approval layer, h
 - `shell_list`: lists open shells, activity state, idle duration, and available capacity without refreshing idle timers.
 - `shell_close`: terminates a named shell, discards its state and retained records, and releases its slot immediately. The `default` shell cannot be closed.
 - `web_open`: opens a page in Cloak Browser, extracts the main content with Defuddle, and returns Markdown. A returned `next_cursor` reads the next cached chunk without reopening the page.
-- `computer_list_apps`, `computer_get_app_state`, `computer_click`, `computer_type_text`, `computer_scroll`, and `computer_press_key`: fixed wrappers over ChatGPT's installed Computer Use child MCP. The bridge launches one persistent child lazily and never copies or reimplements its proprietary helper.
+- `computer_list`: lists apps, windows, displays, or Peekaboo permission state.
+- `computer_observe`: returns a screenshot, fresh snapshot ID, and compact accessibility map for an app, window, display, or the frontmost window.
+- `computer_click` and `computer_drag`: act against an explicit observation snapshot. Element IDs and screenshot-relative coordinates are not reused implicitly.
+- `computer_type`, `computer_press`, `computer_hotkey`, and `computer_scroll`: focused keyboard and pointer actions with optional app, window, or snapshot targeting.
+- `computer_app` and `computer_window`: launch/focus/quit apps and manage windows.
 
-Computer Use calls are sequential. Call `computer_get_app_state` once per assistant turn before interacting with an app and refresh it after the UI changes before reusing element indexes or screenshot coordinates. Screenshots and accessibility trees may contain private information. Mutating actions are never automatically retried after a timeout or child-process failure.
+These ten tools call the installed `peekaboo` CLI directly with literal argument arrays; there is no child MCP or shell interpolation. One process-level `PeekabooClient` serializes calls, checks Peekaboo's JSON success envelope, caps process output, drops verbose debug logs from model-facing results, and never retries an action. The tool metadata stays stable even when Peekaboo is missing; calls then return a clear installation error.
 
-If Computer Use returns macOS error `-1743` or `-10000: Sender process is not authenticated`, run the server directly from Terminal and approve the Automation prompt when the first Computer Use tool is called. See [Configuration and Startup](wiki/pages/Configuration%20and%20Startup.md) for the reset procedure and PM2 attribution caveat.
+Call `computer_observe` before snapshot-based actions and observe again after the UI changes. Display observations translate screenshot-relative coordinates through the recorded display origin; app and window observations retain the exact capture target. The in-memory target map is bounded, so an old or server-restart-invalidated snapshot produces an explicit error instead of clicking an ambiguous location. Advanced Peekaboo commands that do not justify another MCP schema remain available through `shell_run`.
+
+### Computer Use permissions
+
+Check every available Peekaboo permission source before testing UI actions:
+
+```bash
+peekaboo permissions status --all-sources --json
+peekaboo permissions grant
+```
+
+`permissions grant` prints the current macOS setup instructions. Peekaboo also provides direct prompts for the two capture/input grants it can request:
+
+```bash
+peekaboo permissions request-screen-recording
+peekaboo permissions request-event-synthesizing
+```
+
+Follow the macOS prompts and re-run the status command. Screen Recording enables capture, Accessibility enables UI automation, and Event Synthesizing enables background synthesized input. See [Configuration and Startup](wiki/pages/Configuration%20and%20Startup.md) for the runtime boundary.
 
 `shell_id` is optional and defaults to `default`. It accepts 1–64 characters. The server creates shells lazily and permits eight by default. A single agent can use multiple shell IDs for parallel commands, and multiple agents avoid shared cwd, environment, transcript, reset, and foreground-command state by using distinct IDs. `shell_run` and `shell_poll` echo `shell_id` only for non-default shells, keeping normal default-shell responses compact. Named shells are closed after 30 minutes without tool activity by default; `shell_list` exposes their current lifecycle state and `shell_close` releases a named shell immediately. The `default` shell is retained for backward compatibility and cannot be closed, though `shell_reset` remains available to recover it. Idle cleanup never closes a shell while it is running a foreground command or reset.
 
@@ -161,7 +187,7 @@ Then inspect it with later commands such as `tail -n 100 /tmp/my-app.log` or `ps
 | `MCP_SHELL`                    | `/bin/zsh`                                           | Persistent shell executable                                                                  |
 | `MCP_CWD`                      | `~/Desktop/chatgpt-workspace`                        | Absolute-resolved default workspace and initial shell working directory                      |
 | `MCP_CODEX_BIN`                | `/Applications/ChatGPT.app/Contents/Resources/codex` | Codex binary targeted by the workspace `apply_patch` symlink                                 |
-| `CHATGPT_COMPUTER_USE_LAUNCHER`| Auto-discovered                                      | Explicit path to the installed Computer Use child MCP launcher                               |
+| `MCP_PEEKABOO_BIN`             | `peekaboo`                                           | Peekaboo executable name or absolute path for the Computer Use adapter                        |
 | `MCP_TRANSCRIPT_CHARS`         | `1048576`                                            | Retained rolling transcript limit in JavaScript UTF-16 code units                            |
 | `MCP_COMMAND_TRANSCRIPT_BYTES` | `262144`                                             | Maximum UTF-8 command output retained before excess bytes are discarded                      |
 | `MCP_OUTPUT_BYTES`             | `2048`                                               | Default UTF-8 output bytes returned per tool call                                            |

@@ -4,7 +4,7 @@ Verified 2026-08-01.
 
 ## What This Is
 
-`src/mcp-server.ts` always exposes seven core tools over a shared `ShellSessionManager`. When the installed ChatGPT Computer Use launcher is available and compatible, it also exposes six fixed wrappers over a shared `ComputerUseManager`.
+`src/mcp-server.ts` always exposes seven core tools over a shared `ShellSessionManager` and ten focused Computer Use tools over one shared `PeekabooClient`. Tool metadata remains stable even if the local `peekaboo` executable or macOS permissions are unavailable (`src/mcp-server.ts`, `src/http-server.ts`, `src/computer-use-tools.ts`).
 
 ## Tools
 
@@ -52,31 +52,39 @@ Terminates a selected non-default shell, discards its state and retained records
 
 ## Computer Use Tools
 
-### `computer_list_apps`
+### `computer_list`
 
-Forwards the child MCP's read-only `list_apps` tool. It lists running and recently used applications.
+Lists apps, an app's windows, connected screens, or Peekaboo permission status. Window listing requires `app`; app-only inclusion flags are rejected for other list kinds.
 
-### `computer_get_app_state`
+### `computer_observe`
 
-Forwards `get_app_state` and preserves its screenshot, accessibility tree, structured content, metadata, and error state. Clients are instructed to call it once per assistant turn before interacting with an app and to refresh state after UI changes.
+Observes exactly one app, window ID, or display index, or the frontmost window by default. It returns a PNG, fresh `snapshot_id`, and a compact actionable-element map capped at 100 elements by default and 500 on request. `--no-web-focus` keeps observation from pressing web content while collecting state (`src/computer-use-tools.ts`, `src/peekaboo.ts`).
 
 ### `computer_click`
 
-Accepts either one accessibility `element_index` or an `x` and `y` screenshot coordinate pair. The parent schema rejects missing targets, partial coordinate pairs, and mixed element plus coordinate targeting before forwarding the call.
+Requires an explicit `snapshot_id` plus exactly one element ID, text query, or coordinate pair. Coordinate clicks use the capture target retained for that snapshot. Display-local coordinates are translated through the display origin and sent as global coordinates; window/app coordinates remain relative to their captured target.
 
-### `computer_type_text`
+### `computer_type`, `computer_press`, and `computer_hotkey`
 
-Types nonempty literal text in the selected app. It is non-idempotent and is never automatically retried after a child transport failure.
+Type literal text, press sequential key tokens, or press a simultaneous shortcut. They can target an app, window ID, or snapshot and remain separate so sequence and chord semantics are unambiguous.
 
 ### `computer_scroll`
 
-Scrolls a selected accessibility element up, down, left, or right by an optional positive number of pages.
+Scrolls up, down, left, or right at the pointer or over an observed element. Element targeting requires the matching snapshot.
 
-### `computer_press_key`
+### `computer_drag`
 
-Presses one key or key combination using the child helper's supported key syntax.
+Requires a snapshot and drags between element IDs, screenshot-relative coordinates, or an application destination. Coordinates are translated from the observation bounds before invoking Peekaboo.
 
-The parent intentionally does not expose a generic child-tool proxy. `perform_secondary_action`, `set_value`, `select_text`, and `drag` remain unavailable until separately reviewed and tested. All Computer Use calls share one persistent child process and one serial call queue because app state and UI actions are sequential. The bridge does not implement screenshots or macOS Accessibility itself (`src/computer-use-manager.ts`, `src/computer-use-tools.ts`).
+### `computer_app`
+
+Launches, switches to, quits, relaunches, hides, or unhides an application. Launch/relaunch wait for readiness; switch verifies focus. Force is accepted only for quit/relaunch, and files or URLs may be opened only during launch.
+
+### `computer_window`
+
+Focuses, closes, minimizes, maximizes, moves, resizes, or sets bounds for one app- or window-ID-anchored window. Geometry requirements are enforced by action, and exact window IDs come from `computer_list` with `kind=windows`.
+
+The server intentionally exposes these ten operations instead of a raw Peekaboo proxy. Advanced Peekaboo commands remain available through `shell_run`. All first-class operations share one serial queue because observation snapshots and UI actions are stateful (`src/computer-use-tools.ts`, `src/peekaboo.ts`).
 
 ## Result and Error Shape
 
@@ -84,11 +92,11 @@ Run and poll always return status, nullable exit code, and output. They echo `sh
 
 Known `ShellSessionError` codes are converted into MCP tool errors. Unexpected errors become `internal_error`; tool handlers do not throw them through the transport (`src/mcp-server.ts`, `src/shell-session.ts`).
 
-Computer Use results are forwarded as complete MCP results rather than flattened into text. A thrown child transport or startup failure becomes an MCP tool error. A child result with `isError: true` remains a child tool error. Errors `-1743` and `-10000: Sender process is not authenticated` receive an additional explanation that macOS denied or could not authenticate the host process. Mutating calls are not replayed after timeouts, cancellation, or child exit because the action may already have occurred (`src/computer-use-manager.ts`, `src/computer-use-tools.ts`).
+Every CLI call uses `execFile` with exact argv and an added `--json`; model input never passes through a shell. A zero exit with `{success:false}` is still an error, malformed/oversized/process failures become stable `PeekabooError` results, and a missing binary reports `PEEKABOO_NOT_FOUND`. Results preserve compact `data` and a short summary while omitting Peekaboo debug logs. Observation results additionally return an MCP image block. Calls are serialized, bounded, cancellation-aware, and never retried because an action may already have happened (`src/peekaboo.ts`, `src/computer-use-tools.ts`, `test/peekaboo.test.ts`).
 
 ## Published Instructions
 
-The server tells clients to conserve output, prefer RTK when appropriate, use native `apply_patch`, keep new work under the configured workspace, reuse stable shell IDs, poll with the original shell ID, and serialize foreground commands within each shell. It also documents the supported noninteractive Codex sub-agent workflow: verify the separate CLI installation, start with `codex exec`, resume by explicit session ID, avoid `--ephemeral` when continuity is required, and avoid the full-screen TUI because the shell has no PTY. These instructions remain advisory except where schemas or the runtime impose limits (`src/mcp-server.ts`).
+The server tells clients to conserve output, prefer RTK when appropriate, use native `apply_patch`, keep new work under the configured workspace, reuse stable shell IDs, poll with the original shell ID, and serialize foreground commands within each shell. It also documents the supported noninteractive Codex sub-agent workflow and tells clients to observe before snapshot-based Computer Use actions, refresh after UI changes, and use raw Peekaboo through `shell_run` only for advanced operations outside the focused schemas. These instructions remain advisory except where schemas or the runtime impose limits (`src/mcp-server.ts`).
 
 ## Related
 

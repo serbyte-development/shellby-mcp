@@ -1,6 +1,6 @@
 # Open Questions and Risks
 
-Verified 2026-07-19.
+Verified 2026-08-01.
 
 ## What This Is
 
@@ -17,8 +17,11 @@ This is the maintainer lint target for unresolved architectural risks and source
 - **Command logging can disclose values:** summary mode limits and escapes the preview but can still expose secrets from the first command line; full mode prints raw commands. Output is not logged (`src/index.ts`, `src/shell-session.ts`).
 - **No CI enforcement:** tests, typecheck, and build exist only as local package scripts (`package.json`).
 - **Port configuration is not composed:** `PORT` can move the HTTP listener, while the included ngrok command and Host rewrite remain fixed at 3333 (`src/index.ts`, `package.json`, `ngrok-traffic-policy.yml`).
-- **Future child-tool privilege inheritance:** bundled Computer Use, Messages, recording, history, Codex, browser, and document tools may inherit the local user's macOS permissions or ChatGPT/Codex authentication. A bridge must not silently convert that inherited access into an unrestricted remote API ([[pages/Bundled MCP and Agent Surfaces]]).
-- **Private-interface drift:** application-bundle paths, generated app-server schemas, internal endpoints, and helper behavior can change independently of this repository. Runtime discovery and compatibility checks are required before any candidate becomes a first-class tool ([[pages/Host Application Binary Reuse]]).
+- **Peekaboo and permission drift:** the ten Computer Use schemas are stable at server startup, but the installed Peekaboo CLI version, JSON fields, daemon/Bridge selection, Screen Recording, Accessibility, and Event Synthesizing permissions can change independently. Calls surface the resulting error and are never retried (`src/peekaboo.ts`, `src/computer-use-tools.ts`).
+- **Ephemeral observation targets:** screenshot IDs and their capture-target mappings live only in process memory, are capped at 64, and disappear on restart or eviction. Coordinate actions fail closed when the mapping is unavailable, so callers must observe again (`src/peekaboo.ts`, `src/computer-use-tools.ts`).
+- **Coordinate interpretation:** screen captures require display-origin translation, while app/window clicks use screenshot-relative coordinates with an explicit capture target. Multi-display layout or upstream bounds changes are important real-CLI regression cases (`src/peekaboo.ts`, `src/computer-use-tools.ts`, `test/peekaboo.test.ts`).
+- **Future child-tool privilege inheritance:** Messages, recording, history, Codex, browser, and document tools may inherit the local user's macOS permissions or ChatGPT/Codex authentication. A future bridge must account for that boundary ([[pages/Bundled MCP and Agent Surfaces]]).
+- **Private-interface drift:** application-bundle paths, generated app-server schemas, internal endpoints, and helper behavior can change independently of this repository. Runtime discovery and compatibility checks are required before any remaining candidate becomes a first-class tool ([[pages/Host Application Binary Reuse]]).
 
 ## Disconnected or Unenforced Conventions
 
