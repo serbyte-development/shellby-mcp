@@ -1,5 +1,11 @@
 # Wiki Maintenance Log
 
+## [2026-08-01] ops | run the stateful MCP in PM2 fork mode
+
+- Changed the single MCP process from PM2 cluster mode to fork mode.
+- Kept the ngrok process in fork mode and preserved one instance of each app.
+- Verified local health and the public MCP handshake after recreating and saving the PM2 process list.
+
 ## [2026-08-01] ops | keep the ngrok tunnel alive with PM2
 
 - Added `unhinged-terminal-ngrok` to the PM2 ecosystem using the existing fixed domain and traffic policy.

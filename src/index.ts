@@ -67,6 +67,11 @@ if (applyPatch.available) {
 } else {
   console.warn(`apply_patch unavailable: ${applyPatch.warning}`);
 }
+if (running.computerUse) {
+  console.log(`Computer Use launcher: ${running.computerUse.launcherPath}`);
+} else {
+  console.warn("Computer Use unavailable: launcher not found.");
+}
 
 let shuttingDown = false;
 const shutdown = async (signal: string) => {

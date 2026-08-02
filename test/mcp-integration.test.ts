@@ -4,11 +4,13 @@ import { request as httpRequest } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
+import { fileURLToPath } from "node:url";
 
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { LATEST_PROTOCOL_VERSION } from "@modelcontextprotocol/sdk/types.js";
 
+import { ComputerUseManager } from "../src/computer-use-manager.js";
 import { startMcpHttpServer } from "../src/http-server.js";
 import { PersistentShellSession } from "../src/shell-session.js";
 import { WebPageOpener } from "../src/web-open.js";
@@ -17,7 +19,10 @@ test(
   "serves shell tools through Streamable HTTP and retains state across MCP sessions",
   { timeout: 20_000 },
   async (t) => {
-    const running = await startMcpHttpServer({ port: 0 });
+    const running = await startMcpHttpServer({
+      port: 0,
+      computerUseManager: null,
+    });
     t.after(() => running.close());
 
     const first = await connectClient(running.url, "integration-client-1");
@@ -63,6 +68,7 @@ test(
     assert.match(runTool?.description ?? "", /Prefer RTK/);
     assert.match(runTool?.description ?? "", /rtk test npm test/);
     assert.match(runTool?.description ?? "", /rtk git diff/);
+    assert.match(runTool?.description ?? "", /wait_ms: 0/);
     const commandSchema = (
       runTool?.inputSchema.properties as Record<string, Record<string, unknown>>
     ).command;
@@ -181,6 +187,82 @@ test(
     );
     assert.equal(pagedResult.output, expectedPagedOutput);
     assert.equal(Buffer.byteLength(pagedResult.output, "utf8"), 6_000);
+  },
+);
+
+test(
+  "exposes allowlisted Computer Use wrappers and preserves child content",
+  { timeout: 10_000 },
+  async (t) => {
+    const fixture = join(
+      fileURLToPath(new URL(".", import.meta.url)),
+      "fixtures/fake-computer-use-mcp.mjs",
+    );
+    const computerUse = new ComputerUseManager({
+      launcherPath: process.execPath,
+      args: [fixture],
+      env: { FAKE_ERROR_TOOL: "list_apps" },
+      requestTimeoutMs: 2_000,
+    });
+    const running = await startMcpHttpServer({
+      port: 0,
+      computerUseManager: computerUse,
+    });
+    t.after(() => running.close());
+
+    const connected = await connectClient(
+      running.url,
+      "computer-use-integration-client",
+    );
+    t.after(() => connected.client.close());
+
+    const tools = await connected.client.listTools();
+    const computerTools = tools.tools
+      .map((tool) => tool.name)
+      .filter((name) => name.startsWith("computer_"))
+      .sort();
+    assert.deepEqual(computerTools, [
+      "computer_click",
+      "computer_get_app_state",
+      "computer_list_apps",
+      "computer_press_key",
+      "computer_scroll",
+      "computer_type_text",
+    ]);
+
+    const apps = await connected.client.callTool({
+      name: "computer_list_apps",
+      arguments: {},
+    });
+    assert.equal(apps.isError, true);
+    assert.match(
+      JSON.stringify(apps.content),
+      /Bootstrap Computer Use from the same Terminal/,
+    );
+
+    const state = await connected.client.callTool({
+      name: "computer_get_app_state",
+      arguments: { app: "Finder" },
+    });
+    assert.equal(state.isError, undefined);
+    assert.deepEqual(
+      state.content.map((block) => block.type),
+      ["text", "image"],
+    );
+    assert.deepEqual(state.structuredContent, {
+      app: "Finder",
+      accessibilityTree: [{ index: "42" }],
+    });
+
+    const invalidClick = await connected.client.callTool({
+      name: "computer_click",
+      arguments: { app: "Finder" },
+    });
+    assert.equal(invalidClick.isError, true);
+    assert.match(
+      JSON.stringify(invalidClick.content),
+      /Supply either element_index or x and y coordinates/,
+    );
   },
 );
 

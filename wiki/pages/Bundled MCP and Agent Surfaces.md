@@ -4,7 +4,7 @@ Verified 2026-08-01.
 
 ## What This Is
 
-This page records structured MCP and agent-control surfaces bundled with the installed ChatGPT/Codex application. These are integration candidates, not current server features. The current server still exposes its own local shell tools and provisions only the Codex-backed `apply_patch` executable (`src/mcp-server.ts`, `src/workspace-tools.ts`).
+This page records structured MCP and agent-control surfaces bundled with the installed ChatGPT/Codex application. Computer Use is now integrated through six allowlisted wrappers. The remaining bundled surfaces are integration candidates (`src/computer-use-manager.ts`, `src/computer-use-tools.ts`, `src/mcp-server.ts`).
 
 Point-in-time host evidence, executable paths, and inspection commands are stored in [[raw/ChatGPT and Local Capability Survey 2026-08-01]].
 
@@ -19,7 +19,7 @@ ChatGPT bundles a launcher at `/Applications/ChatGPT.app/Contents/Resources/plug
 | `event-stream mcp`     | `event_stream_start`, `event_stream_status`, `event_stream_stop`                                                                                    | Structured Record & Replay capture for up to 30 minutes.                  |
 | `computer-history mcp` | `computer_history_pause`, `computer_history_resume`, `computer_history_status`, `computer_history_get_settings`, `computer_history_update_settings` | Computer History recorder state and settings.                             |
 
-These should be bridged as child MCP servers rather than reimplemented. A generic bridge should own child-process startup, MCP initialization, schema discovery, request forwarding, cancellation, bounded responses, stderr capture, version checks, and shutdown.
+Computer Use is bridged in place rather than reimplemented or copied. The process-level manager lazily starts one child, validates the six exposed schemas, serializes calls, forwards cancellation and complete results, captures bounded stderr, reconnects after exit on a later call, and closes the child during HTTP shutdown. The parent currently exposes `list_apps`, `get_app_state`, `click`, `type_text`, `scroll`, and `press_key` under `computer_*` names. The other four child tools remain intentionally hidden (`src/computer-use-manager.ts`, `src/computer-use-tools.ts`).
 
 ## Codex MCP Server
 
@@ -62,7 +62,7 @@ The standalone workstation `web_search` command is a different pattern. It is a 
 
 ## Recommended Integration Order
 
-1. Add a generic child-MCP bridge and use it first for Computer Use with explicit write-action gating.
+1. Validate Computer Use against the installed helper after each ChatGPT update, then add the remaining four actions only after tests pass.
 2. Add `sandbox_run` before expanding unrestricted execution capabilities.
 3. Add a narrow Codex app-server client for persistent threads, turns, reviews, streaming, and model inspection.
 4. Add Messages read tools separately from `send_message`; sending must require explicit user intent.

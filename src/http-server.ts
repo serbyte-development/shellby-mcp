@@ -4,6 +4,10 @@ import { localhostHostValidation } from "@modelcontextprotocol/sdk/server/middle
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import express, { type Request, type Response } from "express";
 
+import {
+  ComputerUseManager,
+  createComputerUseManager,
+} from "./computer-use-manager.js";
 import { createMcpServer } from "./mcp-server.js";
 import { PersistentShellSession } from "./shell-session.js";
 import { ShellSessionManager } from "./shell-session-manager.js";
@@ -21,6 +25,7 @@ export interface RunningMcpServer {
   url: string;
   shells: ShellSessionManager;
   shell: PersistentShellSession;
+  computerUse: ComputerUseManager | null;
   close: () => Promise<void>;
 }
 
@@ -29,6 +34,7 @@ export interface StartMcpServerOptions {
   port?: number;
   shell?: PersistentShellSession;
   shellManager?: ShellSessionManager;
+  computerUseManager?: ComputerUseManager | null;
   applyPatchExecutable?: string;
   webPageOpener?: WebPageOpener;
 }
@@ -42,6 +48,10 @@ export async function startMcpHttpServer(
     options.shellManager ??
     new ShellSessionManager({ defaultShell: options.shell });
   const shell = shells.defaultShell;
+  const computerUse =
+    options.computerUseManager === undefined
+      ? await createComputerUseManager()
+      : options.computerUseManager;
   const applyPatchExecutable = options.applyPatchExecutable ?? "apply_patch";
   const webPageOpener = options.webPageOpener ?? new WebPageOpener();
   const inFlightRequests = new Set<InFlightMcpRequest>();
@@ -57,6 +67,7 @@ export async function startMcpHttpServer(
   app.post("/mcp", async (req: Request, res: Response) => {
     const mcpServer = createMcpServer(shells, {
       applyPatchExecutable,
+      computerUseManager: computerUse,
       webPageOpener,
     });
     const transport = new StreamableHTTPServerTransport({
@@ -133,7 +144,11 @@ export async function startMcpHttpServer(
     await Promise.allSettled(
       [...inFlightRequests].map((request) => request.close()),
     );
-    await Promise.allSettled([httpClose, shells.close()]);
+    await Promise.allSettled([
+      httpClose,
+      shells.close(),
+      computerUse?.close(),
+    ]);
     throw error;
   }
 
@@ -144,6 +159,7 @@ export async function startMcpHttpServer(
     url: `http://${host}:${boundPort}/mcp`,
     shells,
     shell,
+    computerUse,
     close: async () => {
       if (closed) return;
       closed = true;
@@ -155,7 +171,7 @@ export async function startMcpHttpServer(
         );
         await httpClose;
       } finally {
-        await shells.close();
+        await Promise.allSettled([shells.close(), computerUse?.close()]);
       }
     },
   };

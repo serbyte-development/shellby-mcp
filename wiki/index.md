@@ -6,7 +6,7 @@ Maintainer-oriented architecture documentation. Start with [[pages/Architecture 
 
 - [[pages/Architecture Map]] — system layers, dependency direction, and the request lifecycle.
 - [[pages/HTTP Transport]] — Express, Streamable HTTP, host validation, and connection lifecycle.
-- [[pages/MCP Tool Surface]] — schemas, annotations, instructions, and error behavior for the seven tools.
+- [[pages/MCP Tool Surface]] — schemas, annotations, instructions, and error behavior for seven core tools and six optional Computer Use wrappers.
 - [[pages/Persistent Shell Runtime]] — process lifecycle, marker protocol, retained state, reset, and recovery.
 - [[pages/Transcript Polling and Idempotency]] — output buffering, UTF-8 caps, cursors, retries, and concurrency.
 - [[pages/Workspace Tooling]] — default workspace and the optional `apply_patch` integration.

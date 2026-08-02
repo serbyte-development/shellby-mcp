@@ -4,7 +4,7 @@ Verified 2026-08-01.
 
 ## What This Is
 
-`src/mcp-server.ts` exposes seven tools over a shared `ShellSessionManager` and publishes model instructions that define expected client behavior.
+`src/mcp-server.ts` always exposes seven core tools over a shared `ShellSessionManager`. When the installed ChatGPT Computer Use launcher is available and compatible, it also exposes six fixed wrappers over a shared `ComputerUseManager`.
 
 ## Tools
 
@@ -50,11 +50,41 @@ Returns currently open shells with activity state, idle duration, close eligibil
 
 Terminates a selected non-default shell, discards its state and retained records, and releases its slot immediately. The `default` shell cannot be closed; use `shell_reset` to recover it.
 
+## Computer Use Tools
+
+### `computer_list_apps`
+
+Forwards the child MCP's read-only `list_apps` tool. It lists running and recently used applications.
+
+### `computer_get_app_state`
+
+Forwards `get_app_state` and preserves its screenshot, accessibility tree, structured content, metadata, and error state. Clients are instructed to call it once per assistant turn before interacting with an app and to refresh state after UI changes.
+
+### `computer_click`
+
+Accepts either one accessibility `element_index` or an `x` and `y` screenshot coordinate pair. The parent schema rejects missing targets, partial coordinate pairs, and mixed element plus coordinate targeting before forwarding the call.
+
+### `computer_type_text`
+
+Types nonempty literal text in the selected app. It is non-idempotent and is never automatically retried after a child transport failure.
+
+### `computer_scroll`
+
+Scrolls a selected accessibility element up, down, left, or right by an optional positive number of pages.
+
+### `computer_press_key`
+
+Presses one key or key combination using the child helper's supported key syntax.
+
+The parent intentionally does not expose a generic child-tool proxy. `perform_secondary_action`, `set_value`, `select_text`, and `drag` remain unavailable until separately reviewed and tested. All Computer Use calls share one persistent child process and one serial call queue because app state and UI actions are sequential. The bridge does not implement screenshots or macOS Accessibility itself (`src/computer-use-manager.ts`, `src/computer-use-tools.ts`).
+
 ## Result and Error Shape
 
 Run and poll always return status, nullable exit code, and output. They echo `shell_id` only for non-default shells, add request ID and next cursor only when polling may be needed, `has_more` only when unread retained output exists, and cursor/truncation diagnostics only when exceptional. This server targets ChatGPT web only, so the human-readable content block deliberately remains a compact status summary while command output lives only in `structuredContent`, avoiding duplicated model context (`src/mcp-server.ts`, `README.md`).
 
 Known `ShellSessionError` codes are converted into MCP tool errors. Unexpected errors become `internal_error`; tool handlers do not throw them through the transport (`src/mcp-server.ts`, `src/shell-session.ts`).
+
+Computer Use results are forwarded as complete MCP results rather than flattened into text. A thrown child transport or startup failure becomes an MCP tool error. A child result with `isError: true` remains a child tool error. Errors `-1743` and `-10000: Sender process is not authenticated` receive an additional explanation that macOS denied or could not authenticate the host process. Mutating calls are not replayed after timeouts, cancellation, or child exit because the action may already have occurred (`src/computer-use-manager.ts`, `src/computer-use-tools.ts`).
 
 ## Published Instructions
 
