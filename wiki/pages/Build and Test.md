@@ -20,6 +20,7 @@ The project uses TypeScript's NodeNext ESM model, Node's built-in test runner th
 
 ## Test Architecture
 
+- `test/command-history.test.ts` covers compact local timestamps and one-line escaping for multiline command history entries.
 - `test/shell-session.test.ts` covers state retention, explicit working-directory validation and persistence, descriptor isolation, idempotency, full and summary logging, control-character escaping, response and per-command output caps, polling, concurrency, marker-safe multiline commands, shell recovery, process-group failure, and reset.
 - `test/shell-session-manager.test.ts` covers named-shell creation, limits, listing, closure, idle eviction, default-shell protection, and manager shutdown.
 - `test/peekaboo.test.ts` drives a fake Peekaboo CLI and covers PATH/explicit executable selection, literal argv, JSON-envelope failures, malformed and oversized output, serialization, queued cancellation, timeouts without retry, screenshot return/cleanup, and retained snapshot targets.

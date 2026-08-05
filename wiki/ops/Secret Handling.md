@@ -15,7 +15,7 @@ The ngrok CLI may use credentials stored outside this repository. npm registry c
 - Public wiki pages may list environment variable names, service names, and code paths.
 - Local-only ownership or rotation pointers may go in `_private/secrets-map.local.md`.
 - Never place actual values in logs, shell examples, tests, or uploaded context.
-- Remember that raw command logging can print secrets embedded in command text when `MCP_LOG_COMMANDS=true` (`src/shell-session.ts`).
+- Remember that command text is appended without redaction to the gitignored repository-local `agent-commands.log`, while `MCP_LOG_COMMANDS` separately controls terminal logging (`src/index.ts`, `src/command-history.ts`, `src/shell-session.ts`).
 
 ## Related
 

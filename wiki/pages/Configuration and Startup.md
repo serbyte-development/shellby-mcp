@@ -27,6 +27,8 @@ Verified 2026-08-02.
 
 `MCP_CWD` expands `~` and `~/...`, resolves relative values from the server startup directory, and then uses that absolute path for shell startup, workspace tooling, and MCP instructions. Numeric limits are parsed and range-checked by startup helpers. Logging accepts `off`, `summary`, and `full`; true-like legacy values select `summary`, false-like values select `off`, and other values fail fast (`src/index.ts`, `src/workspace-tools.ts`). Accepted commands are prefixed with the server's local time in 24-hour `HH:MM` format so terminal observers can follow when agent activity occurred (`src/shell-session.ts`).
 
+Independently of terminal logging, every newly accepted model-supplied `shell_run` command is appended to the fixed repository-local `agent-commands.log`. The gitignored file uses one physical line per command: compact local timestamp, tab, then JSON-escaped command text. Exact retries do not duplicate entries, and internal native `apply_patch` commands opt out (`src/index.ts`, `src/command-history.ts`, `src/shell-session.ts`, `src/mcp-server.ts`, `.gitignore`).
+
 ## Startup and Shutdown
 
 Startup creates the workspace, prepares `apply_patch`, constructs the named-shell manager and one shared `PeekabooClient`, starts the default shell, and then listens. The client uses `MCP_PEEKABOO_BIN` or resolves `peekaboo` through `PATH`; startup does not probe the binary or permissions, so all eleven Computer Use schemas remain stable. A missing executable fails only the attempted Computer Use call with `PEEKABOO_NOT_FOUND` (`src/index.ts`, `src/http-server.ts`, `src/peekaboo.ts`, `src/computer-use-tools.ts`).

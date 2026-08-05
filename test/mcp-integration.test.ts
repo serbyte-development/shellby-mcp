@@ -29,7 +29,8 @@ test(
       /Tool descriptions and schemas are authoritative/,
     );
     assert.match(instructions, /cross-tool policy and local conventions/);
-    assert.match(instructions, /Reach first for `rg` or `rg --files`/);
+    assert.match(instructions, /Reach first for `rtk rg` or `rtk rg --files`/);
+    assert.match(instructions, /raw `rg` only when exact unfiltered output/);
     assert.match(instructions, /Parallelize independent work/);
     assert.match(instructions, /Do not add decorative `echo` or `printf`/);
     assert.match(instructions, /`shell_run\.command` is exact zsh input/);
@@ -97,6 +98,8 @@ test(
     assert.equal(runTool?.annotations?.destructiveHint, true);
     assert.equal(runTool?.annotations?.openWorldHint, true);
     assert.match(runTool?.description ?? "", /Prefer RTK/);
+    assert.match(runTool?.description ?? "", /rtk rg/);
+    assert.match(runTool?.description ?? "", /rtk rg --files/);
     assert.match(runTool?.description ?? "", /rtk test npm test/);
     assert.match(runTool?.description ?? "", /rtk git diff/);
     assert.match(runTool?.description ?? "", /wait_ms: 0/);
@@ -105,6 +108,7 @@ test(
       runTool?.inputSchema.properties as Record<string, Record<string, unknown>>
     ).command;
     assert.match(String(commandSchema.description), /Prefer RTK/);
+    assert.match(String(commandSchema.description), /rtk rg and rtk rg --files/);
     const shellIdSchema = (
       runTool?.inputSchema.properties as Record<string, Record<string, unknown>>
     ).shell_id;

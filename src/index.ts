@@ -1,5 +1,8 @@
 import { mkdir } from "node:fs/promises";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
+import { createCommandHistoryRecorder } from "./command-history.js";
 import {
   PersistentShellSession,
   type ShellSessionOptions,
@@ -23,6 +26,9 @@ const maxOutputBytes = parsePositiveInteger(
   process.env.MCP_MAX_OUTPUT_BYTES,
   32 * 1024,
 );
+const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+const commandHistoryPath = resolve(repositoryRoot, "agent-commands.log");
+const recordAgentCommand = createCommandHistoryRecorder(commandHistoryPath);
 const cwd = resolveWorkspacePath(process.env.MCP_CWD);
 await mkdir(cwd, { recursive: true });
 const applyPatch = await prepareApplyPatch(cwd, process.env.MCP_CODEX_BIN);
@@ -46,6 +52,7 @@ const shellOptions: ShellSessionOptions = {
   maxOutputBytes,
   recordLimit: parsePositiveInteger(process.env.MCP_RECORD_LIMIT, 1024),
   commandLogMode,
+  commandRecorder: recordAgentCommand,
 };
 const shells = new ShellSessionManager({
   createShell: () => new PersistentShellSession(shellOptions),
@@ -67,6 +74,7 @@ console.log(`Local shell MCP server: ${running.url}`);
 console.log(`Shell: ${process.env.MCP_SHELL ?? "/bin/zsh"}`);
 console.log(`Default workspace: ${cwd}`);
 console.log(`Maximum named shells: ${shells.maximumShells}`);
+console.log(`Agent command history: ${commandHistoryPath}`);
 if (applyPatch.available) {
   console.log(`apply_patch: ${applyPatch.executable}`);
 } else {

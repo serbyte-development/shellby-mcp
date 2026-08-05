@@ -1,5 +1,18 @@
 # Wiki Maintenance Log
 
+## [2026-08-05] update | collect agent shell command history
+
+- Added the fixed, repository-local `agent-commands.log` for every newly accepted model-supplied `shell_run` command.
+- Used compact local timestamps and JSON-escaped command text so multiline commands remain one physical line.
+- Kept exact retries and internal native `apply_patch` commands out of the history.
+- Gitignored the file and documented the behavior separately from configurable terminal logging.
+
+## [2026-08-05] update | prefer RTK-backed ripgrep searches
+
+- Updated shared and tool-specific MCP instructions to prefer `rtk rg` and `rtk rg --files` for text and file searches.
+- Preserved raw `rg` as an explicit exception when exact unfiltered output is necessary.
+- Updated integration assertions, README guidance, and the MCP tool-surface wiki page.
+
 ## [2026-08-05] update | add explicit persistent shell cwd
 
 - Added optional `shell_run.cwd` for starting a command in a validated absolute directory.

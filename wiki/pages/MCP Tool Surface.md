@@ -104,7 +104,7 @@ Every CLI call uses `execFile` with exact argv and an added `--json`; model inpu
 
 ## Published Instructions
 
-The server tells clients to conserve output, prefer RTK when appropriate, use native `apply_patch`, keep new work under the configured workspace, reuse stable shell IDs, poll with the original shell ID, and serialize foreground commands within each shell. It also documents the supported noninteractive Codex sub-agent workflow and tells clients to use visual-first observation, call bounded `computer_inspect` only when needed, refresh after UI changes, and use raw Peekaboo through `shell_run` only for advanced operations outside the focused schemas. These instructions remain advisory except where schemas or the runtime impose limits (`src/mcp-server.ts`).
+The server tells clients to conserve output, start text and file searches with `rtk rg` or `rtk rg --files`, prefer other RTK wrappers when supported, use native `apply_patch`, keep new work under the configured workspace, reuse stable shell IDs, poll with the original shell ID, and serialize foreground commands within each shell. Raw `rg` remains appropriate when exact unfiltered output is necessary. These instructions remain advisory except where schemas or the runtime impose limits (`src/mcp-server.ts`).
 
 ## Related
 
