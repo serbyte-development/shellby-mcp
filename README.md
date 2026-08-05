@@ -1,8 +1,8 @@
 # ChatGPT Local Shell MCP
 
-An intentionally unauthenticated MCP server that lets ChatGPT Developer mode run commands in named persistent shells on this computer.
+An MCP server protected by one shared bearer token that lets ChatGPT Developer mode run commands in named persistent shells on this computer.
 
-> **Danger:** anyone who can reach the public MCP URL can execute arbitrary commands with your user account's permissions. Run this only for temporary testing, stop it when finished, and never expose it on a trusted production machine.
+> **Danger:** anyone with the public MCP URL and shared token can execute arbitrary commands with your user account's permissions. Run this only for temporary testing, stop it when finished, and never expose it on a trusted production machine.
 
 Maintainers: start with the [architecture wiki](wiki/index.md) before changing the server.
 
@@ -36,6 +36,14 @@ npm install
 npm run dev
 ```
 
+The server loads the gitignored `.env` file from the repository root when present. Generate a token once with `openssl rand -hex 16`, then store it there:
+
+```dotenv
+MCP_AUTH_TOKEN=<paste the 32-character output here>
+```
+
+Reuse that same value in the client header. Existing process environment variables also remain supported.
+
 To keep the public tunnel alive without an open terminal, start its PM2 app:
 
 ```bash
@@ -44,7 +52,7 @@ npm run tunnel:start
 
 Use `npm run tunnel:status`, `npm run tunnel:logs`, and `npm run tunnel:stop` to manage it. `npm run tunnel` remains available when a foreground tunnel is useful for debugging.
 
-The included ngrok traffic policy rewrites the origin Host header so ngrok can reach the server while its local Host validation protects against DNS-rebinding attacks. It is not authentication, a CORS policy, or a caller restriction: anyone who can reach the public tunnel URL can still invoke the shell tools.
+The included ngrok traffic policy rewrites the origin Host header so ngrok can reach the server while its local Host validation protects against DNS-rebinding attacks. It is separate from the bearer-token check enforced by the MCP server.
 
 This project is configured to use the account's fixed ngrok development domain. The ChatGPT MCP URL is:
 
@@ -58,11 +66,11 @@ In ChatGPT:
 
 1. Enable **Settings -> Security and login -> Developer mode**.
 2. Open **Settings -> Plugins** and create a developer-mode app.
-3. Enter the HTTPS `/mcp` URL and choose **No Authentication**.
+3. Enter the HTTPS `/mcp` URL and configure the static header `Authorization: Bearer <your MCP_AUTH_TOKEN>`.
 4. Add the app to a conversation from the composer.
 5. If ChatGPT offers it and you accept the risk, choose **Always allow** for the app's tool calls.
 
-There is no CORS allowlist, authentication middleware, command approval layer, hosted relay, UI, or database.
+There is no CORS allowlist, per-user authorization, command approval layer, hosted relay, UI, or database.
 
 ## Tools
 
@@ -187,6 +195,7 @@ Then inspect it with later commands such as `tail -n 100 /tmp/my-app.log` or `ps
 | ------------------------------ | ---------------------------------------------------- | -------------------------------------------------------------------------------------------- |
 | `HOST`                         | `127.0.0.1`                                          | Local HTTP bind address                                                                      |
 | `PORT`                         | `3333`                                               | Local HTTP port                                                                              |
+| `MCP_AUTH_TOKEN`               | required                                             | Exactly 32 base64url characters sent as `Authorization: Bearer <token>`                      |
 | `MCP_SHELL`                    | `/bin/zsh`                                           | Persistent shell executable                                                                  |
 | `MCP_CWD`                      | `~/Desktop/chatgpt-workspace`                        | Absolute-resolved default workspace and initial shell working directory                      |
 | `MCP_CODEX_BIN`                | `/Applications/ChatGPT.app/Contents/Resources/codex` | Codex binary targeted by the workspace `apply_patch` symlink                                 |
@@ -203,6 +212,8 @@ Then inspect it with later commands such as `tail -n 100 /tmp/my-app.log` or `ps
 `PORT` changes only the HTTP listener. The included `npm run tunnel` command and ngrok Host rewrite are fixed to port 3333, so update `package.json` and `ngrok-traffic-policy.yml` together when using another port.
 
 `MCP_CWD` expands `~` and `~/...`; relative values are resolved from the server's startup directory. Startup uses the resulting absolute path consistently for shell cwd, workspace tooling, model instructions, and the native `apply_patch` default.
+
+At startup, the server loads `.env` from its working directory when the file exists. The file is gitignored; keep its values out of source, docs, and logs.
 
 The shell is non-interactive and has no PTY. Commands that require terminal input are unsupported; stdin is `/dev/null` so a command cannot consume the MCP control stream. A login shell does not necessarily load interactive `.zshrc` aliases.
 

@@ -12,6 +12,7 @@ Verified 2026-08-02.
 | ------------------------------ | ---------------------------------- | ------------------------------------------------------- |
 | `HOST`                         | `127.0.0.1`                        | HTTP bind address                                       |
 | `PORT`                         | `3333`                             | HTTP port                                               |
+| `MCP_AUTH_TOKEN`               | required                           | 32-character base64url bearer token                     |
 | `MCP_SHELL`                    | `/bin/zsh`                         | Login shell executable                                  |
 | `MCP_CWD`                      | `~/Desktop/chatgpt-workspace`      | Absolute-resolved workspace and initial cwd             |
 | `MCP_CODEX_BIN`                | ChatGPT app's bundled `codex` path | `apply_patch` symlink target                            |
@@ -25,7 +26,7 @@ Verified 2026-08-02.
 | `MCP_SHELL_IDLE_TTL_MS`        | `1800000`                          | Idle lifetime for named shells; `0` disables cleanup    |
 | `MCP_LOG_COMMANDS`             | `summary`                          | `off`, compact `summary`, or raw `full` command logging |
 
-`MCP_CWD` expands `~` and `~/...`, resolves relative values from the server startup directory, and then uses that absolute path for shell startup, workspace tooling, and MCP instructions. Numeric limits are parsed and range-checked by startup helpers. Logging accepts `off`, `summary`, and `full`; true-like legacy values select `summary`, false-like values select `off`, and other values fail fast (`src/index.ts`, `src/workspace-tools.ts`). Accepted commands are prefixed with the server's local time in 24-hour `HH:MM` format so terminal observers can follow when agent activity occurred (`src/shell-session.ts`).
+Startup loads `.env` from the process working directory when the file exists; PM2 and npm scripts use the repository root. Node preserves environment variables that were already set, so the launch environment can override file values (`src/index.ts`, `ecosystem.config.cjs`, `package.json`). `MCP_AUTH_TOKEN` has no default. Startup fails unless it is exactly 32 ASCII base64url characters (`A-Z`, `a-z`, `0-9`, `_`, or `-`); clients send it as `Authorization: Bearer <token>` (`src/index.ts`, `src/http-server.ts`). `MCP_CWD` expands `~` and `~/...`, resolves relative values from the server startup directory, and then uses that absolute path for shell startup, workspace tooling, and MCP instructions. Numeric limits are parsed and range-checked by startup helpers. Logging accepts `off`, `summary`, and `full`; true-like legacy values select `summary`, false-like values select `off`, and other values fail fast (`src/index.ts`, `src/workspace-tools.ts`). Accepted commands are prefixed with the server's local time in 24-hour `HH:MM` format so terminal observers can follow when agent activity occurred (`src/shell-session.ts`).
 
 ## Startup and Shutdown
 
@@ -62,7 +63,7 @@ Follow the macOS prompts, enable Accessibility when `permissions grant` directs 
 - `inspect`: launch the MCP Inspector package; it does not itself pass a server command.
 - `tunnel`: expose port 3333 in the foreground through the same fixed ngrok development domain and traffic policy (`package.json`, `ecosystem.config.cjs`).
 
-The tunnel policy only rewrites Host for localhost validation. It is not part of MCP authentication or authorization (`ngrok-traffic-policy.yml`, `src/http-server.ts`).
+The tunnel policy only rewrites Host for localhost validation. Bearer authentication is enforced by the local HTTP server, not ngrok (`ngrok-traffic-policy.yml`, `src/http-server.ts`).
 
 `PORT` configures the HTTP listener, but the foreground tunnel script, PM2 ngrok app, and Host rewrite are hard-coded to 3333. A port change therefore requires coordinated edits to `package.json`, `ecosystem.config.cjs`, and `ngrok-traffic-policy.yml` (`src/index.ts`, `package.json`, `ecosystem.config.cjs`, `ngrok-traffic-policy.yml`).
 

@@ -60,9 +60,8 @@ See [[pages/Bundled MCP and Agent Surfaces]] and [[pages/Host Application Binary
 
 ## Security Options
 
-Unrestricted access is intentional, but optional deployment controls could make accidental exposure less likely without changing the default identity of the project.
+The required shared bearer token limits accidental exposure, but optional deployment controls could further reduce risk without changing the default identity of the project.
 
-- Bearer-token authentication for remote tunnels.
 - Clear startup warnings when binding beyond localhost.
 - Optional IP or Host allowlists.
 - Disposable-user and isolated-machine setup guidance.

@@ -118,3 +118,10 @@
 - Changed `computer_observe` to omit accessibility elements by default while preserving the screenshot, snapshot ID, and targeting metadata.
 - Added `computer_inspect`, which exposes Peekaboo's separately bounded `inspect-ui` text view for an existing snapshot without duplicating its structured response envelope.
 - Updated model instructions, README, architecture, tool-contract, and integration-test documentation.
+
+## [2026-08-04] secure | require a shared MCP bearer token
+
+- Added a required 32-character `MCP_AUTH_TOKEN` and constant-time bearer-token validation for every `/mcp` method while keeping `/healthz` public.
+- Loaded the gitignored repository-root `.env` at startup when present while retaining launch-environment overrides.
+- Added integration coverage for authenticated clients plus missing and invalid credentials.
+- Documented launch configuration, client header format, secret handling, and the remaining shared-secret trust boundary.

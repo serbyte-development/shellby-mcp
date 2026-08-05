@@ -15,11 +15,16 @@ import { PeekabooClient } from "../src/peekaboo.js";
 import { PersistentShellSession } from "../src/shell-session.js";
 import { WebPageOpener } from "../src/web-open.js";
 
+const TEST_AUTH_TOKEN = "0123456789abcdef0123456789abcdef";
+
 test(
   "serves shell tools through Streamable HTTP and retains state across MCP sessions",
   { timeout: 20_000 },
   async (t) => {
-    const running = await startMcpHttpServer({ port: 0 });
+    const running = await startMcpHttpServer({
+      authToken: TEST_AUTH_TOKEN,
+      port: 0,
+    });
     t.after(() => running.close());
 
     const first = await connectClient(running.url, "integration-client-1");
@@ -238,6 +243,7 @@ test(
       timeoutMs: 2_000,
     });
     const running = await startMcpHttpServer({
+      authToken: TEST_AUTH_TOKEN,
       port: 0,
       peekaboo,
     });
@@ -553,7 +559,10 @@ test(
   "continues serving an existing client after a stateless HTTP server restart",
   { timeout: 20_000 },
   async (t) => {
-    const firstServer = await startMcpHttpServer({ port: 0 });
+    const firstServer = await startMcpHttpServer({
+      authToken: TEST_AUTH_TOKEN,
+      port: 0,
+    });
     const { port, url } = firstServer;
     const connection = await connectClient(url, "restart-client");
 
@@ -571,7 +580,10 @@ test(
     assert.equal(beforeRestart.output, "before");
 
     await firstServer.close();
-    activeServer = await startMcpHttpServer({ port });
+    activeServer = await startMcpHttpServer({
+      authToken: TEST_AUTH_TOKEN,
+      port,
+    });
 
     const afterRestart = await callUntilComplete(
       connection.client,
@@ -599,7 +611,11 @@ test(
         };
       },
     });
-    const running = await startMcpHttpServer({ port: 0, webPageOpener });
+    const running = await startMcpHttpServer({
+      authToken: TEST_AUTH_TOKEN,
+      port: 0,
+      webPageOpener,
+    });
     t.after(() => running.close());
 
     const first = await connectClient(running.url, "fetch-website-client-1");
@@ -652,7 +668,10 @@ test(
   "isolates named shell state and allows foreground commands in parallel",
   { timeout: 20_000 },
   async (t) => {
-    const running = await startMcpHttpServer({ port: 0 });
+    const running = await startMcpHttpServer({
+      authToken: TEST_AUTH_TOKEN,
+      port: 0,
+    });
     t.after(() => running.close());
     const connected = await connectClient(running.url, "named-shell-client");
     t.after(() => connected.client.close());
@@ -838,6 +857,7 @@ test(
 
     const shell = new PersistentShellSession({ cwd: directory });
     const running = await startMcpHttpServer({
+      authToken: TEST_AUTH_TOKEN,
       port: 0,
       shell,
       applyPatchExecutable: executable,
@@ -956,7 +976,10 @@ test(
 );
 
 test("rejects a mismatched HTTP Host", { timeout: 10_000 }, async (t) => {
-  const running = await startMcpHttpServer({ port: 0 });
+  const running = await startMcpHttpServer({
+    authToken: TEST_AUTH_TOKEN,
+    port: 0,
+  });
   t.after(() => running.close());
 
   const status = await postWithHost(running.url, "attacker.example", {
@@ -972,6 +995,63 @@ test("rejects a mismatched HTTP Host", { timeout: 10_000 }, async (t) => {
 
   assert.equal(status, 403);
 });
+
+test("requires the configured bearer token for MCP requests", async (t) => {
+  await assert.rejects(
+    startMcpHttpServer({ authToken: "too-short", port: 0 }),
+    /exactly 32 base64url characters/,
+  );
+
+  const running = await startMcpHttpServer({
+    authToken: TEST_AUTH_TOKEN,
+    port: 0,
+  });
+  t.after(() => running.close());
+
+  const health = await fetch(new URL("/healthz", running.url));
+  assert.equal(health.status, 200);
+  await health.body?.cancel();
+
+  const body = {
+    jsonrpc: "2.0",
+    id: 1,
+    method: "initialize",
+    params: {
+      protocolVersion: LATEST_PROTOCOL_VERSION,
+      capabilities: {},
+      clientInfo: { name: "auth-test", version: "1.0.0" },
+    },
+  };
+  const missing = await postMcp(running.url, body);
+  assert.equal(missing.status, 401);
+  assert.equal(missing.wwwAuthenticate, "Bearer");
+
+  const invalid = await postMcp(running.url, body, `Bearer ${"x".repeat(32)}`);
+  assert.equal(invalid.status, 401);
+});
+
+async function postMcp(
+  url: string,
+  value: unknown,
+  authorization?: string,
+): Promise<{ status: number; wwwAuthenticate: string | null }> {
+  const headers: Record<string, string> = {
+    accept: "application/json, text/event-stream",
+    "content-type": "application/json",
+  };
+  if (authorization !== undefined) headers.authorization = authorization;
+
+  const response = await fetch(url, {
+    method: "POST",
+    headers,
+    body: JSON.stringify(value),
+  });
+  await response.body?.cancel();
+  return {
+    status: response.status,
+    wwwAuthenticate: response.headers.get("www-authenticate"),
+  };
+}
 
 function postWithHost(
   url: string,
@@ -990,6 +1070,7 @@ function postWithHost(
         method: "POST",
         headers: {
           accept: "application/json, text/event-stream",
+          authorization: `Bearer ${TEST_AUTH_TOKEN}`,
           "content-length": Buffer.byteLength(body),
           "content-type": "application/json",
           host,
@@ -1007,7 +1088,11 @@ function postWithHost(
 
 async function connectClient(url: string, name: string) {
   const client = new Client({ name, version: "1.0.0" });
-  const transport = new StreamableHTTPClientTransport(new URL(url));
+  const transport = new StreamableHTTPClientTransport(new URL(url), {
+    requestInit: {
+      headers: { authorization: `Bearer ${TEST_AUTH_TOKEN}` },
+    },
+  });
   await client.connect(transport);
   return { client, transport };
 }

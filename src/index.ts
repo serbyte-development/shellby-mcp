@@ -1,4 +1,6 @@
+import { existsSync } from "node:fs";
 import { mkdir } from "node:fs/promises";
+import { loadEnvFile } from "node:process";
 
 import {
   PersistentShellSession,
@@ -12,8 +14,14 @@ import {
   resolveWorkspacePath,
 } from "./workspace-tools.js";
 
+if (existsSync(".env")) loadEnvFile();
+
 const host = process.env.HOST ?? "127.0.0.1";
 const port = parsePositiveInteger(process.env.PORT, 3333);
+const authToken = process.env.MCP_AUTH_TOKEN;
+if (authToken === undefined) {
+  throw new Error("MCP_AUTH_TOKEN is required.");
+}
 const commandLogMode = parseCommandLogMode(process.env.MCP_LOG_COMMANDS);
 const defaultOutputBytes = parsePositiveInteger(
   process.env.MCP_OUTPUT_BYTES,
@@ -57,6 +65,7 @@ const shells = new ShellSessionManager({
 });
 
 const running = await startMcpHttpServer({
+  authToken,
   host,
   port,
   shellManager: shells,

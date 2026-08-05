@@ -1,6 +1,6 @@
 # HTTP Transport
 
-Verified 2026-08-01.
+Verified 2026-08-04.
 
 ## What This Is
 
@@ -10,10 +10,11 @@ The HTTP layer adapts stateless MCP Streamable HTTP requests to one process-wide
 
 - Express parses JSON with a 1 MiB limit and applies the MCP SDK's localhost Host-header validator before routes (`src/http-server.ts`).
 - `GET /healthz` returns `{ "ok": true }` (`src/http-server.ts`).
+- Every `/mcp` method requires `Authorization: Bearer <token>`. The configured token is exactly 32 base64url characters, and comparison is constant-time (`src/http-server.ts`, `src/index.ts`).
 - `POST /mcp` is the only MCP method. `GET /mcp` and `DELETE /mcp` return a JSON-RPC-shaped 405 response with `Allow: POST` (`src/http-server.ts`).
-- There is no CORS or authentication middleware. Tool metadata declares `noauth` (`src/mcp-server.ts`).
+- Missing or invalid credentials return HTTP 401 and `WWW-Authenticate: Bearer`; `/healthz` remains public (`src/http-server.ts`).
 
-Host validation protects a localhost listener from mismatched Host headers; it is not caller authentication. The ngrok helper rewrites Host to `localhost:3333` so requests pass this validation (`ngrok-traffic-policy.yml`, `package.json`).
+Host validation protects a localhost listener from mismatched Host headers; it is separate from caller authentication. The ngrok helper rewrites Host to `localhost:3333` so requests pass this validation (`ngrok-traffic-policy.yml`, `package.json`). Tool metadata still declares `noauth` because the server implements no MCP OAuth flow; the client supplies the static transport header (`src/mcp-server.ts`, `src/computer-use-tools.ts`).
 
 ## Connection Model
 
@@ -25,7 +26,7 @@ In-flight request closers are tracked so startup failure and server shutdown can
 
 ## Contract Tests
 
-The integration tests connect two separate SDK clients and prove shell state survives between them. They also keep one client alive across a full HTTP server stop/start cycle on the same port and prove its next tool call succeeds without reconnecting. A separate test posts with an attacker-controlled Host value and expects HTTP 403 (`test/mcp-integration.test.ts`).
+The integration tests connect authenticated SDK clients and prove shell state survives between them. They also keep one client alive across a full HTTP server stop/start cycle on the same port and prove its next tool call succeeds without reconnecting. Separate tests cover missing and invalid bearer tokens plus an attacker-controlled Host value (`test/mcp-integration.test.ts`).
 
 ## Related
 
