@@ -28,6 +28,7 @@ Verified 2026-08-05.
 ### `shell_run`
 
 - Required inputs: `request_id` and `command`; `shell_id` is optional and defaults to `default`.
+- `cwd` is optional. It must be an existing absolute directory, is applied before command evaluation, and becomes the persistent working directory for later calls in that shell.
 - `shell_id` accepts 1–64 characters. Stable IDs retain shell state, and different IDs can execute concurrently.
 - `request_id` accepts any nonempty string up to 128 characters; six lowercase alphanumeric characters are recommended, not enforced.
 - `command` accepts up to 262,144 characters.
@@ -95,7 +96,7 @@ The server intentionally exposes these eleven operations instead of a raw Peekab
 
 ## Result and Error Shape
 
-Run and poll always return status, nullable exit code, and output. They echo `shell_id` only for non-default shells, add request ID and next cursor only when polling may be needed, `has_more` only when unread retained output exists, and cursor/truncation diagnostics only when exceptional. This server targets ChatGPT web only, so the human-readable content block deliberately remains a compact status summary while command output lives only in `structuredContent`, avoiding duplicated model context (`src/mcp-server.ts`, `README.md`).
+Run and poll always return status, nullable exit code, current command `cwd`, and output. Completed results report the resulting persistent working directory, including a directory selected through `shell_run.cwd` or changed by the command itself. They echo `shell_id` only for non-default shells, add request ID and next cursor only when polling may be needed, `has_more` only when unread retained output exists, and cursor/truncation diagnostics only when exceptional. This server targets ChatGPT web only, so the human-readable content block deliberately remains a compact status summary while command output lives only in `structuredContent`, avoiding duplicated model context (`src/mcp-server.ts`, `src/shell-session.ts`, `README.md`).
 
 Known `ShellSessionError` codes are converted into MCP tool errors. Unexpected errors become `internal_error`; tool handlers do not throw them through the transport (`src/mcp-server.ts`, `src/shell-session.ts`).
 

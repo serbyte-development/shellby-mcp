@@ -1,5 +1,21 @@
 # Wiki Maintenance Log
 
+## [2026-08-05] update | add explicit persistent shell cwd
+
+- Added optional `shell_run.cwd` for starting a command in a validated absolute directory.
+- Documented that a successful explicit directory selection persists for later calls using the same `shell_id`.
+- Added `cwd` to run and poll results, with completed commands reporting the resulting persistent directory even when the command changes it internally.
+- Updated the shell protocol, tool-surface, README, and test-coverage documentation.
+
+## [2026-08-05] reconcile | reduce duplicated model instructions
+
+- Replaced copied command-surface wording with MCP-native `shell_run.command` terminology.
+- Made tool descriptions and schemas authoritative for tool-specific mechanics such as polling, request IDs, cursor continuation, RTK preference, URL fetching, and snapshot targeting.
+- Reduced the server-level instruction block to cross-tool efficiency rules, file-editing constraints, workspace conventions, and trust boundaries.
+- Removed the unnecessary blocking-wait rule.
+- Replaced the expanded file-editing policy with the concise `apply_patch` guidance used by GPT-5.6 Sol, including its formatter, bulk-rewrite, simple-shell, and Python exceptions.
+- Added integration assertions that tool-specific guidance is not duplicated in the global instructions.
+
 ## [2026-08-04] update | make website fetching explicit and format-aware
 
 - Renamed the model-facing `web_open` tool to `fetch_website` so its purpose is obvious during tool selection.

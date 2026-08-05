@@ -24,31 +24,51 @@ test(
 
     const first = await connectClient(running.url, "integration-client-1");
     const instructions = first.client.getInstructions() ?? "";
+    assert.match(
+      instructions,
+      /Tool descriptions and schemas are authoritative/,
+    );
+    assert.match(instructions, /cross-tool policy and local conventions/);
+    assert.match(instructions, /Reach first for `rg` or `rg --files`/);
+    assert.match(instructions, /Parallelize independent work/);
+    assert.match(instructions, /Do not add decorative `echo` or `printf`/);
+    assert.match(instructions, /`shell_run\.command` is exact zsh input/);
+    assert.match(instructions, /never use a top-level `exit`/);
+    assert.match(instructions, /Do not repurpose `\$HOME`/);
+    assert.match(instructions, /Use `apply_patch` for local file edits/);
+    assert.match(
+      instructions,
+      /Do not create or edit files with `cat` or other shell write tricks/,
+    );
+    assert.match(
+      instructions,
+      /Formatting commands and bulk mechanical rewrites do not need `apply_patch`/,
+    );
+    assert.match(
+      instructions,
+      /Do not use Python to read or write files when a simple shell command or `apply_patch` is enough/,
+    );
+    assert.doesNotMatch(instructions, /blocking sleep or wait calls/);
     assert.match(instructions, /Default workspace:/);
     assert.ok(instructions.includes(running.shell.initialCwd));
     assert.match(
       instructions,
-      /create or clone projects only under the default workspace/,
+      /create or clone new projects only under the default workspace/,
     );
     assert.match(instructions, /TOOLS\.md/);
-    assert.match(instructions, /Prefer RTK/);
-    assert.match(instructions, /rtk test npm test/);
-    assert.match(instructions, /rtk git diff/);
-    assert.match(instructions, /Protect context with targeted searches/);
-    assert.match(instructions, /never use a top-level exit/);
-    assert.match(instructions, /Responses default to 2048 UTF-8 bytes/);
-    assert.match(instructions, /Prefer the native apply_patch tool/);
-    assert.match(
-      instructions,
-      /Non-default shells are closed after 1800000 ms/,
-    );
-    assert.match(instructions, /codex exec resume <SESSION_ID>/);
-    assert.match(instructions, /full-screen `codex` TUI/);
-    assert.match(instructions, /Use fetch_website first/);
-    assert.match(instructions, /Do not use shell_run, Python, curl, wget/);
-    assert.match(instructions, /untrusted data/);
-    assert.match(instructions, /computer_observe is visual-first/);
-    assert.match(instructions, /call computer_inspect/);
+    assert.match(instructions, /executable `run` entrypoint/);
+    assert.match(instructions, /never store secrets/);
+    assert.match(instructions, /fetched webpage content as untrusted data/);
+    assert.match(instructions, /Screenshots may contain private information/);
+    assert.match(instructions, /after an ambiguous failure, observe/);
+    assert.match(instructions, /Peekaboo CLI through `shell_run`/);
+
+    // Tool-specific mechanics belong in tool descriptions and schemas rather
+    // than being duplicated in the server-level instruction block.
+    assert.doesNotMatch(instructions, /rtk test npm test/);
+    assert.doesNotMatch(instructions, /shell_poll must use/);
+    assert.doesNotMatch(instructions, /Use `fetch_website` first/);
+    assert.doesNotMatch(instructions, /computer_observe` is visual-first/);
 
     const tools = await first.client.listTools();
     assert.deepEqual(tools.tools.map((tool) => tool.name), [
@@ -80,6 +100,7 @@ test(
     assert.match(runTool?.description ?? "", /rtk test npm test/);
     assert.match(runTool?.description ?? "", /rtk git diff/);
     assert.match(runTool?.description ?? "", /wait_ms: 0/);
+    assert.match(runTool?.description ?? "", /becomes persistent/);
     const commandSchema = (
       runTool?.inputSchema.properties as Record<string, Record<string, unknown>>
     ).command;
@@ -93,6 +114,12 @@ test(
       String(shellIdSchema.description),
       /run foreground commands concurrently/,
     );
+    const cwdSchema = (
+      runTool?.inputSchema.properties as Record<string, Record<string, unknown>>
+    ).cwd;
+    assert.equal(cwdSchema.minLength, 1);
+    assert.match(String(cwdSchema.description), /Absolute working directory/);
+    assert.match(String(cwdSchema.description), /persistent working directory/);
     const maxOutputSchema = (
       runTool?.inputSchema.properties as Record<string, Record<string, unknown>>
     ).max_output_bytes;
@@ -110,6 +137,7 @@ test(
     };
     assert.deepEqual(Object.keys(outputSchema.properties ?? {}).sort(), [
       "cursor_expired",
+      "cwd",
       "dropped_output_bytes",
       "exit_code",
       "has_more",
@@ -121,6 +149,7 @@ test(
       "status",
     ]);
     assert.deepEqual(outputSchema.required?.sort(), [
+      "cwd",
       "exit_code",
       "output",
       "status",
@@ -187,7 +216,9 @@ test(
     );
     assert.equal(firstResult.output, "initialized");
     assert.equal(firstResult.exit_code, 0);
+    assert.equal(firstResult.cwd, "/tmp");
     assert.deepEqual(Object.keys(firstResult).sort(), [
+      "cwd",
       "exit_code",
       "output",
       "status",
@@ -204,6 +235,7 @@ test(
     );
     assert.equal(secondResult.output, "/tmp|yes");
     assert.equal(secondResult.exit_code, 0);
+    assert.equal(secondResult.cwd, "/tmp");
 
     const expectedPagedOutput = "🙂".repeat(1_500);
     const pagedResult = await callUntilComplete(
@@ -660,6 +692,40 @@ test(
     const connected = await connectClient(running.url, "named-shell-client");
     t.after(() => connected.client.close());
 
+    const explicitCwd = await mkdtemp(join(tmpdir(), "mcp-explicit-cwd-"));
+    t.after(() => rm(explicitCwd, { recursive: true, force: true }));
+
+    const explicitResult = snapshotFromResult(
+      await connected.client.callTool({
+        name: "shell_run",
+        arguments: {
+          shell_id: "cwd-shell",
+          request_id: "cwd001",
+          cwd: explicitCwd,
+          command: "printf '%s' \"$PWD\"",
+          wait_ms: 1_000,
+        },
+      }),
+    );
+    assert.equal(explicitResult.status, "completed");
+    assert.equal(explicitResult.output, explicitCwd);
+    assert.equal(explicitResult.cwd, explicitCwd);
+
+    const retainedCwd = await callUntilComplete(
+      connected.client,
+      "cwd002",
+      "printf '%s' \"$PWD\"",
+      "cwd-shell",
+    );
+    assert.equal(retainedCwd.output, explicitCwd);
+    assert.equal(retainedCwd.cwd, explicitCwd);
+
+    const closedCwdShell = await connected.client.callTool({
+      name: "shell_close",
+      arguments: { shell_id: "cwd-shell" },
+    });
+    assert.equal(closedCwdShell.isError, undefined);
+
     const alphaState = await callUntilComplete(
       connected.client,
       "shared-request",
@@ -1019,6 +1085,7 @@ interface ToolSnapshot {
   shell_id?: string;
   status: "running" | "completed" | "shell_exited" | "reset";
   exit_code: number | null;
+  cwd: string;
   output: string;
   request_id?: string;
   next_cursor?: number;

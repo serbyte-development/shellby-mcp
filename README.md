@@ -16,6 +16,8 @@ Each named shell lives in the local Node process. Its working directory, exporte
 
 By default, new repositories and generated projects belong in `~/Desktop/chatgpt-workspace`. The server creates that directory automatically, starts every fresh shell there, and tells the model to return there before cloning or creating a project unless you explicitly provide another location.
 
+The server-level model instructions are intentionally narrow. Normal tool selection, arguments, polling, lifecycle, and targeting behavior belong in each tool's description and JSON schema. The shared instruction block contains only cross-tool policy, safety boundaries, and local workspace conventions that cannot be reliably inferred from one tool contract. This keeps the prompt smaller and prevents duplicated instructions from drifting away from the implemented schemas.
+
 ## Requirements
 
 - Node.js 22 or newer
@@ -104,6 +106,8 @@ Follow the macOS prompts and re-run the status command. Screen Recording enables
 
 `shell_id` is optional and defaults to `default`. It accepts 1–64 characters. The server creates shells lazily and permits eight by default. A single agent can use multiple shell IDs for parallel commands, and multiple agents avoid shared cwd, environment, transcript, reset, and foreground-command state by using distinct IDs. `shell_run` and `shell_poll` echo `shell_id` only for non-default shells, keeping normal default-shell responses compact. Named shells are closed after 30 minutes without tool activity by default; `shell_list` exposes their current lifecycle state and `shell_close` releases a named shell immediately. The `default` shell is retained for backward compatibility and cannot be closed, though `shell_reset` remains available to recover it. Idle cleanup never closes a shell while it is running a foreground command or reset.
 
+`shell_run.cwd` optionally starts a command in a specific absolute directory. The MCP validates that the path exists and is a directory before execution. A successful directory change becomes part of the persistent shell state, so later calls using the same `shell_id` may omit `cwd`. Fresh shells still start in `~/Desktop/chatgpt-workspace` unless the server is configured with a different `MCP_CWD`. Run and poll results include `cwd`; completed results report the shell's resulting persistent directory, including directory changes performed by the command itself.
+
 `shell_run` and `shell_poll` return at most 2048 UTF-8 output bytes by default. The model may set `max_output_bytes` for a specific response when more is necessary, up to the hard 32768-byte maximum. Byte limits and rolling transcript eviction never retain only half of a Unicode surrogate pair. When continuation is needed, the response includes `request_id` and `next_cursor`; `has_more` is present only when retained output remains unread. A poll cursor must belong to the requested command, so it cannot read output from an earlier command. Normal completed responses omit pagination and false/zero diagnostic fields.
 
 This MCP targets ChatGPT web only. Tool output intentionally lives in `structuredContent`, while the text content remains a compact status summary to avoid duplicating command output in context.
@@ -112,7 +116,7 @@ Each command also has a retained-output ceiling, controlled by `MCP_COMMAND_TRAN
 
 `shell_run` waits for completion until `wait_ms` expires or the output byte cap is reached. Once a command completes, later polls are bounded to that command and cannot consume output from subsequent commands. Background processes should therefore redirect their output to a file for later inspection.
 
-The server and `shell_run` schema instruct the model to prefer installed RTK equivalents for noisy supported commands, for example `rtk test npm test` instead of `npm test`, or `rtk git diff` instead of `git diff`. RTK is guidance only: the server does not rewrite commands, and raw shell commands remain available for persistent state changes and unsupported operations. Since responses are already byte-capped, the model is told not to add `head`, `tail`, or `sed` solely to limit returned output.
+The `shell_run` tool description and command schema instruct the model to prefer installed RTK equivalents for noisy supported commands, for example `rtk test npm test` instead of `npm test`, or `rtk git diff` instead of `git diff`. RTK is guidance only: the server does not rewrite commands, and raw shell commands remain available for persistent state changes and unsupported operations. Shared model instructions separately encourage targeted reads, focused diffs, capped logs, and file redirection for genuinely large output.
 
 ### Calling Codex sub-agents
 
@@ -149,7 +153,7 @@ Use `shell_run`, scripts, or browser automation for website retrieval only when 
 
 On startup, the server makes `~/Desktop/chatgpt-workspace/bin/apply_patch` available and prepends that directory to the persistent shell's `PATH`. In a fresh workspace it creates a symlink to the Codex binary bundled with ChatGPT; an existing executable at that path is reused.
 
-The MCP exposes this executable as the native `apply_patch` tool and instructs the model to prefer it over Python string replacement, `sed`, or manual editing through `shell_run`. The tool accepts patch text in the normal format:
+The MCP exposes this executable as the native `apply_patch` tool. Its model instruction follows the concise Codex policy: use `apply_patch` for local file edits; do not create or edit files with `cat` or other shell write tricks; formatting commands and bulk mechanical rewrites do not require it; and do not use Python to read or write files when a simple shell command or `apply_patch` is enough. The tool accepts patch text in the normal format:
 
 ```bash
 *** Begin Patch

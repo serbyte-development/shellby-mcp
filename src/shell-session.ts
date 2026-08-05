@@ -1,5 +1,7 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
+import { statSync } from "node:fs";
+import { isAbsolute } from "node:path";
 import { StringDecoder } from "node:string_decoder";
 
 const DEFAULT_TRANSCRIPT_LIMIT = 1024 * 1024;
@@ -18,6 +20,7 @@ export interface ShellSnapshot extends Record<string, unknown> {
   request_id: string;
   status: CommandStatus;
   exit_code: number | null;
+  cwd: string;
   output: string;
   next_cursor: number;
   has_more: boolean;
@@ -29,6 +32,7 @@ export interface ShellSnapshot extends Record<string, unknown> {
 export interface RunCommandInput {
   requestId: string;
   command: string;
+  cwd?: string;
   waitMs?: number;
   maxOutputBytes?: number;
   signal?: AbortSignal;
@@ -64,6 +68,7 @@ export interface ShellSessionOptions {
 interface CommandRecord {
   requestId: string;
   commandHash: string;
+  cwd: string;
   startCursor: number;
   endCursor: number | null;
   status: CommandStatus;
@@ -256,6 +261,7 @@ export class PersistentShellSession {
   private stdoutDecoder = new StringDecoder("utf8");
   private stderrDecoder = new StringDecoder("utf8");
   private generation = 1;
+  private currentCwd: string;
   private updateVersion = 0;
   private ready = false;
   private closed = false;
@@ -264,6 +270,7 @@ export class PersistentShellSession {
   constructor(options: ShellSessionOptions = {}) {
     this.shellPath = options.shellPath ?? "/bin/zsh";
     this.cwd = options.cwd ?? process.cwd();
+    this.currentCwd = this.cwd;
     this.env = options.env ?? process.env;
     this.pathPrepend = (options.pathPrepend ?? []).filter(
       (entry) => entry.length > 0,
@@ -357,7 +364,7 @@ export class PersistentShellSession {
     validateCommand(input.command);
     const waitMs = normalizeWaitMs(input.waitMs);
     const maxOutputBytes = this.normalizeOutputBytes(input.maxOutputBytes);
-    const commandHash = hashCommand(input.command);
+    const commandHash = hashCommand(input.command, input.cwd);
 
     await this.start();
     const existing = this.records.get(input.requestId);
@@ -407,11 +414,13 @@ export class PersistentShellSession {
       );
     }
     const child = this.child;
+    validateWorkingDirectory(input.cwd);
 
     const token = randomUUID().replaceAll("-", "");
     const record: CommandRecord = {
       requestId: input.requestId,
       commandHash,
+      cwd: input.cwd ?? this.currentCwd,
       startCursor: this.transcript.end,
       endCursor: null,
       status: "running",
@@ -426,7 +435,10 @@ export class PersistentShellSession {
     this.active = record;
     this.logCommand(input.command);
     try {
-      await writeToStdin(child, buildCommandScript(input.command, token));
+      await writeToStdin(
+        child,
+        buildCommandScript(input.command, token, input.cwd),
+      );
     } catch (error) {
       record.endCursor = this.transcript.end;
       record.status =
@@ -589,6 +601,7 @@ export class PersistentShellSession {
     this.stdoutDecoder = new StringDecoder("utf8");
     this.stderrDecoder = new StringDecoder("utf8");
     this.ready = false;
+    this.currentCwd = this.cwd;
 
     const child = spawn(
       "/bin/sh",
@@ -726,12 +739,20 @@ export class PersistentShellSession {
         return;
       }
 
-      const statusText = this.parserBuffer.slice(
+      const markerPayload = this.parserBuffer.slice(
         markerIndex + active.markerPrefix.length,
         markerEnd,
       );
+      const cwdSeparator = markerPayload.indexOf("\0");
+      const statusText = markerPayload.slice(0, cwdSeparator);
+      const parsedCwd = markerPayload.slice(cwdSeparator + 1);
       const parsedStatus = Number.parseInt(statusText, 10);
-      if (!/^-?\d+$/.test(statusText) || !Number.isSafeInteger(parsedStatus)) {
+      if (
+        cwdSeparator < 1 ||
+        !/^-?\d+$/.test(statusText) ||
+        !Number.isSafeInteger(parsedStatus) ||
+        !isAbsolute(parsedCwd)
+      ) {
         const falsePrefixEnd = markerIndex + active.markerPrefix.length;
         this.appendCommandOutput(
           active,
@@ -745,7 +766,9 @@ export class PersistentShellSession {
       this.parserBuffer = this.parserBuffer.slice(markerEnd + 1);
       active.endCursor = this.transcript.end;
       active.exitCode = parsedStatus;
+      active.cwd = parsedCwd;
       active.status = "completed";
+      this.currentCwd = parsedCwd;
       this.active = null;
       this.notifyUpdate();
     }
@@ -895,6 +918,7 @@ export class PersistentShellSession {
       request_id: record.requestId,
       status: record.status,
       exit_code: record.exitCode,
+      cwd: record.cwd,
       output: read.output,
       next_cursor: read.nextCursor,
       has_more: read.hasMore,
@@ -1046,15 +1070,20 @@ function formatLogTime(date: Date): string {
   return `${hours}:${minutes}`;
 }
 
-function buildCommandScript(command: string, token: string): string {
+function buildCommandScript(
+  command: string,
+  token: string,
+  cwd?: string,
+): string {
   return [
     "function __mcp_eval_command {",
     '  local __mcp_command="$1"',
+    '  if (( $# > 1 )); then builtin cd -- "$2" || return $?; fi',
     '  builtin eval -- "$__mcp_command" </dev/null 1>&1 2>&1',
     "}",
     "set +e",
-    `__mcp_eval_command ${singleQuote(command)}`,
-    `builtin printf '\\036__MCP_DONE_${token}__:%s\\037' "$?"`,
+    `__mcp_eval_command ${singleQuote(command)}${cwd === undefined ? "" : ` ${singleQuote(cwd)}`}`,
+    `builtin printf '\\036__MCP_DONE_${token}__:%s\\000%s\\037' "$?" "$PWD"`,
     "unfunction __mcp_eval_command 2>/dev/null",
     "set +e",
     "",
@@ -1065,8 +1094,36 @@ function singleQuote(value: string): string {
   return `'${value.replaceAll("'", `'\\''`)}'`;
 }
 
-function hashCommand(command: string): string {
-  return createHash("sha256").update(command).digest("hex");
+function hashCommand(command: string, cwd?: string): string {
+  return createHash("sha256")
+    .update(JSON.stringify([cwd ?? null, command]))
+    .digest("hex");
+}
+
+function validateWorkingDirectory(cwd: string | undefined): void {
+  if (cwd === undefined) return;
+  if (!isAbsolute(cwd)) {
+    throw new ShellSessionError(
+      "invalid_command",
+      "cwd must be an absolute path.",
+    );
+  }
+
+  try {
+    const entry = statSync(cwd);
+    if (!entry.isDirectory()) {
+      throw new ShellSessionError(
+        "invalid_command",
+        `cwd is not a directory: ${JSON.stringify(cwd)}.`,
+      );
+    }
+  } catch (error) {
+    if (error instanceof ShellSessionError) throw error;
+    throw new ShellSessionError(
+      "invalid_command",
+      `cwd is not accessible: ${JSON.stringify(cwd)} (${errorMessage(error)}).`,
+    );
+  }
 }
 
 function validateRequestId(requestId: string): void {

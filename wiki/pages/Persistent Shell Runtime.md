@@ -1,6 +1,6 @@
 # Persistent Shell Runtime
 
-Verified 2026-07-19.
+Verified 2026-08-05.
 
 ## What This Is
 
@@ -15,7 +15,7 @@ Verified 2026-07-19.
 
 ## Command Protocol
 
-Commands are passed into a fixed-name wrapper function, stored in a function-local single-quoted variable, evaluated in the existing shell, and followed by a randomized record-separator completion marker containing a safe-integer exit code. The random token is kept out of evaluated function state, readonly wrapper variables cannot poison later calls, and the parser removes ready/completion markers from user-visible output (`src/shell-session.ts`, `test/shell-session.test.ts`).
+Commands are passed into a fixed-name wrapper function, stored in a function-local single-quoted variable, optionally preceded by a validated absolute `cwd` change, evaluated in the existing shell, and followed by a randomized record-separator completion marker containing a safe-integer exit code plus the resulting `$PWD`. The parser records that directory on every snapshot, allowing explicit `cwd` selection and command-issued `cd` changes to remain persistent and observable. The random token is kept out of evaluated function state, readonly wrapper variables cannot poison later calls, and the parser removes ready/completion markers from user-visible output (`src/shell-session.ts`, `src/mcp-server.ts`, `test/shell-session.test.ts`, `test/mcp-integration.test.ts`).
 
 Marker-safe prefix flushing preserves UTF-16 surrogate pairs before applying the UTF-8 command-output ceiling, preventing multibyte output corruption at chunk boundaries (`src/shell-session.ts`, `test/shell-session.test.ts`).
 

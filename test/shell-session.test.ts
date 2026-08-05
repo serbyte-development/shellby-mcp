@@ -46,6 +46,72 @@ test(
 );
 
 test(
+  "starts in an explicit cwd, reports it, and retains it",
+  { timeout: 10_000 },
+  async (t) => {
+    const directory = await mkdtemp(join(tmpdir(), "shell-mcp-explicit-cwd-"));
+    const shell = new PersistentShellSession();
+    t.after(async () => {
+      await shell.close();
+      await rm(directory, { recursive: true, force: true });
+    });
+
+    const first = await runToCompletion(shell, "explicit-cwd", "printf '%s' \"$PWD\"", {
+      cwd: directory,
+    });
+    assert.equal(first.output, directory);
+    assert.equal(first.snapshot.cwd, directory);
+
+    const second = await runToCompletion(
+      shell,
+      "retained-explicit-cwd",
+      "printf '%s' \"$PWD\"",
+    );
+    assert.equal(second.output, directory);
+    assert.equal(second.snapshot.cwd, directory);
+  },
+);
+
+test(
+  "rejects invalid explicit working directories",
+  { timeout: 10_000 },
+  async (t) => {
+    const directory = await mkdtemp(join(tmpdir(), "shell-mcp-invalid-cwd-"));
+    const file = join(directory, "file.txt");
+    await writeFile(file, "not a directory");
+    const shell = new PersistentShellSession();
+    t.after(async () => {
+      await shell.close();
+      await rm(directory, { recursive: true, force: true });
+    });
+
+    await assert.rejects(
+      shell.runCommand({
+        requestId: "relative-cwd",
+        command: "printf blocked",
+        cwd: "relative/path",
+      }),
+      (error: unknown) =>
+        error instanceof ShellSessionError &&
+        error.code === "invalid_command" &&
+        /absolute path/.test(error.message),
+    );
+
+    await assert.rejects(
+      shell.runCommand({
+        requestId: "file-cwd",
+        command: "printf blocked",
+        cwd: file,
+      }),
+      (error: unknown) =>
+        error instanceof ShellSessionError &&
+        error.code === "invalid_command" &&
+        /not a directory/.test(error.message),
+    );
+  },
+);
+
+test(
   "prepends configured executable directories after login-shell startup",
   { timeout: 10_000 },
   async (t) => {
@@ -739,10 +805,12 @@ async function runToCompletion(
   shell: PersistentShellSession,
   requestId: string,
   command: string,
+  options: { cwd?: string } = {},
 ): Promise<{ output: string; snapshot: ShellSnapshot }> {
   const first = await shell.runCommand({
     requestId,
     command,
+    cwd: options.cwd,
     waitMs: 1_000,
   });
   let output = first.output;
