@@ -125,3 +125,8 @@
 - Loaded the gitignored repository-root `.env` at startup when present while retaining launch-environment overrides.
 - Added integration coverage for authenticated clients plus missing and invalid credentials.
 - Documented launch configuration, client header format, secret handling, and the remaining shared-secret trust boundary.
+
+## [2026-08-04] revert | remove shared MCP bearer token
+
+- Removed the static bearer-token middleware and required `MCP_AUTH_TOKEN` after confirming the ChatGPT connector supports OAuth rather than a fixed custom token in this setup.
+- Restored the no-auth MCP transport, client tests, startup configuration, and documentation. The gitignored local `.env` remains user-owned and is not loaded by the server.

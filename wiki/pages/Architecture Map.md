@@ -11,7 +11,7 @@ ChatGPT Local Shell MCP is a private Node.js/TypeScript service that exposes bou
 | Layer                  | Responsibility                                                                            | Implementation                 |
 | ---------------------- | ----------------------------------------------------------------------------------------- | ------------------------------ |
 | Process entry          | Parse configuration, prepare workspace tooling, compose dependencies, handle shutdown     | `src/index.ts`                 |
-| HTTP boundary          | Bind localhost, validate Host and bearer token, expose health and MCP routes, own request transports | `src/http-server.ts`     |
+| HTTP boundary          | Bind localhost, validate Host, expose health and MCP routes, own request transports       | `src/http-server.ts`           |
 | MCP contract           | Publish instructions, schemas, annotations, and core tool handlers                        | `src/mcp-server.ts`            |
 | Computer Use tools     | Publish eleven focused schemas, validate targets, and normalize compact MCP results        | `src/computer-use-tools.ts`    |
 | Peekaboo adapter       | Invoke the CLI without a shell, serialize calls, parse bounded JSON, and retain snapshot targets | `src/peekaboo.ts`          |
@@ -23,7 +23,7 @@ ChatGPT Local Shell MCP is a private Node.js/TypeScript service that exposes bou
 ## Request Lifecycle
 
 1. `src/index.ts` creates a `ShellSessionManager` and one shared `PeekabooClient`; `MCP_PEEKABOO_BIN` selects the executable.
-2. `src/http-server.ts` validates the shared bearer token, then each `POST /mcp` creates a short-lived `McpServer` and stateless `StreamableHTTPServerTransport`.
+2. Each `POST /mcp` creates a short-lived `McpServer` and stateless `StreamableHTTPServerTransport` in `src/http-server.ts`.
 3. Shell handlers resolve `shell_id` through the shared shell manager. All request-scoped Computer Use handlers share the same process-level `PeekabooClient`.
 4. The adapter serializes Computer Use calls and invokes `peekaboo` with `execFile`, exact argv, `--json`, a 30-second timeout, and a 4 MiB process-output cap. It checks the JSON `success` field and does not retry failures (`src/peekaboo.ts`).
 5. Each `PersistentShellSession` writes commands into its own child login shell and detects completion through randomized control markers.
@@ -33,7 +33,7 @@ The named shell is the persistence boundary: callers using the same `shell_id` s
 
 ## Dependency Direction
 
-`src/index.ts` composes all modules. `src/http-server.ts` owns bearer authentication, the shared shell manager, and the Peekaboo client. `src/mcp-server.ts` publishes the request-scoped MCP contract. `src/peekaboo.ts` depends only on Node process/filesystem APIs and the installed CLI; `src/computer-use-tools.ts` owns MCP schemas and coordinate translation. `src/workspace-tools.ts` is independent. There is no database, hosted relay, UI, or automatic per-client ownership mapping (`src/`).
+`src/index.ts` composes all modules. `src/http-server.ts` owns the shared shell manager and Peekaboo client. `src/mcp-server.ts` publishes the request-scoped MCP contract. `src/peekaboo.ts` depends only on Node process/filesystem APIs and the installed CLI; `src/computer-use-tools.ts` owns MCP schemas and coordinate translation. `src/workspace-tools.ts` is independent. There is no database, hosted relay, UI, authentication layer, or automatic per-client ownership mapping (`src/`).
 
 ## Related
 

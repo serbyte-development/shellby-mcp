@@ -4,11 +4,9 @@ Verified 2026-08-04.
 
 Use this vault to document credential locations and purpose, never values. Do not commit secret values anywhere in the vault, including `_private/`.
 
-## MCP Bearer Token
+## Current State
 
-The server requires `MCP_AUTH_TOKEN`, an exact 32-character base64url shared secret. It is sent as `Authorization: Bearer <token>` and gates every `/mcp` method; `/healthz` remains public (`src/index.ts`, `src/http-server.ts`). Generate one with `openssl rand -hex 16`.
-
-Keep the value in the repository-root `.env`, the launch environment, or a password manager. `.env` is gitignored and loaded automatically when present (`.gitignore`, `src/index.ts`). Do not put the value in source, `ecosystem.config.cjs`, README examples, tests, PM2 logs, or any wiki file. Rotating it requires restarting the MCP server with the new value and updating the client header.
+The server requires no credential environment variables and implements no authentication (`src/index.ts`, `src/http-server.ts`, `src/mcp-server.ts`). Its environment inputs are runtime configuration, not secrets.
 
 The ngrok CLI may use credentials stored outside this repository. npm registry credentials and any future CI tokens also belong in their provider configuration, user-level config, or a password manager—not in repository Markdown (`package.json`).
 

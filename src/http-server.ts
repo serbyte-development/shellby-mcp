@@ -1,4 +1,3 @@
-import { timingSafeEqual } from "node:crypto";
 import { createServer, type Server as HttpServer } from "node:http";
 
 import { localhostHostValidation } from "@modelcontextprotocol/sdk/server/middleware/hostHeaderValidation.js";
@@ -28,7 +27,6 @@ export interface RunningMcpServer {
 }
 
 export interface StartMcpServerOptions {
-  authToken: string;
   host?: string;
   port?: number;
   shell?: PersistentShellSession;
@@ -39,9 +37,8 @@ export interface StartMcpServerOptions {
 }
 
 export async function startMcpHttpServer(
-  options: StartMcpServerOptions,
+  options: StartMcpServerOptions = {},
 ): Promise<RunningMcpServer> {
-  validateAuthToken(options.authToken);
   const host = options.host ?? "127.0.0.1";
   const port = options.port ?? 3333;
   const shells =
@@ -55,7 +52,6 @@ export async function startMcpHttpServer(
 
   const app = express();
   app.use(localhostHostValidation());
-  app.use("/mcp", requireBearerToken(options.authToken));
   app.use(express.json({ limit: "1mb" }));
 
   app.get("/healthz", (_req, res) => {
@@ -172,41 +168,6 @@ export async function startMcpHttpServer(
         await Promise.allSettled([shells.close(), peekaboo.close()]);
       }
     },
-  };
-}
-
-function validateAuthToken(authToken: string): void {
-  if (!/^[A-Za-z0-9_-]{32}$/.test(authToken)) {
-    throw new Error(
-      "MCP auth token must be exactly 32 base64url characters.",
-    );
-  }
-}
-
-function requireBearerToken(authToken: string): express.RequestHandler {
-  const expected = Buffer.from(authToken, "utf8");
-
-  return (req, res, next) => {
-    const match = /^Bearer ([A-Za-z0-9_-]{32})$/i.exec(
-      req.get("authorization") ?? "",
-    );
-    const candidateText = match?.[1];
-    const candidate =
-      candidateText === undefined
-        ? undefined
-        : Buffer.from(candidateText, "utf8");
-
-    if (
-      !candidate ||
-      candidate.length !== expected.length ||
-      !timingSafeEqual(candidate, expected)
-    ) {
-      res.setHeader("WWW-Authenticate", "Bearer");
-      jsonRpcError(res, 401, -32001, "Unauthorized.");
-      return;
-    }
-
-    next();
   };
 }
 
