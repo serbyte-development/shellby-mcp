@@ -1,10 +1,10 @@
 # MCP Tool Surface
 
-Verified 2026-08-04.
+Verified 2026-08-05.
 
 ## What This Is
 
-`src/mcp-server.ts` always exposes seven core tools over a shared `ShellSessionManager` and eleven focused Computer Use tools over one shared `PeekabooClient`. Tool metadata remains stable even if the local `peekaboo` executable or macOS permissions are unavailable (`src/mcp-server.ts`, `src/http-server.ts`, `src/computer-use-tools.ts`).
+`src/mcp-server.ts` always exposes seven core tools over a shared `ShellSessionManager` and eleven focused Computer Use tools over one shared `PeekabooClient`. It publishes independent utilities first (`fetch_website`, `apply_patch`), then the shell workflow (`shell_run`, `shell_poll`, `shell_reset`, `shell_list`, `shell_close`), and the complete `computer_*` group last. `tools/list` preserves this order, and the integration suite asserts it exactly. Tool metadata remains stable even if the local `peekaboo` executable or macOS permissions are unavailable (`src/mcp-server.ts`, `src/http-server.ts`, `src/computer-use-tools.ts`, `test/mcp-integration.test.ts`).
 
 ## Tools
 

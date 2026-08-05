@@ -130,3 +130,13 @@
 
 - Removed the static bearer-token middleware and required `MCP_AUTH_TOKEN` after confirming the ChatGPT connector supports OAuth rather than a fixed custom token in this setup.
 - Restored the no-auth MCP transport, client tests, startup configuration, and documentation. The gitignored local `.env` remains user-owned and is not loaded by the server.
+
+## [2026-08-05] organize | list Computer Use tools last
+
+- Registered all seven core tools before the eleven `computer_*` tools so the Computer Use group appears at the end of `tools/list`.
+- Added an exact integration assertion for the published tool order.
+
+## [2026-08-05] organize | group core tools by workflow
+
+- Ordered the non-Computer tools as independent utilities followed by the complete shell workflow: `fetch_website`, `apply_patch`, `shell_run`, `shell_poll`, `shell_reset`, `shell_list`, and `shell_close`.
+- Updated the exact `tools/list` integration contract.

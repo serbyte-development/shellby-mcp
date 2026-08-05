@@ -51,25 +51,25 @@ test(
     assert.match(instructions, /call computer_inspect/);
 
     const tools = await first.client.listTools();
-    assert.deepEqual(tools.tools.map((tool) => tool.name).sort(), [
-      "apply_patch",
-      "computer_app",
-      "computer_click",
-      "computer_drag",
-      "computer_hotkey",
-      "computer_inspect",
-      "computer_list",
-      "computer_observe",
-      "computer_press",
-      "computer_scroll",
-      "computer_type",
-      "computer_window",
+    assert.deepEqual(tools.tools.map((tool) => tool.name), [
       "fetch_website",
-      "shell_close",
-      "shell_list",
+      "apply_patch",
+      "shell_run",
       "shell_poll",
       "shell_reset",
-      "shell_run",
+      "shell_list",
+      "shell_close",
+      "computer_list",
+      "computer_observe",
+      "computer_inspect",
+      "computer_click",
+      "computer_type",
+      "computer_press",
+      "computer_hotkey",
+      "computer_scroll",
+      "computer_drag",
+      "computer_app",
+      "computer_window",
     ]);
 
     const runTool = tools.tools.find((tool) => tool.name === "shell_run");
