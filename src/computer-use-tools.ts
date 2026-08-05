@@ -109,13 +109,6 @@ export function registerComputerUseTools(
         .boolean()
         .optional()
         .describe("Overlay element IDs on the returned screenshot."),
-      element_limit: z
-        .number()
-        .int()
-        .min(1)
-        .max(500)
-        .optional()
-        .describe("Maximum actionable elements to return. Defaults to 100."),
     })
     .superRefine((value, context) => {
       const targetCount = [value.app, value.window_id, value.screen_index].filter(
@@ -134,7 +127,7 @@ export function registerComputerUseTools(
     {
       title: "Observe the computer",
       description:
-        "Return a screenshot, a fresh snapshot ID, and a compact accessibility map for an app, window, display, or the frontmost window. Observe again after the UI changes.",
+        "Return a screenshot and fresh snapshot ID for an app, window, display, or the frontmost window. Accessibility elements are omitted to conserve context; call computer_inspect only when visual targeting is insufficient. Observe again after the UI changes.",
       inputSchema: observeSchema,
       annotations: {
         readOnlyHint: true,
@@ -144,7 +137,7 @@ export function registerComputerUseTools(
       },
       _meta: noAuthMeta,
     },
-    async ({ app, window_id, screen_index, annotate, element_limit }, extra) => {
+    async ({ app, window_id, screen_index, annotate }, extra) => {
       const args: string[] = [];
       if (app !== undefined) args.push("--app", app);
       else if (window_id !== undefined) args.push("--window-id", String(window_id));
@@ -161,7 +154,50 @@ export function registerComputerUseTools(
           { annotate: annotate ?? false },
           extra.signal,
         );
-        return observationResult(observation, element_limit ?? 100);
+        return observationResult(observation);
+      } catch (error) {
+        return peekabooToolError(error);
+      }
+    },
+  );
+
+  server.registerTool(
+    "computer_inspect",
+    {
+      title: "Inspect accessible UI",
+      description:
+        "Return a bounded accessibility-tree text view for an existing observation snapshot. Use only when its screenshot is insufficient; prefer small limits and inspect again after the UI changes.",
+      inputSchema: {
+        snapshot_id: snapshotInput,
+        max_depth: z.number().int().min(1).max(20).optional().default(8),
+        max_elements: z.number().int().min(1).max(500).optional().default(100),
+        max_children: z.number().int().min(1).max(100).optional().default(25),
+      },
+      annotations: {
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: false,
+      },
+      _meta: noAuthMeta,
+    },
+    async ({ snapshot_id, max_depth, max_elements, max_children }, extra) => {
+      try {
+        const result = await peekaboo.run(
+          [
+            "inspect-ui",
+            "--snapshot",
+            snapshot_id,
+            "--max-depth",
+            String(max_depth),
+            "--max-elements",
+            String(max_elements),
+            "--max-children",
+            String(max_children),
+          ],
+          extra.signal,
+        );
+        return inspectionResult(result);
       } catch (error) {
         return peekabooToolError(error);
       }
@@ -709,16 +745,8 @@ function commandResult(result: PeekabooResult, fallbackSummary: string): CallToo
   };
 }
 
-function observationResult(
-  observation: PeekabooObservation,
-  elementLimit: number,
-): CallToolResult {
+function observationResult(observation: PeekabooObservation): CallToolResult {
   const data = asRecord(observation.data) ?? {};
-  const allElements = Array.isArray(data.ui_elements) ? data.ui_elements : [];
-  const actionable = allElements.filter((item) => asRecord(item)?.is_actionable !== false);
-  const elements = actionable
-    .slice(0, elementLimit)
-    .map((element) => compactElement(element, observation.target?.bounds));
   const application = stringValue(data.application_name);
   const windowTitle = stringValue(data.window_title);
   const structuredContent = omitUndefined({
@@ -729,10 +757,6 @@ function observationResult(
     capture_mode: stringValue(data.capture_mode),
     element_count: numberValue(data.element_count),
     interactable_count: numberValue(data.interactable_count),
-    returned_element_count: elements.length,
-    elements_truncated: actionable.length > elements.length,
-    truncation: data.truncation,
-    elements,
   });
   const target = [application, windowTitle].filter(Boolean).join(" — ") || "computer";
 
@@ -740,7 +764,7 @@ function observationResult(
     content: [
       {
         type: "text",
-        text: `Observed ${target}; returned ${elements.length} actionable elements.`,
+        text: `Observed ${target}.`,
       },
       {
         type: "image",
@@ -752,50 +776,21 @@ function observationResult(
   };
 }
 
-function compactElement(
-  value: unknown,
-  captureBounds: PeekabooSnapshotTarget["bounds"] | undefined,
-): Record<string, unknown> {
-  const element = asRecord(value) ?? {};
-  const name =
-    stringValue(element.label) ??
-    stringValue(element.title) ??
-    stringValue(element.description);
-  return omitUndefined({
-    id: stringValue(element.id),
-    role: stringValue(element.role),
-    name,
-    description:
-      stringValue(element.description) === name ? undefined : stringValue(element.description),
-    bounds: localElementBounds(element.bounds, captureBounds),
-    keyboard_shortcut: stringValue(element.keyboard_shortcut),
-  });
-}
-
-function localElementBounds(
-  value: unknown,
-  captureBounds: PeekabooSnapshotTarget["bounds"] | undefined,
-): Record<string, number> | undefined {
-  const bounds = asRecord(value);
-  const x = numberValue(bounds?.x);
-  const y = numberValue(bounds?.y);
-  const width = numberValue(bounds?.width);
-  const height = numberValue(bounds?.height);
-  if (
-    !captureBounds ||
-    x === undefined ||
-    y === undefined ||
-    width === undefined ||
-    height === undefined
-  ) {
-    return undefined;
-  }
-  return {
-    x: x - captureBounds.x,
-    y: y - captureBounds.y,
-    width,
-    height,
-  };
+function inspectionResult(result: PeekabooResult): CallToolResult {
+  const data = asRecord(result.data);
+  const embeddedText = Array.isArray(data?.content)
+    ? data.content
+        .map(asRecord)
+        .map((item) => stringValue(item?.text))
+        .find((value) => value !== undefined)
+    : undefined;
+  const text =
+    stringValue(data?.text) ??
+    embeddedText ??
+    (typeof result.summary === "string" ? result.summary : undefined) ??
+    result.messages?.find((message) => message.trim()) ??
+    "Inspected accessible UI.";
+  return { content: [{ type: "text", text }] };
 }
 
 function peekabooToolError(error: unknown): CallToolResult {

@@ -1,6 +1,6 @@
 # Configuration and Startup
 
-Verified 2026-08-01.
+Verified 2026-08-02.
 
 ## What This Is
 
@@ -29,7 +29,7 @@ Verified 2026-08-01.
 
 ## Startup and Shutdown
 
-Startup creates the workspace, prepares `apply_patch`, constructs the named-shell manager and one shared `PeekabooClient`, starts the default shell, and then listens. The client uses `MCP_PEEKABOO_BIN` or resolves `peekaboo` through `PATH`; startup does not probe the binary or permissions, so all ten Computer Use schemas remain stable. A missing executable fails only the attempted Computer Use call with `PEEKABOO_NOT_FOUND` (`src/index.ts`, `src/http-server.ts`, `src/peekaboo.ts`, `src/computer-use-tools.ts`).
+Startup creates the workspace, prepares `apply_patch`, constructs the named-shell manager and one shared `PeekabooClient`, starts the default shell, and then listens. The client uses `MCP_PEEKABOO_BIN` or resolves `peekaboo` through `PATH`; startup does not probe the binary or permissions, so all eleven Computer Use schemas remain stable. A missing executable fails only the attempted Computer Use call with `PEEKABOO_NOT_FOUND` (`src/index.ts`, `src/http-server.ts`, `src/peekaboo.ts`, `src/computer-use-tools.ts`).
 
 Additional shells are created lazily. Inactive named shells are closed after the configured idle lifetime, and `shell_close` can release one immediately. The `default` shell remains available for backward compatibility, cannot be closed, and may still be reset. Active foreground commands and resets are never idle-evicted. `SIGINT` and `SIGTERM` close HTTP requests/server, every created shell, and the Peekaboo client's pending/running queue before exiting. The server does not own a child MCP or manage Peekaboo's own daemon lifecycle (`src/index.ts`, `src/http-server.ts`, `src/shell-session-manager.ts`, `src/peekaboo.ts`).
 

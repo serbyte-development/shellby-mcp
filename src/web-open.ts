@@ -11,8 +11,11 @@ export const DEFAULT_WEB_DOCUMENT_BYTES = 2 * 1024 * 1024;
 const DEFAULT_DOCUMENT_TTL_MS = 10 * 60 * 1_000;
 const DEFAULT_DOCUMENT_LIMIT = 20;
 
+export type WebsiteContentFormat = "markdown" | "clean_html" | "raw_html";
+
 export interface WebOpenInput {
   url: string;
+  format?: WebsiteContentFormat;
   cursor?: string;
   maxOutputBytes?: number;
   signal?: AbortSignal;
@@ -21,6 +24,7 @@ export interface WebOpenInput {
 export interface WebOpenResult extends Record<string, unknown> {
   url: string;
   title: string;
+  format: WebsiteContentFormat;
   content: string;
   next_cursor?: string;
   source_truncated?: true;
@@ -33,7 +37,11 @@ export interface RenderedWebPage {
 }
 
 export interface WebPageOpenerOptions {
-  renderPage?: (url: string, signal?: AbortSignal) => Promise<RenderedWebPage>;
+  renderPage?: (
+    url: string,
+    format: WebsiteContentFormat,
+    signal?: AbortSignal,
+  ) => Promise<RenderedWebPage>;
   defaultOutputBytes?: number;
   maxOutputBytes?: number;
   documentByteLimit?: number;
@@ -45,6 +53,7 @@ export interface WebPageOpenerOptions {
 interface CachedDocument extends RenderedWebPage {
   id: string;
   requestedUrl: string;
+  format: WebsiteContentFormat;
   expiresAt: number;
   sourceTruncated: boolean;
 }
@@ -98,6 +107,7 @@ export class WebPageOpener {
 
   async open(input: WebOpenInput): Promise<WebOpenResult> {
     const requestedUrl = normalizeWebUrl(input.url);
+    const format = input.format ?? "markdown";
     const maxOutputBytes = this.resolveOutputBytes(input.maxOutputBytes);
     this.removeExpiredDocuments();
 
@@ -116,6 +126,12 @@ export class WebPageOpener {
           "The cursor does not belong to the requested URL.",
         );
       }
+      if (format !== document.format) {
+        throw new WebOpenError(
+          "invalid_cursor",
+          `The cursor belongs to format ${document.format}; continue with the same format.`,
+        );
+      }
       offset = cursor.offset;
       if (offset < 0 || offset > document.content.length) {
         throw new WebOpenError(
@@ -124,7 +140,11 @@ export class WebPageOpener {
         );
       }
     } else {
-      const rendered = await this.renderPage(requestedUrl, input.signal);
+      const rendered = await this.renderPage(
+        requestedUrl,
+        format,
+        input.signal,
+      );
       const finalUrl = normalizeWebUrl(rendered.url);
       const boundedContent = utf8Prefix(
         rendered.content,
@@ -135,6 +155,7 @@ export class WebPageOpener {
         requestedUrl,
         url: finalUrl,
         title: rendered.title.trim(),
+        format,
         content: boundedContent.value,
         expiresAt: this.now() + this.documentTtlMs,
         sourceTruncated: boundedContent.omittedBytes > 0,
@@ -146,6 +167,7 @@ export class WebPageOpener {
     const result: WebOpenResult = {
       url: document.url,
       title: document.title,
+      format: document.format,
       content: chunk.value,
     };
     if (chunk.nextOffset < document.content.length) {
@@ -223,6 +245,7 @@ export class WebOpenError extends Error {
 
 async function renderWithCloakBrowser(
   url: string,
+  format: WebsiteContentFormat,
   signal?: AbortSignal,
 ): Promise<RenderedWebPage> {
   if (signal?.aborted) {
@@ -245,9 +268,18 @@ async function renderWithCloakBrowser(
     const finalUrl = page.url();
     const browserTitle = await page.title();
     const html = await page.content();
+
+    if (format === "raw_html") {
+      return {
+        url: finalUrl,
+        title: browserTitle,
+        content: html,
+      };
+    }
+
     const { document } = parseHTML(html);
     const parsed = await Defuddle(document as unknown as Document, finalUrl, {
-      markdown: true,
+      markdown: format === "markdown",
       useAsync: false,
     });
 

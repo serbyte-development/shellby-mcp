@@ -1,10 +1,10 @@
 # Bundled MCP and Agent Surfaces
 
-Verified 2026-08-01.
+Verified 2026-08-02.
 
 ## What This Is
 
-This page records structured MCP and agent-control surfaces bundled with the installed ChatGPT/Codex application. They are point-in-time research, not current Computer Use dependencies. The active Computer Use implementation calls the supported Peekaboo CLI directly through ten focused tools (`src/peekaboo.ts`, `src/computer-use-tools.ts`, `src/mcp-server.ts`).
+This page records structured MCP and agent-control surfaces bundled with the installed ChatGPT/Codex application. They are point-in-time research, not current Computer Use dependencies. The active Computer Use implementation calls the supported Peekaboo CLI directly through eleven focused tools (`src/peekaboo.ts`, `src/computer-use-tools.ts`, `src/mcp-server.ts`).
 
 Point-in-time host evidence, executable paths, and inspection commands are stored in [[raw/ChatGPT and Local Capability Survey 2026-08-01]].
 
@@ -62,7 +62,7 @@ The standalone workstation `web_search` command is a different pattern. It is a 
 
 ## Recommended Integration Order
 
-1. Keep Peekaboo's ten-tool adapter aligned with its supported CLI and test snapshot/coordinate behavior after upgrades.
+1. Keep Peekaboo's eleven-tool adapter aligned with its supported CLI and test snapshot/coordinate behavior after upgrades.
 2. Add `sandbox_run` before expanding unrestricted execution capabilities.
 3. Add a narrow Codex app-server client for persistent threads, turns, reviews, streaming, and model inspection.
 4. Add Messages read tools separately from `send_message`; sending must require explicit user intent.

@@ -239,10 +239,10 @@ test("returns screenshot bytes and removes observation artifacts", async (t) => 
 
   const result = await client.observe(["--app", "Finder"], { annotate: true });
 
-  assert.equal(result.mimeType, "image/png");
+  assert.equal(result.mimeType, "image/jpeg");
   assert.equal(
-    Buffer.from(result.imageData, "base64").subarray(1, 4).toString("ascii"),
-    "PNG",
+    Buffer.from(result.imageData, "base64").subarray(0, 3).toString("hex"),
+    "ffd8ff",
   );
   assert.equal((result.data as { snapshot_id?: string }).snapshot_id, "snapshot-42");
   assert.deepEqual(result.messages, ["ready"]);

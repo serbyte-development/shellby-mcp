@@ -1,5 +1,13 @@
 # Wiki Maintenance Log
 
+## [2026-08-04] update | make website fetching explicit and format-aware
+
+- Renamed the model-facing `web_open` tool to `fetch_website` so its purpose is obvious during tool selection.
+- Made cleaned Markdown the default and added `clean_html` and `raw_html` output formats.
+- Bound cached cursors to both URL and format and returned the selected format in structured results.
+- Directed models to use `fetch_website` before shell commands, scripts, or browser automation for known URLs, with fallbacks only for failures, authentication, or interaction.
+- Updated focused unit and MCP integration coverage plus the maintained architecture documentation.
+
 ## [2026-08-01] ops | run the stateful MCP in PM2 fork mode
 
 - Changed the single MCP process from PM2 cluster mode to fork mode.
@@ -98,3 +106,15 @@
 - Documented snapshot-first actions, screenshot-relative coordinate translation, bounded JSON/image handling, direct `execFile` invocation, and the no-retry boundary.
 - Added Homebrew installation, `MCP_PEEKABOO_BIN`, permission status/request commands, and the rule that advanced Peekaboo operations remain available through `shell_run`.
 - Updated architecture, tool, startup, test, reuse, bundled-surface, roadmap, risk, index, README, and source-manifest documentation from current `src/` and `test/` evidence.
+
+## [2026-08-02] optimize | compress Computer Use observations
+
+- Added Sharp and changed `computer_observe` image responses from Peekaboo's temporary PNG to a same-dimension quality-75 JPEG.
+- Preserved screenshot-relative coordinate geometry while reducing large full-display payloads before base64 and tunnel transport.
+- Updated focused Peekaboo and MCP integration expectations for `image/jpeg`.
+
+## [2026-08-02] optimize | make Computer Use observations visual-first
+
+- Changed `computer_observe` to omit accessibility elements by default while preserving the screenshot, snapshot ID, and targeting metadata.
+- Added `computer_inspect`, which exposes Peekaboo's separately bounded `inspect-ui` text view for an existing snapshot without duplicating its structured response envelope.
+- Updated model instructions, README, architecture, tool-contract, and integration-test documentation.

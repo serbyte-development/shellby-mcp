@@ -4,6 +4,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
 
+import sharp from "sharp";
+
 const execFileAsync = promisify(execFile);
 
 interface PeekabooEnvelope {
@@ -26,7 +28,7 @@ export interface PeekabooResult {
 
 export interface PeekabooObservation extends PeekabooResult {
   imageData: string;
-  mimeType: "image/png";
+  mimeType: "image/jpeg";
   target?: PeekabooSnapshotTarget;
 }
 
@@ -186,16 +188,23 @@ export class PeekabooClient {
 
       try {
         const image = await readFile(imagePath);
+        const encodedImage = await sharp(image)
+          .jpeg({
+            quality: 75,
+            progressive: true,
+            chromaSubsampling: "4:4:4",
+          })
+          .toBuffer();
         return {
           ...result,
-          imageData: image.toString("base64"),
-          mimeType: "image/png",
+          imageData: encodedImage.toString("base64"),
+          mimeType: "image/jpeg",
           ...(target ? { target } : {}),
         };
       } catch (error) {
         throw new PeekabooError(
           "SCREENSHOT_READ_FAILED",
-          "Peekaboo completed but its screenshot could not be read.",
+          "Peekaboo completed but its screenshot could not be read or encoded.",
           error instanceof Error ? error.message : String(error),
           { cause: error },
         );

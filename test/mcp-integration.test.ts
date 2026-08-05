@@ -44,8 +44,11 @@ test(
     );
     assert.match(instructions, /codex exec resume <SESSION_ID>/);
     assert.match(instructions, /full-screen `codex` TUI/);
-    assert.match(instructions, /Use web_open/);
+    assert.match(instructions, /Use fetch_website first/);
+    assert.match(instructions, /Do not use shell_run, Python, curl, wget/);
     assert.match(instructions, /untrusted data/);
+    assert.match(instructions, /computer_observe is visual-first/);
+    assert.match(instructions, /call computer_inspect/);
 
     const tools = await first.client.listTools();
     assert.deepEqual(tools.tools.map((tool) => tool.name).sort(), [
@@ -54,18 +57,19 @@ test(
       "computer_click",
       "computer_drag",
       "computer_hotkey",
+      "computer_inspect",
       "computer_list",
       "computer_observe",
       "computer_press",
       "computer_scroll",
       "computer_type",
       "computer_window",
+      "fetch_website",
       "shell_close",
       "shell_list",
       "shell_poll",
       "shell_reset",
       "shell_run",
-      "web_open",
     ]);
 
     const runTool = tools.tools.find((tool) => tool.name === "shell_run");
@@ -147,17 +151,32 @@ test(
       String(closeShellIdSchema.description),
       /default shell is protected/,
     );
-    const webOpenTool = tools.tools.find((tool) => tool.name === "web_open");
-    assert.equal(webOpenTool?.annotations?.readOnlyHint, true);
-    assert.equal(webOpenTool?.annotations?.openWorldHint, true);
+    const fetchWebsiteTool = tools.tools.find(
+      (tool) => tool.name === "fetch_website",
+    );
+    assert.equal(fetchWebsiteTool?.annotations?.readOnlyHint, true);
+    assert.equal(fetchWebsiteTool?.annotations?.openWorldHint, true);
+    assert.match(fetchWebsiteTool?.description ?? "", /Use this first/);
     const webMaxOutputSchema = (
-      webOpenTool?.inputSchema.properties as Record<
+      fetchWebsiteTool?.inputSchema.properties as Record<
         string,
         Record<string, unknown>
       >
     ).max_output_bytes;
     assert.equal(webMaxOutputSchema.default, 8192);
     assert.equal(webMaxOutputSchema.maximum, 32768);
+    const websiteFormatSchema = (
+      fetchWebsiteTool?.inputSchema.properties as Record<
+        string,
+        Record<string, unknown>
+      >
+    ).format;
+    assert.equal(websiteFormatSchema.default, "markdown");
+    assert.deepEqual(websiteFormatSchema.enum, [
+      "markdown",
+      "clean_html",
+      "raw_html",
+    ]);
 
     const firstResult = await callUntilComplete(
       first.client,
@@ -240,6 +259,7 @@ test(
       "computer_click",
       "computer_drag",
       "computer_hotkey",
+      "computer_inspect",
       "computer_list",
       "computer_observe",
       "computer_press",
@@ -260,29 +280,32 @@ test(
     assert.equal(state.content[0]?.type, "text");
     assert.equal(
       state.content[0]?.type === "text" ? state.content[0].text : undefined,
-      "Observed computer; returned 1 actionable elements.",
+      "Observed computer.",
     );
     assert.equal(state.content[1]?.type, "image");
     assert.equal(
       state.content[1]?.type === "image" ? state.content[1].mimeType : undefined,
-      "image/png",
+      "image/jpeg",
     );
     assert.ok(
       state.content[1]?.type === "image" && state.content[1].data.length > 0,
     );
-    assert.deepEqual(state.structuredContent, {
-      snapshot_id: "snapshot-42",
-      returned_element_count: 1,
-      elements_truncated: false,
-      elements: [
-        {
-          id: "B1",
-          role: "AXButton",
-          name: "Continue",
-          bounds: { x: 10, y: 20, width: 100, height: 40 },
-        },
-      ],
+    assert.deepEqual(state.structuredContent, { snapshot_id: "snapshot-42" });
+
+    const inspection = await connected.client.callTool({
+      name: "computer_inspect",
+      arguments: {
+        snapshot_id: "snapshot-42",
+        max_depth: 4,
+        max_elements: 20,
+        max_children: 10,
+      },
     });
+    assert.equal(inspection.isError, undefined);
+    assert.deepEqual(inspection.content, [
+      { type: "text", text: '[B1] button "Continue"' },
+    ]);
+    assert.equal(inspection.structuredContent, undefined);
 
     const invalidClick = await connected.client.callTool({
       name: "computer_click",
@@ -342,17 +365,9 @@ test(
       name: "computer_observe",
       arguments: { screen_index: 1 },
     });
-    assert.deepEqual(
-      (screenState.structuredContent as { elements: unknown[] }).elements,
-      [
-        {
-          id: "B1",
-          role: "AXButton",
-          name: "Continue",
-          bounds: { x: 10, y: 20, width: 100, height: 40 },
-        },
-      ],
-    );
+    assert.deepEqual(screenState.structuredContent, {
+      snapshot_id: "snapshot-screen",
+    });
     const screenCoordinateClick = await connected.client.callTool({
       name: "computer_click",
       arguments: { snapshot_id: "snapshot-screen", x: 10, y: 20 },
@@ -569,7 +584,7 @@ test(
 );
 
 test(
-  "opens and paginates one cached webpage across MCP sessions",
+  "fetches and paginates one cached website across MCP sessions",
   { timeout: 20_000 },
   async (t) => {
     const expected = "🙂".repeat(200);
@@ -587,11 +602,12 @@ test(
     const running = await startMcpHttpServer({ port: 0, webPageOpener });
     t.after(() => running.close());
 
-    const first = await connectClient(running.url, "web-open-client-1");
+    const first = await connectClient(running.url, "fetch-website-client-1");
     const firstResult = await first.client.callTool({
-      name: "web_open",
+      name: "fetch_website",
       arguments: {
         url: "https://example.com/start",
+        format: "clean_html",
         max_output_bytes: 256,
       },
     });
@@ -599,21 +615,24 @@ test(
     const firstContent = firstResult.structuredContent as {
       url: string;
       title: string;
+      format: string;
       content: string;
       next_cursor?: string;
     };
     assert.equal(firstContent.url, "https://example.com/final");
     assert.equal(firstContent.title, "Example page");
+    assert.equal(firstContent.format, "clean_html");
     assert.equal(Buffer.byteLength(firstContent.content, "utf8"), 256);
     assert.ok(firstContent.next_cursor);
     await first.client.close();
 
-    const second = await connectClient(running.url, "web-open-client-2");
+    const second = await connectClient(running.url, "fetch-website-client-2");
     t.after(() => second.client.close());
     const secondResult = await second.client.callTool({
-      name: "web_open",
+      name: "fetch_website",
       arguments: {
         url: "https://example.com/start",
+        format: "clean_html",
         cursor: firstContent.next_cursor,
         max_output_bytes: 1024,
       },

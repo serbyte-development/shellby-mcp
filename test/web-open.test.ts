@@ -3,7 +3,7 @@ import test from "node:test";
 
 import { WebOpenError, WebPageOpener } from "../src/web-open.js";
 
-test("paginates extracted Markdown without reopening the page", async () => {
+test("paginates fetched content without reopening the page", async () => {
   const expected = "🙂".repeat(1_500);
   let renders = 0;
   const opener = new WebPageOpener({
@@ -22,6 +22,7 @@ test("paginates extracted Markdown without reopening the page", async () => {
   let content = result.content;
   assert.equal(Buffer.byteLength(result.content, "utf8"), 2_048);
   assert.equal(result.url, "https://example.com/final");
+  assert.equal(result.format, "markdown");
 
   while (result.next_cursor) {
     result = await opener.open({
@@ -33,6 +34,47 @@ test("paginates extracted Markdown without reopening the page", async () => {
 
   assert.equal(content, expected);
   assert.equal(renders, 1);
+});
+
+test("forwards the requested format and requires it for cursor continuation", async () => {
+  const formats: string[] = [];
+  const opener = new WebPageOpener({
+    defaultOutputBytes: 256,
+    renderPage: async (_url, format) => {
+      formats.push(format);
+      return {
+        url: "https://example.com/",
+        title: "Formatted page",
+        content: "x".repeat(300),
+      };
+    },
+  });
+
+  const first = await opener.open({
+    url: "https://example.com",
+    format: "clean_html",
+  });
+  assert.equal(first.format, "clean_html");
+  assert.deepEqual(formats, ["clean_html"]);
+  assert.ok(first.next_cursor);
+
+  const second = await opener.open({
+    url: "https://example.com",
+    format: "clean_html",
+    cursor: first.next_cursor,
+  });
+  assert.equal(second.format, "clean_html");
+  assert.equal(formats.length, 1);
+
+  await assert.rejects(
+    opener.open({
+      url: "https://example.com",
+      format: "raw_html",
+      cursor: first.next_cursor,
+    }),
+    (error: unknown) =>
+      error instanceof WebOpenError && error.code === "invalid_cursor",
+  );
 });
 
 test("accepts the final redirected URL for cursor reads", async () => {

@@ -1,6 +1,6 @@
 # Build and Test
 
-Verified 2026-08-01.
+Verified 2026-08-04.
 
 ## What This Is
 
@@ -23,8 +23,8 @@ The project uses TypeScript's NodeNext ESM model, Node's built-in test runner th
 - `test/shell-session.test.ts` covers state retention, descriptor isolation, idempotency, full and summary logging, control-character escaping, response and per-command output caps, polling, concurrency, marker-safe multiline commands, shell recovery, process-group failure, and reset.
 - `test/shell-session-manager.test.ts` covers named-shell creation, limits, listing, closure, idle eviction, default-shell protection, and manager shutdown.
 - `test/peekaboo.test.ts` drives a fake Peekaboo CLI and covers PATH/explicit executable selection, literal argv, JSON-envelope failures, malformed and oversized output, serialization, queued cancellation, timeouts without retry, screenshot return/cleanup, and retained snapshot targets.
-- `test/mcp-integration.test.ts` starts an ephemeral HTTP server, validates the seven core tools and stable ten-tool Computer Use surface, proves state crosses MCP client sessions, exercises named-shell isolation and concurrency, native patching, webpage pagination, compact screenshot/action results, validation failures, Peekaboo semantic errors, and Host rejection.
-- `test/web-open.test.ts` covers bounded cached Markdown pagination, redirects, cursor validation and expiry, and source truncation.
+- `test/mcp-integration.test.ts` starts an ephemeral HTTP server, validates the seven core tools and eleven-tool Computer Use surface, proves state crosses MCP client sessions, exercises named-shell isolation and concurrency, native patching, website format schemas and pagination, visual-first observation, bounded snapshot inspection, compact action results, validation failures, Peekaboo semantic errors, and Host rejection.
+- `test/web-open.test.ts` covers default Markdown, requested format forwarding, format-bound cursors, bounded cached pagination, redirects, cursor validation and expiry, and source truncation.
 - `test/workspace-tools.test.ts` covers absolute workspace resolution, `apply_patch` symlink creation, and graceful absence of the Codex binary.
 
 Tests use temporary directories and real local child shells; process-group tests are POSIX-specific (`test/shell-session.test.ts`).
