@@ -14,7 +14,7 @@ Verified 2026-08-05.
 | `PORT`                         | `3333`                             | HTTP port                                               |
 | `MCP_SHELL`                    | `/bin/zsh`                         | Login shell executable                                  |
 | `MCP_CWD`                      | `~/Desktop/chatgpt-workspace`      | Absolute-resolved workspace and initial cwd             |
-| `MCP_CODEX_BIN`                | ChatGPT app's bundled `codex` path | `apply_patch` symlink target                            |
+| `MCP_CODEX_BIN`                | Repository `vendor/apply_patch`    | Optional `apply_patch` symlink-target override          |
 | `MCP_PEEKABOO_BIN`             | `peekaboo`                          | Peekaboo executable name or absolute path                |
 | `MCP_TRANSCRIPT_CHARS`         | `1048576`                          | Rolling JavaScript-string length                        |
 | `MCP_COMMAND_TRANSCRIPT_BYTES` | `262144`                           | Per-command retained UTF-8 output ceiling               |

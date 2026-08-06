@@ -5,6 +5,7 @@ import { join, resolve } from "node:path";
 import test from "node:test";
 
 import {
+  DEFAULT_CODEX_BINARY,
   prepareApplyPatch,
   resolveWorkspacePath,
 } from "../src/workspace-tools.js";
@@ -40,6 +41,16 @@ test("creates a stable workspace apply_patch symlink", async (t) => {
 
   assert.equal(setup.available, true);
   assert.equal(await readlink(setup.executable), codexBinary);
+});
+
+test("uses the vendored apply_patch executable by default", async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), "mcp-vendored-apply-patch-"));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+
+  const setup = await prepareApplyPatch(join(directory, "workspace"));
+
+  assert.equal(setup.available, true);
+  assert.equal(await readlink(setup.executable), DEFAULT_CODEX_BINARY);
 });
 
 test("replaces a stale workspace apply_patch symlink", async (t) => {

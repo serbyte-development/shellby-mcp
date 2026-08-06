@@ -8,11 +8,11 @@ This page records the two host executable integrations used by the finished serv
 
 ## Current Integrations
 
-### ChatGPT-bundled Codex
+### Vendored Codex patch executable
 
-`prepareApplyPatch` creates or reuses `<workspace>/bin/apply_patch`, normally targeting `/Applications/ChatGPT.app/Contents/Resources/codex`, and prepends the workspace bin directory to persistent shells. The first-class `apply_patch` tool also spawns that prepared absolute path directly, independently of persistent shells (`src/workspace-tools.ts`, `src/index.ts`, `src/mcp-server.ts`).
+The private repository pins the macOS arm64 Codex multicall binary as `vendor/apply_patch` through Git LFS. The filename selects its patch mode. `prepareApplyPatch` creates or reuses `<workspace>/bin/apply_patch`, targets the vendored snapshot by default, permits `MCP_CODEX_BIN` as an override, and prepends the workspace bin directory to persistent shells. The first-class `apply_patch` tool also spawns that prepared absolute path directly, independently of persistent shells (`vendor/apply_patch`, `.gitattributes`, `src/workspace-tools.ts`, `src/index.ts`, `src/mcp-server.ts`).
 
-The integration is optional. A missing or non-executable Codex binary produces a startup warning, while the rest of the MCP remains available (`src/workspace-tools.ts`, `src/index.ts`).
+The integration remains optional at runtime. A missing or non-executable selected binary produces a startup warning, while the rest of the MCP remains available (`src/workspace-tools.ts`, `src/index.ts`). Clones must materialize the LFS object before using the vendored default.
 
 ### Peekaboo
 

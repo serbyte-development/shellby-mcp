@@ -2,8 +2,9 @@ import { constants } from "node:fs";
 import { access, lstat, mkdir, readlink, symlink, unlink } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
-export const DEFAULT_CODEX_BINARY = "/Applications/ChatGPT.app/Contents/Resources/codex";
+export const DEFAULT_CODEX_BINARY = fileURLToPath(new URL("../vendor/apply_patch", import.meta.url));
 
 export interface ApplyPatchSetup {
 	binDirectory: string;

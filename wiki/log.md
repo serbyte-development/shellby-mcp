@@ -1,5 +1,11 @@
 # Wiki Maintenance Log
 
+## [2026-08-06] vendor | pin the Codex apply_patch executable
+
+- Added the macOS arm64 Codex multicall executable as the private repository's Git-LFS-managed `vendor/apply_patch` snapshot.
+- Made the vendored executable the default while preserving `MCP_CODEX_BIN` as an explicit override.
+- Added default-path coverage and documented LFS checkout, platform scope, and workspace-symlink behavior.
+
 ## [2026-08-06] simplify | decouple native apply_patch from persistent shells
 
 - Removed `shell_id` and made absolute `cwd` required for the native `apply_patch` tool.

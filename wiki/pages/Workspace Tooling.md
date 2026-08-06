@@ -4,7 +4,7 @@ Verified 2026-08-06.
 
 ## What This Is
 
-Startup creates a default workspace and optionally exposes the ChatGPT-bundled Codex patch engine as a normal shell executable (`src/index.ts`, `src/workspace-tools.ts`).
+Startup creates a default workspace and exposes the repository's Git-LFS-managed Codex patch engine as a normal shell executable (`vendor/apply_patch`, `.gitattributes`, `src/index.ts`, `src/workspace-tools.ts`).
 
 ## Default Workspace
 
@@ -12,9 +12,9 @@ Startup creates a default workspace and optionally exposes the ChatGPT-bundled C
 
 ## `apply_patch`
 
-`prepareApplyPatch` creates `<workspace>/bin`, resolves and checks that `MCP_CODEX_BIN` is executable, creates `<workspace>/bin/apply_patch` as a symlink when absent, and retargets an existing symlink when configuration changes. The bin directory is prepended to the persistent shell's `PATH` after login startup (`src/workspace-tools.ts`, `src/index.ts`, `src/shell-session.ts`).
+`prepareApplyPatch` creates `<workspace>/bin`, defaults to the pinned macOS arm64 executable at `vendor/apply_patch`, and permits `MCP_CODEX_BIN` as an explicit override. It checks the selected target, creates `<workspace>/bin/apply_patch` as a symlink when absent, and retargets an existing symlink when configuration changes. The bin directory is prepended to the persistent shell's `PATH` after login startup (`vendor/apply_patch`, `.gitattributes`, `src/workspace-tools.ts`, `src/index.ts`, `src/shell-session.ts`).
 
-A missing or non-executable Codex binary produces a startup warning rather than failing the server. Tests cover symlink creation, stale-link replacement, and the missing-binary path (`test/workspace-tools.test.ts`).
+A missing or non-executable selected binary produces a startup warning rather than failing the server. Tests cover the vendored default, symlink creation, stale-link replacement, and the missing-binary path (`test/workspace-tools.test.ts`).
 
 The MCP registers `apply_patch` as a first-class core tool. Startup passes the prepared absolute executable path into each MCP request. The handler requires an absolute patch root, spawns the executable directly in that directory, writes the patch to stdin, and returns byte-capped combined output after the process exits. It is independent of persistent-shell state and serialization. The tool publishes explicit destructive/non-idempotent annotations, and the underlying executable remains available to `shell_run` as a fallback (`src/index.ts`, `src/http-server.ts`, `src/mcp-server.ts`).
 

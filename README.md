@@ -23,7 +23,7 @@ The server-level model instructions are intentionally narrow. Normal tool select
 - Node.js 22 or newer
 - A public HTTPS tunnel such as [ngrok](https://ngrok.com/)
 - ChatGPT Developer mode access
-- The Codex binary bundled with ChatGPT for the optional `apply_patch` command
+- Git LFS, which retrieves the vendored macOS arm64 `apply_patch` executable
 - [Peekaboo](https://peekaboo.sh/) for the `computer_*` tools:
 
   ```bash
@@ -157,7 +157,7 @@ Use `shell_run`, scripts, or browser automation for website retrieval only when 
 
 ### Patching files
 
-On startup, the server makes `~/Desktop/chatgpt-workspace/bin/apply_patch` available and prepends that directory to the persistent shell's `PATH`. In a fresh workspace it creates a symlink to the Codex binary bundled with ChatGPT; an existing executable at that path is reused.
+The repository vendors a fixed macOS arm64 Codex `apply_patch` executable at `vendor/apply_patch` through Git LFS. After cloning, run `git lfs install` and `git lfs pull`. On startup, the server makes `~/Desktop/chatgpt-workspace/bin/apply_patch` available and prepends that directory to the persistent shell's `PATH`. In a fresh workspace it creates a symlink to the vendored executable; an existing executable at that path is reused or retargeted when configuration changes.
 
 The MCP exposes this executable as the native `apply_patch` tool. Its model instruction follows the concise Codex policy: use `apply_patch` for local file edits; do not create or edit files with `cat` or other shell write tricks; formatting commands and bulk mechanical rewrites do not require it; and do not use Python to read or write files when a simple shell command or `apply_patch` is enough. The tool accepts patch text in the normal format:
 
@@ -170,7 +170,7 @@ The MCP exposes this executable as the native `apply_patch` tool. Its model inst
 *** End Patch
 ```
 
-This uses the same patch engine as Codex's local `apply_patch`. The MCP invokes the prepared executable directly, writes the patch to its stdin, and runs it independently of persistent shells. Supply the relevant absolute project root as `cwd` and use relative file paths inside the patch. If the Codex binary is unavailable, the MCP server continues to start and prints a warning; the native tool then reports the missing executable if called, and ordinary shell editing remains available.
+This is a pinned copy of Codex's local `apply_patch` engine rather than a dependency on the currently installed ChatGPT application. The MCP invokes the prepared executable directly, writes the patch to its stdin, and runs it independently of persistent shells. Supply the relevant absolute project root as `cwd` and use relative file paths inside the patch. If the binary is unavailable, the MCP server continues to start and prints a warning; the native tool then reports the missing executable if called, and ordinary shell editing remains available.
 
 Patch output is capped by `max_output_bytes`. Truncated results include `omitted_output_bytes` and `output_truncated: true`; native patch output is not pollable after the tool returns. Patch output appears only in structured content rather than being duplicated in the text summary.
 
@@ -199,7 +199,7 @@ Then inspect it with later commands such as `tail -n 100 /tmp/my-app.log` or `ps
 | `PORT`                         | `3333`                                               | Local HTTP port                                                                              |
 | `MCP_SHELL`                    | `/bin/zsh`                                           | Persistent shell executable                                                                  |
 | `MCP_CWD`                      | `~/Desktop/chatgpt-workspace`                        | Absolute-resolved default workspace and initial shell working directory                      |
-| `MCP_CODEX_BIN`                | `/Applications/ChatGPT.app/Contents/Resources/codex` | Codex binary targeted by the workspace `apply_patch` symlink                                 |
+| `MCP_CODEX_BIN`                | Repository `vendor/apply_patch`                      | Optional executable override targeted by the workspace `apply_patch` symlink                 |
 | `MCP_PEEKABOO_BIN`             | `peekaboo`                                           | Peekaboo executable name or absolute path for the Computer Use adapter                        |
 | `MCP_TRANSCRIPT_CHARS`         | `1048576`                                            | Retained rolling transcript limit in JavaScript UTF-16 code units                            |
 | `MCP_COMMAND_TRANSCRIPT_BYTES` | `262144`                                             | Maximum UTF-8 command output retained before excess bytes are discarded                      |
