@@ -211,3 +211,7 @@
 ## [2026-08-06] document | note cross-platform apply_patch builds
 
 - Documented that future platform-specific `apply_patch` binaries can be built from a pinned Codex source submodule instead of copying a partial Rust source tree.
+
+## [2026-08-06] simplify | remove obsolete Git LFS configuration
+
+- Removed the repository attribute, local filters, and pre-push hook after replacing the oversized Codex snapshot with the directly tracked standalone `apply_patch` binary.
