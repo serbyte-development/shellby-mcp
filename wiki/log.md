@@ -1,5 +1,14 @@
 # Wiki Maintenance Log
 
+## [2026-08-06] update | make shell labels contextual and persistent usage explicit
+
+- Replaced the six-character request-ID recommendation with short contextual task and command labels while preserving the existing 1–128 character backend validation.
+- Clarified that `shell_id` summarizes the task or project and `request_id` summarizes the specific command or step.
+- Repositioned `cwd` as a one-time or intentional directory switch that should be omitted after the persistent shell reaches the desired directory.
+- Expanded RTK guidance from Ripgrep searches to supported reads, listings, diffs, logs, tests, builds, and other noisy commands.
+- Restored the concise screenshot privacy warning required by the existing integration contract.
+- Updated integration assertions, README guidance, and the maintained tool-surface documentation.
+
 ## [2026-08-05] finalize | reconcile finished server and trim roadmap
 
 - Re-verified the repository against source, tests, package scripts, PM2 configuration, README, and maintained wiki pages.

@@ -28,9 +28,9 @@ Verified 2026-08-05.
 ### `shell_run`
 
 - Required inputs: `request_id` and `command`; `shell_id` is optional and defaults to `default`.
-- `cwd` is optional. It must be an existing absolute directory, is applied before command evaluation, and becomes the persistent working directory for later calls in that shell.
-- `shell_id` accepts 1–64 characters. Stable IDs retain shell state, and different IDs can execute concurrently.
-- `request_id` accepts any nonempty string up to 128 characters; six lowercase alphanumeric characters are recommended, not enforced.
+- `cwd` is an optional absolute directory switch. Use it when starting or intentionally moving a shell, then omit it until another switch is needed; agents may also `cd` once and rely on persistent state.
+- `shell_id` accepts 1–64 characters and should be a short task or project label. Stable IDs retain shell state, and different IDs can execute concurrently.
+- `request_id` accepts any nonempty string up to 128 characters and should be a short command or step label unique within that shell. The runtime imposes no character pattern.
 - `command` accepts up to 262,144 characters.
 - `wait_ms` defaults to 1,500 and is schema-limited to 0–10,000.
 - `max_output_bytes` defaults from runtime configuration and is schema-limited from 256 to the configured maximum.
@@ -104,7 +104,7 @@ Every CLI call uses `execFile` with exact argv and an added `--json`; model inpu
 
 ## Published Instructions
 
-The server tells clients to conserve output, start text and file searches with `rtk rg` or `rtk rg --files`, prefer other RTK wrappers when supported, use native `apply_patch`, keep new work under the configured workspace, reuse stable shell IDs, poll with the original shell ID, and serialize foreground commands within each shell. It also marks fetched content as untrusted and warns that screenshots may contain private information. Raw `rg` remains appropriate when exact unfiltered output is necessary. These instructions remain advisory except where schemas or the runtime impose limits (`src/mcp-server.ts`).
+The server tells clients to conserve output, prefer RTK equivalents for supported reads and noisy commands, use native `apply_patch`, keep new work under the configured workspace, use short contextual shell and request IDs, reuse stable shells, and serialize foreground commands within each shell. Raw commands remain appropriate for unsupported behavior, exact unfiltered output, and persistent state changes. It also marks fetched content as untrusted and warns that screenshots may contain private information. These instructions remain advisory except where schemas or the runtime impose limits (`src/mcp-server.ts`).
 
 ## Related
 
