@@ -7,7 +7,7 @@
 - Role: original project overview, runtime behavior, configuration reference, and user-facing setup notes.
 - Reliability: useful design intent, but explicitly treated as potentially stale.
 - Verified against code: 2026-08-05.
-- Feeds: [[pages/Architecture Map]], [[pages/MCP Tool Surface]], [[pages/Persistent Shell Runtime]], [[pages/Transcript Polling and Idempotency]], [[pages/Workspace Tooling]], [[pages/Configuration and Startup]], and [[pages/Open Questions and Risks]].
+- Feeds: [[pages/Architecture Map]], [[pages/MCP Tool Surface]], [[pages/Persistent Shell Runtime]], [[pages/Workspace Tooling]], [[pages/Configuration and Startup]], and [[pages/Open Questions and Risks]].
 
 #### Staleness / conflict notes
 
@@ -24,7 +24,7 @@
 - Role: direct inspection of executable files and CLI behavior inside installed macOS application bundles, plus inspection of the local standalone Codex web-search experiment.
 - Reliability: point-in-time host evidence. Bundle contents and private interfaces can change with application updates.
 - Stored as: [[raw/Host App Binary Survey 2026-07-20]].
-- Feeds: [[pages/Host Application Binary Reuse]] and [[pages/Workspace Tooling]].
+- Feeds: [[pages/Workspace Tooling]].
 - Secret handling: no tokens or credential values were captured; only executable paths, environment variable names, command surfaces, and authentication boundaries were recorded.
 
 ### ChatGPT and local capability survey, 2026-08-01
@@ -32,7 +32,7 @@
 - Role: direct inspection of current ChatGPT/Codex command surfaces, MCP initialization and `tools/list`, generated experimental app-server schemas, installed application CLI presence, and macOS-native commands.
 - Reliability: point-in-time host evidence. Child MCP schemas, experimental protocols, app-bundle locations, and private interfaces can change on application updates.
 - Stored as: [[raw/ChatGPT and Local Capability Survey 2026-08-01]].
-- Feeds: [[pages/Bundled MCP and Agent Surfaces]], [[pages/Host Application Binary Reuse]], and [[pages/Open Questions and Risks]].
+- Feeds: [[pages/Architecture Map]] and [[pages/Open Questions and Risks]].
 - Secret handling: no tokens, credential values, messages, screenshots, accessibility trees, recordings, history artifacts, or account data were read or stored.
 - Staleness note: its ChatGPT Computer Use child-MCP inventory remains historical evidence, but that child is not used by the current server. Direct Peekaboo integration supersedes the survey's Computer Use implementation direction (`src/index.ts`, `src/peekaboo.ts`, `src/computer-use-tools.ts`).
 
@@ -41,7 +41,7 @@
 - Role: supported CLI contracts for installation, permissions, observation, app/window actions, and JSON output.
 - Sources: `https://peekaboo.sh/cli-command-reference.html`, `https://peekaboo.sh/permissions.html`, `https://peekaboo.sh/commands/see.html`, and local `peekaboo --help` / subcommand help.
 - Reliability: public upstream documentation plus point-in-time installed CLI help; flags and JSON shapes can change with Peekaboo upgrades.
-- Feeds: [[pages/Architecture Map]], [[pages/MCP Tool Surface]], [[pages/Configuration and Startup]], [[pages/Host Application Binary Reuse]], and [[pages/Open Questions and Risks]].
+- Feeds: [[pages/Architecture Map]], [[pages/MCP Tool Surface]], [[pages/Configuration and Startup]], and [[pages/Open Questions and Risks]].
 - Secret handling: permission status may expose local host/process metadata, so no raw status output or screenshots are stored in the wiki.
 
 ## Verification Evidence

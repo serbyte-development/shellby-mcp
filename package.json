@@ -18,7 +18,8 @@
     "inspect": "npx @modelcontextprotocol/inspector",
     "tunnel": "ngrok http 3333 --url=geologic-catalog-deodorant.ngrok-free.dev --traffic-policy-file ./ngrok-traffic-policy.yml",
     "test": "tsx --test test/*.test.ts",
-    "type-check": "tsc -p tsconfig.json --noEmit"
+    "type-check": "tsc -p tsconfig.json --noEmit",
+    "vendor:apply-patch": "scripts/build-apply-patch.sh"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "1.30.0",

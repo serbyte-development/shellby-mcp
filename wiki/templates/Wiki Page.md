@@ -2,10 +2,6 @@
 
 Verified YYYY-MM-DD.
 
-## What This Is
-
-One sentence explaining the maintainer question this page answers.
-
 ## Current Facts
 
 - Cite implementation facts with repository-relative paths.
@@ -17,7 +13,3 @@ One sentence explaining the maintainer question this page answers.
 ## Risks / Open Questions
 
 - Keep unresolved items explicit.
-
-## Related
-
-- Add related wikilinks.

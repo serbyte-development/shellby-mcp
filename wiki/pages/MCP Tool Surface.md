@@ -2,113 +2,44 @@
 
 Verified 2026-08-06.
 
-## What This Is
+## Published Order
 
-`src/mcp-server.ts` always exposes seven core tools over a shared `ShellSessionManager` and eleven focused Computer Use tools over one shared `PeekabooClient`. It publishes independent utilities first (`fetch_website`, `apply_patch`), then the shell workflow (`shell_run`, `shell_poll`, `shell_reset`, `shell_list`, `shell_close`), and the complete `computer_*` group last. `tools/list` preserves this order, and the integration suite asserts it exactly. Tool metadata remains stable even if the local `peekaboo` executable or macOS permissions are unavailable (`src/mcp-server.ts`, `src/http-server.ts`, `src/computer-use-tools.ts`, `test/mcp-integration.test.ts`).
+`tools/list` returns `fetch_website`, `apply_patch`, five `shell_*` tools, then eleven `computer_*` tools. Integration tests assert the order and schemas; all tools remain registered when optional executables or macOS permissions are unavailable (`src/mcp-server.ts`, `src/computer-use-tools.ts`, `test/mcp-integration.test.ts`).
 
-## Tools
+## Core Tools
 
-### `fetch_website`
+| Tool | Contract |
+| --- | --- |
+| `fetch_website` | Fetch one HTTP(S) URL as Markdown, cleaned HTML, or raw HTML. Cursor reads reuse the same URL and format. Cache: 20 documents, 10 minutes, 2 MiB each (`src/web-open.ts`). |
+| `apply_patch` | Run a Codex patch in required absolute `cwd`. Direct process; no shell ID, request ID, or polling. Output is byte-capped (`src/mcp-server.ts`, `src/workspace-tools.ts`). |
+| `shell_run` | Run up to 262,144 command characters in a named persistent shell. Requires `request_id`; optional `shell_id`, absolute `cwd`, `wait_ms`, and response cap (`src/mcp-server.ts`). |
+| `shell_poll` | Continue the same shell/request from `next_cursor`; cannot read before command start or beyond command completion (`src/mcp-server.ts`, `src/shell-session.ts`). |
+| `shell_reset` | Replace one shell generation and deduplicate exact retries by request ID plus reason. The `default` shell may be reset (`src/shell-session.ts`). |
+| `shell_list` | Return open shells, activity, idle time, capacity, and close eligibility without refreshing idle timers (`src/shell-session-manager.ts`). |
+| `shell_close` | Terminate a non-default shell and release its slot. The `default` shell cannot be closed (`src/shell-session-manager.ts`). |
 
-- Is the model's first-choice tool for reading, inspecting, summarizing, or extracting content from a known HTTP or HTTPS URL.
-- Returns cleaned Markdown by default, cleaned main-content HTML with `clean_html`, or complete rendered page source with `raw_html`.
-- Returns the final URL, title, selected format, bounded UTF-8 content chunks, and an opaque cursor that reads the cached document without fetching the page again.
-- Requires cursor continuation calls to reuse the same URL and format.
-- Retains at most twenty fetched documents for ten minutes by default, with a 2 MiB ceiling per document (`src/web-open.ts`, `src/mcp-server.ts`, `test/web-open.test.ts`, `test/mcp-integration.test.ts`).
-- Directs models away from `shell_run`, Python, `curl`, `wget`, and browser automation unless fetching fails or authentication or interaction is required (`src/mcp-server.ts`, `test/mcp-integration.test.ts`).
-
-### `apply_patch`
-
-- Accepts a Codex-format patch, required absolute project `cwd`, and bounded response output; it has no `shell_id` or request ID.
-- Spawns the prepared absolute `apply_patch` executable directly in `cwd`, writes the patch to stdin, and waits for it to exit, so callers do not poll it and persistent-shell state or foreground locks cannot affect it.
-- Reports output omitted by `max_output_bytes`; omitted output is not pollable.
-- Is preferred over Python string replacement, `sed`, and manual edit heredocs (`src/mcp-server.ts`, `src/workspace-tools.ts`, `test/mcp-integration.test.ts`).
-
-### `shell_run`
-
-- Required inputs: `request_id` and `command`; `shell_id` is optional and defaults to `default`.
-- `cwd` is an optional absolute directory switch. Use it when starting or intentionally moving a shell, then omit it until another switch is needed; agents may also `cd` once and rely on persistent state.
-- `shell_id` accepts 1–64 characters and should be a short task or project label. Stable IDs retain shell state, and different IDs can execute concurrently.
-- `request_id` accepts any nonempty string up to 128 characters and should be a short command or step label unique within that shell. The runtime imposes no character pattern.
-- `command` accepts up to 262,144 characters.
-- `wait_ms` defaults to 1,500 and is schema-limited to 0–10,000.
-- `max_output_bytes` defaults from runtime configuration and is schema-limited from 256 to the configured maximum.
-- Annotations mark the tool destructive, state-changing, and open-world (`src/mcp-server.ts`).
-
-### `shell_poll`
-
-Reads output for an existing command from `next_cursor`. It must receive the same `shell_id` as the original run. The runtime rejects cursors before that command's start, and completed reads are bounded at its terminal cursor, preventing polls from consuming earlier or later command output (`src/mcp-server.ts`, `src/shell-session.ts`, `test/shell-session.test.ts`).
-
-### `shell_reset`
-
-Resets the selected shell generation, including the protected `default` shell, while preserving the shell slot.
-
-Kills the selected shell's process group, discards only that shell's state, starts a new generation, and deduplicates retries by `request_id` plus reason inside that shell. It is destructive and idempotent for an exact retry (`src/mcp-server.ts`, `src/shell-session.ts`).
-
-### `shell_list`
-
-Returns currently open shells with activity state, idle duration, close eligibility, total count, configured limit, and idle timeout. Listing does not refresh idle timers.
-
-### `shell_close`
-
-Terminates a selected non-default shell, discards its state and retained records, and releases its slot immediately. The `default` shell cannot be closed; use `shell_reset` to recover it.
+`shell_id` defaults to `default`; stable IDs retain cwd and environment, while different IDs run concurrently. `request_id` accepts 1–128 characters and is unique within one shell. `wait_ms` is 0–10,000; output caps range from 256 bytes to `MCP_MAX_OUTPUT_BYTES` (`src/mcp-server.ts`, `test/mcp-integration.test.ts`).
 
 ## Computer Use Tools
 
-### `computer_list`
+| Tool | Contract |
+| --- | --- |
+| `computer_list` | List apps, windows, screens, or Peekaboo permission status. |
+| `computer_observe` | Capture one target as same-dimension quality-75 JPEG; return snapshot and target metadata without AX elements. |
+| `computer_inspect` | Return bounded accessibility text for an existing snapshot when visual state is insufficient. |
+| `computer_click` | Click one element ID, text query, or coordinate pair against an explicit snapshot. |
+| `computer_type` | Type literal text into an app, window, or snapshot target. |
+| `computer_press` | Press sequential key tokens. |
+| `computer_hotkey` | Press one simultaneous shortcut. |
+| `computer_scroll` | Scroll at the pointer or an observed element. |
+| `computer_drag` | Drag between snapshot elements, coordinates, or an application destination. |
+| `computer_app` | Launch, switch, quit, relaunch, hide, or unhide an application. |
+| `computer_window` | Focus, close, minimize, maximize, move, resize, or set bounds for one window. |
 
-Lists apps, an app's windows, connected screens, or Peekaboo permission status. Window listing requires `app`; app-only inclusion flags are rejected for other list kinds.
+The focused tools translate screenshot-relative coordinates through retained capture bounds and share one serialized `PeekabooClient`. The adapter uses exact argv plus `--json`, bounds process output, preserves upstream semantic failures, returns images only for observation, and never retries stateful actions. Advanced Peekaboo operations remain available through `shell_run` (`src/computer-use-tools.ts`, `src/peekaboo.ts`, `test/peekaboo.test.ts`).
 
-### `computer_observe`
+## Results and Instructions
 
-Observes exactly one app, window ID, or display index, or the frontmost window by default. Peekaboo captures a temporary PNG, then the server encodes it as a same-dimension quality-75 JPEG before returning it with a fresh `snapshot_id` and essential target metadata. The response deliberately omits accessibility elements. Keeping image dimensions unchanged preserves screenshot-relative coordinates while reducing tunneled and model-context payloads. `--no-web-focus` keeps observation from pressing web content while collecting state (`src/computer-use-tools.ts`, `src/peekaboo.ts`, `test/mcp-integration.test.ts`).
+Shell results always include status, nullable exit code, cwd, and output. Poll metadata and truncation diagnostics appear only when needed; command output lives only in `structuredContent`. Shell errors become MCP tool errors, unexpected failures become `internal_error`, and Peekaboo failures retain stable adapter codes (`src/mcp-server.ts`, `src/computer-use-tools.ts`).
 
-### `computer_inspect`
-
-Uses Peekaboo's `inspect-ui` command against an explicit observation snapshot and returns only its accessibility-tree text, without duplicating Peekaboo's structured content envelope. Depth, total elements, and children per node are independently bounded and default to 8, 100, and 25. It is the opt-in fallback when the screenshot cannot support a reliable visual action (`src/computer-use-tools.ts`, `test/mcp-integration.test.ts`).
-
-### `computer_click`
-
-Requires an explicit `snapshot_id` plus exactly one element ID, text query, or coordinate pair. Coordinate clicks use the capture target retained for that snapshot. Display-local coordinates are translated through the display origin and sent as global coordinates; window/app coordinates remain relative to their captured target.
-
-### `computer_type`, `computer_press`, and `computer_hotkey`
-
-Type literal text, press sequential key tokens, or press a simultaneous shortcut. They can target an app, window ID, or snapshot and remain separate so sequence and chord semantics are unambiguous.
-
-### `computer_scroll`
-
-Scrolls up, down, left, or right at the pointer or over an observed element. Element targeting requires the matching snapshot.
-
-### `computer_drag`
-
-Requires a snapshot and drags between element IDs, screenshot-relative coordinates, or an application destination. Coordinates are translated from the observation bounds before invoking Peekaboo.
-
-### `computer_app`
-
-Launches, switches to, quits, relaunches, hides, or unhides an application. Launch/relaunch wait for readiness; switch verifies focus. Force is accepted only for quit/relaunch, and files or URLs may be opened only during launch.
-
-### `computer_window`
-
-Focuses, closes, minimizes, maximizes, moves, resizes, or sets bounds for one app- or window-ID-anchored window. Geometry requirements are enforced by action, and exact window IDs come from `computer_list` with `kind=windows`.
-
-The server intentionally exposes these eleven operations instead of a raw Peekaboo proxy. Advanced Peekaboo commands remain available through `shell_run`. All first-class operations share one serial queue because observation snapshots and UI actions are stateful (`src/computer-use-tools.ts`, `src/peekaboo.ts`).
-
-## Result and Error Shape
-
-Run and poll always return status, nullable exit code, current command `cwd`, and output. Completed results report the resulting persistent working directory, including a directory selected through `shell_run.cwd` or changed by the command itself. They echo `shell_id` only for non-default shells, add request ID and next cursor only when polling may be needed, `has_more` only when unread retained output exists, and cursor/truncation diagnostics only when exceptional. This server targets ChatGPT web only, so the human-readable content block deliberately remains a compact status summary while command output lives only in `structuredContent`, avoiding duplicated model context (`src/mcp-server.ts`, `src/shell-session.ts`, `README.md`).
-
-Known `ShellSessionError` codes are converted into MCP tool errors. Unexpected errors become `internal_error`; tool handlers do not throw them through the transport (`src/mcp-server.ts`, `src/shell-session.ts`).
-
-Every CLI call uses `execFile` with exact argv and an added `--json`; model input never passes through a shell. A zero exit with `{success:false}` is still an error, malformed/oversized/process failures become stable `PeekabooError` results, and a missing binary reports `PEEKABOO_NOT_FOUND`. Results preserve compact `data` and a short summary while omitting Peekaboo debug logs. Observation results additionally return an MCP image block. Calls are serialized, bounded, cancellation-aware, and never retried because an action may already have happened (`src/peekaboo.ts`, `src/computer-use-tools.ts`, `test/peekaboo.test.ts`).
-
-## Published Instructions
-
-The server tells clients to conserve output, prefer RTK equivalents for supported reads and noisy commands, use native `apply_patch`, keep new work under the configured workspace, use short contextual shell and request IDs, reuse stable shells, and serialize foreground commands within each shell. Raw commands remain appropriate for unsupported behavior, exact unfiltered output, and persistent state changes. It also marks fetched content as untrusted and warns that screenshots may contain private information. These instructions remain advisory except where schemas or the runtime impose limits (`src/mcp-server.ts`).
-
-## Related
-
-- [[pages/HTTP Transport]]
-- [[pages/Persistent Shell Runtime]]
-- [[pages/Transcript Polling and Idempotency]]
-- [[pages/Workspace Tooling]]
-- [[pages/Bundled MCP and Agent Surfaces]]
+Published instructions tell clients to conserve output, prefer RTK for supported reads and noisy commands, edit with `apply_patch`, keep new work under the configured workspace, reuse contextual shell IDs, serialize work within a shell, distrust fetched content, and treat screenshots as potentially private. Schemas and runtime validation enforce mechanics; prose remains advisory (`src/mcp-server.ts`).

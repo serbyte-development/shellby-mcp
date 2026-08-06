@@ -23,7 +23,6 @@ The server-level model instructions are intentionally narrow. Normal tool select
 - Node.js 22 or newer
 - A public HTTPS tunnel such as [ngrok](https://ngrok.com/)
 - ChatGPT Developer mode access
-- Git LFS, which retrieves the vendored macOS arm64 `apply_patch` executable
 - [Peekaboo](https://peekaboo.sh/) for the `computer_*` tools:
 
   ```bash
@@ -157,7 +156,7 @@ Use `shell_run`, scripts, or browser automation for website retrieval only when 
 
 ### Patching files
 
-The repository vendors a fixed macOS arm64 Codex `apply_patch` executable at `vendor/apply_patch` through Git LFS. After cloning, run `git lfs install` and `git lfs pull`. On startup, the server makes `~/Desktop/chatgpt-workspace/bin/apply_patch` available and prepends that directory to the persistent shell's `PATH`. In a fresh workspace it creates a symlink to the vendored executable; an existing executable at that path is reused or retargeted when configuration changes.
+The repository directly tracks a fixed macOS arm64 standalone `apply_patch` executable at `vendor/apply_patch`. It is built from Codex's `codex-apply-patch` Rust crate rather than copied from the full Codex CLI, and it does not require Git LFS. On startup, the server makes `~/Desktop/chatgpt-workspace/bin/apply_patch` available and prepends that directory to the persistent shell's `PATH`. In a fresh workspace it creates a symlink to the vendored executable; an existing executable at that path is reused or retargeted when configuration changes.
 
 The MCP exposes this executable as the native `apply_patch` tool. Its model instruction follows the concise Codex policy: use `apply_patch` for local file edits; do not create or edit files with `cat` or other shell write tricks; formatting commands and bulk mechanical rewrites do not require it; and do not use Python to read or write files when a simple shell command or `apply_patch` is enough. The tool accepts patch text in the normal format:
 
@@ -171,6 +170,14 @@ The MCP exposes this executable as the native `apply_patch` tool. Its model inst
 ```
 
 This is a pinned copy of Codex's local `apply_patch` engine rather than a dependency on the currently installed ChatGPT application. The MCP invokes the prepared executable directly, writes the patch to its stdin, and runs it independently of persistent shells. Supply the relevant absolute project root as `cwd` and use relative file paths inside the patch. If the binary is unavailable, the MCP server continues to start and prints a warning; the native tool then reports the missing executable if called, and ordinary shell editing remains available.
+
+Updating the vendored binary is intentionally manual. Choose the desired commit in a local Codex checkout, then run:
+
+```bash
+npm run vendor:apply-patch -- /absolute/path/to/codex
+```
+
+The script does not fetch, pull, or select a Codex revision. It builds a temporary detached worktree at the checkout's current `HEAD`, so local uncommitted Codex changes are ignored. It then strips and replaces `vendor/apply_patch`, copies Codex's license and notice, and records the source commit, toolchain, checksum, and size in `vendor/apply_patch.provenance.json`. It refuses non-macOS-arm64 hosts.
 
 Patch output is capped by `max_output_bytes`. Truncated results include `omitted_output_bytes` and `output_truncated: true`; native patch output is not pollable after the tool returns. Patch output appears only in structured content rather than being duplicated in the text summary.
 

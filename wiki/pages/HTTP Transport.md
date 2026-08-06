@@ -1,10 +1,6 @@
 # HTTP Transport
 
-Verified 2026-08-04.
-
-## What This Is
-
-The HTTP layer adapts stateless MCP Streamable HTTP requests to one process-wide `ShellSessionManager` and webpage cache (`src/http-server.ts`).
+Verified 2026-08-06.
 
 ## Routes and Middleware
 
@@ -23,12 +19,4 @@ Because no MCP session ID is retained by the HTTP layer, an existing client can 
 
 In-flight request closers are tracked so startup failure and server shutdown can settle them before closing the shell. HTTP shutdown begins before shell shutdown (`src/http-server.ts`, `src/index.ts`).
 
-## Contract Tests
-
-The integration tests connect two separate SDK clients and prove shell state survives between them. They also keep one client alive across a full HTTP server stop/start cycle on the same port and prove its next tool call succeeds without reconnecting. A separate test posts with an attacker-controlled Host value and expects HTTP 403 (`test/mcp-integration.test.ts`).
-
-## Related
-
-- [[pages/Architecture Map]]
-- [[pages/MCP Tool Surface]]
-- [[pages/Open Questions and Risks]]
+Integration tests prove state sharing across SDK clients, continued client use after a stop/start on the same port, and HTTP 403 for an attacker-controlled Host (`test/mcp-integration.test.ts`).

@@ -1,5 +1,12 @@
 # Wiki Maintenance Log
 
+## [2026-08-06] trim | remove wiki filler and consolidate runtime pages
+
+- Made the index the sole description and navigation layer; removed repeated page-purpose sections and related-link footers.
+- Folded transcript, polling, idempotency, and concurrency contracts into the persistent-shell page.
+- Removed obsolete feature, historical-surface, and host-binary pages whose durable facts already live in active architecture pages or raw evidence.
+- Compressed maintainer rules, test coverage, and supporting templates without removing source authority, verification, logging, or secret-handling constraints.
+
 ## [2026-08-06] vendor | pin the Codex apply_patch executable
 
 - Added the macOS arm64 Codex multicall executable as the private repository's Git-LFS-managed `vendor/apply_patch` snapshot.
@@ -200,3 +207,7 @@
 
 - Ordered the non-Computer tools as independent utilities followed by the complete shell workflow: `fetch_website`, `apply_patch`, `shell_run`, `shell_poll`, `shell_reset`, `shell_list`, and `shell_close`.
 - Updated the exact `tools/list` integration contract.
+
+## [2026-08-06] document | note cross-platform apply_patch builds
+
+- Documented that future platform-specific `apply_patch` binaries can be built from a pinned Codex source submodule instead of copying a partial Rust source tree.

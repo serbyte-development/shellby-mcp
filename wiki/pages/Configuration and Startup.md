@@ -1,10 +1,6 @@
 # Configuration and Startup
 
-Verified 2026-08-05.
-
-## What This Is
-
-`src/index.ts` is the production entry point that converts environment variables into the composed HTTP server, workspace integration, and shell runtime.
+Verified 2026-08-06.
 
 ## Environment Inputs
 
@@ -25,19 +21,15 @@ Verified 2026-08-05.
 | `MCP_SHELL_IDLE_TTL_MS`        | `1800000`                          | Idle lifetime for named shells; `0` disables cleanup    |
 | `MCP_LOG_COMMANDS`             | `summary`                          | `off`, compact `summary`, or raw `full` command logging |
 
-`MCP_CWD` expands `~` and `~/...`, resolves relative values from the server startup directory, and then uses that absolute path for shell startup, workspace tooling, and MCP instructions. Numeric limits are parsed and range-checked by startup helpers. Logging accepts `off`, `summary`, and `full`; true-like legacy values select `summary`, false-like values select `off`, and other values fail fast (`src/index.ts`, `src/workspace-tools.ts`). Accepted commands are prefixed with the server's local time in 24-hour `HH:MM` format so terminal observers can follow when agent activity occurred (`src/shell-session.ts`).
-
-Independently of terminal logging, every newly accepted model-supplied `shell_run` command is appended to the fixed repository-local `agent-commands.log`. The gitignored file uses one physical line per command: compact local timestamp, tab, then JSON-escaped command text. Exact retries do not duplicate entries, and internal native `apply_patch` commands opt out (`src/index.ts`, `src/command-history.ts`, `src/shell-session.ts`, `src/mcp-server.ts`, `.gitignore`).
+`MCP_CWD` expands `~`, resolves relative values from startup cwd, and becomes the shell/workspace/instruction root. Numeric values are range-checked. Logging accepts `off`, `summary`, and `full`; accepted `shell_run` commands also append once, without redaction, to gitignored `agent-commands.log` (`src/index.ts`, `src/workspace-tools.ts`, `src/command-history.ts`, `src/shell-session.ts`).
 
 ## Startup and Shutdown
 
-Startup creates the workspace, prepares `apply_patch`, constructs the named-shell manager and one shared `PeekabooClient`, starts the default shell, and then listens. The client uses `MCP_PEEKABOO_BIN` or resolves `peekaboo` through `PATH`; startup does not probe the binary or permissions, so all eleven Computer Use schemas remain stable. A missing executable fails only the attempted Computer Use call with `PEEKABOO_NOT_FOUND` (`src/index.ts`, `src/http-server.ts`, `src/peekaboo.ts`, `src/computer-use-tools.ts`).
-
-Additional shells are created lazily. Inactive named shells are closed after the configured idle lifetime, and `shell_close` can release one immediately. The `default` shell remains available for backward compatibility, cannot be closed, and may still be reset. Active foreground commands and resets are never idle-evicted. `SIGINT` and `SIGTERM` close HTTP requests/server, every created shell, and the Peekaboo client's pending/running queue before exiting. The server does not own a child MCP or manage Peekaboo's own daemon lifecycle (`src/index.ts`, `src/http-server.ts`, `src/shell-session-manager.ts`, `src/peekaboo.ts`).
+Startup prepares the workspace and patch executable, constructs shared adapters, creates the default shell, and starts HTTP. Named shells are lazy and idle-evicted; active work is not. `SIGINT` and `SIGTERM` close HTTP, shells, and the Peekaboo queue. Peekaboo availability and permissions are checked on use, not startup (`src/index.ts`, `src/http-server.ts`, `src/shell-session-manager.ts`, `src/peekaboo.ts`).
 
 ## Computer Use Permission Bootstrap
 
-Install Peekaboo's supported CLI, then inspect every available local/Bridge permission source:
+Install Peekaboo and inspect or request its macOS permissions:
 
 ```bash
 brew install steipete/tap/peekaboo
@@ -45,33 +37,14 @@ peekaboo permissions status --all-sources --json
 peekaboo permissions grant
 ```
 
-`permissions grant` prints the current macOS setup instructions. Peekaboo also exposes direct permission prompts:
-
-```bash
-peekaboo permissions request-screen-recording
-peekaboo permissions request-event-synthesizing
-```
-
-Follow the macOS prompts, enable Accessibility when `permissions grant` directs it, and re-run the status command. Screen Recording enables capture, Accessibility enables UI automation, and Event Synthesizing enables background synthesized input. The adapter preserves Peekaboo's JSON error instead of changing TCC automatically. If Terminal-launched and PM2-launched behavior differs, compare `peekaboo permissions status --all-sources --json` in the responsible host context before changing server code (`src/peekaboo.ts`, `src/computer-use-tools.ts`).
+Screen Recording enables capture; Accessibility and Event Synthesizing enable actions. TCC grants attach to the responsible launching process, so compare status from the Terminal or PM2 context that runs the server (`src/peekaboo.ts`, `src/computer-use-tools.ts`).
 
 ## Package Scripts
 
-- `dev`: watch `src/index.ts` with `tsx`.
-- `build`: compile `src/` with TypeScript.
-- `start`: run `dist/index.js`.
-- `pm2:start`: build the server and start both checked-in PM2 apps.
-- `pm2:reload`: rebuild and reload both apps with updated environment values.
-- `pm2:status|logs|stop`: inspect logs/status or stop the checked-in PM2 apps.
-- `inspect`: launch the MCP Inspector package; it does not itself pass a server command.
-- `tunnel`: expose port 3333 in the foreground through the same fixed ngrok development domain and traffic policy (`package.json`, `ecosystem.config.cjs`).
+- Development: `dev`, `build`, `start`, `inspect`.
+- PM2: `pm2:start`, `pm2:reload`, `pm2:status`, `pm2:logs`, `pm2:stop`.
+- Tunnel: `tunnel` exposes port 3333 through the checked-in ngrok domain and policy (`package.json`, `ecosystem.config.cjs`).
 
 The tunnel policy only rewrites Host for localhost validation. It is not part of MCP authentication or authorization (`ngrok-traffic-policy.yml`, `src/http-server.ts`).
 
-`PORT` configures the HTTP listener, but the foreground tunnel script, PM2 ngrok app, and Host rewrite are hard-coded to 3333. A port change therefore requires coordinated edits to `package.json`, `ecosystem.config.cjs`, and `ngrok-traffic-policy.yml` (`src/index.ts`, `package.json`, `ecosystem.config.cjs`, `ngrok-traffic-policy.yml`).
-
-## Related
-
-- [[pages/Architecture Map]]
-- [[pages/HTTP Transport]]
-- [[pages/Workspace Tooling]]
-- [[pages/Build and Test]]
+`PORT` changes only HTTP; the tunnel script, PM2 ngrok app, and Host rewrite remain fixed at 3333 and must be edited together (`src/index.ts`, `package.json`, `ecosystem.config.cjs`, `ngrok-traffic-policy.yml`).

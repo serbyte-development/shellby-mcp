@@ -1,10 +1,6 @@
 # Open Questions and Risks
 
-Verified 2026-08-05.
-
-## What This Is
-
-This is the maintainer lint target for unresolved architectural risks and source drift.
+Verified 2026-08-06.
 
 ## Active Risks
 
@@ -26,17 +22,4 @@ This is the maintainer lint target for unresolved architectural risks and source
 - Generated-tool paths and catalog rules intentionally exist only in model instructions; the server does not provision or validate them (`src/mcp-server.ts`, `src/index.ts`).
 - The workspace location is prompt guidance and an initial cwd, not a filesystem boundary (`src/index.ts`, `src/mcp-server.ts`).
 
-## Staleness Watch
-
-`README.md` is retained as a raw source and may continue to contain user-facing setup details that drift independently of server code. Update maintained architectural truth here first, then update the README only when its public instructions also need to change ([[raw/source-manifest]]).
-
-The server is considered feature-complete. Historical host-capability research remains reference material, not an active roadmap.
-
-## Related
-
-- [[pages/HTTP Transport]]
-- [[pages/Persistent Shell Runtime]]
-- [[pages/Workspace Tooling]]
-- [[pages/Host Application Binary Reuse]]
-- [[pages/Bundled MCP and Agent Surfaces]]
-- [[pages/Build and Test]]
+`README.md` remains a potentially stale user-facing source. Update current architectural truth here first and public setup instructions only when needed (`wiki/raw/source-manifest.md`). The server is feature-complete; raw host-capability surveys are evidence, not a roadmap.

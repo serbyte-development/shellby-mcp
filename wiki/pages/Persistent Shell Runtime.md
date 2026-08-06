@@ -1,10 +1,6 @@
 # Persistent Shell Runtime
 
-Verified 2026-08-05.
-
-## What This Is
-
-`PersistentShellSession` owns one non-PTY login shell and preserves its process state across MCP calls (`src/shell-session.ts`).
+Verified 2026-08-06.
 
 ## Process Model
 
@@ -21,14 +17,19 @@ Marker-safe prefix flushing preserves UTF-16 surrogate pairs before applying the
 
 The wrapper clears `errexit` before and after evaluation so a prior `set -e` does not poison later calls. An explicit `exit` or a command that terminates the shell still destroys state (`src/shell-session.ts`, `test/shell-session.test.ts`).
 
+## Output, Polling, and Retries
+
+- `TranscriptBuffer` uses absolute JavaScript-string cursors and drops whole surrogate pairs at the rolling boundary. A cursor older than retained output is clamped and returns `cursor_expired` (`src/shell-session.ts`, `test/shell-session.test.ts`).
+- Response and per-command ceilings are UTF-8 byte limits. Per-command loss returns `output_truncated` and `dropped_output_bytes`; discarded bytes are unrecoverable (`src/index.ts`, `src/shell-session.ts`).
+- Run waits for completion, abort, timeout, cursor expiry, or a full response. Poll waits on a versioned update when a running command has no new output (`src/shell-session.ts`).
+- Request IDs are scoped to a shell. Exact command retries return the retained record; changed text returns `request_conflict`. Command and reset maps are bounded by `MCP_RECORD_LIMIT` (`src/shell-session.ts`, `src/shell-session-manager.ts`).
+
+## Concurrency
+
+Each named shell accepts one foreground command. Different shell IDs run independently. Direct `apply_patch` processes bypass shell locks, transcripts, and request records (`src/shell-session.ts`, `src/mcp-server.ts`, `test/mcp-integration.test.ts`).
+
 ## Reset and Recovery
 
 Reset records the stop reason, sends `SIGTERM`, waits 500 ms, sends `SIGKILL`, finalizes if close never arrives, and starts a new generation. Unexpected shell termination is also finalized and queues an automatic restart (`src/shell-session.ts`).
 
 Process-group kill failures such as macOS `EPERM` are deliberately swallowed so cleanup cannot crash the MCP server. Cleanup is therefore best effort; descendants may survive when the OS denies signaling (`src/shell-session.ts`, `test/shell-session.test.ts`).
-
-## Related
-
-- [[pages/Architecture Map]]
-- [[pages/Transcript Polling and Idempotency]]
-- [[pages/Open Questions and Risks]]
