@@ -35,16 +35,22 @@ The server-level model instructions are intentionally narrow. Normal tool select
 ```text
 cd ~/Desktop/chatgpt-local-shell-mcp
 npm install
-npm run dev
 ```
 
-To keep the public tunnel alive without an open terminal, start its PM2 app:
+For foreground development, run the server and tunnel in separate terminals:
 
 ```bash
-npm run tunnel:start
+npm run dev
+npm run tunnel
 ```
 
-Use `npm run tunnel:status`, `npm run tunnel:logs`, and `npm run tunnel:stop` to manage it. `npm run tunnel` remains available when a foreground tunnel is useful for debugging.
+To keep both processes alive through PM2, use:
+
+```bash
+npm run pm2:start
+```
+
+Use `npm run pm2:reload`, `npm run pm2:status`, `npm run pm2:logs`, and `npm run pm2:stop` to manage the checked-in server and ngrok apps.
 
 The included ngrok traffic policy rewrites the origin Host header so ngrok can reach the server while its local Host validation protects against DNS-rebinding attacks. It is not authentication, a CORS policy, or a caller restriction: anyone who can reach the public tunnel URL can still invoke the shell tools.
 
@@ -228,6 +234,6 @@ Every newly accepted `shell_run` command is also appended to the repository-loca
 
 ```bash
 npm test
-npm run typecheck
+npm run type-check
 npm run build
 ```

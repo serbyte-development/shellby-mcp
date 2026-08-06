@@ -42,6 +42,25 @@ test("creates a stable workspace apply_patch symlink", async (t) => {
   assert.equal(await readlink(setup.executable), codexBinary);
 });
 
+test("replaces a stale workspace apply_patch symlink", async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), "mcp-apply-patch-stale-"));
+  const firstBinary = join(directory, "codex-old");
+  const secondBinary = join(directory, "codex-new");
+  await writeFile(firstBinary, "#!/bin/sh\nexit 0\n");
+  await writeFile(secondBinary, "#!/bin/sh\nexit 0\n");
+  await chmod(firstBinary, 0o755);
+  await chmod(secondBinary, 0o755);
+  t.after(() => rm(directory, { recursive: true, force: true }));
+
+  const workspace = join(directory, "workspace");
+  const first = await prepareApplyPatch(workspace, firstBinary);
+  const second = await prepareApplyPatch(workspace, secondBinary);
+
+  assert.equal(first.available, true);
+  assert.equal(second.available, true);
+  assert.equal(await readlink(second.executable), secondBinary);
+});
+
 test("warns without preventing startup when the Codex binary is absent", async (t) => {
   const directory = await mkdtemp(join(tmpdir(), "mcp-apply-patch-missing-"));
   t.after(() => rm(directory, { recursive: true, force: true }));

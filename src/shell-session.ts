@@ -395,7 +395,6 @@ export class PersistentShellSession {
       return this.snapshot(
         existing,
         existing.startCursor,
-        true,
         maxOutputBytes,
       );
     }
@@ -469,7 +468,7 @@ export class PersistentShellSession {
       waitMs,
       input.signal,
     );
-    return this.snapshot(record, record.startCursor, true, maxOutputBytes);
+    return this.snapshot(record, record.startCursor, maxOutputBytes);
   }
 
   async pollCommand(input: PollCommandInput): Promise<ShellSnapshot> {
@@ -511,7 +510,7 @@ export class PersistentShellSession {
       await this.waitForUpdate(version, waitMs, input.signal);
     }
 
-    return this.snapshot(record, input.cursor, true, maxOutputBytes);
+    return this.snapshot(record, input.cursor, maxOutputBytes);
   }
 
   async reset(input: ResetShellInput): Promise<ResetResult> {
@@ -916,13 +915,12 @@ export class PersistentShellSession {
   private snapshot(
     record: CommandRecord,
     cursor: number,
-    boundedToCommand: boolean,
     maxOutputBytes: number,
   ): ShellSnapshot {
     const read = this.transcript.read(
       cursor,
       maxOutputBytes,
-      boundedToCommand ? (record.endCursor ?? undefined) : undefined,
+      record.endCursor ?? undefined,
     );
     return {
       request_id: record.requestId,

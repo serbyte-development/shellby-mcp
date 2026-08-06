@@ -1,5 +1,14 @@
 # Wiki Maintenance Log
 
+## [2026-08-05] finalize | reconcile finished server and trim roadmap
+
+- Re-verified the repository against source, tests, package scripts, PM2 configuration, README, and maintained wiki pages.
+- Removed the stale possible-features backlog and recast host/application capability pages as concise historical reference rather than an active roadmap.
+- Repaired the compact one-line command-history format and restored `apply_patch` output schemas, annotations, webpage-selection guidance, and the Computer Use privacy instruction after a tool-metadata regression.
+- Corrected package-script names, `apply_patch` registration details, Computer Use tool counts, and the source-manifest verification tripwire.
+- Made workspace `apply_patch` symlinks follow `MCP_CODEX_BIN` changes and removed an unused shell-snapshot branch.
+- Recorded the server as feature-complete while retaining concrete operational risks and point-in-time raw research.
+
 ## [2026-08-05] update | collect agent shell command history
 
 - Added the fixed, repository-local `agent-commands.log` for every newly accepted model-supplied `shell_run` command.

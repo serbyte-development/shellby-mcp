@@ -1,7 +1,14 @@
 import { constants } from "node:fs";
-import { access, lstat, mkdir, symlink, unlink } from "node:fs/promises";
+import {
+  access,
+  lstat,
+  mkdir,
+  readlink,
+  symlink,
+  unlink,
+} from "node:fs/promises";
 import { homedir } from "node:os";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 
 export const DEFAULT_CODEX_BINARY =
   "/Applications/ChatGPT.app/Contents/Resources/codex";
@@ -28,25 +35,33 @@ export async function prepareApplyPatch(
   workspace: string,
   codexBinary = DEFAULT_CODEX_BINARY,
 ): Promise<ApplyPatchSetup> {
+  const targetBinary = resolve(codexBinary);
   const binDirectory = join(workspace, "bin");
   const executable = join(binDirectory, "apply_patch");
   await mkdir(binDirectory, { recursive: true });
 
   try {
-    await access(codexBinary, constants.X_OK);
+    await access(targetBinary, constants.X_OK);
   } catch (error) {
     return unavailable(
       binDirectory,
       executable,
-      `Codex binary is not executable at ${codexBinary}: ${errorMessage(error)}`,
+      `Codex binary is not executable at ${targetBinary}: ${errorMessage(error)}`,
     );
   }
 
   try {
-    await lstat(executable);
+    const existing = await lstat(executable);
+    if (existing.isSymbolicLink()) {
+      const currentTarget = resolve(dirname(executable), await readlink(executable));
+      if (currentTarget !== targetBinary) {
+        await unlink(executable);
+        await symlink(targetBinary, executable);
+      }
+    }
   } catch (error) {
     if (!isMissing(error)) throw error;
-    await symlink(codexBinary, executable);
+    await symlink(targetBinary, executable);
   }
 
   try {
@@ -55,7 +70,7 @@ export async function prepareApplyPatch(
     const existing = await lstat(executable).catch(() => null);
     if (existing?.isSymbolicLink()) {
       await unlink(executable);
-      await symlink(codexBinary, executable);
+      await symlink(targetBinary, executable);
     }
 
     try {

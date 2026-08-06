@@ -1,6 +1,6 @@
 # Workspace Tooling
 
-Verified 2026-08-01.
+Verified 2026-08-05.
 
 ## What This Is
 
@@ -12,11 +12,11 @@ Startup creates a default workspace and optionally exposes the ChatGPT-bundled C
 
 ## `apply_patch`
 
-`prepareApplyPatch` creates `<workspace>/bin`, checks that `MCP_CODEX_BIN` is executable, and creates `<workspace>/bin/apply_patch` as a symlink when absent. The bin directory is prepended to the persistent shell's `PATH` after login startup (`src/workspace-tools.ts`, `src/index.ts`, `src/shell-session.ts`).
+`prepareApplyPatch` creates `<workspace>/bin`, resolves and checks that `MCP_CODEX_BIN` is executable, creates `<workspace>/bin/apply_patch` as a symlink when absent, and retargets an existing symlink when configuration changes. The bin directory is prepended to the persistent shell's `PATH` after login startup (`src/workspace-tools.ts`, `src/index.ts`, `src/shell-session.ts`).
 
-A missing or non-executable Codex binary produces a startup warning rather than failing the server. Tests cover the successful symlink and missing-binary paths (`test/workspace-tools.test.ts`).
+A missing or non-executable Codex binary produces a startup warning rather than failing the server. Tests cover symlink creation, stale-link replacement, and the missing-binary path (`test/workspace-tools.test.ts`).
 
-The MCP registers `apply_patch` as a first-class fourth tool. Startup passes the prepared absolute executable path into each MCP request. The handler validates an absolute `cwd`, creates a shell-safe randomized heredoc, generates an internal request ID, and drains the shared shell command to completion. The underlying executable remains available to `shell_run` as a fallback (`src/index.ts`, `src/http-server.ts`, `src/mcp-server.ts`, `src/shell-session.ts`).
+The MCP registers `apply_patch` as a first-class core tool. Startup passes the prepared absolute executable path into each MCP request. The handler defaults to the configured workspace when `cwd` is omitted, otherwise validates an absolute patch root, creates a shell-safe randomized heredoc, generates an internal request ID, and drains the shared shell command to completion. The tool publishes explicit destructive/non-idempotent annotations and a bounded output schema. The underlying executable remains available to `shell_run` as a fallback (`src/index.ts`, `src/http-server.ts`, `src/mcp-server.ts`, `src/shell-session.ts`).
 
 ## Generated Tool Convention
 

@@ -1,21 +1,34 @@
 import { appendFileSync } from "node:fs";
 
-export function createCommandHistoryRecorder(filePath: string, now: () => Date = () => new Date()): (command: string) => void {
+export function createCommandHistoryRecorder(
+	filePath: string,
+	now: () => Date = () => new Date(),
+): (command: string) => void {
 	return (command: string) => {
 		try {
-			appendFileSync(filePath, `${compactTimestamp(now())}\t${JSON.stringify(command)}\n---\n`, "utf8");
+			appendFileSync(
+				filePath,
+				`${compactTimestamp(now())}\t${JSON.stringify(command)}\n`,
+				"utf8",
+			);
 		} catch (error) {
-			console.warn(`Could not append agent command history: ${errorMessage(error)}`);
+			console.warn(
+				`Could not append agent command history: ${errorMessage(error)}`,
+			);
 		}
 	};
 }
 
 export function compactTimestamp(date: Date): string {
 	return [
-		twoDigits(date.getDate()), // DD
-		twoDigits(date.getMonth() + 1), // MM
-		twoDigits(date.getSeconds()), // SS
-	].join("-");
+		String(date.getFullYear()).slice(-2),
+		twoDigits(date.getMonth() + 1),
+		twoDigits(date.getDate()),
+		"T",
+		twoDigits(date.getHours()),
+		twoDigits(date.getMinutes()),
+		twoDigits(date.getSeconds()),
+	].join("");
 }
 
 function twoDigits(value: number): string {

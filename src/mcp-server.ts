@@ -155,6 +155,21 @@ export function createMcpServer(shells: ShellSessionManager, options: CreateMcpS
 				cwd: z.string().min(1).optional().describe(`Absolute directory used as the patch root. Defaults to ${workspace}.`),
 				max_output_bytes: maxOutputBytesInput,
 			},
+			outputSchema: {
+				status: z.enum(["completed", "failed"]),
+				exit_code: z.int().nullable(),
+				output: z.string(),
+				output_truncated: z.literal(true).optional().describe("Present when the response cap or per-command capture ceiling omitted patch output; omitted bytes are not pollable through this tool."),
+				dropped_output_bytes: z.int().positive().optional().describe("Present when UTF-8 patch-command output bytes were discarded by the per-command capture ceiling."),
+				omitted_output_bytes: z.int().positive().optional().describe("Present when UTF-8 retained patch-output bytes were omitted from this response by max_output_bytes."),
+			},
+			annotations: {
+				readOnlyHint: false,
+				destructiveHint: true,
+				idempotentHint: false,
+				openWorldHint: false,
+			},
+			_meta: noAuthMeta,
 		},
 		async ({ shell_id, patch, cwd, max_output_bytes }, extra) => {
 			try {

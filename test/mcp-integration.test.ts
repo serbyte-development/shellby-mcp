@@ -161,8 +161,30 @@ test(
     const applyPatchTool = tools.tools.find(
       (tool) => tool.name === "apply_patch",
     );
+    assert.equal(applyPatchTool?.title, "Apply patch");
+    assert.match(applyPatchTool?.description ?? "", /file-oriented diff format/);
     assert.equal(applyPatchTool?.annotations?.destructiveHint, true);
     assert.equal(applyPatchTool?.annotations?.idempotentHint, false);
+    const applyPatchOutputSchema = applyPatchTool?.outputSchema as {
+      properties?: Record<string, unknown>;
+      required?: string[];
+    };
+    assert.deepEqual(
+      Object.keys(applyPatchOutputSchema.properties ?? {}).sort(),
+      [
+        "dropped_output_bytes",
+        "exit_code",
+        "omitted_output_bytes",
+        "output",
+        "output_truncated",
+        "status",
+      ],
+    );
+    assert.deepEqual(applyPatchOutputSchema.required?.sort(), [
+      "exit_code",
+      "output",
+      "status",
+    ]);
     const shellListTool = tools.tools.find(
       (tool) => tool.name === "shell_list",
     );

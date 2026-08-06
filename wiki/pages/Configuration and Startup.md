@@ -1,6 +1,6 @@
 # Configuration and Startup
 
-Verified 2026-08-02.
+Verified 2026-08-05.
 
 ## What This Is
 
@@ -59,8 +59,9 @@ Follow the macOS prompts, enable Accessibility when `permissions grant` directs 
 - `dev`: watch `src/index.ts` with `tsx`.
 - `build`: compile `src/` with TypeScript.
 - `start`: run `dist/index.js`.
-- `server:start|reload|status|logs|stop`: manage the single stateful MCP process through PM2 in fork mode.
-- `tunnel:start|status|logs|stop`: manage the fixed-domain ngrok tunnel through PM2 in fork mode. Warning: this will break your ChatGPT web session.
+- `pm2:start`: build the server and start both checked-in PM2 apps.
+- `pm2:reload`: rebuild and reload both apps with updated environment values.
+- `pm2:status|logs|stop`: inspect logs/status or stop the checked-in PM2 apps.
 - `inspect`: launch the MCP Inspector package; it does not itself pass a server command.
 - `tunnel`: expose port 3333 in the foreground through the same fixed ngrok development domain and traffic policy (`package.json`, `ecosystem.config.cjs`).
 

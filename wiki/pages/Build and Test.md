@@ -15,7 +15,7 @@ The project uses TypeScript's NodeNext ESM model, Node's built-in test runner th
 ## Validation Commands
 
 - `npm test` runs `tsx --test test/*.test.ts`.
-- `npm run typecheck` checks source without emitting.
+- `npm run type-check` checks source without emitting.
 - `npm run build` emits production files (`package.json`).
 
 ## Test Architecture
@@ -26,7 +26,7 @@ The project uses TypeScript's NodeNext ESM model, Node's built-in test runner th
 - `test/peekaboo.test.ts` drives a fake Peekaboo CLI and covers PATH/explicit executable selection, literal argv, JSON-envelope failures, malformed and oversized output, serialization, queued cancellation, timeouts without retry, screenshot return/cleanup, and retained snapshot targets.
 - `test/mcp-integration.test.ts` starts an ephemeral HTTP server, validates the seven core tools and eleven-tool Computer Use surface, proves state and explicit `cwd` persist across calls, exercises named-shell isolation and concurrency, native patching, website format schemas and pagination, visual-first observation, bounded snapshot inspection, compact action results, validation failures, Peekaboo semantic errors, and Host rejection.
 - `test/web-open.test.ts` covers default Markdown, requested format forwarding, format-bound cursors, bounded cached pagination, redirects, cursor validation and expiry, and source truncation.
-- `test/workspace-tools.test.ts` covers absolute workspace resolution, `apply_patch` symlink creation, and graceful absence of the Codex binary.
+- `test/workspace-tools.test.ts` covers absolute workspace resolution, `apply_patch` symlink creation and retargeting, and graceful absence of the Codex binary.
 
 Tests use temporary directories and real local child shells; process-group tests are POSIX-specific (`test/shell-session.test.ts`).
 
@@ -34,7 +34,7 @@ Tests use temporary directories and real local child shells; process-group tests
 
 No CI workflow is present in the repository, so the three validation commands are not enforced by checked-in automation (`package.json`, repository tree).
 
-The tests do not exercise the real `src/index.ts` composition path, `/healthz`, GET/DELETE 405 responses, signal-driven graceful shutdown, the checked-in tunnel configuration, a real Cloak Browser launch, the installed Peekaboo binary and macOS permission path, or replacement of an existing stale `apply_patch` executable (`test/`, `src/index.ts`, `src/http-server.ts`, `src/web-open.ts`, `src/peekaboo.ts`, `src/workspace-tools.ts`).
+The tests do not exercise the real `src/index.ts` composition path, `/healthz`, GET/DELETE 405 responses, signal-driven graceful shutdown, the checked-in tunnel configuration, a real Cloak Browser launch, or the installed Peekaboo binary and macOS permission path (`test/`, `src/index.ts`, `src/http-server.ts`, `src/web-open.ts`, `src/peekaboo.ts`).
 
 ## Related
 

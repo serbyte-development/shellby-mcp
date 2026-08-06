@@ -10,15 +10,17 @@ Maintainer-oriented architecture documentation. Start with [[pages/Architecture 
 - [[pages/Persistent Shell Runtime]] — process lifecycle, marker protocol, retained state, reset, and recovery.
 - [[pages/Transcript Polling and Idempotency]] — output buffering, UTF-8 caps, cursors, retries, and concurrency.
 - [[pages/Workspace Tooling]] — default workspace and the optional `apply_patch` integration.
-- [[pages/Host Application Binary Reuse]] — direct Peekaboo and `apply_patch` integrations, reuse patterns, current candidates, and integration risks.
-- [[pages/Bundled MCP and Agent Surfaces]] — historical ChatGPT child MCP research, Codex app-server, bundled utilities, and remaining candidates.
 
 ## Development
 
 - [[pages/Configuration and Startup]] — environment parsing, startup composition, shutdown, and tunnel helper.
 - [[pages/Build and Test]] — compiler boundary, scripts, test architecture, and current validation gaps.
-- [[pages/Possible Features]] — lightweight roadmap ideas that preserve the project's small, direct core.
 - [[pages/Open Questions and Risks]] — unresolved design risks, disconnected conventions, and staleness watch.
+
+## Reference Research
+
+- [[pages/Host Application Binary Reuse]] — concise boundary for the two host executable integrations used by the finished server.
+- [[pages/Bundled MCP and Agent Surfaces]] — historical ChatGPT/Codex capability research that is not part of the runtime.
 
 ## Repository Conventions
 
