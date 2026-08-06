@@ -7,22 +7,18 @@
     "node": ">=22"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "rm -rf dist && tsc -p tsconfig.json",
     "dev": "tsx watch src/index.ts",
     "start": "node dist/index.js",
-    "server:start": "npm run build && pm2 start ecosystem.config.cjs --only unhinged-terminal-mcp",
-    "server:reload": "npm run build && pm2 reload ecosystem.config.cjs --only unhinged-terminal-mcp --update-env",
-    "server:status": "pm2 status unhinged-terminal-mcp",
-    "server:logs": "pm2 logs unhinged-terminal-mcp",
-    "server:stop": "pm2 stop unhinged-terminal-mcp",
-    "tunnel:start": "pm2 start ecosystem.config.cjs --only unhinged-terminal-ngrok",
-    "tunnel:status": "pm2 status unhinged-terminal-ngrok",
-    "tunnel:logs": "pm2 logs unhinged-terminal-ngrok",
-    "tunnel:stop": "pm2 stop unhinged-terminal-ngrok",
+    "pm2:start": "npm run build && pm2 start ecosystem.config.cjs",
+    "pm2:reload": "npm run build && pm2 reload ecosystem.config.cjs --update-env",
+    "pm2:status": "pm2 status",
+    "pm2:logs": "pm2 logs",
+    "pm2:stop": "pm2 stop ecosystem.config.cjs",
     "inspect": "npx @modelcontextprotocol/inspector",
     "tunnel": "ngrok http 3333 --url=geologic-catalog-deodorant.ngrok-free.dev --traffic-policy-file ./ngrok-traffic-policy.yml",
     "test": "tsx --test test/*.test.ts",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
+    "type-check": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "1.30.0",
