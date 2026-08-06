@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { chmod, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { request as httpRequest } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -121,11 +121,17 @@ test("serves shell tools through Streamable HTTP and retains state across MCP se
 	assert.match(applyPatchTool?.description ?? "", /file-oriented diff format/);
 	assert.equal(applyPatchTool?.annotations?.destructiveHint, true);
 	assert.equal(applyPatchTool?.annotations?.idempotentHint, false);
+	const applyPatchInputSchema = applyPatchTool?.inputSchema as {
+		properties?: Record<string, unknown>;
+		required?: string[];
+	};
+	assert.deepEqual(Object.keys(applyPatchInputSchema.properties ?? {}).sort(), ["cwd", "max_output_bytes", "patch"]);
+	assert.deepEqual(applyPatchInputSchema.required?.sort(), ["cwd", "patch"]);
 	const applyPatchOutputSchema = applyPatchTool?.outputSchema as {
 		properties?: Record<string, unknown>;
 		required?: string[];
 	};
-	assert.deepEqual(Object.keys(applyPatchOutputSchema.properties ?? {}).sort(), ["dropped_output_bytes", "exit_code", "omitted_output_bytes", "output", "output_truncated", "status"]);
+	assert.deepEqual(Object.keys(applyPatchOutputSchema.properties ?? {}).sort(), ["exit_code", "omitted_output_bytes", "output", "output_truncated", "status"]);
 	assert.deepEqual(applyPatchOutputSchema.required?.sort(), ["exit_code", "output", "status"]);
 	const shellListTool = tools.tools.find((tool) => tool.name === "shell_list");
 	assert.equal(shellListTool?.annotations?.readOnlyHint, true);
@@ -660,7 +666,7 @@ test("isolates named shell state and allows foreground commands in parallel", { 
 });
 
 test("applies patches through the native MCP tool", { timeout: 20_000 }, async (t) => {
-	const directory = await mkdtemp(join(tmpdir(), "mcp-native-patch-"));
+	const directory = await realpath(await mkdtemp(join(tmpdir(), "mcp-native-patch-")));
 	const project = join(directory, "project with ' quote");
 	const bin = join(directory, "bin");
 	await mkdir(project, { recursive: true });
@@ -704,13 +710,11 @@ test("applies patches through the native MCP tool", { timeout: 20_000 }, async (
 	const noisyContent = noisyResult.structuredContent as {
 		output: string;
 		output_truncated?: true;
-		dropped_output_bytes?: number;
 		omitted_output_bytes?: number;
 	};
 	const fullNoisyOutput = `cwd=${project}\n${noisyPatch}`;
 	assert.equal(Buffer.byteLength(noisyContent.output, "utf8"), 256);
 	assert.equal(noisyContent.output_truncated, true);
-	assert.equal(noisyContent.dropped_output_bytes, undefined);
 	assert.equal(noisyContent.omitted_output_bytes, Buffer.byteLength(fullNoisyOutput, "utf8") - 256);
 
 	const invalid = await connected.client.callTool({
@@ -729,37 +733,12 @@ test("applies patches through the native MCP tool", { timeout: 20_000 }, async (
 		name: "shell_run",
 		arguments: {
 			request_id: "during-patch",
-			command: "printf should-not-run",
+			command: "printf runs-independently",
 		},
 	});
-	assert.equal(concurrent.isError, true);
-	assert.match(JSON.stringify(concurrent.content), /busy/);
+	assert.equal(concurrent.isError, undefined);
+	assert.equal((concurrent.structuredContent as { output: string }).output, "runs-independently");
 	assert.equal((await slowPatch).isError, undefined);
-
-	const namedSlowPatch = connected.client.callTool({
-		name: "apply_patch",
-		arguments: {
-			shell_id: "patch-shell",
-			cwd: project,
-			patch: `${patch}\nSLOW_PATCH`,
-		},
-	});
-	await new Promise((resolve) => setTimeout(resolve, 25));
-
-	const otherShell = await callUntilComplete(connected.client, "parallel-patch", "printf other-shell-ready", "other-shell");
-	assert.equal(otherShell.output, "other-shell-ready");
-
-	const selectedShellBusy = await connected.client.callTool({
-		name: "shell_run",
-		arguments: {
-			shell_id: "patch-shell",
-			request_id: "patch-busy",
-			command: "printf should-not-run",
-		},
-	});
-	assert.equal(selectedShellBusy.isError, true);
-	assert.match(JSON.stringify(selectedShellBusy.content), /busy/);
-	assert.equal((await namedSlowPatch).isError, undefined);
 });
 
 test("rejects a mismatched HTTP Host", { timeout: 10_000 }, async (t) => {

@@ -1,6 +1,6 @@
 # MCP Tool Surface
 
-Verified 2026-08-05.
+Verified 2026-08-06.
 
 ## What This Is
 
@@ -19,11 +19,10 @@ Verified 2026-08-05.
 
 ### `apply_patch`
 
-- Accepts a named `shell_id`, Codex-format patch, optional absolute project `cwd`, and bounded response output.
-- Generates its own internal request ID and drains the operation to completion, so callers do not poll it.
-- Runs the prepared absolute `apply_patch` executable through the selected shell, independent of later `PATH` mutations; it therefore shares serialization and logging only with that shell.
-- Separately reports output discarded by the command-capture ceiling and retained output omitted by the response cap.
-- Is preferred over Python string replacement, `sed`, and manual edit heredocs (`src/mcp-server.ts`, `src/shell-session.ts`, `src/workspace-tools.ts`).
+- Accepts a Codex-format patch, required absolute project `cwd`, and bounded response output; it has no `shell_id` or request ID.
+- Spawns the prepared absolute `apply_patch` executable directly in `cwd`, writes the patch to stdin, and waits for it to exit, so callers do not poll it and persistent-shell state or foreground locks cannot affect it.
+- Reports output omitted by `max_output_bytes`; omitted output is not pollable.
+- Is preferred over Python string replacement, `sed`, and manual edit heredocs (`src/mcp-server.ts`, `src/workspace-tools.ts`, `test/mcp-integration.test.ts`).
 
 ### `shell_run`
 

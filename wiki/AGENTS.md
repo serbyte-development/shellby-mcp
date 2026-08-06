@@ -10,6 +10,7 @@ The vault lives at `wiki/`. Everything here is committed except `_private/`, whi
 - Make future code changes faster by documenting runtime boundaries, tool contracts, shell semantics, tests, and known risks.
 - Keep end-user agent workflows out of scope unless they define or constrain an implemented server contract.
 - Keep synthesis here instead of forcing every maintainer to re-derive it from the README and source.
+- One guiding principle when coding in this repo is to keep things simple and focused.
 
 ## Layers
 

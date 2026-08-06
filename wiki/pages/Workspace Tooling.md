@@ -1,6 +1,6 @@
 # Workspace Tooling
 
-Verified 2026-08-05.
+Verified 2026-08-06.
 
 ## What This Is
 
@@ -16,7 +16,7 @@ Startup creates a default workspace and optionally exposes the ChatGPT-bundled C
 
 A missing or non-executable Codex binary produces a startup warning rather than failing the server. Tests cover symlink creation, stale-link replacement, and the missing-binary path (`test/workspace-tools.test.ts`).
 
-The MCP registers `apply_patch` as a first-class core tool. Startup passes the prepared absolute executable path into each MCP request. The handler defaults to the configured workspace when `cwd` is omitted, otherwise validates an absolute patch root, creates a shell-safe randomized heredoc, generates an internal request ID, and drains the shared shell command to completion. The tool publishes explicit destructive/non-idempotent annotations and a bounded output schema. The underlying executable remains available to `shell_run` as a fallback (`src/index.ts`, `src/http-server.ts`, `src/mcp-server.ts`, `src/shell-session.ts`).
+The MCP registers `apply_patch` as a first-class core tool. Startup passes the prepared absolute executable path into each MCP request. The handler requires an absolute patch root, spawns the executable directly in that directory, writes the patch to stdin, and returns byte-capped combined output after the process exits. It is independent of persistent-shell state and serialization. The tool publishes explicit destructive/non-idempotent annotations, and the underlying executable remains available to `shell_run` as a fallback (`src/index.ts`, `src/http-server.ts`, `src/mcp-server.ts`).
 
 ## Generated Tool Convention
 

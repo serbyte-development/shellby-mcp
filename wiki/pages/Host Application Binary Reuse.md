@@ -1,6 +1,6 @@
 # Host Application Binary Reuse
 
-Verified 2026-08-05.
+Verified 2026-08-06.
 
 ## What This Is
 
@@ -10,7 +10,7 @@ This page records the two host executable integrations used by the finished serv
 
 ### ChatGPT-bundled Codex
 
-`prepareApplyPatch` creates or reuses `<workspace>/bin/apply_patch`, normally targeting `/Applications/ChatGPT.app/Contents/Resources/codex`, and prepends the workspace bin directory to persistent shells. The first-class `apply_patch` tool executes the prepared absolute path through the selected named shell (`src/workspace-tools.ts`, `src/index.ts`, `src/mcp-server.ts`).
+`prepareApplyPatch` creates or reuses `<workspace>/bin/apply_patch`, normally targeting `/Applications/ChatGPT.app/Contents/Resources/codex`, and prepends the workspace bin directory to persistent shells. The first-class `apply_patch` tool also spawns that prepared absolute path directly, independently of persistent shells (`src/workspace-tools.ts`, `src/index.ts`, `src/mcp-server.ts`).
 
 The integration is optional. A missing or non-executable Codex binary produces a startup warning, while the rest of the MCP remains available (`src/workspace-tools.ts`, `src/index.ts`).
 

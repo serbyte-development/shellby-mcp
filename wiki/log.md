@@ -1,5 +1,12 @@
 # Wiki Maintenance Log
 
+## [2026-08-06] simplify | decouple native apply_patch from persistent shells
+
+- Removed `shell_id` and made absolute `cwd` required for the native `apply_patch` tool.
+- Replaced randomized shell heredocs and polling with a direct prepared-executable spawn and patch stdin.
+- Kept bounded combined output and cancellation while allowing patching and shell commands to run independently.
+- Updated integration coverage, README behavior, and maintained architecture pages.
+
 ## [2026-08-06] update | make shell labels contextual and persistent usage explicit
 
 - Replaced the six-character request-ID recommendation with short contextual task and command labels while preserving the existing 1–128 character backend validation.

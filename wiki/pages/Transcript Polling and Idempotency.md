@@ -1,6 +1,6 @@
 # Transcript Polling and Idempotency
 
-Verified 2026-08-01.
+Verified 2026-08-06.
 
 ## What This Is
 
@@ -30,7 +30,7 @@ Command and reset maps are independently bounded by `MCP_RECORD_LIMIT`. Once a c
 
 Exactly one foreground command is admitted per named shell. A second command using that shell receives `busy`, while commands using different shell IDs can run concurrently (`src/shell-session.ts`, `src/shell-session-manager.ts`, `test/mcp-integration.test.ts`).
 
-Native `apply_patch` delegates to the selected shell's command path with an internal request ID, so it cannot race a `shell_run` operation in that shell but does not block other shells (`src/mcp-server.ts`, `test/mcp-integration.test.ts`).
+Native `apply_patch` directly spawns the prepared Codex executable and does not participate in shell foreground locks, request-ID records, transcripts, or polling. Patch calls and shell commands can therefore run concurrently (`src/mcp-server.ts`, `test/mcp-integration.test.ts`).
 
 ## Related
 

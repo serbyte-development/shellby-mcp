@@ -24,7 +24,7 @@ ChatGPT Local Shell MCP is a private Node.js/TypeScript service that exposes bou
 
 1. `src/index.ts` creates a `ShellSessionManager` and one shared `PeekabooClient`; `MCP_PEEKABOO_BIN` selects the executable.
 2. Each `POST /mcp` creates a short-lived `McpServer` and stateless `StreamableHTTPServerTransport` in `src/http-server.ts`.
-3. Shell handlers resolve `shell_id` through the shared shell manager. All request-scoped Computer Use handlers share the same process-level `PeekabooClient`.
+3. Shell handlers resolve `shell_id` through the shared shell manager. `apply_patch` bypasses that manager and directly spawns the prepared Codex executable in its required absolute `cwd`. All request-scoped Computer Use handlers share the same process-level `PeekabooClient`.
 4. The adapter serializes Computer Use calls and invokes `peekaboo` with `execFile`, exact argv, `--json`, a 30-second timeout, and a 4 MiB process-output cap. It checks the JSON `success` field and does not retry failures (`src/peekaboo.ts`).
 5. Each `PersistentShellSession` writes commands into its own child login shell and detects completion through randomized control markers.
 6. `computer_observe` reads Peekaboo's temporary PNG and encodes it as a same-dimension quality-75 JPEG while returning only essential snapshot metadata. `computer_inspect` separately invokes bounded `inspect-ui` text retrieval for a snapshot when AX is actually needed. The adapter retains at most 64 snapshot-to-capture-target mappings, and coordinate actions resolve through that mapping before reaching Peekaboo (`src/peekaboo.ts`, `src/computer-use-tools.ts`).

@@ -1,12 +1,13 @@
-import { randomUUID } from "node:crypto";
+import { spawn } from "node:child_process";
 import { isAbsolute } from "node:path";
+import { StringDecoder } from "node:string_decoder";
 
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 
 import { registerComputerUseTools } from "./computer-use-tools.js";
 import { PeekabooClient } from "./peekaboo.js";
-import { PersistentShellSession, ShellSessionError, type ShellSnapshot } from "./shell-session.js";
+import { ShellSessionError, type ShellSnapshot } from "./shell-session.js";
 import { DEFAULT_SHELL_ID, ShellSessionManager } from "./shell-session-manager.js";
 import { WebOpenError, WebPageOpener } from "./web-open.js";
 
@@ -151,18 +152,20 @@ export function createMcpServer(shells: ShellSessionManager, options: CreateMcpS
 			title: "Apply patch",
 			description: "Use the apply_patch tool to edit files. The patch language is a stripped-down, file-oriented diff format designed to be easy to parse and safe to apply.",
 			inputSchema: {
-				shell_id: shellIdInput,
 				patch: z.string().min(1).max(262_144).describe("The complete patch text, beginning with *** Begin Patch and ending with *** End Patch."),
-				cwd: z.string().min(1).optional().describe(`Absolute directory used as the patch root. Defaults to ${workspace}.`),
+				cwd: z
+					.string()
+					.min(1)
+					.refine(isAbsolute, "cwd must be an absolute path.")
+					.describe("Required absolute directory used as the patch root."),
 				max_output_bytes: maxOutputBytesInput,
 			},
 			outputSchema: {
 				status: z.enum(["completed", "failed"]),
 				exit_code: z.int().nullable(),
 				output: z.string(),
-				output_truncated: z.literal(true).optional().describe("Present when the response cap or per-command capture ceiling omitted patch output; omitted bytes are not pollable through this tool."),
-				dropped_output_bytes: z.int().positive().optional().describe("Present when UTF-8 patch-command output bytes were discarded by the per-command capture ceiling."),
-				omitted_output_bytes: z.int().positive().optional().describe("Present when UTF-8 retained patch-output bytes were omitted from this response by max_output_bytes."),
+				output_truncated: z.literal(true).optional().describe("Present when max_output_bytes omitted patch output; omitted bytes are not pollable through this tool."),
+				omitted_output_bytes: z.int().positive().optional().describe("Present when UTF-8 patch-output bytes were omitted from this response by max_output_bytes."),
 			},
 			annotations: {
 				readOnlyHint: false,
@@ -172,12 +175,11 @@ export function createMcpServer(shells: ShellSessionManager, options: CreateMcpS
 			},
 			_meta: noAuthMeta,
 		},
-		async ({ shell_id, patch, cwd, max_output_bytes }, extra) => {
+		async ({ patch, cwd, max_output_bytes }, extra) => {
 			try {
-				const shell = shells.getOrCreate(shell_id);
-				const result = await applyPatch(shell, {
+				const result = await applyPatch({
 					patch,
-					cwd: cwd ?? shell.initialCwd,
+					cwd,
 					executable: applyPatchExecutable,
 					maxOutputBytes: max_output_bytes,
 					signal: extra.signal,
@@ -496,7 +498,6 @@ interface ApplyPatchResult extends Record<string, unknown> {
 	exit_code: number | null;
 	output: string;
 	output_truncated: boolean;
-	dropped_output_bytes: number;
 	omitted_output_bytes: number;
 }
 
@@ -505,7 +506,6 @@ interface CompactApplyPatchResult extends Record<string, unknown> {
 	exit_code: number | null;
 	output: string;
 	output_truncated?: true;
-	dropped_output_bytes?: number;
 	omitted_output_bytes?: number;
 }
 
@@ -516,67 +516,88 @@ function toPatchToolResult(result: ApplyPatchResult): CompactApplyPatchResult {
 		output: result.output,
 	};
 	if (result.output_truncated) compact.output_truncated = true;
-	if (result.dropped_output_bytes > 0) {
-		compact.dropped_output_bytes = result.dropped_output_bytes;
-	}
 	if (result.omitted_output_bytes > 0) {
 		compact.omitted_output_bytes = result.omitted_output_bytes;
 	}
 	return compact;
 }
 
-async function applyPatch(shell: PersistentShellSession, input: ApplyPatchInput): Promise<ApplyPatchResult> {
+async function applyPatch(input: ApplyPatchInput): Promise<ApplyPatchResult> {
 	if (!isAbsolute(input.cwd)) {
 		throw new ShellSessionError("invalid_command", "apply_patch cwd must be an absolute path.");
 	}
 
-	const token = randomUUID().replaceAll("-", "");
-	const delimiter = `__MCP_PATCH_${token}__`;
-	const command = [`(builtin cd -- ${singleQuote(input.cwd)} && command ${singleQuote(input.executable)} <<'${delimiter}'`, input.patch, delimiter, ")"].join("\n");
-	let snapshot = await shell.runCommand({
-		requestId: `patch-${token}`,
-		command,
-		recordCommand: false,
-		waitMs: 10_000,
-		maxOutputBytes: shell.maximumReadBytes,
-		signal: input.signal,
-	});
-	let output = snapshot.output;
-	let outputTruncated = snapshot.output_truncated || snapshot.cursor_expired;
-	let droppedOutputBytes = snapshot.dropped_output_bytes;
+	input.signal?.throwIfAborted();
 
-	for (let attempt = 0; attempt < 100; attempt += 1) {
-		if (snapshot.status !== "running" && !snapshot.has_more) {
-			const bounded = utf8Prefix(output, input.maxOutputBytes);
-			return {
-				status: snapshot.status === "completed" && snapshot.exit_code === 0 ? "completed" : "failed",
-				exit_code: snapshot.exit_code,
-				output: bounded.value,
-				output_truncated: outputTruncated || bounded.omittedBytes > 0,
-				dropped_output_bytes: droppedOutputBytes,
-				omitted_output_bytes: bounded.omittedBytes,
-			};
-		}
-		if (input.signal?.aborted) {
-			throw new ShellSessionError("shell_unavailable", "apply_patch request was aborted while the shell command was still running.");
-		}
-		snapshot = await shell.pollCommand({
-			requestId: snapshot.request_id,
-			cursor: snapshot.next_cursor,
-			waitMs: 10_000,
-			maxOutputBytes: shell.maximumReadBytes,
-			signal: input.signal,
+	return new Promise((resolve, reject) => {
+		const child = spawn(input.executable, [], {
+			cwd: input.cwd,
+			stdio: ["pipe", "pipe", "pipe"],
 		});
-		output += snapshot.output;
-		outputTruncated ||= snapshot.output_truncated || snapshot.cursor_expired;
-		droppedOutputBytes = snapshot.dropped_output_bytes;
-	}
+		const stdoutDecoder = new StringDecoder("utf8");
+		const stderrDecoder = new StringDecoder("utf8");
+		let output = "";
+		let outputBytes = 0;
+		let omittedOutputBytes = 0;
+		let stdinError: Error | undefined;
+		let aborted = false;
+		let settled = false;
 
-	throw new ShellSessionError("shell_unavailable", "apply_patch did not finish after 100 polls.");
-}
+		const appendOutput = (value: string) => {
+			const bounded = utf8Prefix(value, Math.max(0, input.maxOutputBytes - outputBytes));
+			output += bounded.value;
+			outputBytes += Buffer.byteLength(bounded.value, "utf8");
+			omittedOutputBytes += bounded.omittedBytes;
+		};
+		const cleanup = () => input.signal?.removeEventListener("abort", abort);
+		const fail = (error: Error) => {
+			if (settled) return;
+			settled = true;
+			cleanup();
+			reject(error);
+		};
+		const abort = () => {
+			aborted = true;
+			try {
+				child.kill("SIGTERM");
+			} catch (error) {
+				fail(error instanceof Error ? error : new Error(String(error)));
+			}
+		};
 
-function singleQuote(value: string): string {
-	return `'${value.replaceAll("'", `'\\''`)}'`;
+		child.stdout.on("data", (chunk: Buffer) => appendOutput(stdoutDecoder.write(chunk)));
+		child.stdout.on("end", () => appendOutput(stdoutDecoder.end()));
+		child.stderr.on("data", (chunk: Buffer) => appendOutput(stderrDecoder.write(chunk)));
+		child.stderr.on("end", () => appendOutput(stderrDecoder.end()));
+		child.stdin.on("error", (error: NodeJS.ErrnoException) => {
+			if (error.code !== "EPIPE") stdinError = error;
+		});
+		child.once("error", (error) => fail(new Error(`apply_patch failed to start: ${error.message}`, { cause: error })));
+		child.once("close", (code) => {
+			if (settled) return;
+			if (aborted) {
+				fail(new ShellSessionError("shell_unavailable", "apply_patch request was aborted."));
+				return;
+			}
+			if (stdinError) {
+				fail(new Error(`apply_patch stdin failed: ${stdinError.message}`, { cause: stdinError }));
+				return;
+			}
+			settled = true;
+			cleanup();
+			resolve({
+				status: code === 0 ? "completed" : "failed",
+				exit_code: code,
+				output,
+				output_truncated: omittedOutputBytes > 0,
+				omitted_output_bytes: omittedOutputBytes,
+			});
+		});
+
+		input.signal?.addEventListener("abort", abort, { once: true });
+		if (input.signal?.aborted) abort();
+		child.stdin.end(input.patch);
+	});
 }
 
 function utf8Prefix(

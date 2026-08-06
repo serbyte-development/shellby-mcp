@@ -74,7 +74,7 @@ There is no CORS allowlist, authentication middleware, command approval layer, h
 
 ## Tools
 
-- `apply_patch`: applies a Codex-format source patch through the selected `shell_id`, from an optional absolute project `cwd`. It needs no caller-generated `request_id` and returns only after the patch command finishes.
+- `apply_patch`: applies a Codex-format source patch from a required absolute project `cwd`. It runs independently of persistent shells and returns after the patch process finishes.
 - `shell_run`: executes a command in the selected named shell. Every new command needs a `request_id` unique within that shell; retrying the same ID and command does not execute it twice while the record remains retained.
 - `shell_poll`: reads additional output using the same `shell_id`, `request_id`, and returned `next_cursor`.
 - `shell_reset`: attempts to terminate only the selected shell's process group and starts a clean generation. Process-group cleanup is best effort. Reset idempotency is also scoped to `shell_id`.
@@ -170,9 +170,9 @@ The MCP exposes this executable as the native `apply_patch` tool. Its model inst
 *** End Patch
 ```
 
-This uses the same patch engine as Codex's local `apply_patch`. Internally it runs through the selected persistent shell, so patching conflicts only with another foreground command using the same `shell_id`. Use the relevant absolute project root as `cwd` and relative file paths inside the patch. If the Codex binary is unavailable, the MCP server continues to start and prints a warning; the native tool then reports the missing executable if called, and ordinary shell editing remains available.
+This uses the same patch engine as Codex's local `apply_patch`. The MCP invokes the prepared executable directly, writes the patch to its stdin, and runs it independently of persistent shells. Supply the relevant absolute project root as `cwd` and use relative file paths inside the patch. If the Codex binary is unavailable, the MCP server continues to start and prints a warning; the native tool then reports the missing executable if called, and ordinary shell editing remains available.
 
-Patch results distinguish output lost at the command-capture ceiling (`dropped_output_bytes`) from retained output omitted by the response cap (`omitted_output_bytes`). These diagnostic fields are included only when nonzero, and either condition adds `output_truncated: true`; native patch output is not pollable after the tool returns. Patch output appears only in structured content rather than being duplicated in the text summary.
+Patch output is capped by `max_output_bytes`. Truncated results include `omitted_output_bytes` and `output_truncated: true`; native patch output is not pollable after the tool returns. Patch output appears only in structured content rather than being duplicated in the text summary.
 
 Recent command and reset records are bounded in memory. Once an old record has been evicted, its `request_id` is no longer available for retry deduplication, so always generate a fresh ID for a genuinely new operation.
 
@@ -212,7 +212,7 @@ Then inspect it with later commands such as `tail -n 100 /tmp/my-app.log` or `ps
 
 `PORT` changes only the HTTP listener. The included `npm run tunnel` command and ngrok Host rewrite are fixed to port 3333, so update `package.json` and `ngrok-traffic-policy.yml` together when using another port.
 
-`MCP_CWD` expands `~` and `~/...`; relative values are resolved from the server's startup directory. Startup uses the resulting absolute path consistently for shell cwd, workspace tooling, model instructions, and the native `apply_patch` default.
+`MCP_CWD` expands `~` and `~/...`; relative values are resolved from the server's startup directory. Startup uses the resulting absolute path consistently for shell cwd, workspace tooling, and model instructions. Each native `apply_patch` call requires its own absolute `cwd`.
 
 The shell is non-interactive and has no PTY. Commands that require terminal input are unsupported; stdin is `/dev/null` so a command cannot consume the MCP control stream. A login shell does not necessarily load interactive `.zshrc` aliases.
 
@@ -224,7 +224,7 @@ The MCP HTTP transport is stateless. Rebuilding and restarting the server on the
 
 ## Activity log
 
-By default, every newly accepted shell command prints one compact line prefixed with the server's local time in 24-hour `HH:MM` format, followed by the first non-comment command line plus multiline line/byte counts. Control characters are escaped, and long previews are byte-capped. Native `apply_patch` calls use the selected shell's logger. Set `MCP_LOG_COMMANDS=full` for raw multiline commands or `MCP_LOG_COMMANDS=off` to disable logging.
+By default, every newly accepted shell command prints one compact line prefixed with the server's local time in 24-hour `HH:MM` format, followed by the first non-comment command line plus multiline line/byte counts. Control characters are escaped, and long previews are byte-capped. Direct native `apply_patch` calls are not included in shell command logging. Set `MCP_LOG_COMMANDS=full` for raw multiline commands or `MCP_LOG_COMMANDS=off` to disable logging.
 
 There are no request IDs, completion lines, reset or polling entries, or duplicated retry entries. Command output is not copied into the log, so the performance impact is negligible.
 
