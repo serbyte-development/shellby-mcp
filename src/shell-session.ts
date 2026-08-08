@@ -33,7 +33,6 @@ export interface RunCommandInput {
   requestId: string;
   command: string;
   cwd?: string;
-  recordCommand?: boolean;
   waitMs?: number;
   maxOutputBytes?: number;
   signal?: AbortSignal;
@@ -64,7 +63,6 @@ export interface ShellSessionOptions {
   recordLimit?: number;
   commandLogMode?: CommandLogMode;
   logger?: (message: string) => void;
-  commandRecorder?: (command: string) => void;
 }
 
 interface CommandRecord {
@@ -244,7 +242,6 @@ export class PersistentShellSession {
   private readonly maxOutputBytes: number;
   private readonly recordLimit: number;
   private readonly logger: ((message: string) => void) | null;
-  private readonly commandRecorder: ((command: string) => void) | null;
   private readonly commandLogMode: CommandLogMode;
   private readonly records = new Map<string, CommandRecord>();
   private readonly resetRecords = new Map<string, ResetRecord>();
@@ -307,7 +304,6 @@ export class PersistentShellSession {
       this.commandLogMode === "off"
         ? null
         : (options.logger ?? ((message) => console.log(message)));
-    this.commandRecorder = options.commandRecorder ?? null;
   }
 
   get initialCwd(): string {
@@ -347,9 +343,6 @@ export class PersistentShellSession {
       recordLimit: this.recordLimit,
       commandLogMode: this.commandLogMode,
       ...(this.logger ? { logger: this.logger } : {}),
-      ...(this.commandRecorder
-        ? { commandRecorder: this.commandRecorder }
-        : {}),
     });
   }
 
@@ -440,9 +433,6 @@ export class PersistentShellSession {
     this.records.set(record.requestId, record);
     this.active = record;
     this.logCommand(input.command);
-    if (input.recordCommand !== false) {
-      this.recordCommand(input.command);
-    }
     try {
       await writeToStdin(
         child,
@@ -983,15 +973,6 @@ export class PersistentShellSession {
       this.logger(`[${timestamp}] ${message}`);
     } catch {
       // Logging must never interfere with shell execution.
-    }
-  }
-
-  private recordCommand(command: string): void {
-    if (!this.commandRecorder) return;
-    try {
-      this.commandRecorder(command);
-    } catch {
-      // Command history is observational and must never affect execution.
     }
   }
 

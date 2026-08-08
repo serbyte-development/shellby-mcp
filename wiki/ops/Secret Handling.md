@@ -1,6 +1,6 @@
 # Secret Handling
 
-Verified 2026-08-04.
+Verified 2026-08-07.
 
 ## Current State
 
@@ -13,4 +13,4 @@ The ngrok CLI may use credentials stored outside this repository. npm registry c
 - Public wiki pages may list environment variable names, service names, and code paths.
 - Local-only ownership or rotation pointers may go in `_private/secrets-map.local.md`.
 - Never place actual values in logs, shell examples, tests, or uploaded context.
-- Command text is appended without redaction to gitignored `agent-commands.log`; `MCP_LOG_COMMANDS` separately controls terminal logging (`src/index.ts`, `src/command-history.ts`, `src/shell-session.ts`).
+- MCP `tools/call` inputs are appended without general redaction to gitignored `agent-commands.log`; this can include shell commands, subagent prompts, URLs, and Computer Use inputs. `apply_patch` is the exception: its patch body is omitted while its size and other arguments are retained. Completion lines contain output character counts and metadata only, not output bodies. `MCP_LOG_COMMANDS` separately controls shell console logging (`src/index.ts`, `src/http-server.ts`, `src/mcp-audit-log.ts`, `src/shell-session.ts`).

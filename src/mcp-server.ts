@@ -1,10 +1,9 @@
 import { spawn } from "node:child_process";
 import { isAbsolute } from "node:path";
 import { StringDecoder } from "node:string_decoder";
-
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-
+import { ChatGptSubagentError, type ChatGptSubagentService } from "./chatgpt-subagent.js";
 import { registerComputerUseTools } from "./computer-use-tools.js";
 import { PeekabooClient } from "./peekaboo.js";
 import { ShellSessionError, type ShellSnapshot } from "./shell-session.js";
@@ -44,13 +43,15 @@ const shellSnapshotSchema = {
 };
 
 export interface CreateMcpServerOptions {
+	chatGptSubagents: ChatGptSubagentService;
 	applyPatchExecutable?: string;
 	peekaboo?: PeekabooClient;
 	webPageOpener?: WebPageOpener;
 }
 
-export function createMcpServer(shells: ShellSessionManager, options: CreateMcpServerOptions = {}): McpServer {
+export function createMcpServer(shells: ShellSessionManager, options: CreateMcpServerOptions): McpServer {
 	const workspace = JSON.stringify(shells.initialCwd);
+	const chatGptSubagents = options.chatGptSubagents;
 	const applyPatchExecutable = options.applyPatchExecutable ?? "apply_patch";
 	const peekaboo = options.peekaboo ?? new PeekabooClient();
 	const webPageOpener = options.webPageOpener ?? new WebPageOpener();
@@ -149,17 +150,58 @@ export function createMcpServer(shells: ShellSessionManager, options: CreateMcpS
 	);
 
 	server.registerTool(
+		"chatgpt_subagent",
+		{
+			title: "Ask a ChatGPT subagent",
+			description:
+				"Delegate one turn to a persistent ChatGPT subagent in the already-running debuggable Chrome instance. agent_id is a required caller-chosen task or role label: first use creates the conversation, and reusing the same ID continues it. The server owns Chrome targeting and waits for the completed response. Failures are never automatically retried; AGENT_BUSY and SUBAGENT_CAPACITY_REACHED mean the caller should decide whether to try again later.",
+			inputSchema: {
+				agent_id: z
+					.string()
+					.min(1)
+					.max(64)
+					.refine((value) => value.trim().length > 0, "agent_id cannot be only whitespace.")
+					.describe("Short descriptive ID for a persistent subagent, such as seo-article-critic. Reuse the exact same ID to continue that ChatGPT conversation; a new ID creates a new conversation."),
+				prompt: z.string().min(1).max(262_144).describe("The next prompt to send to this subagent. Do not resend a failed prompt automatically."),
+			},
+			outputSchema: {
+				agent_id: z.string(),
+				response: z.string(),
+			},
+			annotations: {
+				readOnlyHint: false,
+				destructiveHint: false,
+				idempotentHint: false,
+				openWorldHint: true,
+			},
+			_meta: noAuthMeta,
+		},
+		async ({ agent_id, prompt }, extra) => {
+			try {
+				const result = await chatGptSubagents.ask({ agentId: agent_id, prompt }, extra.signal);
+				const structuredContent = {
+					agent_id: result.agentId,
+					response: result.response,
+				};
+				return {
+					structuredContent,
+					content: [{ type: "text" as const, text: result.response }],
+				};
+			} catch (error) {
+				return subagentToolError(error);
+			}
+		}
+	);
+
+	server.registerTool(
 		"apply_patch",
 		{
 			title: "Apply patch",
 			description: "Use the apply_patch tool to edit files. The patch language is a stripped-down, file-oriented diff format designed to be easy to parse and safe to apply.",
 			inputSchema: {
 				patch: z.string().min(1).max(262_144).describe("The complete patch text, beginning with *** Begin Patch and ending with *** End Patch."),
-				cwd: z
-					.string()
-					.min(1)
-					.refine(isAbsolute, "cwd must be an absolute path.")
-					.describe("Required absolute directory used as the patch root."),
+				cwd: z.string().min(1).refine(isAbsolute, "cwd must be an absolute path.").describe("Required absolute directory used as the patch root."),
+				max_output_bytes: maxOutputBytesInput,
 			},
 			outputSchema: {
 				status: z.enum(["completed", "failed"]),
@@ -256,7 +298,7 @@ export function createMcpServer(shells: ShellSessionManager, options: CreateMcpS
 				shell_id: shellIdInput.describe("The same shell_id used for the original shell_run call."),
 				request_id: requestIdInput.describe("The same request_id used for the original shell_run call."),
 				cursor: z.int().nonnegative().describe("The next_cursor returned by the previous result."),
-				wait_ms: z.int().min(0).max(10_000).optional().default(5_000),
+				wait_ms: z.int().min(0).max(10_000).optional().default(2_000),
 				max_output_bytes: maxOutputBytesInput,
 			},
 			outputSchema: shellSnapshotSchema,
@@ -545,10 +587,7 @@ async function applyPatch(input: ApplyPatchInput): Promise<ApplyPatchResult> {
 		let settled = false;
 
 		const appendOutput = (value: string) => {
-			const bounded = utf8Prefix(
-				value,
-				Math.max(0, APPLY_PATCH_FAILURE_OUTPUT_BYTES - outputBytes),
-			);
+			const bounded = utf8Prefix(value, Math.max(0, APPLY_PATCH_FAILURE_OUTPUT_BYTES - outputBytes));
 			output += bounded.value;
 			outputBytes += Buffer.byteLength(bounded.value, "utf8");
 			omittedOutputBytes += bounded.omittedBytes;
@@ -635,6 +674,14 @@ function toolError(error: unknown) {
 
 function webToolError(error: unknown) {
 	const text = error instanceof WebOpenError ? `${error.code}: ${error.message}` : `open_failed: ${error instanceof Error ? error.message : String(error)}`;
+	return {
+		isError: true,
+		content: [{ type: "text" as const, text }],
+	};
+}
+
+function subagentToolError(error: unknown) {
+	const text = error instanceof ChatGptSubagentError ? `${error.code}: ${error.message}` : `subagent_failed: ${error instanceof Error ? error.message : String(error)}`;
 	return {
 		isError: true,
 		content: [{ type: "text" as const, text }],

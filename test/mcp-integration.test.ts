@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { chmod, mkdir, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { request as httpRequest } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -10,7 +10,9 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { LATEST_PROTOCOL_VERSION } from "@modelcontextprotocol/sdk/types.js";
 
+import type { ChatGptSubagentService } from "../src/chatgpt-subagent.js";
 import { startMcpHttpServer } from "../src/http-server.js";
+import { McpAuditLogger } from "../src/mcp-audit-log.js";
 import { PeekabooClient } from "../src/peekaboo.js";
 import { PersistentShellSession } from "../src/shell-session.js";
 import { WebPageOpener } from "../src/web-open.js";
@@ -34,6 +36,7 @@ test("serves shell tools through Streamable HTTP and retains state across MCP se
 		tools.tools.map((tool) => tool.name),
 		[
 			"fetch_website",
+			"chatgpt_subagent",
 			"apply_patch",
 			"shell_run",
 			"shell_poll",
@@ -152,6 +155,22 @@ test("serves shell tools through Streamable HTTP and retains state across MCP se
 	const websiteFormatSchema = (fetchWebsiteTool?.inputSchema.properties as Record<string, Record<string, unknown>>).format;
 	assert.equal(websiteFormatSchema.default, "markdown");
 	assert.deepEqual(websiteFormatSchema.enum, ["markdown", "clean_html", "raw_html"]);
+	const subagentTool = tools.tools.find((tool) => tool.name === "chatgpt_subagent");
+	assert.equal(subagentTool?.title, "Ask a ChatGPT subagent");
+	assert.equal(subagentTool?.annotations?.readOnlyHint, false);
+	assert.equal(subagentTool?.annotations?.destructiveHint, false);
+	assert.equal(subagentTool?.annotations?.idempotentHint, false);
+	assert.equal(subagentTool?.annotations?.openWorldHint, true);
+	assert.match(subagentTool?.description ?? "", /first use creates the conversation/i);
+	assert.match(subagentTool?.description ?? "", /never automatically retried/i);
+	const subagentInputSchema = subagentTool?.inputSchema as {
+		properties?: Record<string, Record<string, unknown>>;
+		required?: string[];
+	};
+	assert.deepEqual(Object.keys(subagentInputSchema.properties ?? {}).sort(), ["agent_id", "prompt"]);
+	assert.deepEqual(subagentInputSchema.required?.sort(), ["agent_id", "prompt"]);
+	assert.equal(subagentInputSchema.properties?.agent_id?.maxLength, 64);
+	assert.match(String(subagentInputSchema.properties?.agent_id?.description), /persistent subagent/i);
 
 	const firstResult = await callUntilComplete(first.client, "mcp001", ["cd /tmp", "export MCP_HTTP_RETAINED=yes", "printf initialized"].join("; "));
 	assert.equal(firstResult.output, "initialized");
@@ -172,6 +191,99 @@ test("serves shell tools through Streamable HTTP and retains state across MCP se
 	const pagedResult = await callUntilComplete(second.client, "page01", `node -e ${JSON.stringify(`process.stdout.write(${JSON.stringify(expectedPagedOutput)})`)}`);
 	assert.equal(pagedResult.output, expectedPagedOutput);
 	assert.equal(Buffer.byteLength(pagedResult.output, "utf8"), 6_000);
+});
+
+test("shares caller-named ChatGPT subagents across stateless MCP requests", { timeout: 10_000 }, async (t) => {
+	const turns = new Map<string, string[]>();
+	const chatGptSubagents: ChatGptSubagentService = {
+		async ask({ agentId, prompt }) {
+			const history = turns.get(agentId) ?? [];
+			history.push(prompt);
+			turns.set(agentId, history);
+			return {
+				agentId,
+				conversationUrl: `https://chatgpt.com/c/fake-${agentId}`,
+				response: `${agentId}:${history.length}:${prompt}`,
+			};
+		},
+		async dispose() {},
+	};
+	const running = await startMcpHttpServer({
+		port: 0,
+		chatGptSubagents,
+	});
+	t.after(() => running.close());
+
+	const first = await connectClient(running.url, "subagent-client-1");
+	const firstResult = await first.client.callTool({
+		name: "chatgpt_subagent",
+		arguments: {
+			agent_id: "architecture-reviewer",
+			prompt: "Review the architecture.",
+		},
+	});
+	assert.deepEqual(firstResult.structuredContent, {
+		agent_id: "architecture-reviewer",
+		response: "architecture-reviewer:1:Review the architecture.",
+	});
+	await first.client.close();
+
+	const second = await connectClient(running.url, "subagent-client-2");
+	t.after(() => second.client.close());
+	const secondResult = await second.client.callTool({
+		name: "chatgpt_subagent",
+		arguments: {
+			agent_id: "architecture-reviewer",
+			prompt: "Now critique your answer.",
+		},
+	});
+	assert.deepEqual(secondResult.structuredContent, {
+		agent_id: "architecture-reviewer",
+		response: "architecture-reviewer:2:Now critique your answer.",
+	});
+});
+
+test("audits tool calls at the HTTP MCP boundary", { timeout: 10_000 }, async (t) => {
+	const root = await mkdtemp(join(tmpdir(), "mcp-audit-integration-"));
+	t.after(() => rm(root, { recursive: true, force: true }));
+	const auditPath = join(root, "agent-commands.log");
+	const auditLogger = new McpAuditLogger(auditPath);
+	const chatGptSubagents: ChatGptSubagentService = {
+		async ask({ agentId, prompt }) {
+			return {
+				agentId,
+				conversationUrl: `https://chatgpt.com/c/fake-${agentId}`,
+				response: `fake:${prompt}`,
+			};
+		},
+		async dispose() {},
+	};
+	const running = await startMcpHttpServer({
+		port: 0,
+		auditLogger,
+		chatGptSubagents,
+	});
+	t.after(() => running.close());
+
+	const connected = await connectClient(running.url, "audit-integration-client");
+	t.after(() => connected.client.close());
+	await connected.client.callTool({
+		name: "shell_list",
+		arguments: {},
+	});
+	await connected.client.callTool({
+		name: "chatgpt_subagent",
+		arguments: {
+			agent_id: "audit-check",
+			prompt: "Inspect the audit path.",
+		},
+	});
+
+	const log = await readFile(auditPath, "utf8");
+	assert.match(log, /\tCALL\tshell_list\tchars=2\t\{\}/);
+	assert.match(log, /\tRESULT\tshell_list\tchars=\d+\tduration_ms=\d+\thttp_status=200\tstate=finished/);
+	assert.match(log, /\tCALL\tchatgpt_subagent\tchars=\d+\t\{"agent_id":"audit-check","prompt":"Inspect the audit path\."\}/);
+	assert.match(log, /\tRESULT\tchatgpt_subagent\tchars=\d+\tduration_ms=\d+\thttp_status=200\tstate=finished/);
 });
 
 test("exposes a stable Peekaboo Computer Use surface and preserves semantic errors", { timeout: 10_000 }, async (t) => {

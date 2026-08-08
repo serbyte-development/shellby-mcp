@@ -2,7 +2,11 @@ import { mkdir } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { createCommandHistoryRecorder } from "./command-history.js";
+import {
+  ChatGptSubagentModule,
+  DEFAULT_CHATGPT_CDP_ENDPOINT,
+} from "./chatgpt-subagent.js";
+import { McpAuditLogger } from "./mcp-audit-log.js";
 import {
   PersistentShellSession,
   type ShellSessionOptions,
@@ -27,13 +31,18 @@ const maxOutputBytes = parsePositiveInteger(
   32 * 1024,
 );
 const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const commandHistoryPath = resolve(repositoryRoot, "agent-commands.log");
-const recordAgentCommand = createCommandHistoryRecorder(commandHistoryPath);
+const auditLogPath = resolve(repositoryRoot, "agent-commands.log");
+const auditLogger = new McpAuditLogger(auditLogPath);
 const cwd = resolveWorkspacePath(process.env.MCP_CWD);
 await mkdir(cwd, { recursive: true });
 const applyPatch = await prepareApplyPatch(cwd, process.env.MCP_CODEX_BIN);
 const peekaboo = new PeekabooClient({
   executable: process.env.MCP_PEEKABOO_BIN ?? "peekaboo",
+});
+const chatGptCdpEndpoint =
+  process.env.MCP_CHATGPT_CDP_ENDPOINT ?? DEFAULT_CHATGPT_CDP_ENDPOINT;
+const chatGptSubagents = new ChatGptSubagentModule({
+  cdpEndpoint: chatGptCdpEndpoint,
 });
 
 const shellOptions: ShellSessionOptions = {
@@ -52,7 +61,6 @@ const shellOptions: ShellSessionOptions = {
   maxOutputBytes,
   recordLimit: parsePositiveInteger(process.env.MCP_RECORD_LIMIT, 1024),
   commandLogMode,
-  commandRecorder: recordAgentCommand,
 };
 const shells = new ShellSessionManager({
   createShell: () => new PersistentShellSession(shellOptions),
@@ -69,18 +77,21 @@ const running = await startMcpHttpServer({
   shellManager: shells,
   applyPatchExecutable: applyPatch.executable,
   peekaboo,
+  chatGptSubagents,
+  auditLogger,
 });
 console.log(`Local shell MCP server: ${running.url}`);
 console.log(`Shell: ${process.env.MCP_SHELL ?? "/bin/zsh"}`);
 console.log(`Default workspace: ${cwd}`);
 console.log(`Maximum named shells: ${shells.maximumShells}`);
-console.log(`Agent command history: ${commandHistoryPath}`);
+console.log(`Agent MCP audit log: ${auditLogPath}`);
 if (applyPatch.available) {
   console.log(`apply_patch: ${applyPatch.executable}`);
 } else {
   console.warn(`apply_patch unavailable: ${applyPatch.warning}`);
 }
 console.log(`Computer Use: Peekaboo CLI (${running.peekaboo.executable})`);
+console.log(`ChatGPT Subagents: attach-only CDP ${chatGptCdpEndpoint}`);
 
 let shuttingDown = false;
 const shutdown = async (signal: string) => {

@@ -11,7 +11,7 @@
     "dev": "tsx watch src/index.ts",
     "start": "node dist/index.js",
     "pm2:start": "npm run build && pm2 start ecosystem.config.cjs",
-    "pm2:restart": "npm run build && pm2 reload ecosystem.config.cjs --update-env",
+    "pm2:restart": "rm -f agent-commands.log && npm run build && pm2 reload ecosystem.config.cjs --update-env",
     "pm2:status": "pm2 status",
     "pm2:logs": "pm2 logs",
     "pm2:stop": "pm2 stop ecosystem.config.cjs",

@@ -1,5 +1,5 @@
 # Possible Features
 
-Verified 2026-08-06.
+Verified 2026-08-07.
 
-No active backlog. New capabilities require an explicit scope change.
+Active proposal: [[Browser ChatGPT Subagents]] documents a browser-backed ChatGPT delegation primitive and implementation plan. Other new capabilities require an explicit scope change.

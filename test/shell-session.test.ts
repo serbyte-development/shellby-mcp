@@ -222,26 +222,6 @@ test(
   },
 );
 
-test(
-  "records accepted agent commands once and skips internal commands",
-  { timeout: 10_000 },
-  async (t) => {
-    const commands: string[] = [];
-    const shell = new PersistentShellSession({
-      commandRecorder: (command) => commands.push(command),
-    });
-    t.after(() => shell.close());
-
-    await runToCompletion(shell, "recorded-command", "printf recorded");
-    await runToCompletion(shell, "recorded-command", "printf recorded");
-    await runToCompletion(shell, "internal-command", "printf internal", {
-      recordCommand: false,
-    });
-
-    assert.deepEqual(commands, ["printf recorded"]);
-  },
-);
-
 test("summarizes multiline command logs", { timeout: 10_000 }, async (t) => {
   const messages: string[] = [];
   const shell = new PersistentShellSession({
@@ -825,13 +805,12 @@ async function runToCompletion(
   shell: PersistentShellSession,
   requestId: string,
   command: string,
-  options: { cwd?: string; recordCommand?: boolean } = {},
+  options: { cwd?: string } = {},
 ): Promise<{ output: string; snapshot: ShellSnapshot }> {
   const first = await shell.runCommand({
     requestId,
     command,
     cwd: options.cwd,
-    recordCommand: options.recordCommand,
     waitMs: 1_000,
   });
   let output = first.output;

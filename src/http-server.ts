@@ -4,7 +4,17 @@ import { localhostHostValidation } from "@modelcontextprotocol/sdk/server/middle
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import express, { type Request, type Response } from "express";
 
+import {
+  ChatGptSubagentModule,
+  DEFAULT_CHATGPT_CDP_ENDPOINT,
+  type ChatGptSubagentService,
+} from "./chatgpt-subagent.js";
 import { createMcpServer } from "./mcp-server.js";
+import {
+  characterCount,
+  extractResultCharacterCounts,
+  McpAuditLogger,
+} from "./mcp-audit-log.js";
 import { PeekabooClient } from "./peekaboo.js";
 import { PersistentShellSession } from "./shell-session.js";
 import { ShellSessionManager } from "./shell-session-manager.js";
@@ -23,6 +33,7 @@ export interface RunningMcpServer {
   shells: ShellSessionManager;
   shell: PersistentShellSession;
   peekaboo: PeekabooClient;
+  chatGptSubagents: ChatGptSubagentService;
   close: () => Promise<void>;
 }
 
@@ -32,6 +43,8 @@ export interface StartMcpServerOptions {
   shell?: PersistentShellSession;
   shellManager?: ShellSessionManager;
   peekaboo?: PeekabooClient;
+  chatGptSubagents?: ChatGptSubagentService;
+  auditLogger?: McpAuditLogger;
   applyPatchExecutable?: string;
   webPageOpener?: WebPageOpener;
 }
@@ -46,6 +59,10 @@ export async function startMcpHttpServer(
     new ShellSessionManager({ defaultShell: options.shell });
   const shell = shells.defaultShell;
   const peekaboo = options.peekaboo ?? new PeekabooClient();
+  const chatGptSubagents =
+    options.chatGptSubagents ??
+    new ChatGptSubagentModule({ cdpEndpoint: DEFAULT_CHATGPT_CDP_ENDPOINT });
+  const auditLogger = options.auditLogger;
   const applyPatchExecutable = options.applyPatchExecutable ?? "apply_patch";
   const webPageOpener = options.webPageOpener ?? new WebPageOpener();
   const inFlightRequests = new Set<InFlightMcpRequest>();
@@ -59,7 +76,30 @@ export async function startMcpHttpServer(
   });
 
   app.post("/mcp", async (req: Request, res: Response) => {
+    const auditCalls = auditLogger?.startToolCalls(req.body) ?? [];
+    const responseChunks: string[] = [];
+    if (auditCalls.length > 0) captureResponseBody(res, responseChunks);
+    let auditFinished = false;
+    const finishAudit = (state: "finished" | "closed") => {
+      if (auditFinished) return;
+      auditFinished = true;
+      const responseText = responseChunks.join("");
+      const resultCharacterCounts = extractResultCharacterCounts(responseText);
+      const fallbackOutputChars = characterCount(responseText);
+      for (const auditCall of auditCalls) {
+        auditCall.finish({
+          httpStatus: res.statusCode,
+          state,
+          outputChars:
+            resultCharacterCounts.get(auditCall.requestIdKey) ?? fallbackOutputChars,
+        });
+      }
+    };
+    res.once("finish", () => finishAudit("finished"));
+    res.once("close", () => finishAudit("closed"));
+
     const mcpServer = createMcpServer(shells, {
+      chatGptSubagents,
       applyPatchExecutable,
       peekaboo,
       webPageOpener,
@@ -142,6 +182,7 @@ export async function startMcpHttpServer(
       httpClose,
       shells.close(),
       peekaboo.close(),
+      chatGptSubagents.dispose(),
     ]);
     throw error;
   }
@@ -154,6 +195,7 @@ export async function startMcpHttpServer(
     shells,
     shell,
     peekaboo,
+    chatGptSubagents,
     close: async () => {
       if (closed) return;
       closed = true;
@@ -165,10 +207,46 @@ export async function startMcpHttpServer(
         );
         await httpClose;
       } finally {
-        await Promise.allSettled([shells.close(), peekaboo.close()]);
+        await Promise.allSettled([
+          shells.close(),
+          peekaboo.close(),
+          chatGptSubagents.dispose(),
+        ]);
       }
     },
   };
+}
+
+function captureResponseBody(res: Response, chunks: string[]): void {
+  const originalWrite = res.write.bind(res) as (...args: unknown[]) => boolean;
+  const originalEnd = res.end.bind(res) as (...args: unknown[]) => Response;
+
+  res.write = ((...args: unknown[]) => {
+    captureResponseChunk(chunks, args[0], args[1]);
+    return originalWrite(...args);
+  }) as typeof res.write;
+
+  res.end = ((...args: unknown[]) => {
+    captureResponseChunk(chunks, args[0], args[1]);
+    return originalEnd(...args);
+  }) as typeof res.end;
+}
+
+function captureResponseChunk(
+  chunks: string[],
+  chunk: unknown,
+  encoding: unknown,
+): void {
+  if (typeof chunk === "string") {
+    chunks.push(chunk);
+    return;
+  }
+  if (!Buffer.isBuffer(chunk) && !(chunk instanceof Uint8Array)) return;
+  const normalizedEncoding =
+    typeof encoding === "string" && Buffer.isEncoding(encoding)
+      ? (encoding as BufferEncoding)
+      : "utf8";
+  chunks.push(Buffer.from(chunk).toString(normalizedEncoding));
 }
 
 function jsonRpcError(

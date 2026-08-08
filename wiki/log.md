@@ -215,3 +215,60 @@
 ## [2026-08-06] simplify | remove obsolete Git LFS configuration
 
 - Removed the repository attribute, local filters, and pre-push hook after replacing the oversized Codex snapshot with the directly tracked standalone `apply_patch` binary.
+
+## [2026-08-07] implement | add browser ChatGPT subagent module
+
+- Added `src/chatgpt-subagent.ts`, a reusable Playwright-over-CDP module that creates one ChatGPT page per agent, reuses the same page for continuation, serializes same-agent sends, and recovers a closed page from the stored conversation URL.
+- Added ChatGPT conversation response tracking with message-ID baselines, turn correlation, final user-facing assistant selection, and DOM fallback so later calls do not repeat the previous answer.
+- Added focused unit coverage for conversation-node normalization, intermediate tool-message filtering, final-response selection, and duplicate suppression.
+- Kept the module unregistered from MCP until live Chrome validation proves the browser contract.
+
+## [2026-08-07] integrate | publish caller-named ChatGPT subagents
+
+- Registered `chatgpt_subagent` as a first-class MCP tool with required descriptive `agent_id` and prompt inputs; only `agent_id` and final response are returned to the caller.
+- Injected one process-level `ChatGptSubagentModule` across stateless MCP requests and added `MCP_CHATGPT_CDP_ENDPOINT` while keeping Chrome startup/profile selection external.
+- Replaced same-agent queuing with `AGENT_BUSY`, capped simultaneous generations at two, added a 1.5-second local inter-turn delay, propagated request cancellation, and added stable semantic failures without automatic retries.
+- Hardened managed-tab drift: foreground tab changes are irrelevant, while a closed or user-navigated managed tab is recovered at most once from its stored conversation without hijacking the changed tab.
+- Added fake-service MCP integration coverage for caller-named agent continuity; validation was intentionally not executed in this change.
+
+## [2026-08-07] harden | clean up subagent lifecycle
+
+- Discard unrecoverable pre-conversation agent state after `AGENT_TARGET_LOST` so a caller can explicitly reuse the same descriptive `agent_id` on a later call without adding a reset tool.
+- Made subagent disposal asynchronous and close only still-managed module-created ChatGPT pages, preventing orphaned tabs across MCP restarts while leaving the externally owned Chrome process and user-repurposed tabs untouched.
+- Removed stale documentation that still described MCP registration as pending.
+
+## [2026-08-07] improve | add MCP input and output character counts
+
+- Added result/error character counts to MCP audit completion lines so `agent-commands.log` shows both tool input and output size without persisting full tool output.
+- Changed audit timestamps to a human-readable `MON-D-H:MM:SS` format such as `AUG-23-14:23:23`.
+
+## [2026-08-07] simplify | make browser subagent module attach-only
+
+- Made Chrome lifecycle and profile selection explicit external prerequisites instead of adding a launcher/profile manager to the subagent module.
+- Added a short CDP connection timeout and a clear failure when the configured debuggable Chrome endpoint is unavailable; the module never launches Chrome or chooses a profile.
+- Added focused coverage for the unavailable-browser contract and updated the browser-subagent implementation plan accordingly.
+
+## [2026-08-07] validate | prove live browser ChatGPT subagents
+
+- Connected the module to a dedicated Chrome profile seeded from the active signed-in profile and verified authenticated ChatGPT conversations over CDP without foreground macOS input.
+- Fixed composer submission to use page-targeted virtual keyboard input plus the ChatGPT send button; this removed duplicated prompt text seen with direct contenteditable filling.
+- Verified two-turn memory on one `agentId`, normalized history reads, two concurrent agents with distinct Chrome targets, and closed-tab recovery through the stored conversation URL.
+- Added hydration and send-button waits required for reliable continuation after reopening a conversation page.
+- Confirmed normal background Chrome works; headless Chrome currently encounters a Cloudflare challenge.
+
+## [2026-08-07] design | document browser-backed ChatGPT subagents
+
+- Added [[pages/Browser ChatGPT Subagents]] with the proposed CDP/Playwright architecture, process-level agent-to-page registry, same-tab continuation, stale-target recovery, and per-agent concurrency rules.
+- Documented network-level conversation tracking using message IDs and turn/graph metadata so each delegated call returns only its new final assistant response.
+- Defined a minimal `chatgpt_subagent` MCP contract and an implementation/test plan that fits the current composition and exact tool-list contracts.
+
+## [2026-08-07] audit | log every MCP tool invocation
+
+- Replaced shell-only command-history recording with `src/mcp-audit-log.ts`, which intercepts JSON-RPC `tools/call` requests at the HTTP boundary so all current and future tools are covered automatically.
+- `agent-commands.log` now records tool name, full serialized arguments, serialized-argument character count, and a separate completion line with duration, HTTP status, and finished/closed state.
+- Removed duplicate shell-specific persistence while retaining `MCP_LOG_COMMANDS` as the independent shell console-log control.
+
+## [2026-08-07] refine | improve MCP audit readability
+
+- Changed `shell_run` audit entries to place command text in its own readable block instead of JSON-escaping it alongside metadata.
+- Changed `apply_patch` audit entries to omit patch bodies while retaining total input size, patch character count, cwd, and other parameters.

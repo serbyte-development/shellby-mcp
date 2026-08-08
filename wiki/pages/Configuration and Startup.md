@@ -1,6 +1,6 @@
 # Configuration and Startup
 
-Verified 2026-08-06.
+Verified 2026-08-07.
 
 ## Environment Inputs
 
@@ -12,6 +12,7 @@ Verified 2026-08-06.
 | `MCP_CWD`                      | `~/Desktop/chatgpt-workspace`      | Absolute-resolved workspace and initial cwd             |
 | `MCP_CODEX_BIN`                | Repository `vendor/apply_patch`    | Optional `apply_patch` symlink-target override          |
 | `MCP_PEEKABOO_BIN`             | `peekaboo`                          | Peekaboo executable name or absolute path                |
+| `MCP_CHATGPT_CDP_ENDPOINT`     | `http://127.0.0.1:9222`             | Already-running Chrome DevTools endpoint for subagents   |
 | `MCP_TRANSCRIPT_CHARS`         | `1048576`                          | Rolling JavaScript-string length                        |
 | `MCP_COMMAND_TRANSCRIPT_BYTES` | `262144`                           | Per-command retained UTF-8 output ceiling               |
 | `MCP_OUTPUT_BYTES`             | `2048`                             | Default response byte cap                               |
@@ -21,11 +22,11 @@ Verified 2026-08-06.
 | `MCP_SHELL_IDLE_TTL_MS`        | `1800000`                          | Idle lifetime for named shells; `0` disables cleanup    |
 | `MCP_LOG_COMMANDS`             | `summary`                          | `off`, compact `summary`, or raw `full` command logging |
 
-`MCP_CWD` expands `~`, resolves relative values from startup cwd, and becomes the shell/workspace/instruction root. Numeric values are range-checked. Logging accepts `off`, `summary`, and `full`; accepted `shell_run` commands also append once, without redaction, to gitignored `agent-commands.log` (`src/index.ts`, `src/workspace-tools.ts`, `src/command-history.ts`, `src/shell-session.ts`).
+`MCP_CWD` expands `~`, resolves relative values from startup cwd, and becomes the shell/workspace/instruction root. Numeric values are range-checked. `MCP_LOG_COMMANDS` accepts `off`, `summary`, and `full` and controls only shell command console logging. Independently, production startup writes every MCP `tools/call` invocation to the gitignored repository-local `agent-commands.log` with input and output character counts. Most argument objects are serialized directly; `apply_patch` excludes the patch body and records `patch_chars`, while `shell_run` places the command in its own readable block. Audit timestamps use a compact human-readable form such as `AUG-23-14:23:23` (`src/index.ts`, `src/mcp-audit-log.ts`, `src/http-server.ts`, `src/shell-session.ts`).
 
 ## Startup and Shutdown
 
-Startup prepares the workspace and patch executable, constructs shared adapters, creates the default shell, and starts HTTP. Named shells are lazy and idle-evicted; active work is not. `SIGINT` and `SIGTERM` close HTTP, shells, and the Peekaboo queue. Peekaboo availability and permissions are checked on use, not startup (`src/index.ts`, `src/http-server.ts`, `src/shell-session-manager.ts`, `src/peekaboo.ts`).
+Startup prepares the workspace and patch executable, constructs shared adapters, creates the default shell, and starts HTTP. The ChatGPT subagent module is attach-only and does not connect to or launch Chrome during startup. `SIGINT` and `SIGTERM` close HTTP, shells, the Peekaboo queue, and any still-managed ChatGPT pages created by the module; the externally owned Chrome process itself is never closed. Tabs that were navigated away from their managed ChatGPT conversation are left alone (`src/index.ts`, `src/http-server.ts`, `src/chatgpt-subagent.ts`).
 
 ## Computer Use Permission Bootstrap
 

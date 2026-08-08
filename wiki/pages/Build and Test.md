@@ -1,6 +1,6 @@
 # Build and Test
 
-Verified 2026-08-06.
+Verified 2026-08-07.
 
 ## Build Boundary
 
@@ -20,9 +20,11 @@ Run the cheapest focused test first, then the broader commands when the change w
 
 ## Test Architecture
 
-- Shell tests cover retained state, cwd, descriptors, idempotency, logs, output caps, polling, concurrency, markers, recovery, and reset (`test/shell-session.test.ts`, `test/shell-session-manager.test.ts`, `test/command-history.test.ts`).
+- Shell tests cover retained state, cwd, descriptors, idempotency, console logs, output caps, polling, concurrency, markers, recovery, and reset (`test/shell-session.test.ts`, `test/shell-session-manager.test.ts`).
+- MCP audit tests cover tool-call filtering, character counts, readable `shell_run` command blocks, `apply_patch` body omission, completion metadata, and HTTP-boundary interception without contacting external services (`test/mcp-audit-log.test.ts`, `test/mcp-integration.test.ts`).
 - Adapter tests cover exact Peekaboo argv, bounded JSON and images, serialization, cancellation, timeouts, snapshots, webpage extraction, cursors, and workspace patch setup (`test/peekaboo.test.ts`, `test/web-open.test.ts`, `test/workspace-tools.test.ts`).
 - MCP integration tests validate the published tool order and schemas, cross-request shell state, named-shell concurrency, direct patching, webpage pagination, Computer Use results, semantic errors, restart continuity, and Host rejection (`test/mcp-integration.test.ts`).
+- Subagent unit tests cover conversation-graph normalization and final-message filtering, while MCP integration coverage injects a fake shared service to verify caller-named agent continuity across stateless HTTP requests without contacting ChatGPT (`test/chatgpt-subagent.test.ts`, `test/mcp-integration.test.ts`).
 
 Tests use temporary directories and real local child shells; process-group tests are POSIX-specific (`test/shell-session.test.ts`).
 
