@@ -125,14 +125,14 @@ test("serves shell tools through Streamable HTTP and retains state across MCP se
 		properties?: Record<string, unknown>;
 		required?: string[];
 	};
-	assert.deepEqual(Object.keys(applyPatchInputSchema.properties ?? {}).sort(), ["cwd", "max_output_bytes", "patch"]);
+	assert.deepEqual(Object.keys(applyPatchInputSchema.properties ?? {}).sort(), ["cwd", "patch"]);
 	assert.deepEqual(applyPatchInputSchema.required?.sort(), ["cwd", "patch"]);
 	const applyPatchOutputSchema = applyPatchTool?.outputSchema as {
 		properties?: Record<string, unknown>;
 		required?: string[];
 	};
 	assert.deepEqual(Object.keys(applyPatchOutputSchema.properties ?? {}).sort(), ["exit_code", "omitted_output_bytes", "output", "output_truncated", "status"]);
-	assert.deepEqual(applyPatchOutputSchema.required?.sort(), ["exit_code", "output", "status"]);
+	assert.deepEqual(applyPatchOutputSchema.required?.sort(), ["exit_code", "status"]);
 	const shellListTool = tools.tools.find((tool) => tool.name === "shell_list");
 	assert.equal(shellListTool?.annotations?.readOnlyHint, true);
 	assert.equal(shellListTool?.annotations?.idempotentHint, true);
@@ -672,7 +672,7 @@ test("applies patches through the native MCP tool", { timeout: 20_000 }, async (
 	await mkdir(project, { recursive: true });
 	await mkdir(bin, { recursive: true });
 	const executable = join(bin, "apply_patch");
-	await writeFile(executable, '#!/bin/sh\npatch=$(cat)\ncase "$patch" in *SLOW_PATCH*) sleep 0.2 ;; esac\nprintf \'cwd=%s\\n%s\' "$PWD" "$patch"\n');
+	await writeFile(executable, '#!/bin/sh\npatch=$(cat)\ncase "$patch" in *SLOW_PATCH*) sleep 0.2 ;; *FAIL_PATCH*) printf \'%4097s\' x >&2; exit 9 ;; esac\nprintf \'cwd=%s\\n%s\' "$PWD" "$patch"\n');
 	await chmod(executable, 0o755);
 
 	const shell = new PersistentShellSession({ cwd: directory });
@@ -697,7 +697,6 @@ test("applies patches through the native MCP tool", { timeout: 20_000 }, async (
 	assert.deepEqual(result.structuredContent, {
 		status: "completed",
 		exit_code: 0,
-		output: `cwd=${project}\n${patch}`,
 	});
 	assert.doesNotMatch(JSON.stringify(result.content), /literal \$\(\)/);
 	assert.match(JSON.stringify(result.content), /apply_patch completed, exit=0/);
@@ -705,17 +704,30 @@ test("applies patches through the native MCP tool", { timeout: 20_000 }, async (
 	const noisyPatch = ["*** Begin Patch", "*** Add File: noisy.txt", `+${"x".repeat(400)}`, "*** End Patch"].join("\n");
 	const noisyResult = await connected.client.callTool({
 		name: "apply_patch",
-		arguments: { cwd: project, patch: noisyPatch, max_output_bytes: 256 },
+		arguments: { cwd: project, patch: noisyPatch },
 	});
-	const noisyContent = noisyResult.structuredContent as {
+	assert.deepEqual(noisyResult.structuredContent, {
+		status: "completed",
+		exit_code: 0,
+	});
+
+	const failed = await connected.client.callTool({
+		name: "apply_patch",
+		arguments: { cwd: project, patch: `${patch}\nFAIL_PATCH` },
+	});
+	assert.equal(failed.isError, true);
+	const failedContent = failed.structuredContent as {
+		status: "failed";
+		exit_code: number;
 		output: string;
 		output_truncated?: true;
 		omitted_output_bytes?: number;
 	};
-	const fullNoisyOutput = `cwd=${project}\n${noisyPatch}`;
-	assert.equal(Buffer.byteLength(noisyContent.output, "utf8"), 256);
-	assert.equal(noisyContent.output_truncated, true);
-	assert.equal(noisyContent.omitted_output_bytes, Buffer.byteLength(fullNoisyOutput, "utf8") - 256);
+	assert.equal(failedContent.status, "failed");
+	assert.equal(failedContent.exit_code, 9);
+	assert.equal(Buffer.byteLength(failedContent.output, "utf8"), 4 * 1024);
+	assert.equal(failedContent.output_truncated, true);
+	assert.equal(failedContent.omitted_output_bytes, 1);
 
 	const invalid = await connected.client.callTool({
 		name: "apply_patch",

@@ -15,6 +15,8 @@ const noAuthMeta = {
 	securitySchemes: [{ type: "noauth" }],
 };
 
+const APPLY_PATCH_FAILURE_OUTPUT_BYTES = 4 * 1024;
+
 const requestIdInput = z.string().min(1).max(128).describe("Short operation label, unique within this shell. Reuse only to retry the exact same operation.");
 
 const shellIdInput = z
@@ -158,14 +160,13 @@ export function createMcpServer(shells: ShellSessionManager, options: CreateMcpS
 					.min(1)
 					.refine(isAbsolute, "cwd must be an absolute path.")
 					.describe("Required absolute directory used as the patch root."),
-				max_output_bytes: maxOutputBytesInput,
 			},
 			outputSchema: {
 				status: z.enum(["completed", "failed"]),
 				exit_code: z.int().nullable(),
-				output: z.string(),
-				output_truncated: z.literal(true).optional().describe("Present when max_output_bytes omitted patch output; omitted bytes are not pollable through this tool."),
-				omitted_output_bytes: z.int().positive().optional().describe("Present when UTF-8 patch-output bytes were omitted from this response by max_output_bytes."),
+				output: z.string().optional().describe("Present only on failure with bounded apply_patch stdout/stderr diagnostics."),
+				output_truncated: z.literal(true).optional().describe("Present when failure diagnostics exceeded the fixed apply_patch output ceiling."),
+				omitted_output_bytes: z.int().positive().optional().describe("Present when failure diagnostics exceeded the fixed apply_patch output ceiling."),
 			},
 			annotations: {
 				readOnlyHint: false,
@@ -175,13 +176,12 @@ export function createMcpServer(shells: ShellSessionManager, options: CreateMcpS
 			},
 			_meta: noAuthMeta,
 		},
-		async ({ patch, cwd, max_output_bytes }, extra) => {
+		async ({ patch, cwd }, extra) => {
 			try {
 				const result = await applyPatch({
 					patch,
 					cwd,
 					executable: applyPatchExecutable,
-					maxOutputBytes: max_output_bytes,
 					signal: extra.signal,
 				});
 				return {
@@ -489,7 +489,6 @@ interface ApplyPatchInput {
 	patch: string;
 	cwd: string;
 	executable: string;
-	maxOutputBytes: number;
 	signal?: AbortSignal;
 }
 
@@ -504,7 +503,7 @@ interface ApplyPatchResult extends Record<string, unknown> {
 interface CompactApplyPatchResult extends Record<string, unknown> {
 	status: ApplyPatchResult["status"];
 	exit_code: number | null;
-	output: string;
+	output?: string;
 	output_truncated?: true;
 	omitted_output_bytes?: number;
 }
@@ -513,11 +512,13 @@ function toPatchToolResult(result: ApplyPatchResult): CompactApplyPatchResult {
 	const compact: CompactApplyPatchResult = {
 		status: result.status,
 		exit_code: result.exit_code,
-		output: result.output,
 	};
-	if (result.output_truncated) compact.output_truncated = true;
-	if (result.omitted_output_bytes > 0) {
-		compact.omitted_output_bytes = result.omitted_output_bytes;
+	if (result.status === "failed") {
+		compact.output = result.output;
+		if (result.output_truncated) compact.output_truncated = true;
+		if (result.omitted_output_bytes > 0) {
+			compact.omitted_output_bytes = result.omitted_output_bytes;
+		}
 	}
 	return compact;
 }
@@ -544,7 +545,10 @@ async function applyPatch(input: ApplyPatchInput): Promise<ApplyPatchResult> {
 		let settled = false;
 
 		const appendOutput = (value: string) => {
-			const bounded = utf8Prefix(value, Math.max(0, input.maxOutputBytes - outputBytes));
+			const bounded = utf8Prefix(
+				value,
+				Math.max(0, APPLY_PATCH_FAILURE_OUTPUT_BYTES - outputBytes),
+			);
 			output += bounded.value;
 			outputBytes += Buffer.byteLength(bounded.value, "utf8");
 			omittedOutputBytes += bounded.omittedBytes;
