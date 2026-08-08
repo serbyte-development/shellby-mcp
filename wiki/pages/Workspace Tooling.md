@@ -1,6 +1,6 @@
 # Workspace Tooling
 
-Verified 2026-08-06.
+Verified 2026-08-07.
 
 ## Default Workspace
 
@@ -12,7 +12,7 @@ Verified 2026-08-06.
 
 A missing or non-executable selected binary produces a startup warning rather than failing the server. Tests cover the vendored default, symlink creation, stale-link replacement, and the missing-binary path (`test/workspace-tools.test.ts`).
 
-The MCP registers `apply_patch` as a first-class core tool. Startup passes the prepared absolute executable path into each MCP request. The handler requires an absolute patch root, spawns the executable directly in that directory, writes the patch to stdin, and returns byte-capped combined output after the process exits. It is independent of persistent-shell state and serialization. The tool publishes explicit destructive/non-idempotent annotations, and the underlying executable remains available to `shell_run` as a fallback (`src/index.ts`, `src/http-server.ts`, `src/mcp-server.ts`).
+The MCP registers `apply_patch` as a first-class core tool. Startup passes the prepared absolute executable path into each MCP request. The handler requires an absolute patch root, spawns the executable directly in that directory, writes the patch to stdin, and returns bounded combined failure diagnostics after the process exits. On POSIX the child owns a detached process group; request abort sends the group `SIGTERM`, waits 500 ms, escalates to `SIGKILL`, and force-settles after one further bounded grace period if process close never arrives. Windows uses direct child signaling. `apply_patch` remains independent of persistent-shell state and serialization (`src/index.ts`, `src/http-server.ts`, `src/mcp-server.ts`, `test/mcp-integration.test.ts`).
 
 If additional platform-specific binaries are needed later, pin the Codex repository as a source submodule and build `codex-apply-patch` for each target rather than copying a partial Rust source tree into this repository (`scripts/build-apply-patch.sh`, `vendor/apply_patch.provenance.json`).
 

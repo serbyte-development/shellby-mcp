@@ -34,10 +34,11 @@ test("serves shell tools through Streamable HTTP and retains state across MCP se
 	const tools = await first.client.listTools();
 	assert.deepEqual(
 		tools.tools.map((tool) => tool.name),
-		[
-			"fetch_website",
-			"chatgpt_subagent",
-			"apply_patch",
+			[
+				"fetch_website",
+				"chatgpt_subagent",
+				"chatgpt_subagent_poll",
+				"apply_patch",
 			"shell_run",
 			"shell_poll",
 			"shell_reset",
@@ -156,13 +157,15 @@ test("serves shell tools through Streamable HTTP and retains state across MCP se
 	assert.equal(websiteFormatSchema.default, "markdown");
 	assert.deepEqual(websiteFormatSchema.enum, ["markdown", "clean_html", "raw_html"]);
 	const subagentTool = tools.tools.find((tool) => tool.name === "chatgpt_subagent");
-	assert.equal(subagentTool?.title, "Ask a ChatGPT subagent");
+	assert.equal(subagentTool?.title, "Start a ChatGPT subagent turn");
 	assert.equal(subagentTool?.annotations?.readOnlyHint, false);
 	assert.equal(subagentTool?.annotations?.destructiveHint, false);
 	assert.equal(subagentTool?.annotations?.idempotentHint, false);
 	assert.equal(subagentTool?.annotations?.openWorldHint, true);
 	assert.match(subagentTool?.description ?? "", /first use creates the conversation/i);
 	assert.match(subagentTool?.description ?? "", /never automatically retried/i);
+	assert.match(subagentTool?.description ?? "", /returns after the prompt is submitted/i);
+	assert.match(subagentTool?.description ?? "", /chatgpt_subagent_poll/i);
 	const subagentInputSchema = subagentTool?.inputSchema as {
 		properties?: Record<string, Record<string, unknown>>;
 		required?: string[];
@@ -171,6 +174,19 @@ test("serves shell tools through Streamable HTTP and retains state across MCP se
 	assert.deepEqual(subagentInputSchema.required?.sort(), ["agent_id", "prompt"]);
 	assert.equal(subagentInputSchema.properties?.agent_id?.maxLength, 64);
 	assert.match(String(subagentInputSchema.properties?.agent_id?.description), /persistent subagent/i);
+	const subagentPollTool = tools.tools.find((tool) => tool.name === "chatgpt_subagent_poll");
+	assert.equal(subagentPollTool?.title, "Poll a ChatGPT subagent turn");
+	assert.equal(subagentPollTool?.annotations?.readOnlyHint, true);
+	assert.equal(subagentPollTool?.annotations?.idempotentHint, true);
+	assert.match(subagentPollTool?.description ?? "", /never resubmits/i);
+	const subagentPollInputSchema = subagentPollTool?.inputSchema as {
+		properties?: Record<string, Record<string, unknown>>;
+		required?: string[];
+	};
+	assert.deepEqual(Object.keys(subagentPollInputSchema.properties ?? {}).sort(), ["turn_id", "wait_ms"]);
+	assert.deepEqual(subagentPollInputSchema.required?.sort(), ["turn_id"]);
+	assert.equal(subagentPollInputSchema.properties?.wait_ms?.default, 0);
+	assert.equal(subagentPollInputSchema.properties?.wait_ms?.maximum, 10_000);
 
 	const firstResult = await callUntilComplete(first.client, "mcp001", ["cd /tmp", "export MCP_HTTP_RETAINED=yes", "printf initialized"].join("; "));
 	assert.equal(firstResult.output, "initialized");
@@ -193,17 +209,36 @@ test("serves shell tools through Streamable HTTP and retains state across MCP se
 	assert.equal(Buffer.byteLength(pagedResult.output, "utf8"), 6_000);
 });
 
-test("shares caller-named ChatGPT subagents across stateless MCP requests", { timeout: 10_000 }, async (t) => {
+test("shares async ChatGPT subagent turns across stateless MCP requests", { timeout: 10_000 }, async (t) => {
 	const turns = new Map<string, string[]>();
+	const completed = new Map<string, { agentId: string; response: string }>();
 	const chatGptSubagents: ChatGptSubagentService = {
 		async ask({ agentId, prompt }) {
 			const history = turns.get(agentId) ?? [];
 			history.push(prompt);
 			turns.set(agentId, history);
+			const turnId = `turn-${agentId}-${history.length}`;
+			completed.set(turnId, {
+				agentId,
+				response: `${agentId}:${history.length}:${prompt}`,
+			});
 			return {
 				agentId,
+				turnId,
+				status: "running",
+				submitted: true,
 				conversationUrl: `https://chatgpt.com/c/fake-${agentId}`,
-				response: `${agentId}:${history.length}:${prompt}`,
+			};
+		},
+		async poll(turnId) {
+			const result = completed.get(turnId);
+			if (!result) throw new Error(`unknown turn ${turnId}`);
+			return {
+				agentId: result.agentId,
+				turnId,
+				status: "completed",
+				conversationUrl: `https://chatgpt.com/c/fake-${result.agentId}`,
+				response: result.response,
 			};
 		},
 		async dispose() {},
@@ -224,12 +259,29 @@ test("shares caller-named ChatGPT subagents across stateless MCP requests", { ti
 	});
 	assert.deepEqual(firstResult.structuredContent, {
 		agent_id: "architecture-reviewer",
-		response: "architecture-reviewer:1:Review the architecture.",
+		turn_id: "turn-architecture-reviewer-1",
+		status: "running",
+		submitted: true,
+		conversation_url: "https://chatgpt.com/c/fake-architecture-reviewer",
 	});
 	await first.client.close();
 
 	const second = await connectClient(running.url, "subagent-client-2");
 	t.after(() => second.client.close());
+	const firstPoll = await second.client.callTool({
+		name: "chatgpt_subagent_poll",
+		arguments: {
+			turn_id: "turn-architecture-reviewer-1",
+			wait_ms: 0,
+		},
+	});
+	assert.deepEqual(firstPoll.structuredContent, {
+		agent_id: "architecture-reviewer",
+		turn_id: "turn-architecture-reviewer-1",
+		status: "completed",
+		conversation_url: "https://chatgpt.com/c/fake-architecture-reviewer",
+		response: "architecture-reviewer:1:Review the architecture.",
+	});
 	const secondResult = await second.client.callTool({
 		name: "chatgpt_subagent",
 		arguments: {
@@ -239,6 +291,20 @@ test("shares caller-named ChatGPT subagents across stateless MCP requests", { ti
 	});
 	assert.deepEqual(secondResult.structuredContent, {
 		agent_id: "architecture-reviewer",
+		turn_id: "turn-architecture-reviewer-2",
+		status: "running",
+		submitted: true,
+		conversation_url: "https://chatgpt.com/c/fake-architecture-reviewer",
+	});
+	const secondPoll = await second.client.callTool({
+		name: "chatgpt_subagent_poll",
+		arguments: { turn_id: "turn-architecture-reviewer-2" },
+	});
+	assert.deepEqual(secondPoll.structuredContent, {
+		agent_id: "architecture-reviewer",
+		turn_id: "turn-architecture-reviewer-2",
+		status: "completed",
+		conversation_url: "https://chatgpt.com/c/fake-architecture-reviewer",
 		response: "architecture-reviewer:2:Now critique your answer.",
 	});
 });
@@ -252,8 +318,18 @@ test("audits tool calls at the HTTP MCP boundary", { timeout: 10_000 }, async (t
 		async ask({ agentId, prompt }) {
 			return {
 				agentId,
+				turnId: `turn-${agentId}`,
+				status: "running",
+				submitted: true,
 				conversationUrl: `https://chatgpt.com/c/fake-${agentId}`,
-				response: `fake:${prompt}`,
+			};
+		},
+		async poll(turnId) {
+			return {
+				agentId: "audit-check",
+				turnId,
+				status: "completed",
+				response: "fake:Inspect the audit path.",
 			};
 		},
 		async dispose() {},
@@ -841,6 +917,26 @@ test("applies patches through the native MCP tool", { timeout: 20_000 }, async (
 	assert.equal(failedContent.output_truncated, true);
 	assert.equal(failedContent.omitted_output_bytes, 1);
 
+	const explicitlyBounded = await connected.client.callTool({
+		name: "apply_patch",
+		arguments: {
+			cwd: project,
+			patch: `${patch}\nFAIL_PATCH`,
+			max_output_bytes: 256,
+		},
+	});
+	assert.equal(explicitlyBounded.isError, true);
+	const explicitlyBoundedContent = explicitlyBounded.structuredContent as {
+		status: "failed";
+		exit_code: number;
+		output: string;
+		output_truncated?: true;
+		omitted_output_bytes?: number;
+	};
+	assert.equal(Buffer.byteLength(explicitlyBoundedContent.output, "utf8"), 256);
+	assert.equal(explicitlyBoundedContent.output_truncated, true);
+	assert.equal(explicitlyBoundedContent.omitted_output_bytes, 4097 - 256);
+
 	const invalid = await connected.client.callTool({
 		name: "apply_patch",
 		arguments: { cwd: "relative/project", patch },
@@ -863,6 +959,97 @@ test("applies patches through the native MCP tool", { timeout: 20_000 }, async (
 	assert.equal(concurrent.isError, undefined);
 	assert.equal((concurrent.structuredContent as { output: string }).output, "runs-independently");
 	assert.equal((await slowPatch).isError, undefined);
+});
+
+test("force-kills a SIGTERM-resistant apply_patch after request abort", { skip: process.platform === "win32", timeout: 10_000 }, async (t) => {
+	const directory = await realpath(await mkdtemp(join(tmpdir(), "mcp-aborted-patch-")));
+	const project = join(directory, "project");
+	const bin = join(directory, "bin");
+	await mkdir(project, { recursive: true });
+	await mkdir(bin, { recursive: true });
+	const executable = join(bin, "apply_patch");
+	await writeFile(
+		executable,
+		'#!/bin/sh\ntrap \'\' TERM\nprintf \'%s\\n\' "$$" > "$PWD/patch.pid"\ncat >/dev/null\nwhile :; do sleep 1; done\n'
+	);
+	await chmod(executable, 0o755);
+
+	const shell = new PersistentShellSession({ cwd: directory });
+	const running = await startMcpHttpServer({
+		port: 0,
+		shell,
+		applyPatchExecutable: executable,
+	});
+	let patchPid: number | undefined;
+	let request: ReturnType<typeof httpRequest> | undefined;
+	t.after(async () => {
+		request?.destroy();
+		if (patchPid) {
+			try {
+				process.kill(-patchPid, "SIGKILL");
+			} catch {}
+		}
+		await running.close();
+		await rm(directory, { recursive: true, force: true });
+	});
+
+	const target = new URL(running.url);
+	const body = JSON.stringify({
+		jsonrpc: "2.0",
+		id: 1,
+		method: "tools/call",
+		params: {
+			name: "apply_patch",
+			arguments: {
+				cwd: project,
+				patch: "*** Begin Patch\n*** End Patch",
+			},
+		},
+	});
+	request = httpRequest(
+		{
+			hostname: target.hostname,
+			port: target.port,
+			path: target.pathname,
+			method: "POST",
+			headers: {
+				accept: "application/json, text/event-stream",
+				"content-length": Buffer.byteLength(body),
+				"content-type": "application/json",
+				"mcp-protocol-version": LATEST_PROTOCOL_VERSION,
+			},
+		},
+		(response) => response.resume()
+	);
+	request.on("error", () => {});
+	request.end(body);
+
+	for (let attempt = 0; attempt < 100; attempt += 1) {
+		try {
+			patchPid = Number.parseInt(await readFile(join(project, "patch.pid"), "utf8"), 10);
+			break;
+		} catch {
+			await new Promise((resolve) => setTimeout(resolve, 10));
+		}
+	}
+	assert.ok(patchPid && Number.isSafeInteger(patchPid), "fake apply_patch did not start");
+
+	request.destroy();
+
+	let exited = false;
+	for (let attempt = 0; attempt < 100; attempt += 1) {
+		try {
+			process.kill(patchPid, 0);
+		} catch (error) {
+			if ((error as NodeJS.ErrnoException).code === "ESRCH") {
+				exited = true;
+				break;
+			}
+			throw error;
+		}
+		await new Promise((resolve) => setTimeout(resolve, 20));
+	}
+	assert.equal(exited, true, "SIGTERM-resistant apply_patch process was not force-killed");
 });
 
 test("rejects a mismatched HTTP Host", { timeout: 10_000 }, async (t) => {

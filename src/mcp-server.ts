@@ -15,6 +15,7 @@ const noAuthMeta = {
 };
 
 const APPLY_PATCH_FAILURE_OUTPUT_BYTES = 4 * 1024;
+const APPLY_PATCH_STOP_GRACE_MS = 500;
 
 const requestIdInput = z.string().min(1).max(128).describe("Short operation label, unique within this shell. Reuse only to retry the exact same operation.");
 
@@ -62,6 +63,12 @@ export function createMcpServer(shells: ShellSessionManager, options: CreateMcpS
 		.optional()
 		.default(shells.defaultReadBytes)
 		.describe(`Maximum UTF-8 bytes returned in this response. DO NOT pass in max_output_bytes unless the default is too small.`);
+	const applyPatchMaxOutputBytesInput = z
+		.int()
+		.min(256)
+		.max(shells.maximumReadBytes)
+		.optional()
+		.describe(`Maximum UTF-8 bytes returned in apply_patch failure diagnostics. Omit for ${APPLY_PATCH_FAILURE_OUTPUT_BYTES}.`);
 	const server = new McpServer(
 		{
 			name: "chatgpt-local-shell",
@@ -151,9 +158,9 @@ export function createMcpServer(shells: ShellSessionManager, options: CreateMcpS
 	server.registerTool(
 		"chatgpt_subagent",
 		{
-			title: "Ask a ChatGPT subagent",
+			title: "Start a ChatGPT subagent turn",
 			description:
-				"Delegate one turn to a persistent ChatGPT subagent in the already-running debuggable Chrome instance. agent_id is a required caller-chosen task or role label: first use creates the conversation, and reusing the same ID continues it. The server owns Chrome targeting and waits for the completed response. Failures are never automatically retried; AGENT_BUSY and SUBAGENT_CAPACITY_REACHED mean the caller should decide whether to try again later.",
+				"Start one turn on a persistent ChatGPT subagent in the already-running debuggable Chrome instance. The call returns after the prompt is submitted, not after the answer finishes, so the caller can do other work and later use chatgpt_subagent_poll with the returned turn_id. agent_id is caller-chosen: first use creates the conversation and reusing the same ID continues it. Submitted turns are never automatically retried; one active turn per agent is allowed.",
 			inputSchema: {
 				agent_id: z
 					.string()
@@ -165,7 +172,11 @@ export function createMcpServer(shells: ShellSessionManager, options: CreateMcpS
 			},
 			outputSchema: {
 				agent_id: z.string(),
-				response: z.string(),
+				turn_id: z.string(),
+				status: z.literal("running"),
+				submitted: z.literal(true),
+				conversation_id: z.string().optional(),
+				conversation_url: z.string().optional(),
 			},
 			annotations: {
 				readOnlyHint: false,
@@ -175,16 +186,84 @@ export function createMcpServer(shells: ShellSessionManager, options: CreateMcpS
 			},
 			_meta: noAuthMeta,
 		},
-		async ({ agent_id, prompt }, extra) => {
+			async ({ agent_id, prompt }, extra) => {
+				try {
+					const result = await chatGptSubagents.ask({ agentId: agent_id, prompt }, extra.signal);
+					const structuredContent = {
+						agent_id: result.agentId,
+						turn_id: result.turnId,
+						status: result.status,
+						submitted: result.submitted,
+						conversation_id: result.conversationId,
+						conversation_url: result.conversationUrl,
+					};
+					return {
+						structuredContent,
+						content: [
+							{
+								type: "text" as const,
+								text: `Submitted ChatGPT subagent turn ${result.turnId} for ${result.agentId}; use chatgpt_subagent_poll to check it.`,
+							},
+						],
+					};
+				} catch (error) {
+					return subagentToolError(error);
+				}
+			}
+		);
+
+	server.registerTool(
+		"chatgpt_subagent_poll",
+		{
+			title: "Poll a ChatGPT subagent turn",
+			description:
+				"Check a previously submitted ChatGPT subagent turn. Use the turn_id returned by chatgpt_subagent. With wait_ms: 0 this returns immediately; a positive wait_ms waits up to that many milliseconds for the turn to finish, then returns its current state. Polling never resubmits the prompt.",
+			inputSchema: {
+				turn_id: z.string().min(1).max(128).describe("The exact turn_id returned by chatgpt_subagent."),
+				wait_ms: z.int().min(0).max(10_000).default(0).describe("How long to wait for completion before returning current status. Use 0 to check immediately."),
+			},
+			outputSchema: {
+				agent_id: z.string(),
+				turn_id: z.string(),
+				status: z.enum(["running", "completed", "failed"]),
+				conversation_id: z.string().optional(),
+				conversation_url: z.string().optional(),
+				message_id: z.string().optional(),
+				response: z.string().optional(),
+				error_code: z.string().optional(),
+				error_message: z.string().optional(),
+			},
+			annotations: {
+				readOnlyHint: true,
+				destructiveHint: false,
+				idempotentHint: true,
+				openWorldHint: true,
+			},
+			_meta: noAuthMeta,
+		},
+		async ({ turn_id, wait_ms }, extra) => {
 			try {
-				const result = await chatGptSubagents.ask({ agentId: agent_id, prompt }, extra.signal);
+				const result = await chatGptSubagents.poll(turn_id, wait_ms, extra.signal);
 				const structuredContent = {
 					agent_id: result.agentId,
+					turn_id: result.turnId,
+					status: result.status,
+					conversation_id: result.conversationId,
+					conversation_url: result.conversationUrl,
+					message_id: result.messageId,
 					response: result.response,
+					error_code: result.errorCode,
+					error_message: result.errorMessage,
 				};
+				const text =
+					result.status === "completed"
+						? result.response ?? "ChatGPT subagent turn completed."
+						: result.status === "failed"
+							? `${result.errorCode ?? "subagent_failed"}: ${result.errorMessage ?? "ChatGPT subagent turn failed."}`
+							: `ChatGPT subagent turn ${result.turnId} is still running.`;
 				return {
 					structuredContent,
-					content: [{ type: "text" as const, text: result.response }],
+					content: [{ type: "text" as const, text }],
 				};
 			} catch (error) {
 				return subagentToolError(error);
@@ -200,14 +279,14 @@ export function createMcpServer(shells: ShellSessionManager, options: CreateMcpS
 			inputSchema: {
 				patch: z.string().min(1).max(262_144).describe("The complete patch text, beginning with *** Begin Patch and ending with *** End Patch."),
 				cwd: z.string().min(1).refine(isAbsolute, "cwd must be an absolute path.").describe("Required absolute directory used as the patch root."),
-				max_output_bytes: maxOutputBytesInput,
+				max_output_bytes: applyPatchMaxOutputBytesInput,
 			},
 			outputSchema: {
 				status: z.enum(["completed", "failed"]),
 				exit_code: z.int().nullable(),
 				output: z.string().optional().describe("Present only on failure with bounded apply_patch stdout/stderr diagnostics."),
-				output_truncated: z.literal(true).optional().describe("Present when failure diagnostics exceeded the fixed apply_patch output ceiling."),
-				omitted_output_bytes: z.int().positive().optional().describe("Present when failure diagnostics exceeded the fixed apply_patch output ceiling."),
+				output_truncated: z.literal(true).optional().describe("Present when failure diagnostics exceeded the apply_patch output ceiling."),
+				omitted_output_bytes: z.int().positive().optional().describe("Present when failure diagnostics exceeded the apply_patch output ceiling."),
 			},
 			annotations: {
 				readOnlyHint: false,
@@ -217,12 +296,13 @@ export function createMcpServer(shells: ShellSessionManager, options: CreateMcpS
 			},
 			_meta: noAuthMeta,
 		},
-		async ({ patch, cwd }, extra) => {
+		async ({ patch, cwd, max_output_bytes }, extra) => {
 			try {
 				const result = await applyPatch({
 					patch,
 					cwd,
 					executable: applyPatchExecutable,
+					maxOutputBytes: max_output_bytes,
 					signal: extra.signal,
 				});
 				return {
@@ -530,6 +610,7 @@ interface ApplyPatchInput {
 	patch: string;
 	cwd: string;
 	executable: string;
+	maxOutputBytes?: number;
 	signal?: AbortSignal;
 }
 
@@ -574,6 +655,7 @@ async function applyPatch(input: ApplyPatchInput): Promise<ApplyPatchResult> {
 	return new Promise((resolve, reject) => {
 		const child = spawn(input.executable, [], {
 			cwd: input.cwd,
+			detached: process.platform !== "win32",
 			stdio: ["pipe", "pipe", "pipe"],
 		});
 		const stdoutDecoder = new StringDecoder("utf8");
@@ -584,27 +666,53 @@ async function applyPatch(input: ApplyPatchInput): Promise<ApplyPatchResult> {
 		let stdinError: Error | undefined;
 		let aborted = false;
 		let settled = false;
+		let terminateTimer: NodeJS.Timeout | null = null;
+		let forceSettleTimer: NodeJS.Timeout | null = null;
+		const maxOutputBytes = input.maxOutputBytes ?? APPLY_PATCH_FAILURE_OUTPUT_BYTES;
 
 		const appendOutput = (value: string) => {
-			const bounded = utf8Prefix(value, Math.max(0, APPLY_PATCH_FAILURE_OUTPUT_BYTES - outputBytes));
+			const bounded = utf8Prefix(value, Math.max(0, maxOutputBytes - outputBytes));
 			output += bounded.value;
 			outputBytes += Buffer.byteLength(bounded.value, "utf8");
 			omittedOutputBytes += bounded.omittedBytes;
 		};
-		const cleanup = () => input.signal?.removeEventListener("abort", abort);
+		const cleanup = () => {
+			input.signal?.removeEventListener("abort", abort);
+			if (terminateTimer) clearTimeout(terminateTimer);
+			if (forceSettleTimer) clearTimeout(forceSettleTimer);
+		};
 		const fail = (error: Error) => {
 			if (settled) return;
 			settled = true;
 			cleanup();
 			reject(error);
 		};
-		const abort = () => {
-			aborted = true;
+		const killChild = (signal: NodeJS.Signals) => {
+			if (!child.pid) return;
 			try {
-				child.kill("SIGTERM");
-			} catch (error) {
-				fail(error instanceof Error ? error : new Error(String(error)));
+				if (process.platform === "win32") child.kill(signal);
+				else process.kill(-child.pid, signal);
+			} catch {
+				// Cleanup is best effort; forced settlement below prevents a hung request
+				// even if the OS refuses to signal the process or process group.
 			}
+		};
+		const abort = () => {
+			if (aborted || settled) return;
+			aborted = true;
+			killChild("SIGTERM");
+			terminateTimer = setTimeout(() => {
+				if (settled) return;
+				killChild("SIGKILL");
+				forceSettleTimer = setTimeout(() => {
+					if (settled) return;
+					child.stdin.destroy();
+					child.stdout.destroy();
+					child.stderr.destroy();
+					child.unref();
+					fail(new ShellSessionError("shell_unavailable", "apply_patch request was aborted."));
+				}, APPLY_PATCH_STOP_GRACE_MS);
+			}, APPLY_PATCH_STOP_GRACE_MS);
 		};
 
 		child.stdout.on("data", (chunk: Buffer) => appendOutput(stdoutDecoder.write(chunk)));

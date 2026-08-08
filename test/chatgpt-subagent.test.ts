@@ -86,6 +86,49 @@ test("keeps an unbound new-chat page through ChatGPT's transient web conversatio
   ]);
 });
 
+test("poll returns immediately while a turn runs and can wait for completion", async () => {
+  const module = new ChatGptSubagentModule({
+    cdpEndpoint: "http://127.0.0.1:1",
+  });
+  let finish!: () => void;
+  const completion = new Promise<void>((resolve) => {
+    finish = resolve;
+  });
+  const turn = {
+    turnId: "turn-test",
+    agentId: "poll-test",
+    status: "running" as "running" | "completed" | "failed",
+    completion,
+    response: undefined as string | undefined,
+  };
+  const internals = module as unknown as {
+    turns: Map<string, typeof turn>;
+  };
+  internals.turns.set(turn.turnId, turn);
+
+  assert.deepEqual(await module.poll(turn.turnId), {
+    agentId: "poll-test",
+    turnId: "turn-test",
+    status: "running",
+    conversationId: undefined,
+    conversationUrl: undefined,
+    messageId: undefined,
+    response: undefined,
+    errorCode: undefined,
+    errorMessage: undefined,
+  });
+
+  setTimeout(() => {
+    turn.status = "completed";
+    turn.response = "finished";
+    finish();
+  }, 10);
+
+  const completed = await module.poll(turn.turnId, 100);
+  assert.equal(completed.status, "completed");
+  assert.equal(completed.response, "finished");
+});
+
 test("dispose closes managed agent pages but leaves user-repurposed tabs alone", async () => {
   const module = new ChatGptSubagentModule({
     cdpEndpoint: "http://127.0.0.1:1",

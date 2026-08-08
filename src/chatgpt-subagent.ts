@@ -1,3 +1,5 @@
+import { randomUUID } from "node:crypto";
+
 import {
   chromium,
   type Browser,
@@ -26,12 +28,25 @@ export interface ChatGptSubagentRequest {
   agentId: string;
 }
 
-export interface ChatGptSubagentResult {
+export interface ChatGptSubagentStartResult {
   agentId: string;
+  turnId: string;
+  status: "running";
+  submitted: true;
   conversationId?: string;
-  conversationUrl: string;
+  conversationUrl?: string;
+}
+
+export interface ChatGptSubagentPollResult {
+  agentId: string;
+  turnId: string;
+  status: "running" | "completed" | "failed";
+  conversationId?: string;
+  conversationUrl?: string;
   messageId?: string;
-  response: string;
+  response?: string;
+  errorCode?: string;
+  errorMessage?: string;
 }
 
 export interface ChatGptConversationMessage {
@@ -44,10 +59,10 @@ export type ChatGptSubagentErrorCode =
   | "BROWSER_UNAVAILABLE"
   | "CHATGPT_NOT_AUTHENTICATED"
   | "UNKNOWN_AGENT"
+  | "UNKNOWN_TURN"
   | "AGENT_BUSY"
   | "SUBAGENT_CAPACITY_REACHED"
   | "AGENT_TARGET_LOST"
-  | "SUBAGENT_TIMEOUT"
   | "REQUEST_ABORTED"
   | "CHATGPT_UI_CHANGED";
 
@@ -66,7 +81,12 @@ export interface ChatGptSubagentService {
   ask(
     request: ChatGptSubagentRequest,
     signal?: AbortSignal,
-  ): Promise<ChatGptSubagentResult>;
+  ): Promise<ChatGptSubagentStartResult>;
+  poll(
+    turnId: string,
+    waitMs?: number,
+    signal?: AbortSignal,
+  ): Promise<ChatGptSubagentPollResult>;
   dispose(): Promise<void>;
 }
 
@@ -79,6 +99,19 @@ interface BrowserAgentState {
   targetId?: string;
   lastReturnedMessageId?: string;
   lastCompletedAt?: number;
+}
+
+interface BrowserTurnState {
+  turnId: string;
+  agentId: string;
+  status: "running" | "completed" | "failed";
+  conversationId?: string;
+  conversationUrl?: string;
+  messageId?: string;
+  response?: string;
+  errorCode?: string;
+  errorMessage?: string;
+  completion: Promise<void>;
 }
 
 export interface TrackedConversationNode {
@@ -179,6 +212,8 @@ export class ChatGptSubagentModule {
   private readonly pollIntervalMs: number;
   private readonly responseStableMs: number;
   private readonly agents = new Map<string, BrowserAgentState>();
+  private readonly turns = new Map<string, BrowserTurnState>();
+  private readonly activeTurnsByAgent = new Map<string, string>();
   private readonly activeAgentIds = new Set<string>();
   private activeGenerationCount = 0;
   private browser?: Browser;
@@ -212,12 +247,13 @@ export class ChatGptSubagentModule {
   async ask(
     request: ChatGptSubagentRequest,
     signal?: AbortSignal,
-  ): Promise<ChatGptSubagentResult> {
+  ): Promise<ChatGptSubagentStartResult> {
     const prompt = request.prompt.trim();
     if (!prompt) throw new Error("Subagent prompt cannot be empty.");
     validateAgentId(request.agentId);
     this.beginAgentOperation(request.agentId, true);
     let state: BrowserAgentState | undefined;
+    let operationTransferred = false;
 
     try {
       await this.connect(signal);
@@ -247,26 +283,32 @@ export class ChatGptSubagentModule {
       throwIfAborted(signal);
       assertPreSubmitLocation(active);
       await submitComposer(active.page, composer, signal);
-
-      const answer = await this.waitForResponse(active, {
+      const turnId = `turn_${randomUUID()}`;
+      const turn: BrowserTurnState = {
+        turnId,
+        agentId: active.agentId,
+        status: "running",
+        conversationId: active.conversationId,
+        conversationUrl: active.conversationUrl,
+        completion: Promise.resolve(),
+      };
+      this.turns.set(turnId, turn);
+      this.activeTurnsByAgent.set(active.agentId, turnId);
+      turn.completion = this.trackTurn(turn, active, {
         baselineNetworkIds,
         baselineDom,
         prompt,
         sentAtSeconds,
-      }, signal);
-
-      captureOrValidateConversationLocation(active);
-      const conversationUrl = active.conversationUrl ?? active.page.url();
-      const conversationId = active.conversationId;
-      active.lastReturnedMessageId = answer.messageId;
-      active.lastCompletedAt = Date.now();
+      });
+      operationTransferred = true;
 
       return {
         agentId: active.agentId,
-        conversationId,
-        conversationUrl,
-        messageId: answer.messageId,
-        response: answer.text,
+        turnId,
+        status: "running",
+        submitted: true,
+        conversationId: active.conversationId,
+        conversationUrl: active.conversationUrl,
       };
     } catch (error) {
       if (
@@ -279,8 +321,34 @@ export class ChatGptSubagentModule {
       }
       throw error;
     } finally {
-      this.endAgentOperation(request.agentId, true);
+      if (!operationTransferred) this.endAgentOperation(request.agentId, true);
     }
+  }
+
+  async poll(
+    turnId: string,
+    waitMs = 0,
+    signal?: AbortSignal,
+  ): Promise<ChatGptSubagentPollResult> {
+    const normalizedTurnId = turnId.trim();
+    if (!normalizedTurnId) throw new Error("turnId cannot be empty.");
+    const turn = this.turns.get(normalizedTurnId);
+    if (!turn) {
+      throw new ChatGptSubagentError(
+        "UNKNOWN_TURN",
+        `Unknown ChatGPT subagent turn: ${normalizedTurnId}`,
+      );
+    }
+
+    const boundedWaitMs = Math.min(Math.max(0, waitMs), 10_000);
+    if (turn.status === "running" && boundedWaitMs > 0) {
+      await Promise.race([
+        turn.completion,
+        delay(boundedWaitMs, signal),
+      ]);
+    }
+    throwIfAborted(signal);
+    return this.turnResult(turn);
   }
 
   async read(agentId: string): Promise<ChatGptConversationMessage[]> {
@@ -331,6 +399,8 @@ export class ChatGptSubagentModule {
     }
 
     this.agents.clear();
+    this.turns.clear();
+    this.activeTurnsByAgent.clear();
     this.activeAgentIds.clear();
     this.activeGenerationCount = 0;
     this.context = undefined;
@@ -482,10 +552,9 @@ export class ChatGptSubagentModule {
     },
     signal?: AbortSignal,
   ): Promise<{ messageId?: string; text: string }> {
-    const deadline = Date.now() + this.timeoutMs;
     let stableCandidate: { key: string; text: string; since: number } | undefined;
 
-    while (Date.now() < deadline) {
+    while (true) {
       throwIfAborted(signal);
       if (state.page.isClosed()) {
         throw new ChatGptSubagentError(
@@ -532,11 +601,62 @@ export class ChatGptSubagentModule {
 
       await delay(this.pollIntervalMs, signal);
     }
+  }
 
-    throw new ChatGptSubagentError(
-      "SUBAGENT_TIMEOUT",
-      `Timed out after ${this.timeoutMs} ms waiting for ChatGPT subagent ${state.agentId}. Do not retry automatically.`,
-    );
+  private async trackTurn(
+    turn: BrowserTurnState,
+    state: BrowserAgentState,
+    input: {
+      baselineNetworkIds: ReadonlySet<string>;
+      baselineDom: readonly DomAssistantMessage[];
+      prompt: string;
+      sentAtSeconds: number;
+    },
+  ): Promise<void> {
+    try {
+      const answer = await this.waitForResponse(state, input);
+      captureOrValidateConversationLocation(state);
+      state.lastReturnedMessageId = answer.messageId;
+      state.lastCompletedAt = Date.now();
+      turn.status = "completed";
+      turn.messageId = answer.messageId;
+      turn.response = answer.text;
+      turn.conversationId = state.conversationId;
+      turn.conversationUrl = state.conversationUrl ?? state.page.url();
+    } catch (error) {
+      if (
+        error instanceof ChatGptSubagentError &&
+        error.code === "AGENT_TARGET_LOST" &&
+        !state.conversationUrl
+      ) {
+        this.discardUnrecoverableAgent(state);
+      }
+      turn.status = "failed";
+      turn.errorCode =
+        error instanceof ChatGptSubagentError ? error.code : "subagent_failed";
+      turn.errorMessage = error instanceof Error ? error.message : String(error);
+      turn.conversationId = state.conversationId;
+      turn.conversationUrl = state.conversationUrl;
+    } finally {
+      if (this.activeTurnsByAgent.get(state.agentId) === turn.turnId) {
+        this.activeTurnsByAgent.delete(state.agentId);
+      }
+      this.endAgentOperation(state.agentId, true);
+    }
+  }
+
+  private turnResult(turn: BrowserTurnState): ChatGptSubagentPollResult {
+    return {
+      agentId: turn.agentId,
+      turnId: turn.turnId,
+      status: turn.status,
+      conversationId: turn.conversationId,
+      conversationUrl: turn.conversationUrl,
+      messageId: turn.messageId,
+      response: turn.response,
+      errorCode: turn.errorCode,
+      errorMessage: turn.errorMessage,
+    };
   }
 
   private requireContext(): BrowserContext {
@@ -556,9 +676,12 @@ export class ChatGptSubagentModule {
 
   private beginAgentOperation(agentId: string, generation: boolean): void {
     if (this.activeAgentIds.has(agentId)) {
+      const activeTurnId = this.activeTurnsByAgent.get(agentId);
       throw new ChatGptSubagentError(
         "AGENT_BUSY",
-        `ChatGPT subagent ${agentId} already has an operation in progress. Do not queue or automatically retry another turn.`,
+        activeTurnId
+          ? `ChatGPT subagent ${agentId} is still running turn ${activeTurnId}. Poll that turn instead of submitting another prompt.`
+          : `ChatGPT subagent ${agentId} already has an operation in progress. Do not queue or automatically retry another turn.`,
       );
     }
     if (generation && this.activeGenerationCount >= this.maxConcurrentAgents) {

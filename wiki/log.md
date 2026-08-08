@@ -272,3 +272,15 @@
 
 - Changed `shell_run` audit entries to place command text in its own readable block instead of JSON-escaping it alongside metadata.
 - Changed `apply_patch` audit entries to omit patch bodies while retaining total input size, patch character count, cwd, and other parameters.
+
+## [2026-08-07] improve | detach long-running ChatGPT subagent turns
+
+- Changed `chatgpt_subagent` to return immediately after submission with a server-owned `turn_id` instead of holding the MCP request open for the full ChatGPT generation.
+- Added `chatgpt_subagent_poll` with immediate or bounded long-poll status checks and terminal completed/failed results; polling never resubmits a prompt.
+- Kept one active turn per agent and the global generation cap for the full background turn lifetime, and removed the fixed response-duration timeout so long-running subagents can continue until completion or a concrete browser failure.
+
+## [2026-08-07] harden | bound apply_patch abort cleanup
+
+- Changed direct `apply_patch` processes to use a detached POSIX process group and mirror the shell runtime's `SIGTERM` → 500 ms grace → `SIGKILL` cleanup sequence on request abort.
+- Added forced promise settlement after a second bounded grace period so a missing child `close` event cannot leave the MCP tool request pending forever.
+- Added a focused integration regression using a SIGTERM-resistant fake patch executable and verified the process group is force-killed after the originating HTTP request closes.
