@@ -15,6 +15,7 @@ export interface ChatGptSubagentOptions {
   chatGptUrl?: string;
   maxConcurrentAgents?: number;
   minInterTurnDelayMs?: number;
+  interactionDelayMs?: number;
   timeoutMs?: number;
   pollIntervalMs?: number;
   responseStableMs?: number;
@@ -173,6 +174,7 @@ export class ChatGptSubagentModule {
   private readonly chatGptUrl: string;
   private readonly maxConcurrentAgents: number;
   private readonly minInterTurnDelayMs: number;
+  private readonly interactionDelayMs: number;
   private readonly timeoutMs: number;
   private readonly pollIntervalMs: number;
   private readonly responseStableMs: number;
@@ -191,6 +193,7 @@ export class ChatGptSubagentModule {
       options.minInterTurnDelayMs,
       1_500,
     );
+    this.interactionDelayMs = nonNegativeInteger(options.interactionDelayMs, 300);
     this.timeoutMs = options.timeoutMs ?? 120_000;
     this.pollIntervalMs = options.pollIntervalMs ?? 250;
     this.responseStableMs = options.responseStableMs ?? 750;
@@ -236,9 +239,11 @@ export class ChatGptSubagentModule {
       const sentAtSeconds = Date.now() / 1000;
 
       const composer = await findComposer(active.page, this.timeoutMs, signal);
+      await delay(this.interactionDelayMs, signal);
       throwIfAborted(signal);
       assertPreSubmitLocation(active);
       await enterPrompt(active.page, composer, prompt);
+      await delay(this.interactionDelayMs, signal);
       throwIfAborted(signal);
       assertPreSubmitLocation(active);
       await submitComposer(active.page, composer, signal);
@@ -984,7 +989,13 @@ async function getPageTargetId(context: BrowserContext, page: Page): Promise<str
 
 function extractConversationId(url: string): string | undefined {
   const match = new URL(url).pathname.match(/^\/c\/([^/?#]+)/);
-  return match?.[1];
+  if (!match) return undefined;
+
+  const rawConversationId = match[1];
+  if (!rawConversationId) return undefined;
+  const conversationId = decodeURIComponent(rawConversationId);
+  if (conversationId.toLowerCase().startsWith("web:")) return undefined;
+  return conversationId;
 }
 
 function isExpectedAgentPage(state: BrowserAgentState): boolean {

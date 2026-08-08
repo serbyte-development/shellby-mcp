@@ -54,6 +54,38 @@ test("forgets an agent whose page is lost before a conversation can be recovered
   assert.deepEqual(module.listAgents(), []);
 });
 
+test("keeps an unbound new-chat page through ChatGPT's transient web conversation route", async () => {
+  const module = new ChatGptSubagentModule({
+    cdpEndpoint: "http://127.0.0.1:1",
+  });
+  const state = {
+    agentId: "transient-new-chat",
+    page: {
+      isClosed: () => false,
+      url: () => "https://chatgpt.com/c/WEB%3Atemporary-conversation-id",
+    },
+    tracker: { dispose() {} },
+  };
+  const internals = module as unknown as {
+    agents: Map<string, typeof state>;
+    ensureActivePage(value: typeof state): Promise<typeof state>;
+  };
+  internals.agents.set(state.agentId, state);
+
+  const active = await internals.ensureActivePage(state);
+
+  assert.equal(active, state);
+  assert.deepEqual(module.listAgents(), [
+    {
+      agentId: state.agentId,
+      conversationId: undefined,
+      conversationUrl: undefined,
+      targetId: undefined,
+      pageClosed: false,
+    },
+  ]);
+});
+
 test("dispose closes managed agent pages but leaves user-repurposed tabs alone", async () => {
   const module = new ChatGptSubagentModule({
     cdpEndpoint: "http://127.0.0.1:1",

@@ -128,7 +128,7 @@ test("serves shell tools through Streamable HTTP and retains state across MCP se
 		properties?: Record<string, unknown>;
 		required?: string[];
 	};
-	assert.deepEqual(Object.keys(applyPatchInputSchema.properties ?? {}).sort(), ["cwd", "patch"]);
+	assert.deepEqual(Object.keys(applyPatchInputSchema.properties ?? {}).sort(), ["cwd", "max_output_bytes", "patch"]);
 	assert.deepEqual(applyPatchInputSchema.required?.sort(), ["cwd", "patch"]);
 	const applyPatchOutputSchema = applyPatchTool?.outputSchema as {
 		properties?: Record<string, unknown>;

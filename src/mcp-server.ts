@@ -56,13 +56,12 @@ export function createMcpServer(shells: ShellSessionManager, options: CreateMcpS
 	const peekaboo = options.peekaboo ?? new PeekabooClient();
 	const webPageOpener = options.webPageOpener ?? new WebPageOpener();
 	const maxOutputBytesInput = z
-		.number()
 		.int()
 		.min(256)
 		.max(shells.maximumReadBytes)
 		.optional()
 		.default(shells.defaultReadBytes)
-		.describe(`Maximum UTF-8 bytes returned in this response. Omit for ${shells.defaultReadBytes}; increase only when necessary, up to ${shells.maximumReadBytes}.`);
+		.describe(`Maximum UTF-8 bytes returned in this response. DO NOT pass in max_output_bytes unless the default is too small.`);
 	const server = new McpServer(
 		{
 			name: "chatgpt-local-shell",
@@ -246,7 +245,7 @@ export function createMcpServer(shells: ShellSessionManager, options: CreateMcpS
 		"shell_run",
 		{
 			title: "Run a local shell command",
-			description: `Execute a command in a named persistent shell. Use short contextual IDs: shell_id labels the task or project, and request_id labels the command or step. Reuse shell_id to retain cwd and environment. Change directories once with cd or cwd, then omit cwd until intentionally switching. Prefer RTK whenever available for reads and noisy commands. Use different shell IDs for parallel work; start long commands with wait_ms: 0 and poll. Responses are byte-capped. New shells start in ${workspace}.`,
+			description: `Execute a command in a named persistent shell. Use short contextual IDs: shell_id labels the task or project, and request_id labels the command or step. Reuse shell_id to retain cwd and environment. Change directories once with cd or cwd, then omit cwd until intentionally switching. Prefer RTK whenever available for reads. Use different shell IDs for parallel work; start long commands with wait_ms: 0 and poll. Responses are byte-capped, do not pass in max_output_bytes unless the default is too small. New shells start in ${workspace}.`,
 			inputSchema: {
 				shell_id: shellIdInput,
 				request_id: requestIdInput.describe("Short command or step label, unique within this shell, such as scan-routes-1. Reuse only to retry the exact same command."),
@@ -256,7 +255,7 @@ export function createMcpServer(shells: ShellSessionManager, options: CreateMcpS
 					.min(1)
 					.max(262_144)
 					.describe(
-						"Exact zsh command or multiline script. Prefer RTK whenever available for reads and noisy commands, such as rtk read, rtk ls, rtk tree, rtk rg, rtk git diff, and rtk test npm test. Use raw shell for unsupported behavior, exact unfiltered output, or persistent state changes."
+						"Exact zsh command or multiline script. Prefer RTK whenever available for reads, such as rtk read, rtk ls, rtk tree, rtk rg, rtk git diff, and rtk test npm test. Use raw shell for unsupported behavior, exact unfiltered output, or persistent state changes."
 					),
 				wait_ms: z.int().min(0).max(10_000).optional().default(1_500).describe("Returns earlier if the output byte cap is reached."),
 				max_output_bytes: maxOutputBytesInput,
