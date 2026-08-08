@@ -160,15 +160,15 @@ export function createMcpServer(shells: ShellSessionManager, options: CreateMcpS
 		{
 			title: "Start a ChatGPT subagent turn",
 			description:
-				"Start one turn on a persistent ChatGPT subagent in the already-running debuggable Chrome instance. The call returns after the prompt is submitted, not after the answer finishes, so the caller can do other work and later use chatgpt_subagent_poll with the returned turn_id. agent_id is caller-chosen: first use creates the conversation and reusing the same ID continues it. Submitted turns are never automatically retried; one active turn per agent is allowed.",
+				"Delegate work to a persistent ChatGPT subagent. Use for tasks that can run independently while you continue other work. Reuse agent_id for follow-up turns. After starting a turn, use chatgpt_subagent_poll with the returned turn_id.",
 			inputSchema: {
 				agent_id: z
 					.string()
 					.min(1)
 					.max(64)
 					.refine((value) => value.trim().length > 0, "agent_id cannot be only whitespace.")
-					.describe("Short descriptive ID for a persistent subagent, such as seo-article-critic. Reuse the exact same ID to continue that ChatGPT conversation; a new ID creates a new conversation."),
-				prompt: z.string().min(1).max(262_144).describe("The next prompt to send to this subagent. Do not resend a failed prompt automatically."),
+					.describe("Descriptive ID for the subagent. Reuse it for follow-up turns."),
+				prompt: z.string().min(1).max(262_144).describe("Work or follow-up instruction to give the subagent."),
 			},
 			outputSchema: {
 				agent_id: z.string(),
@@ -217,10 +217,10 @@ export function createMcpServer(shells: ShellSessionManager, options: CreateMcpS
 		{
 			title: "Poll a ChatGPT subagent turn",
 			description:
-				"Check a previously submitted ChatGPT subagent turn. Use the turn_id returned by chatgpt_subagent. With wait_ms: 0 this returns immediately; a positive wait_ms waits up to that many milliseconds for the turn to finish, then returns its current state. Polling never resubmits the prompt.",
+				"Check a running ChatGPT subagent turn. Agent responses often take more than 1 minute. Use the turn_id returned by chatgpt_subagent. If status is running, continue other work or poll again; use wait_ms: 10000 when simply waiting.",
 			inputSchema: {
-				turn_id: z.string().min(1).max(128).describe("The exact turn_id returned by chatgpt_subagent."),
-				wait_ms: z.int().min(0).max(10_000).default(0).describe("How long to wait for completion before returning current status. Use 0 to check immediately."),
+				turn_id: z.string().min(1).max(128).describe("Turn ID returned by chatgpt_subagent."),
+				wait_ms: z.int().min(0).max(10_000).default(0).describe("How long to wait for completion before returning status. Use 0 for an immediate check or 10000 when waiting."),
 			},
 			outputSchema: {
 				agent_id: z.string(),

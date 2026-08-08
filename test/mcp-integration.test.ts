@@ -162,9 +162,8 @@ test("serves shell tools through Streamable HTTP and retains state across MCP se
 	assert.equal(subagentTool?.annotations?.destructiveHint, false);
 	assert.equal(subagentTool?.annotations?.idempotentHint, false);
 	assert.equal(subagentTool?.annotations?.openWorldHint, true);
-	assert.match(subagentTool?.description ?? "", /first use creates the conversation/i);
-	assert.match(subagentTool?.description ?? "", /never automatically retried/i);
-	assert.match(subagentTool?.description ?? "", /returns after the prompt is submitted/i);
+	assert.match(subagentTool?.description ?? "", /tasks that can run independently/i);
+	assert.match(subagentTool?.description ?? "", /reuse agent_id for follow-up turns/i);
 	assert.match(subagentTool?.description ?? "", /chatgpt_subagent_poll/i);
 	const subagentInputSchema = subagentTool?.inputSchema as {
 		properties?: Record<string, Record<string, unknown>>;
@@ -173,12 +172,14 @@ test("serves shell tools through Streamable HTTP and retains state across MCP se
 	assert.deepEqual(Object.keys(subagentInputSchema.properties ?? {}).sort(), ["agent_id", "prompt"]);
 	assert.deepEqual(subagentInputSchema.required?.sort(), ["agent_id", "prompt"]);
 	assert.equal(subagentInputSchema.properties?.agent_id?.maxLength, 64);
-	assert.match(String(subagentInputSchema.properties?.agent_id?.description), /persistent subagent/i);
+	assert.match(String(subagentInputSchema.properties?.agent_id?.description), /reuse it for follow-up turns/i);
 	const subagentPollTool = tools.tools.find((tool) => tool.name === "chatgpt_subagent_poll");
 	assert.equal(subagentPollTool?.title, "Poll a ChatGPT subagent turn");
 	assert.equal(subagentPollTool?.annotations?.readOnlyHint, true);
 	assert.equal(subagentPollTool?.annotations?.idempotentHint, true);
-	assert.match(subagentPollTool?.description ?? "", /never resubmits/i);
+	assert.match(subagentPollTool?.description ?? "", /more than 1 minute/i);
+	assert.match(subagentPollTool?.description ?? "", /continue other work or poll again/i);
+	assert.match(subagentPollTool?.description ?? "", /wait_ms: 10000/i);
 	const subagentPollInputSchema = subagentPollTool?.inputSchema as {
 		properties?: Record<string, Record<string, unknown>>;
 		required?: string[];
