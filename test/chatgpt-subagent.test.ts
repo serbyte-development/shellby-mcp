@@ -98,6 +98,8 @@ test("poll returns immediately while a turn runs and can wait for completion", a
     turnId: "turn-test",
     agentId: "poll-test",
     status: "running" as "running" | "completed" | "failed",
+    activity: "Searching the web" as const,
+    lastActivityAt: Date.now() - 1_000,
     completion,
     response: undefined as string | undefined,
   };
@@ -106,10 +108,21 @@ test("poll returns immediately while a turn runs and can wait for completion", a
   };
   internals.turns.set(turn.turnId, turn);
 
-  assert.deepEqual(await module.poll(turn.turnId), {
-    agentId: "poll-test",
-    turnId: "turn-test",
-    status: "running",
+  const running = await module.poll(turn.turnId);
+  assert.equal(running.agentId, "poll-test");
+  assert.equal(running.turnId, "turn-test");
+  assert.equal(running.status, "running");
+  assert.equal(running.activity, "Searching the web");
+  assert.ok((running.activityAgeMs ?? 0) >= 1_000);
+  assert.ok((running.activityAgeMs ?? Number.POSITIVE_INFINITY) < 2_000);
+  assert.deepEqual({
+    conversationId: running.conversationId,
+    conversationUrl: running.conversationUrl,
+    messageId: running.messageId,
+    response: running.response,
+    errorCode: running.errorCode,
+    errorMessage: running.errorMessage,
+  }, {
     conversationId: undefined,
     conversationUrl: undefined,
     messageId: undefined,
@@ -127,6 +140,55 @@ test("poll returns immediately while a turn runs and can wait for completion", a
   const completed = await module.poll(turn.turnId, 100);
   assert.equal(completed.status, "completed");
   assert.equal(completed.response, "finished");
+});
+
+test("tracker emits coarse activity only when observed conversation state changes", () => {
+  const tracker = new ChatGptConversationTracker();
+  const activities: string[] = [];
+  tracker.setActivityListener((activity) => activities.push(activity));
+
+  const webNode = {
+    id: "tool-1",
+    message: {
+      id: "tool-1",
+      author: { role: "assistant" },
+      content: { parts: ["searching"] },
+      status: "in_progress",
+      end_turn: false,
+      metadata: { working_turn_id: "turn-1" },
+      recipient: "web.run",
+    },
+    children: [],
+  };
+
+  tracker.ingestPayload(webNode);
+  tracker.ingestPayload(webNode);
+  tracker.ingestPayload({
+    ...webNode,
+    message: {
+      ...webNode.message,
+      content: { parts: ["searching more"] },
+    },
+  });
+  tracker.ingestPayload({
+    id: "assistant-1",
+    message: {
+      id: "assistant-1",
+      author: { role: "assistant" },
+      content: { parts: ["draft"] },
+      status: "in_progress",
+      end_turn: false,
+      metadata: { working_turn_id: "turn-1" },
+      recipient: "all",
+    },
+    children: [],
+  });
+
+  assert.deepEqual(activities, [
+    "Searching the web",
+    "Searching the web",
+    "Generating response",
+  ]);
 });
 
 test("dispose closes managed agent pages but leaves user-repurposed tabs alone", async () => {

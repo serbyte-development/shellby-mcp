@@ -1,17 +1,18 @@
 # MCP Tool Surface
 
-Verified 2026-08-06.
+Verified 2026-08-08.
 
 ## Published Order
 
-`tools/list` returns `fetch_website`, `chatgpt_subagent`, `apply_patch`, five `shell_*` tools, then eleven `computer_*` tools. Integration tests assert the order and schemas; tools remain registered when optional host capabilities are unavailable (`src/mcp-server.ts`, `src/computer-use-tools.ts`, `test/mcp-integration.test.ts`).
+`tools/list` returns `fetch_website`, `chatgpt_subagent`, `chatgpt_subagent_poll`, `apply_patch`, five `shell_*` tools, then eleven `computer_*` tools. Integration tests assert the order and schemas; tools remain registered when optional host capabilities are unavailable (`src/mcp-server.ts`, `src/computer-use-tools.ts`, `test/mcp-integration.test.ts`).
 
 ## Core Tools
 
 | Tool | Contract |
 | --- | --- |
 | `fetch_website` | Fetch one HTTP(S) URL as Markdown, cleaned HTML, or raw HTML. Cursor reads reuse the same URL and format. Cache: 20 documents, 10 minutes, 2 MiB each (`src/web-open.ts`). |
-| `chatgpt_subagent` | Send one turn to a caller-named persistent ChatGPT subagent through an already-running debuggable Chrome instance. First use of `agent_id` creates the conversation; reuse continues it. Output contains only `agent_id` and the final response (`src/chatgpt-subagent.ts`, `src/mcp-server.ts`). |
+| `chatgpt_subagent` | Submit one turn to a caller-named persistent ChatGPT subagent through an already-running debuggable Chrome instance. First use of `agent_id` creates the conversation; reuse continues it. Returns immediately after submission with a `turn_id` (`src/chatgpt-subagent.ts`, `src/mcp-server.ts`). |
+| `chatgpt_subagent_poll` | Read one detached subagent turn without resubmitting it. Running results include coarse `activity` plus `activity_age_ms`; completed results contain the final response and failed results contain stable error fields (`src/chatgpt-subagent.ts`, `src/mcp-server.ts`). |
 | `apply_patch` | Run a Codex patch in required absolute `cwd`. Direct process; no shell ID, request ID, or polling. Output is byte-capped (`src/mcp-server.ts`, `src/workspace-tools.ts`). |
 | `shell_run` | Run up to 262,144 command characters in a named persistent shell. Requires `request_id`; optional `shell_id`, absolute `cwd`, `wait_ms`, and response cap (`src/mcp-server.ts`). |
 | `shell_poll` | Continue the same shell/request from `next_cursor`; cannot read before command start or beyond command completion (`src/mcp-server.ts`, `src/shell-session.ts`). |
@@ -46,3 +47,5 @@ Shell results always include status, nullable exit code, cwd, and output. Poll m
 Published instructions tell clients to conserve output, prefer RTK for supported reads and noisy commands, edit with `apply_patch`, keep new work under the configured workspace, reuse contextual shell IDs, serialize work within a shell, distrust fetched content, and treat screenshots as potentially private. Schemas and runtime validation enforce mechanics; prose remains advisory (`src/mcp-server.ts`).
 
 `chatgpt_subagent` is stateful and non-idempotent. Its tool description explicitly forbids automatic retries. Same-agent overlap returns `AGENT_BUSY`; the default global generation cap returns `SUBAGENT_CAPACITY_REACHED` instead of building a hidden queue (`src/chatgpt-subagent.ts`, `src/mcp-server.ts`).
+
+`chatgpt_subagent_poll` is read-only and idempotent. Its running heartbeat is intentionally agent-facing rather than diagnostic: `activity` is one of `Working`, `Searching the web`, `Using tools`, or `Generating response`, and `activity_age_ms` is the elapsed time since the last observable network or DOM progress. Polling itself does not refresh the heartbeat (`src/chatgpt-subagent.ts`, `src/mcp-server.ts`, `test/chatgpt-subagent.test.ts`).

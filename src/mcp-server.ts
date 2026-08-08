@@ -186,46 +186,48 @@ export function createMcpServer(shells: ShellSessionManager, options: CreateMcpS
 			},
 			_meta: noAuthMeta,
 		},
-			async ({ agent_id, prompt }, extra) => {
-				try {
-					const result = await chatGptSubagents.ask({ agentId: agent_id, prompt }, extra.signal);
-					const structuredContent = {
-						agent_id: result.agentId,
-						turn_id: result.turnId,
-						status: result.status,
-						submitted: result.submitted,
-						conversation_id: result.conversationId,
-						conversation_url: result.conversationUrl,
-					};
-					return {
-						structuredContent,
-						content: [
-							{
-								type: "text" as const,
-								text: `Submitted ChatGPT subagent turn ${result.turnId} for ${result.agentId}; use chatgpt_subagent_poll to check it.`,
-							},
-						],
-					};
-				} catch (error) {
-					return subagentToolError(error);
-				}
+		async ({ agent_id, prompt }, extra) => {
+			try {
+				const result = await chatGptSubagents.ask({ agentId: agent_id, prompt }, extra.signal);
+				const structuredContent = {
+					agent_id: result.agentId,
+					turn_id: result.turnId,
+					status: result.status,
+					submitted: result.submitted,
+					conversation_id: result.conversationId,
+					conversation_url: result.conversationUrl,
+				};
+				return {
+					structuredContent,
+					content: [
+						{
+							type: "text" as const,
+							text: `Submitted ChatGPT subagent turn ${result.turnId} for ${result.agentId}; use chatgpt_subagent_poll to check it.`,
+						},
+					],
+				};
+			} catch (error) {
+				return subagentToolError(error);
 			}
-		);
+		}
+	);
 
 	server.registerTool(
 		"chatgpt_subagent_poll",
 		{
 			title: "Poll a ChatGPT subagent turn",
 			description:
-				"Check a running ChatGPT subagent turn. Agent responses often take more than 1 minute. Use the turn_id returned by chatgpt_subagent. If status is running, continue other work or poll again; use wait_ms: 10000 when simply waiting.",
+				"Check a running ChatGPT subagent turn. Running results include activity and activity_age_ms, the milliseconds since the last observable progress. A low or resetting activity_age_ms means the subagent is still active; do not treat a long-running turn as hung while progress continues. Agent responses often take several minutes. Use the turn_id returned by chatgpt_subagent. If status is running, continue other work or poll again; use wait_ms: 10000 when simply waiting.",
 			inputSchema: {
 				turn_id: z.string().min(1).max(128).describe("Turn ID returned by chatgpt_subagent."),
-				wait_ms: z.int().min(0).max(10_000).default(0).describe("How long to wait for completion before returning status. Use 0 for an immediate check or 10000 when waiting."),
+				wait_ms: z.int().min(0).max(60_000).default(0).describe("How long to wait for completion before returning status. Use 0 for an immediate check or 30000 when waiting."),
 			},
 			outputSchema: {
 				agent_id: z.string(),
 				turn_id: z.string(),
 				status: z.enum(["running", "completed", "failed"]),
+				activity: z.enum(["Working", "Searching the web", "Using tools", "Generating response"]).optional().describe("Current coarse activity while status is running."),
+				activity_age_ms: z.int().nonnegative().optional().describe("Milliseconds since the last observable subagent progress while status is running."),
 				conversation_id: z.string().optional(),
 				conversation_url: z.string().optional(),
 				message_id: z.string().optional(),
@@ -248,6 +250,8 @@ export function createMcpServer(shells: ShellSessionManager, options: CreateMcpS
 					agent_id: result.agentId,
 					turn_id: result.turnId,
 					status: result.status,
+					activity: result.activity,
+					activity_age_ms: result.activityAgeMs,
 					conversation_id: result.conversationId,
 					conversation_url: result.conversationUrl,
 					message_id: result.messageId,
@@ -259,8 +263,8 @@ export function createMcpServer(shells: ShellSessionManager, options: CreateMcpS
 					result.status === "completed"
 						? result.response ?? "ChatGPT subagent turn completed."
 						: result.status === "failed"
-							? `${result.errorCode ?? "subagent_failed"}: ${result.errorMessage ?? "ChatGPT subagent turn failed."}`
-							: `ChatGPT subagent turn ${result.turnId} is still running.`;
+						? `${result.errorCode ?? "subagent_failed"}: ${result.errorMessage ?? "ChatGPT subagent turn failed."}`
+						: `ChatGPT subagent turn ${result.turnId} is still running: ${result.activity ?? "Working"}; last observable progress ${result.activityAgeMs ?? 0} ms ago.`;
 				return {
 					structuredContent,
 					content: [{ type: "text" as const, text }],

@@ -41,6 +41,8 @@ export interface ChatGptSubagentPollResult {
   agentId: string;
   turnId: string;
   status: "running" | "completed" | "failed";
+  activity?: ChatGptSubagentActivity;
+  activityAgeMs?: number;
   conversationId?: string;
   conversationUrl?: string;
   messageId?: string;
@@ -48,6 +50,12 @@ export interface ChatGptSubagentPollResult {
   errorCode?: string;
   errorMessage?: string;
 }
+
+export type ChatGptSubagentActivity =
+  | "Working"
+  | "Searching the web"
+  | "Using tools"
+  | "Generating response";
 
 export interface ChatGptConversationMessage {
   id?: string;
@@ -105,6 +113,8 @@ interface BrowserTurnState {
   turnId: string;
   agentId: string;
   status: "running" | "completed" | "failed";
+  activity: ChatGptSubagentActivity;
+  lastActivityAt: number;
   conversationId?: string;
   conversationUrl?: string;
   messageId?: string;
@@ -141,6 +151,7 @@ export interface FinalResponseQuery {
 export class ChatGptConversationTracker {
   private readonly messages = new Map<string, TrackedConversationNode>();
   private readonly responseHandler: (response: Response) => void;
+  private onActivity?: (activity: ChatGptSubagentActivity) => void;
 
   constructor(private readonly page?: Page) {
     this.responseHandler = (response) => {
@@ -157,9 +168,17 @@ export class ChatGptConversationTracker {
     return new Set(this.messages.keys());
   }
 
+  setActivityListener(listener?: (activity: ChatGptSubagentActivity) => void): void {
+    this.onActivity = listener;
+  }
+
   ingestPayload(payload: unknown): void {
     for (const node of extractConversationNodes(payload)) {
+      const previous = this.messages.get(node.id);
       this.messages.set(node.id, node);
+      if (!previous || didTrackedNodeProgress(previous, node)) {
+        this.onActivity?.(classifyActivity(node));
+      }
     }
   }
 
@@ -288,12 +307,19 @@ export class ChatGptSubagentModule {
         turnId,
         agentId: active.agentId,
         status: "running",
+        activity: "Generating response",
+        lastActivityAt: Date.now(),
         conversationId: active.conversationId,
         conversationUrl: active.conversationUrl,
         completion: Promise.resolve(),
       };
       this.turns.set(turnId, turn);
       this.activeTurnsByAgent.set(active.agentId, turnId);
+      active.tracker.setActivityListener((activity) => {
+        if (turn.status !== "running") return;
+        turn.activity = activity;
+        turn.lastActivityAt = Date.now();
+      });
       turn.completion = this.trackTurn(turn, active, {
         baselineNetworkIds,
         baselineDom,
@@ -591,6 +617,7 @@ export class ChatGptSubagentModule {
             };
           }
         } else {
+          this.markTurnActivityForAgent(state.agentId, "Generating response");
           stableCandidate = {
             key: domFinal.key,
             text: domFinal.text,
@@ -638,6 +665,7 @@ export class ChatGptSubagentModule {
       turn.conversationId = state.conversationId;
       turn.conversationUrl = state.conversationUrl;
     } finally {
+      state.tracker.setActivityListener(undefined);
       if (this.activeTurnsByAgent.get(state.agentId) === turn.turnId) {
         this.activeTurnsByAgent.delete(state.agentId);
       }
@@ -650,6 +678,11 @@ export class ChatGptSubagentModule {
       agentId: turn.agentId,
       turnId: turn.turnId,
       status: turn.status,
+      activity: turn.status === "running" ? turn.activity : undefined,
+      activityAgeMs:
+        turn.status === "running"
+          ? Math.max(0, Date.now() - turn.lastActivityAt)
+          : undefined,
       conversationId: turn.conversationId,
       conversationUrl: turn.conversationUrl,
       messageId: turn.messageId,
@@ -657,6 +690,18 @@ export class ChatGptSubagentModule {
       errorCode: turn.errorCode,
       errorMessage: turn.errorMessage,
     };
+  }
+
+  private markTurnActivityForAgent(
+    agentId: string,
+    activity: ChatGptSubagentActivity,
+  ): void {
+    const turnId = this.activeTurnsByAgent.get(agentId);
+    if (!turnId) return;
+    const turn = this.turns.get(turnId);
+    if (!turn || turn.status !== "running") return;
+    turn.activity = activity;
+    turn.lastActivityAt = Date.now();
   }
 
   private requireContext(): BrowserContext {
@@ -823,6 +868,35 @@ function isFinalAssistantNode(node: TrackedConversationNode): boolean {
   if (message.recipient && message.recipient !== "all") return false;
   if (message.endTurn === false) return false;
   return message.endTurn === true || message.isComplete === true;
+}
+
+function classifyActivity(node: TrackedConversationNode): ChatGptSubagentActivity {
+  const recipient = node.message.recipient?.toLowerCase();
+  if (recipient && recipient !== "all") {
+    if (recipient.includes("web") || recipient.includes("search")) {
+      return "Searching the web";
+    }
+    return "Using tools";
+  }
+  if (node.message.role === "assistant") return "Generating response";
+  return "Working";
+}
+
+function didTrackedNodeProgress(
+  previous: TrackedConversationNode,
+  next: TrackedConversationNode,
+): boolean {
+  return (
+    previous.parent !== next.parent ||
+    previous.children.join("\u0000") !== next.children.join("\u0000") ||
+    previous.message.status !== next.message.status ||
+    previous.message.endTurn !== next.message.endTurn ||
+    previous.message.recipient !== next.message.recipient ||
+    previous.message.text !== next.message.text ||
+    previous.message.turnExchangeId !== next.message.turnExchangeId ||
+    previous.message.workingTurnId !== next.message.workingTurnId ||
+    previous.message.isComplete !== next.message.isComplete
+  );
 }
 
 function findNewestMatchingUserNode(

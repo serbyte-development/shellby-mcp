@@ -34,11 +34,11 @@ test("serves shell tools through Streamable HTTP and retains state across MCP se
 	const tools = await first.client.listTools();
 	assert.deepEqual(
 		tools.tools.map((tool) => tool.name),
-			[
-				"fetch_website",
-				"chatgpt_subagent",
-				"chatgpt_subagent_poll",
-				"apply_patch",
+		[
+			"fetch_website",
+			"chatgpt_subagent",
+			"chatgpt_subagent_poll",
+			"apply_patch",
 			"shell_run",
 			"shell_poll",
 			"shell_reset",
@@ -57,7 +57,7 @@ test("serves shell tools through Streamable HTTP and retains state across MCP se
 			"computer_window",
 		]
 	);
-
+	// TODO: Update these tests to remove all tool descriptions/instructions from assertions. there is no reason to run tests for the tool descriptions/instructions. because they can change frequently.
 	const runTool = tools.tools.find((tool) => tool.name === "shell_run");
 	assert.equal(runTool?.annotations?.readOnlyHint, false);
 	assert.equal(runTool?.annotations?.destructiveHint, true);
@@ -177,17 +177,22 @@ test("serves shell tools through Streamable HTTP and retains state across MCP se
 	assert.equal(subagentPollTool?.title, "Poll a ChatGPT subagent turn");
 	assert.equal(subagentPollTool?.annotations?.readOnlyHint, true);
 	assert.equal(subagentPollTool?.annotations?.idempotentHint, true);
-	assert.match(subagentPollTool?.description ?? "", /more than 1 minute/i);
 	assert.match(subagentPollTool?.description ?? "", /continue other work or poll again/i);
-	assert.match(subagentPollTool?.description ?? "", /wait_ms: 10000/i);
+	assert.match(subagentPollTool?.description ?? "", /activity_age_ms/i);
+	assert.match(subagentPollTool?.description ?? "", /do not treat a long-running turn as hung/i);
 	const subagentPollInputSchema = subagentPollTool?.inputSchema as {
 		properties?: Record<string, Record<string, unknown>>;
 		required?: string[];
 	};
+	const subagentPollOutputSchema = subagentPollTool?.outputSchema as {
+		properties?: Record<string, Record<string, unknown>>;
+	};
+	assert.deepEqual(subagentPollOutputSchema.properties?.activity?.enum, ["Working", "Searching the web", "Using tools", "Generating response"]);
+	assert.equal(subagentPollOutputSchema.properties?.activity_age_ms?.type, "integer");
 	assert.deepEqual(Object.keys(subagentPollInputSchema.properties ?? {}).sort(), ["turn_id", "wait_ms"]);
 	assert.deepEqual(subagentPollInputSchema.required?.sort(), ["turn_id"]);
 	assert.equal(subagentPollInputSchema.properties?.wait_ms?.default, 0);
-	assert.equal(subagentPollInputSchema.properties?.wait_ms?.maximum, 10_000);
+	assert.equal(subagentPollInputSchema.properties?.wait_ms?.maximum, 60_000);
 
 	const firstResult = await callUntilComplete(first.client, "mcp001", ["cd /tmp", "export MCP_HTTP_RETAINED=yes", "printf initialized"].join("; "));
 	assert.equal(firstResult.output, "initialized");
@@ -232,6 +237,15 @@ test("shares async ChatGPT subagent turns across stateless MCP requests", { time
 			};
 		},
 		async poll(turnId) {
+			if (turnId === "heartbeat-fixture") {
+				return {
+					agentId: "heartbeat-agent",
+					turnId,
+					status: "running",
+					activity: "Searching the web",
+					activityAgeMs: 2_750,
+				};
+			}
 			const result = completed.get(turnId);
 			if (!result) throw new Error(`unknown turn ${turnId}`);
 			return {
@@ -269,6 +283,17 @@ test("shares async ChatGPT subagent turns across stateless MCP requests", { time
 
 	const second = await connectClient(running.url, "subagent-client-2");
 	t.after(() => second.client.close());
+	const heartbeatPoll = await second.client.callTool({
+		name: "chatgpt_subagent_poll",
+		arguments: { turn_id: "heartbeat-fixture" },
+	});
+	assert.deepEqual(heartbeatPoll.structuredContent, {
+		agent_id: "heartbeat-agent",
+		turn_id: "heartbeat-fixture",
+		status: "running",
+		activity: "Searching the web",
+		activity_age_ms: 2_750,
+	});
 	const firstPoll = await second.client.callTool({
 		name: "chatgpt_subagent_poll",
 		arguments: {
@@ -969,10 +994,7 @@ test("force-kills a SIGTERM-resistant apply_patch after request abort", { skip: 
 	await mkdir(project, { recursive: true });
 	await mkdir(bin, { recursive: true });
 	const executable = join(bin, "apply_patch");
-	await writeFile(
-		executable,
-		'#!/bin/sh\ntrap \'\' TERM\nprintf \'%s\\n\' "$$" > "$PWD/patch.pid"\ncat >/dev/null\nwhile :; do sleep 1; done\n'
-	);
+	await writeFile(executable, "#!/bin/sh\ntrap '' TERM\nprintf '%s\\n' \"$$\" > \"$PWD/patch.pid\"\ncat >/dev/null\nwhile :; do sleep 1; done\n");
 	await chmod(executable, 0o755);
 
 	const shell = new PersistentShellSession({ cwd: directory });

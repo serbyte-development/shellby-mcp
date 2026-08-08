@@ -1,10 +1,10 @@
 # Browser ChatGPT Subagents
 
-Verified 2026-08-07.
+Verified 2026-08-08.
 
 ## Current State
 
-The reusable browser module and first-class MCP wrapper now exist. `ChatGptSubagentModule` connects to an already-debuggable Chrome instance through Playwright-over-CDP. `chatgpt_subagent` submits a caller-named agent turn and returns immediately with a `turn_id`; `chatgpt_subagent_poll` retrieves running, completed, or failed state without resubmitting the prompt (`src/chatgpt-subagent.ts`, `src/mcp-server.ts`).
+The reusable browser module and first-class MCP wrapper now exist. `ChatGptSubagentModule` connects to an already-debuggable Chrome instance through Playwright-over-CDP. `chatgpt_subagent` submits a caller-named agent turn and returns immediately with a `turn_id`; `chatgpt_subagent_poll` retrieves running, completed, or failed state without resubmitting the prompt. Running polls include a coarse activity heartbeat so a parent agent can distinguish a long task that is still making progress from one that has gone quiet (`src/chatgpt-subagent.ts`, `src/mcp-server.ts`).
 
 The module is deliberately attach-only. It does not launch Chrome, select a Chrome profile, copy profile data, or attempt to repair a missing browser process. `connect()` expects the configured CDP endpoint to already expose the intended authenticated Chrome instance and fails quickly with an explicit error when that dependency is unavailable (`src/chatgpt-subagent.ts`).
 
@@ -66,6 +66,8 @@ For each send:
 
 The DOM remains a fallback for composer interaction and response recovery; the network graph should be authoritative for continuity and duplicate suppression.
 
+While a turn is running, changed network nodes refresh a coarse activity heartbeat. Web/search recipients map to `Searching the web`, other non-user-facing recipients map to `Using tools`, assistant output maps to `Generating response`, and other observed progress maps to `Working`. DOM response text growth also refreshes `Generating response`. Re-reading an unchanged node or merely polling the MCP does not refresh the heartbeat (`src/chatgpt-subagent.ts`, `test/chatgpt-subagent.test.ts`).
+
 ## MCP Surface
 
 Keep the public surface small:
@@ -88,13 +90,15 @@ chatgpt_subagent_poll({
   agent_id: string,
   turn_id: string,
   status: "running" | "completed" | "failed",
+  activity?: "Working" | "Searching the web" | "Using tools" | "Generating response",
+  activity_age_ms?: number,
   response?: string,
   error_code?: string,
   error_message?: string,
 }
 ```
 
-`agent_id` is required, caller-defined, and limited to 64 characters. First use creates a conversation; later use continues it. The initial call returns after prompt submission so the caller can perform unrelated work while ChatGPT continues. Polling with `wait_ms: 0` is immediate; a positive `wait_ms` up to 10 seconds provides bounded long polling. The background browser turn has no fixed response-duration timeout (`src/chatgpt-subagent.ts`, `src/mcp-server.ts`).
+`agent_id` is required, caller-defined, and limited to 64 characters. First use creates a conversation; later use continues it. The initial call returns after prompt submission so the caller can perform unrelated work while ChatGPT continues. Polling with `wait_ms: 0` is immediate; a positive `wait_ms` up to 10 seconds provides bounded long polling. While status is `running`, `activity_age_ms` reports milliseconds since the last observable progress; a low or resetting value is a liveness signal, not an ETA. The background browser turn has no fixed response-duration timeout (`src/chatgpt-subagent.ts`, `src/mcp-server.ts`).
 
 The module also keeps internal `read`, `listAgents`, and `closeAgent` operations for maintenance/debugging. The published MCP surface exposes `chatgpt_subagent` and `chatgpt_subagent_poll` (`src/chatgpt-subagent.ts`, `src/mcp-server.ts`).
 
@@ -105,6 +109,7 @@ The module also keeps internal `read`, `listAgents`, and `closeAgent` operations
 3. **Decision:** keep Chrome lifecycle and profile selection outside this module. The intended authenticated debuggable Chrome instance is a runtime prerequisite; absence of the configured CDP endpoint is an explicit failure, not a condition the module repairs.
 4. **Done:** inject one process-level `ChatGptSubagentModule` through `src/index.ts` and `src/http-server.ts`, then register asynchronous `chatgpt_subagent` and `chatgpt_subagent_poll` tools in `src/mcp-server.ts`.
 5. **Done:** add MCP integration coverage using a fake shared subagent service so turn polling across stateless MCP requests can be checked without contacting ChatGPT (`test/mcp-integration.test.ts`).
+6. **Done:** add an agent-facing running heartbeat to `chatgpt_subagent_poll` using coarse activity labels and elapsed time since actual observed progress, without exposing intermediate reasoning or refreshing liveness merely because the parent polled (`src/chatgpt-subagent.ts`, `src/mcp-server.ts`, `test/chatgpt-subagent.test.ts`, `test/mcp-integration.test.ts`).
 
 ## Risks / Open Questions
 

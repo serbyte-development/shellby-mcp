@@ -284,3 +284,10 @@
 - Changed direct `apply_patch` processes to use a detached POSIX process group and mirror the shell runtime's `SIGTERM` → 500 ms grace → `SIGKILL` cleanup sequence on request abort.
 - Added forced promise settlement after a second bounded grace period so a missing child `close` event cannot leave the MCP tool request pending forever.
 - Added a focused integration regression using a SIGTERM-resistant fake patch executable and verified the process group is force-killed after the originating HTTP request closes.
+
+## [2026-08-08] improve | add subagent progress heartbeat
+
+- Added `activity` and `activity_age_ms` to running `chatgpt_subagent_poll` results so parent agents can tell that long-running delegated work is still progressing.
+- Kept the activity vocabulary deliberately coarse: `Working`, `Searching the web`, `Using tools`, and `Generating response`; intermediate reasoning text is not exposed.
+- Refresh heartbeat time only when tracked network state changes or visible assistant response text grows, so repeated polling cannot manufacture false liveness.
+- Added unit and MCP schema coverage and verified the full test suite, type-check, and build.
