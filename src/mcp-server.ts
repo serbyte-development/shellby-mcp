@@ -169,7 +169,7 @@ export function createMcpServer(shells: ShellSessionManager, options: CreateMcpS
 					z.object({
 						name: z.string(),
 						description: z.string().optional(),
-					}),
+					})
 				),
 			},
 			annotations: {
@@ -188,17 +188,14 @@ export function createMcpServer(shells: ShellSessionManager, options: CreateMcpS
 					content: [
 						{
 							type: "text" as const,
-							text:
-								available.length === 0
-									? "No workspace skills are available."
-									: `Available workspace skills: ${available.map((skill) => skill.name).join(", ")}`,
+							text: available.length === 0 ? "No workspace skills are available." : `Available workspace skills: ${available.map((skill) => skill.name).join(", ")}`,
 						},
 					],
 				};
 			} catch (error) {
 				return skillToolError(error);
 			}
-		},
+		}
 	);
 
 	server.registerTool(
@@ -208,12 +205,7 @@ export function createMcpServer(shells: ShellSessionManager, options: CreateMcpS
 			description:
 				"Load the complete SKILL.md for one skill returned by skill_list. Read and follow these instructions before performing the workflow. The returned path identifies the local skill file so relative bundled assets can be read with shell tools when the skill requires them.",
 			inputSchema: {
-				name: z
-					.string()
-					.min(1)
-					.max(128)
-					.refine(isValidSkillName, "Invalid skill name.")
-					.describe("Skill name returned by skill_list."),
+				name: z.string().min(1).max(128).refine(isValidSkillName, "Invalid skill name.").describe("Skill name returned by skill_list."),
 			},
 			outputSchema: {
 				name: z.string(),
@@ -243,23 +235,29 @@ export function createMcpServer(shells: ShellSessionManager, options: CreateMcpS
 			} catch (error) {
 				return skillToolError(error);
 			}
-		},
+		}
 	);
 
 	server.registerTool(
 		"chatgpt_subagent",
 		{
-			title: "Start a ChatGPT subagent turn",
+			title: "Message a ChatGPT subagent",
 			description:
-				"Delegate work to a persistent ChatGPT subagent. Use for tasks that can run independently while you continue other work. Reuse agent_id for follow-up turns. After starting a turn, use chatgpt_subagent_poll with the returned turn_id.",
+				"Delegate or continue work with a persistent ChatGPT subagent. Use when a task can run independently or when you want a multi-turn subagent conversation. Choose an agent_id, send a prompt, then poll the returned turn_id with chatgpt_subagent_poll. Later calls with the same agent_id continue that conversation.",
 			inputSchema: {
 				agent_id: z
 					.string()
 					.min(1)
 					.max(64)
 					.refine((value) => value.trim().length > 0, "agent_id cannot be only whitespace.")
-					.describe("Descriptive ID for the subagent. Reuse it for follow-up turns."),
-				prompt: z.string().min(1).max(262_144).describe("Work or follow-up instruction to give the subagent."),
+					.describe("Stable caller-chosen ID that identifies one persistent subagent conversation."),
+				prompt: z.string().min(1).max(262_144).describe("Task or next message to send to the subagent."),
+				oververbosity: z
+					.int()
+					.min(1)
+					.max(5)
+					.default(2)
+					.describe("Response verbosity for a new subagent conversation, from 1 to 5. Defaults to 2. Applied only when this agent_id is first created; later values do not change that conversation."),
 			},
 			outputSchema: {
 				agent_id: z.string(),
@@ -277,9 +275,9 @@ export function createMcpServer(shells: ShellSessionManager, options: CreateMcpS
 			},
 			_meta: noAuthMeta,
 		},
-		async ({ agent_id, prompt }, extra) => {
+		async ({ agent_id, prompt, oververbosity }, extra) => {
 			try {
-				const result = await chatGptSubagents.ask({ agentId: agent_id, prompt }, extra.signal);
+				const result = await chatGptSubagents.ask({ agentId: agent_id, prompt, oververbosity }, extra.signal);
 				const structuredContent = {
 					agent_id: result.agentId,
 					turn_id: result.turnId,
@@ -306,12 +304,12 @@ export function createMcpServer(shells: ShellSessionManager, options: CreateMcpS
 	server.registerTool(
 		"chatgpt_subagent_poll",
 		{
-			title: "Poll a ChatGPT subagent turn",
+			title: "Check a ChatGPT subagent turn status",
 			description:
-				"Check a running ChatGPT subagent turn. Running results include activity and activity_age_ms, the milliseconds since the last observable progress. A low or resetting activity_age_ms means the subagent is still active; do not treat a long-running turn as hung while progress continues. Agent responses often take several minutes. Use the turn_id returned by chatgpt_subagent. If status is running, continue other work or poll again; use wait_ms: 10000 when simply waiting.",
+				"Check a previously submitted subagent turn. Use after chatgpt_subagent returns a turn_id to collect its result or verify that a long-running turn is still active. Poll that turn_id; set wait_ms when you want this check to wait briefly for completion. While running, activity and activity_age_ms provide coarse liveness signals rather than an ETA.",
 			inputSchema: {
-				turn_id: z.string().min(1).max(128).describe("Turn ID returned by chatgpt_subagent."),
-				wait_ms: z.int().min(0).max(60_000).default(0).describe("How long to wait for completion before returning status. Use 0 for an immediate check or 30000 when waiting."),
+				turn_id: z.string().min(1).max(128).describe("Turn to check, returned by chatgpt_subagent."),
+				wait_ms: z.int().min(0).max(60_000).default(0).describe("How long this check may wait for completion. Use 0 for an immediate status check."),
 			},
 			outputSchema: {
 				agent_id: z.string(),

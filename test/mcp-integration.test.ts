@@ -22,14 +22,6 @@ test("serves shell tools through Streamable HTTP and retains state across MCP se
 	t.after(() => running.close());
 
 	const first = await connectClient(running.url, "integration-client-1");
-	const instructions = first.client.getInstructions() ?? "";
-
-	// Tool-specific mechanics belong in tool descriptions and schemas rather
-	// than being duplicated in the server-level instruction block.
-	assert.doesNotMatch(instructions, /rtk test npm test/);
-	assert.doesNotMatch(instructions, /shell_poll must use/);
-	assert.doesNotMatch(instructions, /Use `fetch_website` first/);
-	assert.doesNotMatch(instructions, /computer_observe` is visual-first/);
 
 	const tools = await first.client.listTools();
 	assert.deepEqual(
@@ -59,36 +51,15 @@ test("serves shell tools through Streamable HTTP and retains state across MCP se
 			"computer_window",
 		]
 	);
-	// TODO: Update these tests to remove all tool descriptions/instructions from assertions. there is no reason to run tests for the tool descriptions/instructions. because they can change frequently.
 	const runTool = tools.tools.find((tool) => tool.name === "shell_run");
 	assert.equal(runTool?.annotations?.readOnlyHint, false);
 	assert.equal(runTool?.annotations?.destructiveHint, true);
 	assert.equal(runTool?.annotations?.openWorldHint, true);
-	assert.match(runTool?.description ?? "", /short contextual IDs/);
-	assert.match(runTool?.description ?? "", /shell_id labels the task or project/);
-	assert.match(runTool?.description ?? "", /request_id labels the command or step/);
-	assert.match(runTool?.description ?? "", /Change directories once/);
-	assert.match(runTool?.description ?? "", /omit cwd/);
-	assert.match(runTool?.description ?? "", /Prefer RTK whenever available/);
-	assert.match(runTool?.description ?? "", /wait_ms: 0/);
-	assert.match(runTool?.description ?? "", /retain cwd and environment/);
-	const commandSchema = (runTool?.inputSchema.properties as Record<string, Record<string, unknown>>).command;
-	assert.match(String(commandSchema.description), /Prefer RTK whenever available/);
-	assert.match(String(commandSchema.description), /rtk read/);
-	assert.match(String(commandSchema.description), /rtk ls/);
-	assert.match(String(commandSchema.description), /rtk tree/);
-	assert.match(String(commandSchema.description), /rtk rg/);
-	assert.match(String(commandSchema.description), /rtk git diff/);
-	assert.match(String(commandSchema.description), /rtk test npm test/);
 	const shellIdSchema = (runTool?.inputSchema.properties as Record<string, Record<string, unknown>>).shell_id;
 	assert.equal(shellIdSchema.default, "default");
 	assert.equal(shellIdSchema.maxLength, 64);
-	assert.match(String(shellIdSchema.description), /Short task or project label/);
-	assert.match(String(shellIdSchema.description), /api-audit/);
 	const cwdSchema = (runTool?.inputSchema.properties as Record<string, Record<string, unknown>>).cwd;
 	assert.equal(cwdSchema.minLength, 1);
-	assert.match(String(cwdSchema.description), /Optional absolute directory switch/);
-	assert.match(String(cwdSchema.description), /omit it from later calls/);
 	const maxOutputSchema = (runTool?.inputSchema.properties as Record<string, Record<string, unknown>>).max_output_bytes;
 	assert.equal(maxOutputSchema.default, 2048);
 	assert.equal(maxOutputSchema.maximum, 32768);
@@ -96,14 +67,6 @@ test("serves shell tools through Streamable HTTP and retains state across MCP se
 	assert.equal(requestIdSchema.pattern, undefined);
 	assert.equal(requestIdSchema.minLength, 1);
 	assert.equal(requestIdSchema.maxLength, 128);
-	assert.match(String(requestIdSchema.description), /Short command or step label/);
-	assert.match(String(requestIdSchema.description), /scan-routes-1/);
-	assert.doesNotMatch(String(requestIdSchema.description), /six-character/);
-
-	const pollTool = tools.tools.find((tool) => tool.name === "shell_poll");
-	const pollRequestIdSchema = (pollTool?.inputSchema.properties as Record<string, Record<string, unknown>>).request_id;
-	assert.match(String(pollRequestIdSchema.description), /same request_id/);
-	assert.doesNotMatch(String(pollRequestIdSchema.description), /six-character/);
 	const outputSchema = runTool?.outputSchema as {
 		properties?: Record<string, unknown>;
 		required?: string[];
@@ -123,8 +86,6 @@ test("serves shell tools through Streamable HTTP and retains state across MCP se
 	]);
 	assert.deepEqual(outputSchema.required?.sort(), ["cwd", "exit_code", "output", "status"]);
 	const applyPatchTool = tools.tools.find((tool) => tool.name === "apply_patch");
-	assert.equal(applyPatchTool?.title, "Apply patch");
-	assert.match(applyPatchTool?.description ?? "", /file-oriented diff format/);
 	assert.equal(applyPatchTool?.annotations?.destructiveHint, true);
 	assert.equal(applyPatchTool?.annotations?.idempotentHint, false);
 	const applyPatchInputSchema = applyPatchTool?.inputSchema as {
@@ -147,11 +108,9 @@ test("serves shell tools through Streamable HTTP and retains state across MCP se
 	assert.equal(shellCloseTool?.annotations?.idempotentHint, false);
 	const closeShellIdSchema = (shellCloseTool?.inputSchema.properties as Record<string, Record<string, unknown>>).shell_id;
 	assert.equal(closeShellIdSchema.default, undefined);
-	assert.match(String(closeShellIdSchema.description), /default shell is protected/);
 	const fetchWebsiteTool = tools.tools.find((tool) => tool.name === "fetch_website");
 	assert.equal(fetchWebsiteTool?.annotations?.readOnlyHint, true);
 	assert.equal(fetchWebsiteTool?.annotations?.openWorldHint, true);
-	assert.match(fetchWebsiteTool?.description ?? "", /Use this first/);
 	const webMaxOutputSchema = (fetchWebsiteTool?.inputSchema.properties as Record<string, Record<string, unknown>>).max_output_bytes;
 	assert.equal(webMaxOutputSchema.default, 8192);
 	assert.equal(webMaxOutputSchema.maximum, 32768);
@@ -170,29 +129,23 @@ test("serves shell tools through Streamable HTTP and retains state across MCP se
 	assert.deepEqual(Object.keys(skillUseInputSchema.properties ?? {}), ["name"]);
 	assert.deepEqual(skillUseInputSchema.required, ["name"]);
 	const subagentTool = tools.tools.find((tool) => tool.name === "chatgpt_subagent");
-	assert.equal(subagentTool?.title, "Start a ChatGPT subagent turn");
 	assert.equal(subagentTool?.annotations?.readOnlyHint, false);
 	assert.equal(subagentTool?.annotations?.destructiveHint, false);
 	assert.equal(subagentTool?.annotations?.idempotentHint, false);
 	assert.equal(subagentTool?.annotations?.openWorldHint, true);
-	assert.match(subagentTool?.description ?? "", /tasks that can run independently/i);
-	assert.match(subagentTool?.description ?? "", /reuse agent_id for follow-up turns/i);
-	assert.match(subagentTool?.description ?? "", /chatgpt_subagent_poll/i);
 	const subagentInputSchema = subagentTool?.inputSchema as {
 		properties?: Record<string, Record<string, unknown>>;
 		required?: string[];
 	};
-	assert.deepEqual(Object.keys(subagentInputSchema.properties ?? {}).sort(), ["agent_id", "prompt"]);
+	assert.deepEqual(Object.keys(subagentInputSchema.properties ?? {}).sort(), ["agent_id", "oververbosity", "prompt"]);
 	assert.deepEqual(subagentInputSchema.required?.sort(), ["agent_id", "prompt"]);
 	assert.equal(subagentInputSchema.properties?.agent_id?.maxLength, 64);
-	assert.match(String(subagentInputSchema.properties?.agent_id?.description), /reuse it for follow-up turns/i);
+	assert.equal(subagentInputSchema.properties?.oververbosity?.default, 2);
+	assert.equal(subagentInputSchema.properties?.oververbosity?.minimum, 1);
+	assert.equal(subagentInputSchema.properties?.oververbosity?.maximum, 5);
 	const subagentPollTool = tools.tools.find((tool) => tool.name === "chatgpt_subagent_poll");
-	assert.equal(subagentPollTool?.title, "Poll a ChatGPT subagent turn");
 	assert.equal(subagentPollTool?.annotations?.readOnlyHint, true);
 	assert.equal(subagentPollTool?.annotations?.idempotentHint, true);
-	assert.match(subagentPollTool?.description ?? "", /continue other work or poll again/i);
-	assert.match(subagentPollTool?.description ?? "", /activity_age_ms/i);
-	assert.match(subagentPollTool?.description ?? "", /do not treat a long-running turn as hung/i);
 	const subagentPollInputSchema = subagentPollTool?.inputSchema as {
 		properties?: Record<string, Record<string, unknown>>;
 		required?: string[];

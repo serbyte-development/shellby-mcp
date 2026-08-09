@@ -10,6 +10,8 @@ The module is deliberately attach-only. It does not launch Chrome, select a Chro
 
 `src/index.ts` creates one process-level module and injects it through `src/http-server.ts` into every request-scoped `McpServer`, so agent state survives stateless MCP requests. `MCP_CHATGPT_CDP_ENDPOINT` selects the attach-only endpoint and defaults to `http://127.0.0.1:9222`; startup does not connect to Chrome (`src/index.ts`, `src/http-server.ts`).
 
+The first successfully submitted turn for a new `agent_id` can append a Caveman response-style instruction. `oververbosity` accepts `1` through `5` and defaults to `2`. It is applied only when that `agent_id` is first created; later values do not change the existing conversation. Later turns send the caller's prompt unchanged; the module records first-turn submission on the agent state and uses the exact submitted prompt for response tracking (`src/chatgpt-subagent.ts`, `src/mcp-server.ts`).
+
 Live validation on 2026-08-07 proved authenticated new-chat creation, same-page multi-turn continuation, normalized conversation reads, two concurrent agents with distinct Chrome targets, and stale-tab recovery by reopening the recorded `/c/<conversation-id>` URL. The test used a dedicated copied Chrome profile derived from the active signed-in profile and a normal background Chrome window with remote debugging enabled. Headless Chrome hit a Cloudflare challenge and is not currently considered a supported launch mode.
 
 ## Proposed Model
@@ -38,6 +40,7 @@ The first use of a caller-chosen `agent_id` creates one Chrome page and conversa
 type BrowserAgentState = {
   agentId: string;
   pageId: string;
+  hasSubmittedTurn: boolean;
   conversationId?: string;
   conversationUrl?: string;
   lastReturnedMessageId?: string;
@@ -76,6 +79,7 @@ Keep the public surface small:
 chatgpt_subagent({
   prompt: string,
   agent_id: string,
+  oververbosity?: 1 | 2 | 3 | 4 | 5,
 }) -> {
   agent_id: string,
   turn_id: string,

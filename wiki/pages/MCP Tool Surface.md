@@ -4,7 +4,7 @@ Verified 2026-08-08.
 
 ## Published Order
 
-`tools/list` returns `fetch_website`, `skill_list`, `skill_use`, `chatgpt_subagent`, `chatgpt_subagent_poll`, `apply_patch`, five `shell_*` tools, then eleven `computer_*` tools. Integration tests assert the order and schemas; tools remain registered when optional host capabilities are unavailable (`src/mcp-server.ts`, `src/computer-use-tools.ts`, `test/mcp-integration.test.ts`).
+`tools/list` returns `fetch_website`, `skill_list`, `skill_use`, `chatgpt_subagent`, `chatgpt_subagent_poll`, `apply_patch`, five `shell_*` tools, then eleven `computer_*` tools. Integration tests assert the order and schema mechanics without locking prose descriptions or instructions; tools remain registered when optional host capabilities are unavailable (`src/mcp-server.ts`, `src/computer-use-tools.ts`, `test/mcp-integration.test.ts`).
 
 ## Core Tools
 

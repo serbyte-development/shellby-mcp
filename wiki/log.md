@@ -298,3 +298,25 @@
 - Added path-safe skill-name validation, 256 KiB `SKILL.md` bounds, optional frontmatter descriptions, and compatibility with skill-directory symlinks.
 - Seeded the workspace with the complete existing `create-wiki` skill bundle; the current copy can later be replaced by a symlink to the Codex skill directory.
 - Added focused unit and MCP schema coverage.
+
+## [2026-08-08] refine | clarify subagent continuation contract
+
+- Reframed `chatgpt_subagent` as a persistent multi-turn conversation tool: reuse the same `agent_id` to continue the same conversation, while each call returns a separate `turn_id` for polling.
+- Simplified the subagent and polling descriptions so conversation identity, next-message semantics, turn polling, and liveness are clear without duplicating the full workflow across fields.
+- Removed integration assertions that lock server/tool description or instruction prose while retaining behavioral, annotation, ordering, and schema-mechanics coverage.
+
+## [2026-08-08] refine | make subagent verbosity caller-selectable
+
+- Added `oververbosity` 1-5 to `chatgpt_subagent`, defaulting to 2; level 5 sends the first prompt unchanged.
+- Replaced the custom first-turn brevity instruction with the Caveman prompt wording, mapping lower verbosity levels to ultra/full/lite and using a softened lite mode at level 4.
+- Kept response-style injection first-turn-only so continuation prompts remain untouched.
+
+## [2026-08-08] refine | make subagent responses context-efficient
+
+- Appended a compact expert-user "Caveman Mode" directive to only the first successfully submitted prompt for each `agent_id`; follow-up prompts remain unchanged.
+- Tracked whether an agent has submitted its first turn and passed the exact augmented prompt into response matching so first-turn tracking remains reliable.
+
+## [2026-08-08] refine | clarify subagent oververbosity scope
+
+- Clarified `oververbosity` as a 1-5 setting for a new subagent conversation, defaulting to `2` and applying only when an `agent_id` is first created.
+- Removed implementation-specific level behavior from the public field description so callers can rely on normal verbosity semantics while still understanding that later values do not change an existing conversation.

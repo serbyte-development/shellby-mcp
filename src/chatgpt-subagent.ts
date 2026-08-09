@@ -11,6 +11,9 @@ import {
 
 export const DEFAULT_CHATGPT_CDP_ENDPOINT = "http://127.0.0.1:9222";
 
+const CAVEMAN_PROMPT =
+  "If no level specified, use full. Respond terse like smart caveman — drop articles, filler, pleasantries. Fragments OK. Technical terms exact. Code unchanged. Pattern: [thing] [action] [reason]. [next step].";
+
 export interface ChatGptSubagentOptions {
   cdpEndpoint: string;
   connectTimeoutMs?: number;
@@ -26,6 +29,7 @@ export interface ChatGptSubagentOptions {
 export interface ChatGptSubagentRequest {
   prompt: string;
   agentId: string;
+  oververbosity?: number;
 }
 
 export interface ChatGptSubagentStartResult {
@@ -102,6 +106,7 @@ interface BrowserAgentState {
   agentId: string;
   page: Page;
   tracker: ChatGptConversationTracker;
+  hasSubmittedTurn: boolean;
   conversationId?: string;
   conversationUrl?: string;
   targetId?: string;
@@ -269,6 +274,7 @@ export class ChatGptSubagentModule {
   ): Promise<ChatGptSubagentStartResult> {
     const prompt = request.prompt.trim();
     if (!prompt) throw new Error("Subagent prompt cannot be empty.");
+    const oververbosity = normalizeOververbosity(request.oververbosity);
     validateAgentId(request.agentId);
     this.beginAgentOperation(request.agentId, true);
     let state: BrowserAgentState | undefined;
@@ -297,11 +303,15 @@ export class ChatGptSubagentModule {
       await delay(this.interactionDelayMs, signal);
       throwIfAborted(signal);
       assertPreSubmitLocation(active);
-      await enterPrompt(active.page, composer, prompt);
+      const submittedPrompt = active.hasSubmittedTurn
+        ? prompt
+        : appendFirstTurnMode(prompt, oververbosity);
+      await enterPrompt(active.page, composer, submittedPrompt);
       await delay(this.interactionDelayMs, signal);
       throwIfAborted(signal);
       assertPreSubmitLocation(active);
       await submitComposer(active.page, composer, signal);
+      active.hasSubmittedTurn = true;
       const turnId = `turn_${randomUUID()}`;
       const turn: BrowserTurnState = {
         turnId,
@@ -323,7 +333,7 @@ export class ChatGptSubagentModule {
       turn.completion = this.trackTurn(turn, active, {
         baselineNetworkIds,
         baselineDom,
-        prompt,
+        prompt: submittedPrompt,
         sentAtSeconds,
       });
       operationTransferred = true;
@@ -494,6 +504,7 @@ export class ChatGptSubagentModule {
       agentId,
       page,
       tracker,
+      hasSubmittedTurn: false,
     };
 
     try {
@@ -751,6 +762,25 @@ export class ChatGptSubagentModule {
       this.agents.delete(state.agentId);
     }
   }
+}
+
+function normalizeOververbosity(value: number | undefined): number {
+  if (value === undefined) return 2;
+  if (!Number.isInteger(value) || value < 1 || value > 5) {
+    throw new Error("oververbosity must be an integer from 1 to 5.");
+  }
+  return value;
+}
+
+function appendFirstTurnMode(prompt: string, oververbosity: number): string {
+  if (oververbosity === 5) return prompt;
+
+  const level = oververbosity === 1 ? "ultra" : oververbosity === 2 ? "full" : "lite";
+  const qualifier =
+    oververbosity === 4
+      ? " Favor completeness over terseness when useful."
+      : "";
+  return `${prompt}\n\n---\nSwitch to caveman ${level} mode. ${CAVEMAN_PROMPT}${qualifier}`;
 }
 
 export function extractConversationNodes(payload: unknown): TrackedConversationNode[] {
