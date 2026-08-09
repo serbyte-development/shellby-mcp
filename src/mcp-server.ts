@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { isAbsolute } from "node:path";
+import { isAbsolute, join } from "node:path";
 import { StringDecoder } from "node:string_decoder";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
@@ -8,6 +8,7 @@ import { registerComputerUseTools } from "./computer-use-tools.js";
 import { PeekabooClient } from "./peekaboo.js";
 import { ShellSessionError, type ShellSnapshot } from "./shell-session.js";
 import { DEFAULT_SHELL_ID, ShellSessionManager } from "./shell-session-manager.js";
+import { isValidSkillName, SkillCatalog, SkillCatalogError } from "./skills.js";
 import { WebOpenError, WebPageOpener } from "./web-open.js";
 
 const noAuthMeta = {
@@ -56,6 +57,7 @@ export function createMcpServer(shells: ShellSessionManager, options: CreateMcpS
 	const applyPatchExecutable = options.applyPatchExecutable ?? "apply_patch";
 	const peekaboo = options.peekaboo ?? new PeekabooClient();
 	const webPageOpener = options.webPageOpener ?? new WebPageOpener();
+	const skills = new SkillCatalog(join(shells.initialCwd, "skills"));
 	const maxOutputBytesInput = z
 		.int()
 		.min(256)
@@ -78,7 +80,7 @@ export function createMcpServer(shells: ShellSessionManager, options: CreateMcpS
 			instructions: [
 				"# Operating rules\n\nBefore coding or editing files, read the complete coding instructions using `shell_run`, polling for retained output as needed:\n`/Users/austinserb/Desktop/chatgpt-workspace/AGENTS.md`",
 
-				"## Work efficiently\n\n- Reach first for `rtk` for reads and other commands. Use raw commands only for exact unfiltered output, or persistent shell state changes.\n- Parallelize independent work when it meaningfully reduces round trips.\n- Protect context with targeted searches, scoped reads, focused diffs, and capped logs. Do not use decorative `echo` or `printf` separators like `printf '--- filename ---\\n'`. Redirect genuinely large output to files and inspect only the relevant sections.\n- `shell_run.command` is exact zsh input.\n- Persistent shells are reusable state: never use a top-level `exit`, and preserve the real exit status when filtering command output.\n- Do not repurpose `$HOME`, `$home`, or `$CODEX_HOME`; use task-specific variable names.",
+				"## Work efficiently\n\n- Reach first for `rtk` for reads and other commands. Use raw commands only for exact unfiltered output, or persistent shell state changes.\n- Reusable skills are discovered dynamically. Use `skill_list` when a specialized workflow may apply, then `skill_use` to load the complete instructions.\n- Parallelize independent work when it meaningfully reduces round trips.\n- Protect context with targeted searches, scoped reads, focused diffs, and capped logs. Do not use decorative `echo` or `printf` separators like `printf '--- filename ---\\n'`. Redirect genuinely large output to files and inspect only the relevant sections.\n- `shell_run.command` is exact zsh input.\n- Persistent shells are reusable state: never use a top-level `exit`, and preserve the real exit status when filtering command output.\n- Do not repurpose `$HOME`, `$home`, or `$CODEX_HOME`; use task-specific variable names.",
 
 				"## Edit files safely\n\nUse `apply_patch` for local file edits. Do not create or edit files with `cat` or other shell write tricks. Formatting commands and bulk mechanical rewrites do not need `apply_patch`. Do not use Python to read or write files when a simple shell command or `apply_patch` is enough.",
 
@@ -153,6 +155,95 @@ export function createMcpServer(shells: ShellSessionManager, options: CreateMcpS
 				return webToolError(error);
 			}
 		}
+	);
+
+	server.registerTool(
+		"skill_list",
+		{
+			title: "List workspace skills",
+			description:
+				"List reusable skills available in the configured workspace. Use when a task may have an existing specialized workflow. The catalog is read from disk each call, so new skills do not require an MCP schema change.",
+			inputSchema: {},
+			outputSchema: {
+				skills: z.array(
+					z.object({
+						name: z.string(),
+						description: z.string().optional(),
+					}),
+				),
+			},
+			annotations: {
+				readOnlyHint: true,
+				destructiveHint: false,
+				idempotentHint: true,
+				openWorldHint: false,
+			},
+			_meta: noAuthMeta,
+		},
+		async (_input, extra) => {
+			try {
+				const available = await skills.list(extra.signal);
+				return {
+					structuredContent: { skills: available },
+					content: [
+						{
+							type: "text" as const,
+							text:
+								available.length === 0
+									? "No workspace skills are available."
+									: `Available workspace skills: ${available.map((skill) => skill.name).join(", ")}`,
+						},
+					],
+				};
+			} catch (error) {
+				return skillToolError(error);
+			}
+		},
+	);
+
+	server.registerTool(
+		"skill_use",
+		{
+			title: "Load a workspace skill",
+			description:
+				"Load the complete SKILL.md for one skill returned by skill_list. Read and follow these instructions before performing the workflow. The returned path identifies the local skill file so relative bundled assets can be read with shell tools when the skill requires them.",
+			inputSchema: {
+				name: z
+					.string()
+					.min(1)
+					.max(128)
+					.refine(isValidSkillName, "Invalid skill name.")
+					.describe("Skill name returned by skill_list."),
+			},
+			outputSchema: {
+				name: z.string(),
+				path: z.string(),
+				content: z.string(),
+			},
+			annotations: {
+				readOnlyHint: true,
+				destructiveHint: false,
+				idempotentHint: true,
+				openWorldHint: false,
+			},
+			_meta: noAuthMeta,
+		},
+		async ({ name }, extra) => {
+			try {
+				const loaded = await skills.read(name, extra.signal);
+				return {
+					structuredContent: loaded,
+					content: [
+						{
+							type: "text" as const,
+							text: `Loaded workspace skill ${loaded.name} from ${loaded.path}.`,
+						},
+					],
+				};
+			} catch (error) {
+				return skillToolError(error);
+			}
+		},
 	);
 
 	server.registerTool(
@@ -793,6 +884,14 @@ function webToolError(error: unknown) {
 
 function subagentToolError(error: unknown) {
 	const text = error instanceof ChatGptSubagentError ? `${error.code}: ${error.message}` : `subagent_failed: ${error instanceof Error ? error.message : String(error)}`;
+	return {
+		isError: true,
+		content: [{ type: "text" as const, text }],
+	};
+}
+
+function skillToolError(error: unknown) {
+	const text = error instanceof SkillCatalogError ? `${error.code}: ${error.message}` : `skill_failed: ${error instanceof Error ? error.message : String(error)}`;
 	return {
 		isError: true,
 		content: [{ type: "text" as const, text }],

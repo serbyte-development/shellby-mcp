@@ -6,9 +6,9 @@ This wiki is the concise source of truth for maintaining the server; start with 
 
 - [[pages/Architecture Map]] — system layers and request lifecycle.
 - [[pages/HTTP Transport]] — Express, Streamable HTTP, host validation, and connection lifecycle.
-- [[pages/MCP Tool Surface]] — core, shell, webpage, patch, and Computer Use contracts.
+- [[pages/MCP Tool Surface]] — core, skills, shell, webpage, patch, and Computer Use contracts.
 - [[pages/Persistent Shell Runtime]] — shell protocol, output bounds, retries, concurrency, and recovery.
-- [[pages/Workspace Tooling]] — workspace conventions and vendored `apply_patch`.
+- [[pages/Workspace Tooling]] — workspace conventions, dynamic skills, and vendored `apply_patch`.
 - [[pages/Configuration and Startup]] — environment parsing, startup composition, shutdown, and tunnel helper.
 - [[pages/Build and Test]] — validation commands, coverage, and gaps.
 - [[pages/Open Questions and Risks]] — unresolved operational and architectural risks.

@@ -291,3 +291,10 @@
 - Kept the activity vocabulary deliberately coarse: `Working`, `Searching the web`, `Using tools`, and `Generating response`; intermediate reasoning text is not exposed.
 - Refresh heartbeat time only when tracked network state changes or visible assistant response text grows, so repeated polling cannot manufacture false liveness.
 - Added unit and MCP schema coverage and verified the full test suite, type-check, and build.
+
+## [2026-08-08] implement | add dynamic workspace skills
+
+- Added `skill_list` and `skill_use` backed by `<workspace>/skills`, keeping individual skill names out of the MCP schema so the catalog can change without a rebuild.
+- Added path-safe skill-name validation, 256 KiB `SKILL.md` bounds, optional frontmatter descriptions, and compatibility with skill-directory symlinks.
+- Seeded the workspace with the complete existing `create-wiki` skill bundle; the current copy can later be replaced by a symlink to the Codex skill directory.
+- Added focused unit and MCP schema coverage.

@@ -36,6 +36,8 @@ test("serves shell tools through Streamable HTTP and retains state across MCP se
 		tools.tools.map((tool) => tool.name),
 		[
 			"fetch_website",
+			"skill_list",
+			"skill_use",
 			"chatgpt_subagent",
 			"chatgpt_subagent_poll",
 			"apply_patch",
@@ -156,6 +158,17 @@ test("serves shell tools through Streamable HTTP and retains state across MCP se
 	const websiteFormatSchema = (fetchWebsiteTool?.inputSchema.properties as Record<string, Record<string, unknown>>).format;
 	assert.equal(websiteFormatSchema.default, "markdown");
 	assert.deepEqual(websiteFormatSchema.enum, ["markdown", "clean_html", "raw_html"]);
+	const skillListTool = tools.tools.find((tool) => tool.name === "skill_list");
+	assert.equal(skillListTool?.annotations?.readOnlyHint, true);
+	assert.equal(skillListTool?.annotations?.idempotentHint, true);
+	const skillUseTool = tools.tools.find((tool) => tool.name === "skill_use");
+	assert.equal(skillUseTool?.annotations?.readOnlyHint, true);
+	const skillUseInputSchema = skillUseTool?.inputSchema as {
+		properties?: Record<string, Record<string, unknown>>;
+		required?: string[];
+	};
+	assert.deepEqual(Object.keys(skillUseInputSchema.properties ?? {}), ["name"]);
+	assert.deepEqual(skillUseInputSchema.required, ["name"]);
 	const subagentTool = tools.tools.find((tool) => tool.name === "chatgpt_subagent");
 	assert.equal(subagentTool?.title, "Start a ChatGPT subagent turn");
 	assert.equal(subagentTool?.annotations?.readOnlyHint, false);
@@ -213,6 +226,46 @@ test("serves shell tools through Streamable HTTP and retains state across MCP se
 	const pagedResult = await callUntilComplete(second.client, "page01", `node -e ${JSON.stringify(`process.stdout.write(${JSON.stringify(expectedPagedOutput)})`)}`);
 	assert.equal(pagedResult.output, expectedPagedOutput);
 	assert.equal(Buffer.byteLength(pagedResult.output, "utf8"), 6_000);
+});
+
+test("lists and loads dynamic workspace skills through MCP", { timeout: 10_000 }, async (t) => {
+	const workspace = await mkdtemp(join(tmpdir(), "mcp-skill-integration-"));
+	t.after(() => rm(workspace, { recursive: true, force: true }));
+	const skillDirectory = join(workspace, "skills", "create-wiki");
+	await mkdir(skillDirectory, { recursive: true });
+	const content = "---\nname: create-wiki\ndescription: Create a project wiki.\n---\n\n# Create Wiki\n";
+	await writeFile(join(skillDirectory, "SKILL.md"), content);
+
+	const running = await startMcpHttpServer({
+		port: 0,
+		shell: new PersistentShellSession({ cwd: workspace }),
+	});
+	t.after(() => running.close());
+	const connected = await connectClient(running.url, "skill-integration-client");
+	t.after(() => connected.client.close());
+
+	const listed = await connected.client.callTool({
+		name: "skill_list",
+		arguments: {},
+	});
+	assert.deepEqual(listed.structuredContent, {
+		skills: [
+			{
+				name: "create-wiki",
+				description: "Create a project wiki.",
+			},
+		],
+	});
+
+	const loaded = await connected.client.callTool({
+		name: "skill_use",
+		arguments: { name: "create-wiki" },
+	});
+	assert.deepEqual(loaded.structuredContent, {
+		name: "create-wiki",
+		path: join(skillDirectory, "SKILL.md"),
+		content,
+	});
 });
 
 test("shares async ChatGPT subagent turns across stateless MCP requests", { timeout: 10_000 }, async (t) => {
