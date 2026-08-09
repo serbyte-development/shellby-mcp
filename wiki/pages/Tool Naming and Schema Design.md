@@ -1,0 +1,97 @@
+# Tool Naming and Schema Design
+
+Verified 2026-08-09.
+
+Tool metadata is a compact routing interface for ChatGPT. Optimize for correct selection and invocation, not for explaining implementation.
+
+## Core Model
+
+> **Name identifies. Description routes. Schema constrains. Parameter descriptions disambiguate. Output schema guides the next move. Wiki explains implementation.**
+
+Avoid repeating information ChatGPT can already infer from the tool name or schema.
+
+## Tool Names
+
+Prefer:
+
+```text
+<domain>_<specific action>
+```
+
+Examples: `skill_list`, `skill_load`, `shell_run`, `shell_poll`, `computer_click`.
+
+Use concrete conventional verbs such as `list`, `load`, `read`, `fetch`, `run`, `poll`, `create`, `delete`, `reset`, and `close`. Avoid vague verbs such as `use`, `manage`, `handle`, or `process` when a precise action exists.
+
+Sibling tools should form predictable families. The name alone should give ChatGPT a strong initial guess about the operation.
+
+## Tool Descriptions
+
+Default shape:
+
+```text
+[Specific action/purpose]. [When to select it, if not obvious]. [Critical routing boundary, if needed].
+```
+
+Keep descriptions short, usually one-two sentences. Include only information that helps ChatGPT decide whether this is the correct tool.
+
+Do not restate schema-visible facts such as enums, required fields, numeric ranges, defaults, or formats unless that constraint materially changes tool selection.
+
+Do not include implementation details such as filesystem layout, caching strategy, symlink behavior, dynamic discovery, or why the schema stays stable. Those belong in the wiki.
+
+## Negative Boundaries
+
+Do not add `Do not use...` instructions by default. Add a negative boundary when there is evidence of incorrect tool use or a clear recurring collision between adjacent tools.
+
+Example: if agents repeatedly edit files through `shell_run` instead of `apply_patch`, a short routing boundary may be justified. Avoid speculative negative instructions that add noise without fixing a real selection problem.
+
+## Input Schemas
+
+Use the schema for mechanically inferable constraints:
+
+- required vs optional
+- types
+- enums
+- defaults
+- min/max values
+- string formats
+- structural relationships that can be encoded directly
+
+Prefer schemas that make invalid calls difficult rather than prose that asks the model to remember validation rules.
+
+## Parameter Descriptions
+
+Use parameter descriptions only for meaning that is not obvious from the field name, type, and schema.
+
+Good uses include:
+
+- semantic meaning
+- relationship to another parameter
+- continuation or identity rules
+- behavior that affects how the value should be chosen
+
+Example:
+
+```text
+name: Skill name returned by `skill_list`.
+```
+
+Do not repeat enum values, ranges, required status, defaults, or formats already encoded in the schema.
+
+## Output Schemas
+
+Return the smallest structured result that lets ChatGPT decide what to do next. Prefer explicit fields over prose summaries when the structure is stable.
+
+Do not duplicate the full output contract in the tool description when the output schema already makes it clear.
+
+## Review Checklist
+
+Before publishing or revising a tool, ask:
+
+1. **Name:** Would ChatGPT have a good guess what this does from the name alone?
+2. **Description:** Does it explain when to choose this tool rather than how it is implemented?
+3. **Schema:** Are mechanical constraints encoded instead of repeated in prose?
+4. **Parameters:** Do descriptions add semantic information rather than restating the schema?
+5. **Output:** Is the result compact and sufficient for the next decision?
+6. **Noise:** Can any sentence be removed without reducing correct routing or invocation?
+
+When tool-use mistakes are observed, fix the smallest layer that caused the ambiguity: rename an unclear tool, sharpen its routing description, improve a parameter description, tighten the schema, or add a negative boundary only when needed.

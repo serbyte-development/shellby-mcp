@@ -29,7 +29,7 @@ test("serves shell tools through Streamable HTTP and retains state across MCP se
 		[
 			"fetch_website",
 			"skill_list",
-			"skill_use",
+			"skill_load",
 			"chatgpt_subagent",
 			"chatgpt_subagent_poll",
 			"apply_patch",
@@ -120,14 +120,14 @@ test("serves shell tools through Streamable HTTP and retains state across MCP se
 	const skillListTool = tools.tools.find((tool) => tool.name === "skill_list");
 	assert.equal(skillListTool?.annotations?.readOnlyHint, true);
 	assert.equal(skillListTool?.annotations?.idempotentHint, true);
-	const skillUseTool = tools.tools.find((tool) => tool.name === "skill_use");
-	assert.equal(skillUseTool?.annotations?.readOnlyHint, true);
-	const skillUseInputSchema = skillUseTool?.inputSchema as {
+	const skillLoadTool = tools.tools.find((tool) => tool.name === "skill_load");
+	assert.equal(skillLoadTool?.annotations?.readOnlyHint, true);
+	const skillLoadInputSchema = skillLoadTool?.inputSchema as {
 		properties?: Record<string, Record<string, unknown>>;
 		required?: string[];
 	};
-	assert.deepEqual(Object.keys(skillUseInputSchema.properties ?? {}), ["name"]);
-	assert.deepEqual(skillUseInputSchema.required, ["name"]);
+	assert.deepEqual(Object.keys(skillLoadInputSchema.properties ?? {}), ["name"]);
+	assert.deepEqual(skillLoadInputSchema.required, ["name"]);
 	const subagentTool = tools.tools.find((tool) => tool.name === "chatgpt_subagent");
 	assert.equal(subagentTool?.annotations?.readOnlyHint, false);
 	assert.equal(subagentTool?.annotations?.destructiveHint, false);
@@ -211,13 +211,13 @@ test("lists and loads dynamic workspace skills through MCP", { timeout: 10_000 }
 	});
 
 	const loaded = await connected.client.callTool({
-		name: "skill_use",
+		name: "skill_load",
 		arguments: { name: "create-wiki" },
 	});
 	assert.deepEqual(loaded.structuredContent, {
 		name: "create-wiki",
 		path: join(skillDirectory, "SKILL.md"),
-		content,
+		instructions: content,
 	});
 });
 

@@ -320,3 +320,21 @@
 
 - Clarified `oververbosity` as a 1-5 setting for a new subagent conversation, defaulting to `2` and applying only when an `agent_id` is first created.
 - Removed implementation-specific level behavior from the public field description so callers can rely on normal verbosity semantics while still understanding that later values do not change an existing conversation.
+
+## [2026-08-09] configure | share canonical Codex skills by symlink
+
+- Replaced the copied workspace `create-wiki` skill with a directory symlink to `~/.codex/skills/create-wiki` so the Codex skill remains the single maintained source.
+- Added `skills/interview-me` as a symlink to `~/.codex/skills/interview-me`.
+- Kept the workspace skill catalog selective rather than linking the entire `.codex/skills` directory.
+
+## [2026-08-09] document | add tool metadata design standard
+
+- Added [[pages/Tool Naming and Schema Design]] as the reusable ChatGPT-focused standard for tool names, descriptions, input schemas, parameter descriptions, and output schemas.
+- Defined the core split as: name identifies, description routes, schema constrains, parameter descriptions disambiguate, output schema guides the next move, and the wiki explains implementation.
+- Made negative boundary instructions reactive rather than default: add them for observed misuse or a clear recurring tool-selection collision.
+
+## [2026-08-09] refine | apply tool metadata standard to skills
+
+- Renamed `skill_use` to `skill_load` so the action matches what the tool actually does.
+- Reduced skill tool descriptions to routing information and removed filesystem/schema-maintenance details from model-facing prose.
+- Renamed the loaded `content` output field to `instructions` and kept `path` only to resolve skill-referenced local assets and files.

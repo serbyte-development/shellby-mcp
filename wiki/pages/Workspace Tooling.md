@@ -1,6 +1,6 @@
 # Workspace Tooling
 
-Verified 2026-08-08.
+Verified 2026-08-09.
 
 ## Default Workspace
 
@@ -18,11 +18,11 @@ If additional platform-specific binaries are needed later, pin the Codex reposit
 
 ## Workspace Skills
 
-Reusable agent workflows live under `<workspace>/skills/<name>/SKILL.md`. `skill_list` scans that directory on every call and returns the directory name plus frontmatter description when present; `skill_use` validates one returned name and returns its complete `SKILL.md` plus local path. Skills are therefore dynamic data rather than MCP schema entries, so adding or removing a skill does not require rebuilding the server (`src/skills.ts`, `src/mcp-server.ts`).
+Reusable agent workflows live under `<workspace>/skills/<name>/SKILL.md`. `skill_list` scans that directory on every call and returns the directory name plus frontmatter description when present; `skill_load` validates one returned name and returns its complete instructions plus local `SKILL.md` path. Skills are therefore dynamic data rather than MCP schema entries, so adding or removing a skill does not require rebuilding the server (`src/skills.ts`, `src/mcp-server.ts`).
 
-The initial workspace contains only `skills/create-wiki`, copied from the existing Codex `create-wiki` skill with its bundled assets and references. Skill directory symlinks are compatible with the catalog and may later replace copied skills when sharing directly with `.codex/skills` is desirable; the current setup intentionally uses a normal copied directory (`src/skills.ts`, `test/skills.test.ts`).
+The maintainer workspace currently exposes `skills/create-wiki` and `skills/interview-me` as directory symlinks to their canonical entries under `~/.codex/skills`. This keeps one maintained copy of each skill while still allowing the MCP catalog to expose only selected skills. Directory symlinks are an intentional supported setup (`src/skills.ts`, `test/skills.test.ts`).
 
-Skill names accept only alphanumeric-leading names containing letters, numbers, dots, underscores, and hyphens, preventing path traversal while still allowing a named workspace entry to be a symlink. `SKILL.md` is capped at 256 KiB; broken or oversized entries are omitted from `skill_list`, while direct `skill_use` calls return explicit errors (`src/skills.ts`).
+Skill names accept only alphanumeric-leading names containing letters, numbers, dots, underscores, and hyphens, preventing path traversal while still allowing a named workspace entry to be a symlink. `SKILL.md` is capped at 256 KiB; broken or oversized entries are omitted from `skill_list`, while direct `skill_load` calls return explicit errors (`src/skills.ts`).
 
 ## Generated Tool Convention
 

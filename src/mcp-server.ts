@@ -80,7 +80,7 @@ export function createMcpServer(shells: ShellSessionManager, options: CreateMcpS
 			instructions: [
 				"# Operating rules\n\nBefore coding or editing files, read the complete coding instructions using `shell_run`, polling for retained output as needed:\n`/Users/austinserb/Desktop/chatgpt-workspace/AGENTS.md`",
 
-				"## Work efficiently\n\n- Reach first for `rtk` for reads and other commands. Use raw commands only for exact unfiltered output, or persistent shell state changes.\n- Reusable skills are discovered dynamically. Use `skill_list` when a specialized workflow may apply, then `skill_use` to load the complete instructions.\n- Parallelize independent work when it meaningfully reduces round trips.\n- Protect context with targeted searches, scoped reads, focused diffs, and capped logs. Do not use decorative `echo` or `printf` separators like `printf '--- filename ---\\n'`. Redirect genuinely large output to files and inspect only the relevant sections.\n- `shell_run.command` is exact zsh input.\n- Persistent shells are reusable state: never use a top-level `exit`, and preserve the real exit status when filtering command output.\n- Do not repurpose `$HOME`, `$home`, or `$CODEX_HOME`; use task-specific variable names.",
+				"## Work efficiently\n\n- Reach first for `rtk` for reads and other commands. Use raw commands only for exact unfiltered output, or persistent shell state changes.\n- Use `skill_list` when a specialized workflow may apply, then `skill_load` to load its instructions.\n- Parallelize independent work when it meaningfully reduces round trips.\n- Protect context with targeted searches, scoped reads, focused diffs, and capped logs. Do not use decorative `echo` or `printf` separators like `printf '--- filename ---\\n'`. Redirect genuinely large output to files and inspect only the relevant sections.\n- `shell_run.command` is exact zsh input.\n- Persistent shells are reusable state: never use a top-level `exit`, and preserve the real exit status when filtering command output.\n- Do not repurpose `$HOME`, `$home`, or `$CODEX_HOME`; use task-specific variable names.",
 
 				"## Edit files safely\n\nUse `apply_patch` for local file edits. Do not create or edit files with `cat` or other shell write tricks. Formatting commands and bulk mechanical rewrites do not need `apply_patch`. Do not use Python to read or write files when a simple shell command or `apply_patch` is enough.",
 
@@ -160,9 +160,8 @@ export function createMcpServer(shells: ShellSessionManager, options: CreateMcpS
 	server.registerTool(
 		"skill_list",
 		{
-			title: "List workspace skills",
-			description:
-				"List reusable skills available in the configured workspace. Use when a task may have an existing specialized workflow. The catalog is read from disk each call, so new skills do not require an MCP schema change.",
+			title: "List reusable skills",
+			description: "List available reusable skills. Use when a task may have a specialized workflow.",
 			inputSchema: {},
 			outputSchema: {
 				skills: z.array(
@@ -199,18 +198,17 @@ export function createMcpServer(shells: ShellSessionManager, options: CreateMcpS
 	);
 
 	server.registerTool(
-		"skill_use",
+		"skill_load",
 		{
-			title: "Load a workspace skill",
-			description:
-				"Load the complete SKILL.md for one skill returned by skill_list. Read and follow these instructions before performing the workflow. The returned path identifies the local skill file so relative bundled assets can be read with shell tools when the skill requires them.",
+			title: "Load reusable skill",
+			description: "Load the instructions for a reusable skill. Use when a listed skill matches the current task.",
 			inputSchema: {
 				name: z.string().min(1).max(128).refine(isValidSkillName, "Invalid skill name.").describe("Skill name returned by skill_list."),
 			},
 			outputSchema: {
 				name: z.string(),
-				path: z.string(),
-				content: z.string(),
+				path: z.string().describe("Local SKILL.md path for resolving referenced assets and files."),
+				instructions: z.string().describe("Complete skill instructions."),
 			},
 			annotations: {
 				readOnlyHint: true,
@@ -223,12 +221,17 @@ export function createMcpServer(shells: ShellSessionManager, options: CreateMcpS
 		async ({ name }, extra) => {
 			try {
 				const loaded = await skills.read(name, extra.signal);
+				const structuredContent = {
+					name: loaded.name,
+					path: loaded.path,
+					instructions: loaded.content,
+				};
 				return {
-					structuredContent: loaded,
+					structuredContent,
 					content: [
 						{
 							type: "text" as const,
-							text: `Loaded workspace skill ${loaded.name} from ${loaded.path}.`,
+							text: `Loaded skill ${loaded.name}.`,
 						},
 					],
 				};

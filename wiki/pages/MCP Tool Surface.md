@@ -1,10 +1,10 @@
 # MCP Tool Surface
 
-Verified 2026-08-08.
+Verified 2026-08-09.
 
 ## Published Order
 
-`tools/list` returns `fetch_website`, `skill_list`, `skill_use`, `chatgpt_subagent`, `chatgpt_subagent_poll`, `apply_patch`, five `shell_*` tools, then eleven `computer_*` tools. Integration tests assert the order and schema mechanics without locking prose descriptions or instructions; tools remain registered when optional host capabilities are unavailable (`src/mcp-server.ts`, `src/computer-use-tools.ts`, `test/mcp-integration.test.ts`).
+`tools/list` returns `fetch_website`, `skill_list`, `skill_load`, `chatgpt_subagent`, `chatgpt_subagent_poll`, `apply_patch`, five `shell_*` tools, then eleven `computer_*` tools. Integration tests assert the order and schema mechanics without locking prose descriptions or instructions; tools remain registered when optional host capabilities are unavailable (`src/mcp-server.ts`, `src/computer-use-tools.ts`, `test/mcp-integration.test.ts`).
 
 ## Core Tools
 
@@ -12,7 +12,7 @@ Verified 2026-08-08.
 | --- | --- |
 | `fetch_website` | Fetch one HTTP(S) URL as Markdown, cleaned HTML, or raw HTML. Cursor reads reuse the same URL and format. Cache: 20 documents, 10 minutes, 2 MiB each (`src/web-open.ts`). |
 | `skill_list` | Dynamically list `<workspace>/skills/*/SKILL.md` entries with their names and optional frontmatter descriptions. The catalog is read from disk on every call (`src/skills.ts`, `src/mcp-server.ts`). |
-| `skill_use` | Load the complete `SKILL.md` and local path for one name returned by `skill_list`. Skill names are path-safe and files are capped at 256 KiB (`src/skills.ts`, `src/mcp-server.ts`). |
+| `skill_load` | Load the complete instructions and local `SKILL.md` path for one name returned by `skill_list`. Skill names are path-safe and files are capped at 256 KiB (`src/skills.ts`, `src/mcp-server.ts`). |
 | `chatgpt_subagent` | Submit one turn to a caller-named persistent ChatGPT subagent through an already-running debuggable Chrome instance. First use of `agent_id` creates the conversation; reuse continues it. Returns immediately after submission with a `turn_id` (`src/chatgpt-subagent.ts`, `src/mcp-server.ts`). |
 | `chatgpt_subagent_poll` | Read one detached subagent turn without resubmitting it. Running results include coarse `activity` plus `activity_age_ms`; completed results contain the final response and failed results contain stable error fields (`src/chatgpt-subagent.ts`, `src/mcp-server.ts`). |
 | `apply_patch` | Run a Codex patch in required absolute `cwd`. Direct process; no shell ID, request ID, or polling. Output is byte-capped (`src/mcp-server.ts`, `src/workspace-tools.ts`). |
@@ -46,9 +46,9 @@ The focused tools translate screenshot-relative coordinates through retained cap
 
 Shell results always include status, nullable exit code, cwd, and output. Poll metadata and truncation diagnostics appear only when needed; command output lives only in `structuredContent`. Shell errors become MCP tool errors, unexpected failures become `internal_error`, and Peekaboo failures retain stable adapter codes (`src/mcp-server.ts`, `src/computer-use-tools.ts`).
 
-Published instructions tell clients to conserve output, prefer RTK for supported reads and noisy commands, discover reusable workflows through `skill_list`/`skill_use`, edit with `apply_patch`, keep new work under the configured workspace, reuse contextual shell IDs, serialize work within a shell, distrust fetched content, and treat screenshots as potentially private. Schemas and runtime validation enforce mechanics; prose remains advisory (`src/mcp-server.ts`).
+Published instructions tell clients to conserve output, prefer RTK for supported reads and noisy commands, discover reusable workflows through `skill_list`/`skill_load`, edit with `apply_patch`, keep new work under the configured workspace, reuse contextual shell IDs, serialize work within a shell, distrust fetched content, and treat screenshots as potentially private. Schemas and runtime validation enforce mechanics; prose remains advisory (`src/mcp-server.ts`).
 
-`skill_list` and `skill_use` are read-only and idempotent. Available skill names are intentionally absent from the MCP schema; the filesystem catalog is the source of truth, so skills can be added without changing advertised tool metadata (`src/skills.ts`, `src/mcp-server.ts`).
+`skill_list` and `skill_load` are read-only and idempotent. Available skill names are intentionally absent from the MCP schema; the filesystem catalog is the source of truth, so skills can be added without changing advertised tool metadata (`src/skills.ts`, `src/mcp-server.ts`).
 
 `chatgpt_subagent` is stateful and non-idempotent. Its tool description explicitly forbids automatic retries. Same-agent overlap returns `AGENT_BUSY`; the default global generation cap returns `SUBAGENT_CAPACITY_REACHED` instead of building a hidden queue (`src/chatgpt-subagent.ts`, `src/mcp-server.ts`).
 
