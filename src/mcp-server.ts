@@ -5,6 +5,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { ChatGptSubagentError, type ChatGptSubagentService } from "./chatgpt-subagent.js";
 import { registerComputerUseTools } from "./computer-use-tools.js";
+import { FeedbackStore } from "./feedback.js";
 import { PeekabooClient } from "./peekaboo.js";
 import { ShellSessionError, type ShellSnapshot } from "./shell-session.js";
 import { DEFAULT_SHELL_ID, ShellSessionManager } from "./shell-session-manager.js";
@@ -46,6 +47,7 @@ const shellSnapshotSchema = {
 
 export interface CreateMcpServerOptions {
 	chatGptSubagents: ChatGptSubagentService;
+	feedbackStore: FeedbackStore;
 	applyPatchExecutable?: string;
 	peekaboo?: PeekabooClient;
 	webPageOpener?: WebPageOpener;
@@ -54,6 +56,7 @@ export interface CreateMcpServerOptions {
 export function createMcpServer(shells: ShellSessionManager, options: CreateMcpServerOptions): McpServer {
 	const workspace = JSON.stringify(shells.initialCwd);
 	const chatGptSubagents = options.chatGptSubagents;
+	const feedbackStore = options.feedbackStore;
 	const applyPatchExecutable = options.applyPatchExecutable ?? "apply_patch";
 	const peekaboo = options.peekaboo ?? new PeekabooClient();
 	const webPageOpener = options.webPageOpener ?? new WebPageOpener();
@@ -237,6 +240,54 @@ export function createMcpServer(shells: ShellSessionManager, options: CreateMcpS
 				};
 			} catch (error) {
 				return skillToolError(error);
+			}
+		}
+	);
+
+	server.registerTool(
+		"feedback_submit",
+		{
+			title: "Submit MCP feedback",
+			description: "Record actionable feedback about this MCP for later review. Use when you encounter a problem or identify a worthwhile improvement or new capability.",
+			inputSchema: {
+				type: z.enum(["problem", "improvement", "feature_request", "dream_feature"]),
+				summary: z.string().min(1).max(200),
+				details: z.string().min(1).max(8_000).describe("What happened, why it matters, and what would improve it."),
+				related_tool: z.string().min(1).max(128).optional().describe("Tool most directly related to this feedback, if any."),
+			},
+			outputSchema: {
+				id: z.string(),
+				created_at: z.string(),
+			},
+			annotations: {
+				readOnlyHint: false,
+				destructiveHint: false,
+				idempotentHint: false,
+				openWorldHint: false,
+			},
+			_meta: noAuthMeta,
+		},
+		async ({ type, summary, details, related_tool }, extra) => {
+			try {
+				const saved = await feedbackStore.submit(
+					{
+						type,
+						summary,
+						details,
+						...(related_tool ? { relatedTool: related_tool } : {}),
+					},
+					extra.signal,
+				);
+				const structuredContent = {
+					id: saved.id,
+					created_at: saved.created_at,
+				};
+				return {
+					structuredContent,
+					content: [{ type: "text" as const, text: `Feedback recorded as ${saved.id}.` }],
+				};
+			} catch (error) {
+				return feedbackToolError(error);
 			}
 		}
 	);
@@ -880,6 +931,13 @@ function webToolError(error: unknown) {
 	return {
 		isError: true,
 		content: [{ type: "text" as const, text }],
+	};
+}
+
+function feedbackToolError(error: unknown) {
+	return {
+		isError: true,
+		content: [{ type: "text" as const, text: `feedback_failed: ${error instanceof Error ? error.message : String(error)}` }],
 	};
 }
 

@@ -15,6 +15,7 @@ import {
   extractResultCharacterCounts,
   McpAuditLogger,
 } from "./mcp-audit-log.js";
+import { FeedbackStore } from "./feedback.js";
 import { PeekabooClient } from "./peekaboo.js";
 import { PersistentShellSession } from "./shell-session.js";
 import { ShellSessionManager } from "./shell-session-manager.js";
@@ -45,6 +46,7 @@ export interface StartMcpServerOptions {
   peekaboo?: PeekabooClient;
   chatGptSubagents?: ChatGptSubagentService;
   auditLogger?: McpAuditLogger;
+  feedbackStore?: FeedbackStore;
   applyPatchExecutable?: string;
   webPageOpener?: WebPageOpener;
 }
@@ -63,6 +65,7 @@ export async function startMcpHttpServer(
     options.chatGptSubagents ??
     new ChatGptSubagentModule({ cdpEndpoint: DEFAULT_CHATGPT_CDP_ENDPOINT });
   const auditLogger = options.auditLogger;
+  const feedbackStore = options.feedbackStore ?? new FeedbackStore();
   const applyPatchExecutable = options.applyPatchExecutable ?? "apply_patch";
   const webPageOpener = options.webPageOpener ?? new WebPageOpener();
   const inFlightRequests = new Set<InFlightMcpRequest>();
@@ -100,6 +103,7 @@ export async function startMcpHttpServer(
 
     const mcpServer = createMcpServer(shells, {
       chatGptSubagents,
+      feedbackStore,
       applyPatchExecutable,
       peekaboo,
       webPageOpener,

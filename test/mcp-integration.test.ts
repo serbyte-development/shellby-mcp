@@ -11,6 +11,7 @@ import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/
 import { LATEST_PROTOCOL_VERSION } from "@modelcontextprotocol/sdk/types.js";
 
 import type { ChatGptSubagentService } from "../src/chatgpt-subagent.js";
+import { FeedbackStore } from "../src/feedback.js";
 import { startMcpHttpServer } from "../src/http-server.js";
 import { McpAuditLogger } from "../src/mcp-audit-log.js";
 import { PeekabooClient } from "../src/peekaboo.js";
@@ -30,6 +31,7 @@ test("serves shell tools through Streamable HTTP and retains state across MCP se
 			"fetch_website",
 			"skill_list",
 			"skill_load",
+			"feedback_submit",
 			"chatgpt_subagent",
 			"chatgpt_subagent_poll",
 			"apply_patch",
@@ -128,6 +130,17 @@ test("serves shell tools through Streamable HTTP and retains state across MCP se
 	};
 	assert.deepEqual(Object.keys(skillLoadInputSchema.properties ?? {}), ["name"]);
 	assert.deepEqual(skillLoadInputSchema.required, ["name"]);
+	const feedbackTool = tools.tools.find((tool) => tool.name === "feedback_submit");
+	assert.equal(feedbackTool?.annotations?.readOnlyHint, false);
+	assert.equal(feedbackTool?.annotations?.destructiveHint, false);
+	assert.equal(feedbackTool?.annotations?.idempotentHint, false);
+	assert.equal(feedbackTool?.annotations?.openWorldHint, false);
+	const feedbackInputSchema = feedbackTool?.inputSchema as {
+		properties?: Record<string, Record<string, unknown>>;
+		required?: string[];
+	};
+	assert.deepEqual(feedbackInputSchema.properties?.type?.enum, ["problem", "improvement", "feature_request", "dream_feature"]);
+	assert.deepEqual(feedbackInputSchema.required?.sort(), ["details", "summary", "type"]);
 	const subagentTool = tools.tools.find((tool) => tool.name === "chatgpt_subagent");
 	assert.equal(subagentTool?.annotations?.readOnlyHint, false);
 	assert.equal(subagentTool?.annotations?.destructiveHint, false);
@@ -218,6 +231,49 @@ test("lists and loads dynamic workspace skills through MCP", { timeout: 10_000 }
 		name: "create-wiki",
 		path: join(skillDirectory, "SKILL.md"),
 		instructions: content,
+	});
+});
+
+test("records agent feedback through MCP", { timeout: 10_000 }, async (t) => {
+	const workspace = await mkdtemp(join(tmpdir(), "mcp-feedback-integration-"));
+	t.after(() => rm(workspace, { recursive: true, force: true }));
+	const feedbackPath = join(workspace, "agent-feedback.jsonl");
+	const feedbackStore = new FeedbackStore({
+		path: feedbackPath,
+		now: () => new Date("2026-08-09T22:00:00.000Z"),
+		createId: () => "fb_test",
+	});
+
+	const running = await startMcpHttpServer({
+		port: 0,
+		shell: new PersistentShellSession({ cwd: workspace }),
+		feedbackStore,
+	});
+	t.after(() => running.close());
+	const connected = await connectClient(running.url, "feedback-integration-client");
+	t.after(() => connected.client.close());
+
+	const result = await connected.client.callTool({
+		name: "feedback_submit",
+		arguments: {
+			type: "improvement",
+			summary: "Make polling clearer",
+			details: "The agent had trouble distinguishing progress from a stalled turn.",
+			related_tool: "chatgpt_subagent_poll",
+		},
+	});
+
+	assert.deepEqual(result.structuredContent, {
+		id: "fb_test",
+		created_at: "2026-08-09T22:00:00.000Z",
+	});
+	assert.deepEqual(JSON.parse((await readFile(feedbackPath, "utf8")).trim()), {
+		id: "fb_test",
+		created_at: "2026-08-09T22:00:00.000Z",
+		type: "improvement",
+		summary: "Make polling clearer",
+		details: "The agent had trouble distinguishing progress from a stalled turn.",
+		related_tool: "chatgpt_subagent_poll",
 	});
 });
 

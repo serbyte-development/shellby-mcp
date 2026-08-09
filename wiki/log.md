@@ -338,3 +338,14 @@
 - Renamed `skill_use` to `skill_load` so the action matches what the tool actually does.
 - Reduced skill tool descriptions to routing information and removed filesystem/schema-maintenance details from model-facing prose.
 - Renamed the loaded `content` output field to `instructions` and kept `path` only to resolve skill-referenced local assets and files.
+
+## [2026-08-09] implement | add agent feedback inbox
+
+- Added `feedback_submit` for agents to record MCP problems, improvements, feature requests, and dream features they notice during normal tool use.
+- Added a shared `FeedbackStore` that generates IDs and timestamps and serializes append-only JSONL writes to `feedback/agent-feedback.jsonl`.
+- Added `feedback/README.md` to define the raw inbox and keep untriaged feedback separate from maintained wiki knowledge.
+- Added MCP integration coverage for the tool schema and persisted record; verified the full 90-test suite and TypeScript type-check.
+
+## [2026-08-09] trim | remove feedback folder README
+
+- Removed `feedback/README.md`; the feedback inbox contract is already documented in the maintained wiki, so a second folder-level explanation was redundant.
