@@ -465,3 +465,19 @@
 
 - Added Better Comments tags to YAML audit headers: `^` normal, `?` responses at least 8 KiB, `~` calls at least 5 seconds, and `!` HTTP/connection failures.
 - Count response bytes in-flight without retaining response bodies and show the size only when the large-response threshold is crossed.
+
+## [2026-08-10] extend | print public MCP URL
+
+- Added `npm run print-url` to print the ChatGPT-ready `/mcp` URL from `NGROK_URL` or ngrok's active local tunnel metadata.
+- Made `pm2:start` and `pm2:restart` print the URL automatically and made `npm start` perform a non-fatal lookup before starting the local server.
+- Updated `pm2:restart` to clear the current `agent-commands.yaml` audit file instead of the obsolete `.log` path.
+
+## [2026-08-10] simplify | shorten subagent turn ids and expire idle agents
+
+- Replaced random UUID turn IDs with per-agent IDs such as `agent_id_turn_1` and `agent_id_turn_2`.
+- Added a 30-minute idle sweeper that closes owned ChatGPT tabs and removes local agent/turn state without deleting ChatGPT conversations.
+
+## [2026-08-10] refine | prioritize coding tools in MCP order
+
+- Reordered `tools/list` around the primary coding workflow: `shell_run`, `shell_poll`, `apply_patch`, shell management, subagents, web, skills, Computer Use, then feedback.
+- Split shell registration into execution and management groups only so `apply_patch` can sit between polling and shell reset without changing tool behavior.

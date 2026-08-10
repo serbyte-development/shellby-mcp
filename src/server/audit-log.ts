@@ -2,6 +2,7 @@ import { appendFileSync } from "node:fs"
 
 const MAX_INLINE_ARGUMENT_CHARS = 600
 const MAX_SHELL_COMMAND_CHARS = 2_000
+const MAX_FAILED_PATCH_CHARS = 32_000
 const LARGE_RESPONSE_BYTES = 8 * 1024
 const SLOW_CALL_MS = 5_000
 
@@ -14,7 +15,8 @@ interface JsonRpcToolCall {
 }
 
 export interface McpAuditCall {
-  finish(input: { httpStatus: number; state: "finished" | "closed"; responseBytes: number }): void
+  readonly needsResponseBody: boolean
+  finish(input: { httpStatus: number; state: "finished" | "closed"; responseBytes: number; responseBody?: string }): void
 }
 
 export class McpAuditLogger {
@@ -36,7 +38,8 @@ export class McpAuditLogger {
 
       return [
         {
-          finish: ({ httpStatus, state, responseBytes }) => {
+          needsResponseBody: parsed.name === "apply_patch",
+          finish: ({ httpStatus, state, responseBytes, responseBody }) => {
             if (finished) return
             finished = true
             this.append(
@@ -48,6 +51,7 @@ export class McpAuditLogger {
                 httpStatus,
                 state,
                 responseBytes,
+                toolFailed: responseIndicatesToolFailure(responseBody),
               })
             )
           },
@@ -81,18 +85,19 @@ function formatEntry(input: {
   httpStatus: number
   state: "finished" | "closed"
   responseBytes: number
+  toolFailed: boolean
 }): string {
   const abnormal = input.httpStatus >= 400 || input.state !== "finished" ? ` - HTTP ${input.httpStatus} ${input.state}` : ""
   const largeResponse = input.responseBytes >= LARGE_RESPONSE_BYTES ? ` - ${formatBytes(input.responseBytes)}` : ""
   const tag = auditTag(input)
   const tagPrefix = tag ? `${tag} ` : ""
   const heading = `--- # ${tagPrefix}${formatAuditTime(input.time)} - ${input.toolName} - ${input.durationMs}ms${largeResponse}${abnormal}`
-  const details = formatArguments(input.toolName, input.argumentsValue)
+  const details = formatArguments(input.toolName, input.argumentsValue, input.toolFailed)
   return details ? `${heading}\n${details}\n\n` : `${heading}\n\n`
 }
 
-function auditTag(input: { durationMs: number; httpStatus: number; state: "finished" | "closed"; responseBytes: number }): string {
-  if (input.httpStatus >= 400 || input.state !== "finished") return "!"
+function auditTag(input: { durationMs: number; httpStatus: number; state: "finished" | "closed"; responseBytes: number; toolFailed: boolean }): string {
+  if (input.toolFailed || input.httpStatus >= 400 || input.state !== "finished") return "!"
   if (input.durationMs >= SLOW_CALL_MS) return "~"
   if (input.responseBytes >= LARGE_RESPONSE_BYTES) return "?"
   return ""
@@ -104,13 +109,15 @@ function formatBytes(bytes: number): string {
   return `${kilobytes >= 10 ? Math.round(kilobytes) : kilobytes.toFixed(1)}KB`
 }
 
-function formatArguments(toolName: string, value: unknown): string {
+function formatArguments(toolName: string, value: unknown, toolFailed: boolean): string {
   const argumentsRecord = asRecord(value)
 
   if (toolName === "apply_patch" && argumentsRecord) {
     const patch = typeof argumentsRecord.patch === "string" ? argumentsRecord.patch : ""
     const cwd = typeof argumentsRecord.cwd === "string" ? argumentsRecord.cwd : ""
-    return `cwd: ${yamlString(cwd)}\npatch_chars: ${characterCount(patch)}`
+    const summary = `cwd: ${yamlString(cwd)}\npatch_chars: ${characterCount(patch)}`
+    if (!toolFailed) return summary
+    return `${summary}\npatch: |-\n${indentBlock(truncate(patch, MAX_FAILED_PATCH_CHARS))}`
   }
 
   if (toolName === "shell_run" && argumentsRecord) {
@@ -127,6 +134,21 @@ function formatArguments(toolName: string, value: unknown): string {
     return `args: ${serialized}`
   }
   return `args: ${yamlString(truncate(serialized, MAX_INLINE_ARGUMENT_CHARS))}`
+}
+
+function responseIndicatesToolFailure(responseBody: string | undefined): boolean {
+  if (!responseBody) return false
+  try {
+    const payload = JSON.parse(responseBody) as unknown
+    const responses = Array.isArray(payload) ? payload : [payload]
+    return responses.some((response) => {
+      if (!response || typeof response !== "object" || Array.isArray(response)) return false
+      const result = (response as { result?: unknown }).result
+      return !!result && typeof result === "object" && !Array.isArray(result) && (result as { isError?: unknown }).isError === true
+    })
+  } catch {
+    return responseBody.includes('"isError":true')
+  }
 }
 
 function indentBlock(content: string): string {

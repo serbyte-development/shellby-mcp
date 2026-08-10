@@ -25,7 +25,7 @@ Verified 2026-08-10.
 | `MCP_MAX_SHELLS`               | `8`                           | Maximum named shells including `default`               |
 | `MCP_SHELL_IDLE_TTL_MS`        | `1800000`                     | Idle lifetime for named shells; `0` disables cleanup   |
 
-`MCP_CWD` expands `~`, resolves relative values from startup cwd, and becomes the shell/workspace/instruction root. Its `AGENTS.md` is the coding-instructions path advertised to MCP clients. Numeric values are range-checked. Production startup writes completed MCP `tools/call` activity to the gitignored repository-local `agent-commands.yaml`. Each call is one compact YAML document. Normal calls have no Better Comments tag; noteworthy calls use `?` for responses at least 8 KiB, `~` for calls at least 5 seconds, and `!` for HTTP/connection failures, in that priority order. Large response size is shown in the header without retaining the response body. `shell_run` uses a block scalar capped at 2,000 characters, ordinary arguments are capped at 600 characters, and `apply_patch` records only cwd and patch size rather than the patch body (`src/config.ts`, `src/index.ts`, `src/server/audit-log.ts`, `src/server/http-server.ts`).
+`MCP_CWD` expands `~`, resolves relative values from startup cwd, and becomes the shell/workspace/instruction root. Its `AGENTS.md` is the coding-instructions path advertised to MCP clients. Numeric values are range-checked. Production startup writes completed MCP `tools/call` activity to the gitignored repository-local `agent-commands.yaml`. Each call is one compact YAML document. Normal calls have no Better Comments tag; noteworthy calls use `?` for responses at least 8 KiB, `~` for calls at least 5 seconds, and `!` for MCP tool/HTTP/connection failures, in that priority order. Large response size is shown in the header without retaining normal response bodies. `shell_run` uses a block scalar capped at 2,000 characters, ordinary arguments are capped at 600 characters, and successful `apply_patch` calls record only cwd and patch size. Failed `apply_patch` calls also retain the patch body, capped at 32,000 characters, to make debugging failed edits practical (`src/config.ts`, `src/index.ts`, `src/server/audit-log.ts`, `src/server/http-server.ts`).
 
 ## Startup and Shutdown
 
@@ -45,9 +45,10 @@ Screen Recording enables capture; Accessibility and Event Synthesizing enable ac
 
 ## Package Scripts
 
-- Development: `dev`, `build`, `start`, `inspect`.
+- Development: `dev`, `build`, `start`, `inspect`, `print-url`.
 - PM2: `pm2:start`, `pm2:restart`, `pm2:status`, `pm2:logs`, `pm2:stop`.
 - Tunnel: `tunnel` exposes port 3333 through the checked-in ngrok policy with the ngrok agent's local HTTP inspector disabled. ngrok assigns the public URL unless `NGROK_URL` supplies the caller's own fixed domain; the PM2 ngrok app follows the same rule (`package.json`, `ecosystem.config.cjs`).
+- URL discovery: `print-url` prints `https://<domain>/mcp`, using `NGROK_URL` when configured or ngrok's local tunnel API otherwise. `pm2:start` and `pm2:restart` run it after PM2, while `start` performs a non-fatal lookup before launching the local server (`package.json`, `scripts/print-url.mjs`).
 - Authentication: `auth:reset` performs the local warning/confirmation flow and clears the bound subject. Reset does not generate or rotate an ngrok URL (`package.json`, `src/auth/reset.ts`).
 - Quality: `test`, `type-check`, `lint`, `lint:fix`, and `format` cover automated tests, TypeScript checking, ESLint, and Prettier (`package.json`, `eslint.config.js`, `.prettierrc`).
 

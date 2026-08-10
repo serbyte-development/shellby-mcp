@@ -228,6 +228,57 @@ test("dispose closes managed agent pages but leaves user-repurposed tabs alone",
   assert.deepEqual(module.listAgents(), [])
 })
 
+test("expires idle agent tabs and local turn state", async () => {
+  const module = new ChatGptSubagentModule({
+    cdpEndpoint: "http://127.0.0.1:1",
+  })
+  let closes = 0
+  let trackerDisposals = 0
+  const state = {
+    agentId: "idle-agent",
+    page: {
+      isClosed: () => false,
+      url: () => "https://chatgpt.com/c/conversation-1",
+      close: async () => {
+        closes += 1
+      },
+    },
+    tracker: {
+      dispose() {
+        trackerDisposals += 1
+      },
+    },
+    hasSubmittedTurn: true,
+    conversationId: "conversation-1",
+    conversationUrl: "https://chatgpt.com/c/conversation-1",
+    lastUsedAt: 1_000,
+    turnCount: 2,
+  }
+  const turn = {
+    turnId: "idle-agent_turn_2",
+    agentId: state.agentId,
+    status: "completed" as const,
+    activity: "Generating response" as const,
+    lastActivityAt: 1_000,
+    completion: Promise.resolve(),
+  }
+  const internals = module as unknown as {
+    agents: Map<string, typeof state>
+    turns: Map<string, typeof turn>
+    cleanupIdleAgents(now: number): Promise<void>
+  }
+  internals.agents.set(state.agentId, state)
+  internals.turns.set(turn.turnId, turn)
+
+  await internals.cleanupIdleAgents(1_000 + 30 * 60_000)
+
+  assert.equal(closes, 1)
+  assert.equal(trackerDisposals, 1)
+  assert.deepEqual(module.listAgents(), [])
+  assert.equal(internals.turns.size, 0)
+  await module.dispose()
+})
+
 test("extractConversationNodes normalizes ChatGPT mapping nodes", () => {
   const payload = {
     mapping: {

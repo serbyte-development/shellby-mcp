@@ -1,8 +1,7 @@
-import { randomUUID } from "node:crypto"
-
 import { chromium, type Browser, type BrowserContext, type Locator, type Page, type Response } from "playwright-core"
 
 export const DEFAULT_CHATGPT_CDP_ENDPOINT = "http://127.0.0.1:9222"
+const DEFAULT_AGENT_IDLE_TTL_MS = 30 * 60_000
 
 const CAVEMAN_PROMPT =
   "Respond terse like smart caveman — drop articles, filler, pleasantries. Fragments OK. Technical terms exact. Code unchanged. Pattern: [thing] [action] [reason]. [next step]."
@@ -94,6 +93,8 @@ interface BrowserAgentState {
   targetId?: string
   lastReturnedMessageId?: string
   lastCompletedAt?: number
+  lastUsedAt: number
+  turnCount: number
 }
 
 interface BrowserTurnState {
@@ -223,6 +224,7 @@ export class ChatGptSubagentModule {
   private browser?: Browser
   private context?: BrowserContext
   private connectPromise?: Promise<void>
+  private readonly cleanupTimer: NodeJS.Timeout
 
   constructor(private readonly options: ChatGptSubagentOptions) {
     this.connectTimeoutMs = options.connectTimeoutMs ?? 3_000
@@ -233,6 +235,8 @@ export class ChatGptSubagentModule {
     this.timeoutMs = options.timeoutMs ?? 120_000
     this.pollIntervalMs = options.pollIntervalMs ?? 250
     this.responseStableMs = options.responseStableMs ?? 750
+    this.cleanupTimer = setInterval(() => void this.cleanupIdleAgents(), 60_000)
+    this.cleanupTimer.unref()
   }
 
   async connect(signal?: AbortSignal): Promise<void> {
@@ -284,7 +288,9 @@ export class ChatGptSubagentModule {
       assertPreSubmitLocation(active)
       await submitComposer(active.page, composer, signal)
       active.hasSubmittedTurn = true
-      const turnId = `turn_${randomUUID()}`
+      active.lastUsedAt = Date.now()
+      active.turnCount += 1
+      const turnId = `${active.agentId}_turn_${active.turnCount}`
       const turn: BrowserTurnState = {
         turnId,
         agentId: active.agentId,
@@ -351,6 +357,7 @@ export class ChatGptSubagentModule {
       await this.connect()
       const state = this.getExistingAgent(agentId)
       const active = await this.ensureActivePage(state)
+      active.lastUsedAt = Date.now()
       if (!active.conversationId) return readVisibleConversation(active.page)
 
       const payload = await loadConversationPayload(active.page, active.conversationId, this.timeoutMs)
@@ -369,12 +376,14 @@ export class ChatGptSubagentModule {
       state.tracker.dispose()
       if (!state.page.isClosed()) await state.page.close()
       this.agents.delete(agentId)
+      this.removeTurnsForAgent(agentId)
     } finally {
       this.endAgentOperation(agentId, false)
     }
   }
 
   async dispose(): Promise<void> {
+    clearInterval(this.cleanupTimer)
     const states = [...this.agents.values()]
     const ownedPages: Page[] = []
     for (const state of states) {
@@ -449,6 +458,8 @@ export class ChatGptSubagentModule {
       page,
       tracker,
       hasSubmittedTurn: false,
+      lastUsedAt: Date.now(),
+      turnCount: 0,
     }
 
     try {
@@ -506,6 +517,7 @@ export class ChatGptSubagentModule {
       state.page = page
       state.tracker = tracker
       state.targetId = await getPageTargetId(context, page)
+      state.lastUsedAt = Date.now()
       return state
     } catch (error) {
       tracker.dispose()
@@ -588,12 +600,14 @@ export class ChatGptSubagentModule {
       captureOrValidateConversationLocation(state)
       state.lastReturnedMessageId = answer.messageId
       state.lastCompletedAt = Date.now()
+      state.lastUsedAt = state.lastCompletedAt
       turn.status = "completed"
       turn.messageId = answer.messageId
       turn.response = answer.text
       turn.conversationId = state.conversationId
       turn.conversationUrl = state.conversationUrl ?? state.page.url()
     } catch (error) {
+      state.lastUsedAt = Date.now()
       if (error instanceof ChatGptSubagentError && error.code === "AGENT_TARGET_LOST" && !state.conversationUrl) {
         this.discardUnrecoverableAgent(state)
       }
@@ -677,6 +691,29 @@ export class ChatGptSubagentModule {
     state.tracker.dispose()
     if (this.agents.get(state.agentId) === state) {
       this.agents.delete(state.agentId)
+    }
+  }
+
+  private async cleanupIdleAgents(now = Date.now()): Promise<void> {
+    const staleStates = [...this.agents.values()].filter(
+      (state) => !this.activeAgentIds.has(state.agentId) && now - state.lastUsedAt >= DEFAULT_AGENT_IDLE_TTL_MS
+    )
+
+    for (const state of staleStates) {
+      state.tracker.dispose()
+      this.agents.delete(state.agentId)
+      this.removeTurnsForAgent(state.agentId)
+
+      if (!state.page.isClosed() && isExpectedAgentPage(state)) {
+        await state.page.close().catch(() => undefined)
+      }
+    }
+  }
+
+  private removeTurnsForAgent(agentId: string): void {
+    this.activeTurnsByAgent.delete(agentId)
+    for (const [turnId, turn] of this.turns) {
+      if (turn.agentId === agentId) this.turns.delete(turnId)
     }
   }
 }

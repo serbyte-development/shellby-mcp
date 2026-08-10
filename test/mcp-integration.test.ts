@@ -25,18 +25,17 @@ test("serves shell tools through Streamable HTTP and retains state across MCP se
   assert.deepEqual(
     tools.tools.map((tool) => tool.name),
     [
-      "fetch_website",
-      "skill_list",
-      "skill_load",
-      "feedback_submit",
-      "chatgpt_subagent",
-      "chatgpt_subagent_poll",
-      "apply_patch",
       "shell_run",
       "shell_poll",
+      "apply_patch",
       "shell_reset",
       "shell_list",
       "shell_close",
+      "chatgpt_subagent",
+      "chatgpt_subagent_poll",
+      "fetch_website",
+      "skill_list",
+      "skill_load",
       "computer_list",
       "computer_observe",
       "computer_inspect",
@@ -48,6 +47,7 @@ test("serves shell tools through Streamable HTTP and retains state across MCP se
       "computer_drag",
       "computer_app",
       "computer_window",
+      "feedback_submit",
     ]
   )
   const runTool = tools.tools.find((tool) => tool.name === "shell_run")
@@ -942,6 +942,7 @@ test("applies patches through the native MCP tool", { timeout: 20_000 }, async (
   const directory = await realpath(await mkdtemp(join(tmpdir(), "mcp-native-patch-")))
   const project = join(directory, "project with ' quote")
   const bin = join(directory, "bin")
+  const auditPath = join(directory, "agent-commands.yaml")
   await mkdir(project, { recursive: true })
   await mkdir(bin, { recursive: true })
   const executable = join(bin, "apply_patch")
@@ -956,6 +957,7 @@ test("applies patches through the native MCP tool", { timeout: 20_000 }, async (
     port: 0,
     shell,
     applyPatchExecutable: executable,
+    auditLogger: new McpAuditLogger(auditPath),
   })
   t.after(async () => {
     await running.close()
@@ -978,6 +980,7 @@ test("applies patches through the native MCP tool", { timeout: 20_000 }, async (
   })
   assert.doesNotMatch(JSON.stringify(result.content), /literal \$\(\)/)
   assert.match(JSON.stringify(result.content), /apply_patch completed, exit=0/)
+  assert.doesNotMatch(await readFile(auditPath, "utf8"), /Begin Patch|literal \$\(\)/)
 
   const noisyPatch = ["*** Begin Patch", "*** Add File: noisy.txt", `+${"x".repeat(400)}`, "*** End Patch"].join("\n")
   const noisyResult = await connected.client.callTool({
@@ -1006,6 +1009,10 @@ test("applies patches through the native MCP tool", { timeout: 20_000 }, async (
   assert.equal(Buffer.byteLength(failedContent.output, "utf8"), 4 * 1024)
   assert.equal(failedContent.output_truncated, true)
   assert.equal(failedContent.omitted_output_bytes, 1)
+  const failedAudit = await readFile(auditPath, "utf8")
+  assert.match(failedAudit, /--- # ! \d{2}:\d{2}:\d{2} - apply_patch - \d+ms/)
+  assert.match(failedAudit, /patch: \|-\n {2}\*\*\* Begin Patch/)
+  assert.match(failedAudit, / {2}FAIL_PATCH/)
 
   const invalid = await connected.client.callTool({
     name: "apply_patch",

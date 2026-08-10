@@ -4,7 +4,7 @@ Verified 2026-08-10.
 
 ## Published Order
 
-`tools/list` returns 23 tools: `fetch_website`, `skill_list`, `skill_load`, `feedback_submit`, `chatgpt_subagent`, `chatgpt_subagent_poll`, `apply_patch`, five `shell_*` tools, then eleven `computer_*` tools. `src/server/mcp-server.ts` preserves that registration order while each capability under `src/tools/` owns its Standard Schema-compatible Zod contract and handler. Every tool reuses `MCP_CONFIG.toolMeta` from the central static configuration. Integration tests assert the order and schema mechanics without locking prose descriptions or instructions; tools remain registered when optional host capabilities are unavailable (`src/config.ts`, `src/server/mcp-server.ts`, `src/tools/`, `test/mcp-integration.test.ts`).
+`tools/list` returns 23 tools in workflow order: `shell_run`, `shell_poll`, `apply_patch`, `shell_reset`, `shell_list`, `shell_close`, `chatgpt_subagent`, `chatgpt_subagent_poll`, `fetch_website`, `skill_list`, `skill_load`, eleven `computer_*` tools, then `feedback_submit`. `src/server/mcp-server.ts` preserves that registration order while each capability under `src/tools/` owns its Standard Schema-compatible Zod contract and handler. Every tool reuses `MCP_CONFIG.toolMeta` from the central static configuration. Integration tests assert the order and schema mechanics without locking prose descriptions or instructions; tools remain registered when optional host capabilities are unavailable (`src/config.ts`, `src/server/mcp-server.ts`, `src/tools/`, `test/mcp-integration.test.ts`).
 
 ## Core Tools
 

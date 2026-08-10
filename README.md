@@ -125,6 +125,14 @@ npm run tunnel
 
 `NGROK_URL` is optional. The repository contains no maintainer-specific public MCP URL.
 
+Print the MCP URL at any time with:
+
+```bash
+npm run print-url
+```
+
+When `NGROK_URL` is unset, this reads the active HTTPS tunnel from ngrok's local API and appends `/mcp`.
+
 Configure ChatGPT to use the resulting HTTPS `/mcp` endpoint as a no-auth MCP endpoint. This server does not use MCP OAuth; remote authorization is enforced by the ngrok ChatGPT source check plus the bound OpenAI subject.
 
 The first trusted remote `tools/call` binds that Shelly installation to the calling ChatGPT subject. Later remote tool calls must carry the same subject. Discovery does not bind ownership.
@@ -136,6 +144,8 @@ Build and start both the MCP server and ngrok:
 ```bash
 npm run pm2:start
 ```
+
+`pm2:start` and `pm2:restart` print the resulting MCP URL after ngrok is available. `npm start` also prints it when a tunnel is already running or `NGROK_URL` is set.
 
 For a fixed ngrok domain:
 
@@ -158,6 +168,8 @@ npm run pm2:stop
 ## Browser ChatGPT subagents
 
 `chatgpt_subagent` and `chatgpt_subagent_poll` use an already-running authenticated Chrome instance exposed through the Chrome DevTools Protocol.
+
+Returned turn IDs are readable and sequential per local agent, for example `seo-audit_turn_1` and `seo-audit_turn_2`. Idle subagent state expires after 30 minutes: the managed browser tab and local turn records are removed, while the ChatGPT conversation remains in the user's ChatGPT history.
 
 Default endpoint:
 

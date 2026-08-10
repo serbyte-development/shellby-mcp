@@ -40,7 +40,7 @@ const shellSnapshotSchema = z.object({
   dropped_output_bytes: z.int().positive().optional().describe("Present when UTF-8 command-output bytes were discarded by the per-command capture ceiling."),
 })
 
-export function registerShellTools(server: McpServer, shells: ShellSessionManager, workspace: string): void {
+export function registerShellExecutionTools(server: McpServer, shells: ShellSessionManager, workspace: string): void {
   const workspaceDescription = JSON.stringify(workspace)
   const maxOutputBytesInput = z
     .int()
@@ -140,7 +140,9 @@ export function registerShellTools(server: McpServer, shells: ShellSessionManage
       }
     }
   )
+}
 
+export function registerShellManagementTools(server: McpServer, shells: ShellSessionManager): void {
   server.registerTool(
     "shell_reset",
     {

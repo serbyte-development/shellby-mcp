@@ -9,9 +9,10 @@
   "scripts": {
     "build": "rm -rf dist && tsc -p tsconfig.json",
     "dev": "tsx watch src/index.ts",
-    "start": "node dist/index.js",
-    "pm2:start": "npm run build && pm2 start ecosystem.config.cjs",
-    "pm2:restart": "rm -f agent-commands.log && npm run build && pm2 reload ecosystem.config.cjs --update-env",
+    "start": "npm run print-url -- --optional && node dist/index.js",
+    "print-url": "node scripts/print-url.mjs",
+    "pm2:start": "npm run build && pm2 start ecosystem.config.cjs && npm run print-url",
+    "pm2:restart": "rm -f agent-commands.yaml && npm run build && pm2 reload ecosystem.config.cjs --update-env && npm run print-url",
     "pm2:status": "pm2 status",
     "pm2:logs": "pm2 logs",
     "pm2:stop": "pm2 stop ecosystem.config.cjs",

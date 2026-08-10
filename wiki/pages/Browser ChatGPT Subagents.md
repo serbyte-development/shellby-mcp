@@ -4,7 +4,7 @@ Verified 2026-08-10.
 
 ## Current State
 
-The reusable browser module and first-class MCP wrapper now exist. `ChatGptSubagentModule` connects to an already-debuggable Chrome instance through Playwright-over-CDP. `chatgpt_subagent` submits a caller-named agent turn and returns immediately with a `turn_id`; `chatgpt_subagent_poll` retrieves running, completed, or failed state without resubmitting the prompt. Running polls include a coarse activity heartbeat so a parent agent can distinguish a long task that is still making progress from one that has gone quiet (`src/tools/subagent/chatgpt-subagent.ts`, `src/tools/subagent/subagent-tools.ts`).
+The reusable browser module and first-class MCP wrapper now exist. `ChatGptSubagentModule` connects to an already-debuggable Chrome instance through Playwright-over-CDP. `chatgpt_subagent` submits a caller-named agent turn and returns immediately with a readable `<agent_id>_turn_N` `turn_id`; `chatgpt_subagent_poll` retrieves running, completed, or failed state without resubmitting the prompt. Running polls include a coarse activity heartbeat so a parent agent can distinguish a long task that is still making progress from one that has gone quiet (`src/tools/subagent/chatgpt-subagent.ts`, `src/tools/subagent/subagent-tools.ts`).
 
 The module is deliberately attach-only. It does not launch Chrome, select a Chrome profile, copy profile data, or attempt to repair a missing browser process. `connect()` expects the configured CDP endpoint to already expose the intended authenticated Chrome instance and fails quickly with an explicit error when that dependency is unavailable (`src/tools/subagent/chatgpt-subagent.ts`).
 
@@ -38,16 +38,18 @@ The first use of a caller-chosen `agent_id` creates one Chrome page and conversa
 
 ```ts
 type BrowserAgentState = {
-  agentId: string;
-  pageId: string;
-  hasSubmittedTurn: boolean;
-  conversationId?: string;
-  conversationUrl?: string;
-  lastReturnedMessageId?: string;
-};
+  agentId: string
+  pageId: string
+  hasSubmittedTurn: boolean
+  conversationId?: string
+  conversationUrl?: string
+  lastReturnedMessageId?: string
+}
 ```
 
-`ChatGptSubagentModule` maintains `agentId -> BrowserAgentState` plus a process-local `turnId -> BrowserTurnState` registry. After Send succeeds, response tracking is detached from the original MCP request and owns the agent-generation lock until the browser turn completes or fails. Same-agent overlap is rejected with `AGENT_BUSY` instead of queued, and total simultaneous generations are capped at two by default. If a managed page is closed or navigated away while idle, the next turn performs at most one recovery by opening the stored conversation URL in a replacement page and rebinding the agent; a user-navigated old tab is left alone (`src/tools/subagent/chatgpt-subagent.ts`).
+`ChatGptSubagentModule` maintains `agentId -> BrowserAgentState` plus a process-local `turnId -> BrowserTurnState` registry. Turn IDs increment per local agent as `<agent_id>_turn_1`, `<agent_id>_turn_2`, and so on. After Send succeeds, response tracking is detached from the original MCP request and owns the agent-generation lock until the browser turn completes or fails. Same-agent overlap is rejected with `AGENT_BUSY` instead of queued, and total simultaneous generations are capped at two by default. If a managed page is closed or navigated away while idle, the next turn performs at most one recovery by opening the stored conversation URL in a replacement page and rebinding the agent; a user-navigated old tab is left alone (`src/tools/subagent/chatgpt-subagent.ts`).
+
+Idle local agent state expires after 30 minutes. The sweeper skips active operations, closes a still-owned ChatGPT tab, detaches its tracker, and removes that agent's local turn records. It does not delete the ChatGPT conversation from the user's account. Reusing the same `agent_id` after expiry creates a new local agent and new ChatGPT conversation, with its turn counter starting again at `1` (`src/tools/subagent/chatgpt-subagent.ts`).
 
 Successful turns record completion time. A continuation arriving too quickly performs one local await so at least 1.5 seconds separates the previous completed response from the next submission. This delay does not poll or call ChatGPT (`src/tools/subagent/chatgpt-subagent.ts`).
 

@@ -10,7 +10,7 @@ export function registerSubagentTools(server: McpServer, chatGptSubagents: ChatG
     {
       title: "Message a ChatGPT subagent",
       description:
-        "Delegate or continue work with a persistent ChatGPT subagent. Use when a task can run independently or when you want a multi-turn subagent conversation. Choose an agent_id, send a prompt, then poll the returned turn_id with chatgpt_subagent_poll. Later calls with the same agent_id continue that conversation.",
+        "Delegate or continue work with a ChatGPT subagent. Choose an agent_id, send a prompt, then poll the returned <agent_id>_turn_N turn_id with chatgpt_subagent_poll. Later calls with the same agent_id continue that conversation until its local state expires after 30 minutes idle.",
       inputSchema: z.object({
         agent_id: z
           .string()
@@ -75,7 +75,7 @@ export function registerSubagentTools(server: McpServer, chatGptSubagents: ChatG
     {
       title: "Check a ChatGPT subagent turn status",
       description:
-        "Check a previously submitted subagent turn. Use after chatgpt_subagent returns a turn_id to collect its result or verify that a long-running turn is still active. Poll that turn_id; set wait_ms when you want this check to wait briefly for completion. While running, activity and activity_age_ms provide coarse liveness signals rather than an ETA.",
+        "Check a previously submitted subagent turn. Use the <agent_id>_turn_N turn_id returned by chatgpt_subagent. Local completed-turn state expires with its agent after 30 minutes idle; the ChatGPT conversation itself is not deleted.",
       inputSchema: z.object({
         turn_id: z.string().min(1).max(128).describe("Turn to check, returned by chatgpt_subagent."),
         wait_ms: z.int().min(0).max(60_000).default(0).describe("How long this check may wait for completion. Use 0 for an immediate status check."),

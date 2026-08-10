@@ -44,7 +44,7 @@ test("writes one compact YAML document for a shell command", async (t) => {
   )
 })
 
-test("omits apply_patch bodies while retaining cwd and patch size", async (t) => {
+test("logs apply_patch bodies only when the tool fails", async (t) => {
   const directory = await mkdtemp(join(tmpdir(), "mcp-audit-log-"))
   const file = join(directory, "agent-commands.yaml")
   t.after(() => rm(directory, { recursive: true, force: true }))
@@ -65,11 +65,24 @@ test("omits apply_patch bodies while retaining cwd and patch size", async (t) =>
   })
   assert.ok(call)
   clock = 2_051
-  call.finish({ httpStatus: 200, state: "finished", responseBytes: 200 })
+  call.finish({ httpStatus: 200, state: "finished", responseBytes: 200, responseBody: '{"result":{"isError":false}}' })
 
-  const log = await readFile(file, "utf8")
+  let log = await readFile(file, "utf8")
   assert.equal(log, `--- # 21:12:03 - apply_patch - 51ms\ncwd: "/workspace/project"\npatch_chars: ${characterCount(patch)}\n\n`)
   assert.doesNotMatch(log, /Begin Patch|Update File|old|new/)
+
+  const [failedCall] = logger.startToolCalls({
+    method: "tools/call",
+    params: { name: "apply_patch", arguments: { patch, cwd: "/workspace/project" } },
+  })
+  assert.ok(failedCall)
+  clock = 2_100
+  failedCall.finish({ httpStatus: 200, state: "finished", responseBytes: 400, responseBody: '{"result":{"isError":true}}' })
+
+  log = await readFile(file, "utf8")
+  assert.match(log, /--- # ! 21:12:03 - apply_patch - 49ms/)
+  assert.match(log, /patch: \|-\n {2}\*\*\* Begin Patch/)
+  assert.match(log, / {2}\+new/)
 })
 
 test("caps large ordinary tool arguments", async (t) => {

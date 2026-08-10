@@ -14,6 +14,8 @@ import { PersistentShellSession } from "../tools/shell/session.js"
 import { ShellSessionManager } from "../tools/shell/session-manager.js"
 import { WebPageOpener } from "../tools/web/web-open.js"
 
+const MAX_AUDIT_RESPONSE_BODY_BYTES = 64 * 1024
+
 interface InFlightMcpRequest {
   server: ReturnType<typeof createMcpServer>
   transport: NodeStreamableHTTPServerTransport
@@ -68,9 +70,14 @@ export async function startMcpHttpServer(options: StartMcpServerOptions = {}): P
   const handleMcpPost = async (req: Request, res: Response): Promise<void> => {
     const auditCalls = auditLogger?.startToolCalls(req.body) ?? []
     let responseBytes = 0
+    let responseBody = ""
+    const captureResponseBody = auditCalls.some((call) => call.needsResponseBody)
     if (auditCalls.length > 0) {
-      countResponseBytes(res, (bytes) => {
-        responseBytes += bytes
+      trackResponse(res, (chunk) => {
+        responseBytes += chunk.byteLength
+        if (captureResponseBody && Buffer.byteLength(responseBody, "utf8") < MAX_AUDIT_RESPONSE_BODY_BYTES) {
+          responseBody += chunk.toString("utf8", 0, Math.max(0, MAX_AUDIT_RESPONSE_BODY_BYTES - Buffer.byteLength(responseBody, "utf8")))
+        }
       })
     }
     let auditFinished = false
@@ -82,6 +89,7 @@ export async function startMcpHttpServer(options: StartMcpServerOptions = {}): P
           httpStatus: res.statusCode,
           state,
           responseBytes,
+          ...(auditCall.needsResponseBody ? { responseBody } : {}),
         })
       }
     }
@@ -207,28 +215,31 @@ export async function startMcpHttpServer(options: StartMcpServerOptions = {}): P
   }
 }
 
-function countResponseBytes(res: Response, addBytes: (bytes: number) => void): void {
+function trackResponse(res: Response, addChunk: (chunk: Buffer) => void): void {
   const originalWrite = res.write.bind(res) as (...args: unknown[]) => boolean
   const originalEnd = res.end.bind(res) as (...args: unknown[]) => Response
 
   res.write = ((...args: unknown[]) => {
-    addBytes(responseChunkBytes(args[0], args[1]))
+    const chunk = responseChunk(args[0], args[1])
+    if (chunk) addChunk(chunk)
     return originalWrite(...args)
   }) as typeof res.write
 
   res.end = ((...args: unknown[]) => {
-    addBytes(responseChunkBytes(args[0], args[1]))
+    const chunk = responseChunk(args[0], args[1])
+    if (chunk) addChunk(chunk)
     return originalEnd(...args)
   }) as typeof res.end
 }
 
-function responseChunkBytes(chunk: unknown, encoding: unknown): number {
+function responseChunk(chunk: unknown, encoding: unknown): Buffer | undefined {
   if (typeof chunk === "string") {
     const normalizedEncoding = typeof encoding === "string" && Buffer.isEncoding(encoding) ? (encoding as BufferEncoding) : "utf8"
-    return Buffer.byteLength(chunk, normalizedEncoding)
+    return Buffer.from(chunk, normalizedEncoding)
   }
-  if (Buffer.isBuffer(chunk) || chunk instanceof Uint8Array) return chunk.byteLength
-  return 0
+  if (Buffer.isBuffer(chunk)) return chunk
+  if (chunk instanceof Uint8Array) return Buffer.from(chunk)
+  return undefined
 }
 
 function containsToolCall(payload: unknown): boolean {
