@@ -11,7 +11,7 @@ module.exports = {
     {
       name: "unhinged-terminal-ngrok",
       script: "/opt/homebrew/bin/ngrok",
-      args: ["http", "3333", "--url=geologic-catalog-deodorant.ngrok-free.dev", "--traffic-policy-file=./ngrok-traffic-policy.yml"],
+      args: ["http", "3333", "--url=geologic-catalog-deodorant.ngrok-free.dev", "--traffic-policy-file=./ngrok-traffic-policy.yml", "--inspect=false"],
       cwd: __dirname,
       interpreter: "none",
       instances: 1,

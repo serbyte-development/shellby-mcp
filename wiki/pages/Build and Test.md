@@ -1,6 +1,6 @@
 # Build and Test
 
-Verified 2026-08-07.
+Verified 2026-08-09.
 
 ## Build Boundary
 
@@ -10,11 +10,11 @@ Verified 2026-08-07.
 
 ## Validation
 
-| Command              | Purpose                                      |
-| -------------------- | -------------------------------------------- |
-| `npm test`           | Run `test/*.test.ts` through `tsx`            |
-| `npm run type-check` | Check source without emitting                 |
-| `npm run build`      | Emit production JavaScript to `dist/`         |
+| Command              | Purpose                               |
+| -------------------- | ------------------------------------- |
+| `npm test`           | Run `test/*.test.ts` through `tsx`    |
+| `npm run type-check` | Check source without emitting         |
+| `npm run build`      | Emit production JavaScript to `dist/` |
 
 Run the cheapest focused test first, then the broader commands when the change warrants them (`package.json`).
 
@@ -24,6 +24,7 @@ Run the cheapest focused test first, then the broader commands when the change w
 - MCP audit tests cover tool-call filtering, character counts, readable `shell_run` command blocks, `apply_patch` body omission, completion metadata, and HTTP-boundary interception without contacting external services (`test/mcp-audit-log.test.ts`, `test/mcp-integration.test.ts`).
 - Adapter tests cover exact Peekaboo argv, bounded JSON and images, serialization, cancellation, timeouts, snapshots, webpage extraction, cursors, and workspace patch setup (`test/peekaboo.test.ts`, `test/web-open.test.ts`, `test/workspace-tools.test.ts`).
 - MCP integration tests validate the published tool order and schema mechanics, cross-request shell state, named-shell concurrency, direct patching, webpage pagination, Computer Use results, semantic errors, restart continuity, and Host rejection. Tool and server prose descriptions/instructions are intentionally not assertion-locked because they are model-facing guidance that changes independently of behavior (`test/mcp-integration.test.ts`).
+- Authentication unit tests cover durable state, owner-only permissions, first-owner binding, concurrent first calls, reset, and malformed-state failure. MCP integration tests additionally cover exact routing, local access, discovery without binding, binding on an invalid first tool call, same-owner reuse, different-owner rejection, and owner persistence across an HTTP restart (`test/auth.test.ts`, `test/mcp-integration.test.ts`).
 - Subagent unit tests cover conversation-graph normalization and final-message filtering, while MCP integration coverage injects a fake shared service to verify caller-named agent continuity across stateless HTTP requests without contacting ChatGPT (`test/chatgpt-subagent.test.ts`, `test/mcp-integration.test.ts`).
 
 Tests use temporary directories and real local child shells; process-group tests are POSIX-specific (`test/shell-session.test.ts`).

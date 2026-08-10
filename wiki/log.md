@@ -349,3 +349,33 @@
 ## [2026-08-09] trim | remove feedback folder README
 
 - Removed `feedback/README.md`; the feedback inbox contract is already documented in the maintained wiki, so a second folder-level explanation was redundant.
+
+## [2026-08-09] configure | advertise MCP server icon
+
+- Added `icon-256_square.png` to the server implementation metadata as a 256x256 PNG data URI.
+- Added integration coverage for the advertised icon metadata so it remains available without depending on a public asset route.
+
+## [2026-08-09] harden | close authentication races and routing bypass
+
+- Enabled strict Express routing so public `/mcp/` cannot alias the intentionally unauthenticated local `/mcp` endpoint.
+- Moved first-owner binding after a successful tool result, buffered remote tool responses until the auth decision commits, and added a cross-process lock around first binding/reset state mutations.
+- Added regression coverage for `/mcp/`, failed-call non-binding, reset-versus-bind races, and private URL normalization without doubled `/mcp` segments.
+- Disabled the ngrok agent's local inspector and documented ngrok cloud request-path metadata as part of the trusted capability boundary.
+
+## [2026-08-09] implement | add single-owner remote ChatGPT authentication
+
+- Added durable `~/.shelly/auth.json` state with a random private MCP capability and one bound `X-OpenAI-Subject`; first valid remote tool call claims an unbound installation.
+- Kept local `/mcp` agent-neutral while remote ChatGPT uses `/mcp/:capability`; reset is a local confirmed command that rotates the capability and clears ownership.
+- Restricted the checked-in ngrok policy to ChatGPT source IP categories and private MCP paths so plain remote `/mcp` cannot bypass Shelly authentication.
+- Added focused auth tests plus remote MCP integration coverage; full tests and TypeScript type-check pass without restarting PM2.
+
+## [2026-08-09] document | record ChatGPT MCP identity metadata
+
+- Documented OpenAI's `subject`, `session`, and optional `organization` metadata semantics and the live HTTP/header placement observed from ChatGPT.
+- Recorded that subject remained stable across sampled conversations while session changed, without storing any actual opaque identifier values.
+
+## [2026-08-09] simplify | remove capability URL authentication
+
+- Removed capability generation, private `/mcp/:capability` routing, URL rotation, response buffering, and the cross-process lock dependency.
+- Remote ChatGPT now uses exact `/mcp`; ngrok verifies ChatGPT origin and adds `X-Shelly-Remote: 1`, while Shelly binds the first marked `tools/call` to `X-OpenAI-Subject` before dispatch even when the tool call is invalid.
+- Kept direct localhost `/mcp` unauthenticated and simplified reset to clearing only the bound subject.

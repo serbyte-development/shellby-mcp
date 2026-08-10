@@ -5,7 +5,7 @@ import { chromium, type Browser, type BrowserContext, type Locator, type Page, t
 export const DEFAULT_CHATGPT_CDP_ENDPOINT = "http://127.0.0.1:9222"
 
 const CAVEMAN_PROMPT =
-  "If no level specified, use full. Respond terse like smart caveman — drop articles, filler, pleasantries. Fragments OK. Technical terms exact. Code unchanged. Pattern: [thing] [action] [reason]. [next step]."
+  "Respond terse like smart caveman — drop articles, filler, pleasantries. Fragments OK. Technical terms exact. Code unchanged. Pattern: [thing] [action] [reason]. [next step]."
 
 export interface ChatGptSubagentOptions {
   cdpEndpoint: string
@@ -694,7 +694,7 @@ function appendFirstTurnMode(prompt: string, oververbosity: number): string {
 
   const level = oververbosity === 1 ? "ultra" : oververbosity === 2 ? "full" : "lite"
   const qualifier = oververbosity === 4 ? " Favor completeness over terseness when useful." : ""
-  return `${prompt}\n\n---\nSwitch to caveman ${level} mode. ${CAVEMAN_PROMPT}${qualifier}`
+  return `${prompt}\n\n---\n\nSwitch to caveman ${level} mode. ${CAVEMAN_PROMPT}${qualifier}`
 }
 
 export function extractConversationNodes(payload: unknown): TrackedConversationNode[] {

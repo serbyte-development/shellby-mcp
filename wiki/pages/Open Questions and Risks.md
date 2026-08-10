@@ -1,12 +1,13 @@
 # Open Questions and Risks
 
-Verified 2026-08-07.
+Verified 2026-08-09.
 
 ## Active Risks
 
-- **Unauthenticated arbitrary execution:** no HTTP authentication or authorization exists. Host validation prevents mismatched localhost Host headers but does not identify callers (`src/http-server.ts`, `src/mcp-server.ts`).
+- **Remote trust depends on the deployment boundary:** production remote access relies on ngrok's `com.openai.chatgpt` source category plus the `X-Shelly-Remote: 1` marker it adds after that check. A different public proxy must provide an equivalent trusted-origin check and marker; otherwise Shelly will treat unmarked `/mcp` traffic as local (`ngrok-traffic-policy.yml`, `src/http-server.ts`, `src/auth.ts`).
+- **Local MCP remains intentionally unauthenticated:** exact `/mcp` is still available to local clients, while strict routing rejects `/mcp/`. The checked-in ngrok policy blocks public `/mcp`, but changing the tunnel/reverse-proxy policy can still expose the local endpoint remotely (`ngrok-traffic-policy.yml`, `src/http-server.ts`).
 - **Authenticated browser delegation:** `chatgpt_subagent` can act through the ChatGPT account already authenticated in the configured debuggable Chrome instance. The MCP trust boundary therefore includes that browser session; the server does not launch Chrome or choose a profile (`src/chatgpt-subagent.ts`, `src/mcp-server.ts`).
-- **Caller-selected state boundaries:** named shells isolate runtime state, but the server does not authenticate callers or assign ownership. Any caller that knows or guesses another `shell_id` can access or reset that shell, and all shells retain the same operating-system permissions (`src/mcp-server.ts`, `src/shell-session-manager.ts`).
+- **Caller-selected shell boundaries are not per-user ACLs:** remote ChatGPT is single-owner by default, but local MCP clients share the same named-shell namespace. Any authorized/local caller that knows or guesses another `shell_id` can access or reset that shell, and all shells retain the same operating-system permissions (`src/auth.ts`, `src/mcp-server.ts`, `src/shell-session-manager.ts`).
 - **Child-process resource use is not sandboxed:** the named-shell count, transcripts, command records, and idle lifetime are bounded, and abandoned named shells are closed automatically. A currently active command or background process can still consume arbitrary CPU or memory under the local user account (`src/shell-session-manager.ts`, `src/shell-session.ts`).
 - **Website fetching is open-world:** `fetch_website` can navigate to HTTP or HTTPS resources reachable from the host, including local or private-network services. Cached documents are count-, TTL-, and byte-bounded, but concurrent fetches can still cause temporary CPU or memory spikes (`src/web-open.ts`, `src/mcp-server.ts`).
 - **Best-effort descendant cleanup:** process-group signaling errors are swallowed to keep the server alive. A process the local user cannot signal may outlive reset or shutdown (`src/shell-session.ts`).

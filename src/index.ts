@@ -2,6 +2,7 @@ import { mkdir } from "node:fs/promises"
 import { dirname, resolve } from "node:path"
 import { fileURLToPath } from "node:url"
 
+import { ShellyAuthStore } from "./auth.js"
 import { ChatGptSubagentModule, DEFAULT_CHATGPT_CDP_ENDPOINT } from "./chatgpt-subagent.js"
 import { McpAuditLogger } from "./mcp-audit-log.js"
 import { PersistentShellSession, type ShellSessionOptions } from "./shell-session.js"
@@ -18,6 +19,8 @@ const maxOutputBytes = parsePositiveInteger(process.env.MCP_MAX_OUTPUT_BYTES, 32
 const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..")
 const auditLogPath = resolve(repositoryRoot, "agent-commands.log")
 const auditLogger = new McpAuditLogger(auditLogPath)
+const authStore = new ShellyAuthStore()
+await authStore.ensureState()
 const cwd = resolveWorkspacePath(process.env.MCP_CWD)
 await mkdir(cwd, { recursive: true })
 const applyPatch = await prepareApplyPatch(cwd, process.env.MCP_CODEX_BIN)
@@ -54,8 +57,10 @@ const running = await startMcpHttpServer({
   peekaboo,
   chatGptSubagents,
   auditLogger,
+  authStore,
 })
 console.log(`Local shell MCP server: ${running.url}`)
+console.log("Remote MCP authentication: trusted ChatGPT origin + bound OpenAI subject")
 console.log(`Shell: ${process.env.MCP_SHELL ?? "/bin/zsh"}`)
 console.log(`Default workspace: ${cwd}`)
 console.log(`Maximum named shells: ${shells.maximumShells}`)

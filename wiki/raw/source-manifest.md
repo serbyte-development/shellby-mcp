@@ -58,3 +58,11 @@ These are current implementation evidence, not copied raw notes:
 - Webpage extraction and cached pagination: `src/web-open.ts`, `test/web-open.test.ts`, `test/mcp-integration.test.ts`.
 - Tunnel helper: `ngrok-traffic-policy.yml`, `package.json`.
 - Change tripwire: recent Git history through commit `ca260cc`.
+
+### OpenAI ChatGPT MCP identity metadata, 2026-08-09
+
+- Role: OpenAI developer documentation plus direct inspection of live ChatGPT-to-MCP requests for identity metadata available to remote servers.
+- Reliability: OpenAI documentation defines the intended semantics; live request shape is point-in-time behavior and may change.
+- Observed: `X-OpenAI-Subject` and `X-OpenAI-Session` were present as HTTP headers; `openai/subject`, `openai/session`, and `openai/organization` were present in MCP tool-call `_meta`. Subject stayed stable across sampled conversations while session changed. Actual identifier values were not stored in the wiki.
+- OpenAI semantics: subject is an anonymized user ID for rate limiting and identification; session is an anonymized conversation ID; organization is an anonymized organization ID when available.
+- Feeds: [[pages/HTTP Transport]].

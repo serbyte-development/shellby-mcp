@@ -10,6 +10,7 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js"
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js"
 import { LATEST_PROTOCOL_VERSION } from "@modelcontextprotocol/sdk/types.js"
 
+import { ShellyAuthStore } from "../src/auth.js"
 import type { ChatGptSubagentService } from "../src/chatgpt-subagent.js"
 import { FeedbackStore } from "../src/feedback.js"
 import { startMcpHttpServer } from "../src/http-server.js"
@@ -1168,6 +1169,68 @@ test("rejects a mismatched HTTP Host", { timeout: 10_000 }, async (t) => {
   assert.equal(status, 403)
 })
 
+test("remote MCP binds on the first tool call while local MCP remains available", { timeout: 20_000 }, async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "shelly-remote-auth-"))
+  const authStore = new ShellyAuthStore(join(root, "auth.json"))
+  await authStore.ensureState()
+  const running = await startMcpHttpServer({ port: 0, authStore })
+  t.after(async () => {
+    await running.close()
+    await rm(root, { recursive: true, force: true })
+  })
+
+  await assert.rejects(() => connectClient(`${running.url}/`, "remote-trailing-slash-bypass", "subject-a", true), /cannot post \/mcp\/|404|not found/i)
+
+  const local = await connectClient(running.url, "local-auth-bypass")
+  assert.ok((await local.client.callTool({ name: "shell_list", arguments: {} })).content)
+
+  const discovery = await connectClient(running.url, "remote-discovery", undefined, true)
+  assert.ok((await discovery.client.listTools()).tools.length > 0)
+  assert.equal((await authStore.readState()).subject, null)
+  await assert.rejects(() => discovery.client.callTool({ name: "shell_list", arguments: {} }), /403|denied/i)
+  assert.equal((await authStore.readState()).subject, null)
+
+  const failedOwner = await connectClient(running.url, "remote-failed-owner", "subject-a", true)
+  const failedCall = await failedOwner.client.callTool({ name: "tool_that_does_not_exist", arguments: {} })
+  assert.equal(failedCall.isError, true)
+  assert.equal((await authStore.readState()).subject, "subject-a")
+
+  const owner = await connectClient(running.url, "remote-owner", "subject-a", true)
+  assert.ok((await owner.client.callTool({ name: "shell_list", arguments: {} })).content)
+  assert.equal((await authStore.readState()).subject, "subject-a")
+
+  const sameOwner = await connectClient(running.url, "remote-owner-new-conversation", "subject-a", true)
+  assert.ok((await sameOwner.client.callTool({ name: "shell_list", arguments: {} })).content)
+
+  const otherSubject = await connectClient(running.url, "remote-other-subject", "subject-b", true)
+  await assert.rejects(() => otherSubject.client.callTool({ name: "shell_list", arguments: {} }), /403|denied/i)
+})
+
+test("remote MCP owner survives an HTTP server restart", { timeout: 20_000 }, async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "shelly-remote-restart-"))
+  const filePath = join(root, "auth.json")
+  const firstAuthStore = new ShellyAuthStore(filePath)
+  await firstAuthStore.ensureState()
+  let running = await startMcpHttpServer({ port: 0, authStore: firstAuthStore })
+  const port = running.port
+  const remoteUrl = `http://${running.host}:${port}/mcp`
+
+  const owner = await connectClient(remoteUrl, "remote-owner-before-restart", "subject-a", true)
+  await owner.client.callTool({ name: "shell_list", arguments: {} })
+  await running.close()
+
+  const secondAuthStore = new ShellyAuthStore(filePath)
+  assert.deepEqual(await secondAuthStore.ensureState(), { version: 1, subject: "subject-a" })
+  running = await startMcpHttpServer({ port, authStore: secondAuthStore })
+  t.after(async () => {
+    await running.close()
+    await rm(root, { recursive: true, force: true })
+  })
+
+  const afterRestart = await connectClient(remoteUrl, "remote-owner-after-restart", "subject-a", true)
+  assert.ok((await afterRestart.client.callTool({ name: "shell_list", arguments: {} })).content)
+})
+
 function postWithHost(url: string, host: string, value: unknown): Promise<number> {
   const target = new URL(url)
   const body = JSON.stringify(value)
@@ -1196,9 +1259,19 @@ function postWithHost(url: string, host: string, value: unknown): Promise<number
   })
 }
 
-async function connectClient(url: string, name: string) {
+async function connectClient(url: string, name: string, openAiSubject?: string, trustedRemote = false) {
   const client = new Client({ name, version: "1.0.0" })
-  const transport = new StreamableHTTPClientTransport(new URL(url))
+  const transport = new StreamableHTTPClientTransport(new URL(url), {
+    requestInit:
+      openAiSubject || trustedRemote
+        ? {
+            headers: {
+              ...(openAiSubject ? { "x-openai-subject": openAiSubject } : {}),
+              ...(trustedRemote ? { "x-shelly-remote": "1" } : {}),
+            },
+          }
+        : undefined,
+  })
   await client.connect(transport)
   return { client, transport }
 }

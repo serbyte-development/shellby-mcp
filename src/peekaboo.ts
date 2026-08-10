@@ -197,8 +197,8 @@ export class PeekabooClient {
 
   private async runNow(args: string[], signal: AbortSignal): Promise<PeekabooResult> {
     const commandArgs = [...this.baseArgs, ...args, "--json"]
-    let stdout
-    let stderr
+    let stdout = ""
+    let stderr = ""
 
     try {
       const output = await execFileAsync(this.executable, commandArgs, {

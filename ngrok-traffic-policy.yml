@@ -1,6 +1,19 @@
 on_http_request:
+  - expressions:
+      - "!('com.openai.chatgpt' in conn.client_ip.categories)"
+    actions:
+      - type: deny
+        config:
+          status_code: 403
+  - expressions:
+      - "req.url.path != '/mcp'"
+    actions:
+      - type: deny
+        config:
+          status_code: 404
   - actions:
       - type: add-headers
         config:
           headers:
             host: localhost:3333
+            x-shelly-remote: "1"

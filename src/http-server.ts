@@ -4,6 +4,7 @@ import { localhostHostValidation } from "@modelcontextprotocol/sdk/server/middle
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js"
 import express, { type Request, type Response } from "express"
 
+import { ShellyAuthError, type ShellyAuthStore } from "./auth.js"
 import { ChatGptSubagentModule, DEFAULT_CHATGPT_CDP_ENDPOINT, type ChatGptSubagentService } from "./chatgpt-subagent.js"
 import { createMcpServer } from "./mcp-server.js"
 import { characterCount, extractResultCharacterCounts, McpAuditLogger } from "./mcp-audit-log.js"
@@ -38,6 +39,7 @@ export interface StartMcpServerOptions {
   peekaboo?: PeekabooClient
   chatGptSubagents?: ChatGptSubagentService
   auditLogger?: McpAuditLogger
+  authStore?: ShellyAuthStore
   feedbackStore?: FeedbackStore
   applyPatchExecutable?: string
   webPageOpener?: WebPageOpener
@@ -51,12 +53,14 @@ export async function startMcpHttpServer(options: StartMcpServerOptions = {}): P
   const peekaboo = options.peekaboo ?? new PeekabooClient()
   const chatGptSubagents = options.chatGptSubagents ?? new ChatGptSubagentModule({ cdpEndpoint: DEFAULT_CHATGPT_CDP_ENDPOINT })
   const auditLogger = options.auditLogger
+  const authStore = options.authStore
   const feedbackStore = options.feedbackStore ?? new FeedbackStore()
   const applyPatchExecutable = options.applyPatchExecutable ?? "apply_patch"
   const webPageOpener = options.webPageOpener ?? new WebPageOpener()
   const inFlightRequests = new Set<InFlightMcpRequest>()
 
   const app = express()
+  app.set("strict routing", true)
   app.use(localhostHostValidation())
   app.use(express.json({ limit: "1mb" }))
 
@@ -64,7 +68,7 @@ export async function startMcpHttpServer(options: StartMcpServerOptions = {}): P
     res.json({ ok: true })
   })
 
-  app.post("/mcp", async (req: Request, res: Response) => {
+  const handleMcpPost = async (req: Request, res: Response): Promise<void> => {
     const auditCalls = auditLogger?.startToolCalls(req.body) ?? []
     const responseChunks: string[] = []
     if (auditCalls.length > 0) captureResponseBody(res, responseChunks)
@@ -142,6 +146,18 @@ export async function startMcpHttpServer(options: StartMcpServerOptions = {}): P
         })
       }
     }
+  }
+
+  app.post("/mcp", async (req: Request, res: Response) => {
+    if (authStore && isTrustedRemoteRequest(req) && containsToolCall(req.body)) {
+      try {
+        await authStore.authorizeToolCall(req.get("x-openai-subject"))
+      } catch (error) {
+        remoteAuthError(res, error)
+        return
+      }
+    }
+    await handleMcpPost(req, res)
   })
 
   const methodNotAllowed = (_req: Request, res: Response) => {
@@ -191,6 +207,33 @@ export async function startMcpHttpServer(options: StartMcpServerOptions = {}): P
       }
     },
   }
+}
+
+function containsToolCall(payload: unknown): boolean {
+  const requests = Array.isArray(payload) ? payload : [payload]
+  return requests.some((value) => {
+    if (!value || typeof value !== "object" || Array.isArray(value)) return false
+    const request = value as { method?: unknown; params?: { name?: unknown } }
+    return request.method === "tools/call" && typeof request.params?.name === "string" && request.params.name.length > 0
+  })
+}
+
+function isTrustedRemoteRequest(req: Request): boolean {
+  return req.get("x-shelly-remote") === "1"
+}
+
+function remoteAuthError(res: Response, error: unknown): void {
+  if (error instanceof ShellyAuthError) {
+    if (error.code === "subject_missing" || error.code === "subject_mismatch") {
+      jsonRpcError(res, 403, -32002, "Remote MCP access denied.")
+      return
+    }
+    jsonRpcError(res, 503, -32003, "Remote MCP authentication is unavailable.")
+    return
+  }
+
+  console.error("Remote MCP authentication failed:", error)
+  jsonRpcError(res, 503, -32003, "Remote MCP authentication is unavailable.")
 }
 
 function captureResponseBody(res: Response, chunks: string[]): void {

@@ -4,6 +4,8 @@ Verified 2026-08-08.
 
 ## Current State
 
+An issue I found was that the subagent was meant to be called and allow the parent agent to continue working, but I found that when it does that, it often forgets that it ever called the subagent and never retrieves the response from it. So it might be better to change the instructions for the sub agent. So that it doesn't call a subagent, do other work, and then forget
+
 The reusable browser module and first-class MCP wrapper now exist. `ChatGptSubagentModule` connects to an already-debuggable Chrome instance through Playwright-over-CDP. `chatgpt_subagent` submits a caller-named agent turn and returns immediately with a `turn_id`; `chatgpt_subagent_poll` retrieves running, completed, or failed state without resubmitting the prompt. Running polls include a coarse activity heartbeat so a parent agent can distinguish a long task that is still making progress from one that has gone quiet (`src/chatgpt-subagent.ts`, `src/mcp-server.ts`).
 
 The module is deliberately attach-only. It does not launch Chrome, select a Chrome profile, copy profile data, or attempt to repair a missing browser process. `connect()` expects the configured CDP endpoint to already expose the intended authenticated Chrome instance and fails quickly with an explicit error when that dependency is unavailable (`src/chatgpt-subagent.ts`).
