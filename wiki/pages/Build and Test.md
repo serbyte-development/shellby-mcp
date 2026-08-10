@@ -14,20 +14,20 @@ Verified 2026-08-10.
 
 ## Validation
 
-| Command              | Purpose                               |
-| -------------------- | ------------------------------------- |
-| `npm test`           | Run `test/*.test.ts` through `tsx`    |
-| `npm run type-check` | Check source without emitting         |
-| `npm run lint`       | Lint `src/` and `test/` with ESLint  |
+| Command              | Purpose                                                |
+| -------------------- | ------------------------------------------------------ |
+| `npm test`           | Run `test/*.test.ts` through `tsx`                     |
+| `npm run type-check` | Check source without emitting                          |
+| `npm run lint`       | Lint `src/` and `test/` with ESLint                    |
 | `npm run format`     | Format source, tests, and project config with Prettier |
-| `npm run build`      | Emit production JavaScript to `dist/` |
+| `npm run build`      | Emit production JavaScript to `dist/`                  |
 
 Run the cheapest focused test first, then the broader commands when the change warrants them (`package.json`).
 
 ## Test Architecture
 
-- Shell tests cover retained state, cwd, descriptors, idempotency, console logs, output caps, polling, concurrency, markers, recovery, and reset (`test/shell-session.test.ts`, `test/shell-session-manager.test.ts`).
-- MCP audit tests cover tool-call filtering, character counts, readable `shell_run` command blocks, `apply_patch` body omission, completion metadata, and HTTP-boundary interception without contacting external services (`test/mcp-audit-log.test.ts`, `test/mcp-integration.test.ts`).
+- Shell tests cover retained state, cwd, descriptors, idempotency, output caps, polling, concurrency, markers, recovery, and reset (`test/shell-session.test.ts`, `test/shell-session-manager.test.ts`).
+- MCP audit tests cover tool-call filtering, compact YAML formatting, bounded `shell_run` command blocks, ordinary-argument truncation, `apply_patch` body omission, and HTTP-boundary interception without contacting external services (`test/mcp-audit-log.test.ts`, `test/mcp-integration.test.ts`).
 - Adapter tests cover exact Peekaboo argv, bounded JSON and images, serialization, cancellation, timeouts, snapshots, webpage extraction, and cursors (`test/peekaboo.test.ts`, `test/web-open.test.ts`). Direct `apply_patch` execution and abort behavior are covered by MCP integration tests (`test/mcp-integration.test.ts`).
 - MCP integration tests validate the published tool order and Standard Schema mechanics, cross-request shell state, named-shell concurrency, direct patching, webpage pagination, Computer Use results, semantic errors, restart continuity, exact `/mcp` routing, and Host rejection. Tool and server prose descriptions/instructions are intentionally not assertion-locked because they are model-facing guidance that changes independently of behavior (`test/mcp-integration.test.ts`).
 - Authentication unit tests cover durable state, owner-only permissions, first-owner binding, concurrent first calls, reset, and malformed-state failure. MCP integration tests additionally cover exact routing, local access, discovery without binding, binding on an invalid first tool call, same-owner reuse, different-owner rejection, and owner persistence across an HTTP restart (`test/auth.test.ts`, `test/mcp-integration.test.ts`).

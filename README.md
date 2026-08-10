@@ -266,7 +266,6 @@ Each call requires an absolute `cwd` and a normal Codex-style patch. It runs ind
 | `MCP_RECORD_LIMIT`             | `1024`                        | Recent command/reset records                       |
 | `MCP_MAX_SHELLS`               | `8`                           | Maximum live shells                                |
 | `MCP_SHELL_IDLE_TTL_MS`        | `1800000`                     | Named-shell idle timeout; `0` disables cleanup     |
-| `MCP_LOG_COMMANDS`             | `summary`                     | `off`, `summary`, or `full` shell logging          |
 
 The included ngrok helper and traffic policy assume local port `3333`. If you change `PORT`, update the ngrok command and Host rewrite as well.
 

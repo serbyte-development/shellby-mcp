@@ -433,6 +433,12 @@
 - Moved the global instruction builder into `src/config.ts` and made its coding-instructions path follow the active workspace as `<workspace>/AGENTS.md`.
 - Reused the central host and port defaults in both production startup and the injectable HTTP server while leaving capability-specific limits with their implementations.
 
+## [2026-08-10] refactor | make MCP audit log human-readable
+
+- Replaced the tab-separated `agent-commands.log` stream with compact Markdown entries in `agent-commands.md`, one entry per completed tool call.
+- Added syntax-highlighted bounded shell command blocks, bounded ordinary arguments, and compact `apply_patch` metadata without patch bodies.
+- Removed MCP response-body capture and the redundant `MCP_LOG_COMMANDS` shell-console logger.
+
 ## [2026-08-10] simplify | execute vendored apply_patch directly
 
 - Removed the workspace `bin/apply_patch` symlink, runtime `MCP_CODEX_BIN` override, setup module, and shell `PATH` injection.
@@ -444,3 +450,8 @@
 - Moved workspace path resolution into `src/config.ts` and grouped apply-patch registration and startup setup under `src/tools/apply-patch/`.
 - Consolidated the vendored binary, provenance, license, and notice under `vendor/apply-patch/` and updated the build script to write that layout directly.
 - Split the old workspace-tools tests into focused config and apply-patch setup coverage and removed the obsolete `src/workspace-tools.ts` concept.
+
+## [2026-08-10] refine | use YAML for MCP audit log
+
+- Changed the active audit file from `agent-commands.md` to `agent-commands.yaml` for native VS Code syntax highlighting without a Markdown preview.
+- Kept each completed tool call compact as one YAML document; shell commands use block scalars, ordinary arguments stay bounded, and patch bodies remain omitted.

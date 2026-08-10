@@ -8,25 +8,24 @@ Verified 2026-08-10.
 
 ## Environment Inputs
 
-| Name                           | Default                         | Consumer                                                |
-| ------------------------------ | ------------------------------- | ------------------------------------------------------- |
-| `HOST`                         | `127.0.0.1`                     | HTTP bind address                                       |
-| `PORT`                         | `3333`                          | HTTP port                                               |
-| `NGROK_URL`                    | unset                           | Optional fixed domain for the npm/PM2 ngrok helpers     |
-| `MCP_SHELL`                    | `/bin/zsh`                      | Login shell executable                                  |
-| `MCP_CWD`                      | `~/Desktop/chatgpt-workspace`   | Absolute-resolved workspace and initial cwd             |
-| `MCP_PEEKABOO_BIN`             | `peekaboo`                      | Peekaboo executable name or absolute path               |
-| `MCP_CHATGPT_CDP_ENDPOINT`     | `http://127.0.0.1:9222`         | Already-running Chrome DevTools endpoint for subagents  |
-| `MCP_TRANSCRIPT_CHARS`         | `1048576`                       | Rolling JavaScript-string length                        |
-| `MCP_COMMAND_TRANSCRIPT_BYTES` | `262144`                        | Per-command retained UTF-8 output ceiling               |
-| `MCP_OUTPUT_BYTES`             | `2048`                          | Default response byte cap                               |
-| `MCP_MAX_OUTPUT_BYTES`         | `32768`                         | Maximum response byte cap                               |
-| `MCP_RECORD_LIMIT`             | `1024`                          | Per-map recent record limit                             |
-| `MCP_MAX_SHELLS`               | `8`                             | Maximum named shells including `default`                |
-| `MCP_SHELL_IDLE_TTL_MS`        | `1800000`                       | Idle lifetime for named shells; `0` disables cleanup    |
-| `MCP_LOG_COMMANDS`             | `summary`                       | `off`, compact `summary`, or raw `full` command logging |
+| Name                           | Default                       | Consumer                                               |
+| ------------------------------ | ----------------------------- | ------------------------------------------------------ |
+| `HOST`                         | `127.0.0.1`                   | HTTP bind address                                      |
+| `PORT`                         | `3333`                        | HTTP port                                              |
+| `NGROK_URL`                    | unset                         | Optional fixed domain for the npm/PM2 ngrok helpers    |
+| `MCP_SHELL`                    | `/bin/zsh`                    | Login shell executable                                 |
+| `MCP_CWD`                      | `~/Desktop/chatgpt-workspace` | Absolute-resolved workspace and initial cwd            |
+| `MCP_PEEKABOO_BIN`             | `peekaboo`                    | Peekaboo executable name or absolute path              |
+| `MCP_CHATGPT_CDP_ENDPOINT`     | `http://127.0.0.1:9222`       | Already-running Chrome DevTools endpoint for subagents |
+| `MCP_TRANSCRIPT_CHARS`         | `1048576`                     | Rolling JavaScript-string length                       |
+| `MCP_COMMAND_TRANSCRIPT_BYTES` | `262144`                      | Per-command retained UTF-8 output ceiling              |
+| `MCP_OUTPUT_BYTES`             | `2048`                        | Default response byte cap                              |
+| `MCP_MAX_OUTPUT_BYTES`         | `32768`                       | Maximum response byte cap                              |
+| `MCP_RECORD_LIMIT`             | `1024`                        | Per-map recent record limit                            |
+| `MCP_MAX_SHELLS`               | `8`                           | Maximum named shells including `default`               |
+| `MCP_SHELL_IDLE_TTL_MS`        | `1800000`                     | Idle lifetime for named shells; `0` disables cleanup   |
 
-`MCP_CWD` expands `~`, resolves relative values from startup cwd, and becomes the shell/workspace/instruction root. Its `AGENTS.md` is the coding-instructions path advertised to MCP clients. Numeric values are range-checked. `MCP_LOG_COMMANDS` accepts `off`, `summary`, and `full` and controls only shell command console logging. Independently, production startup writes every MCP `tools/call` invocation to the gitignored repository-local `agent-commands.log` with input and output character counts. Most argument objects are serialized directly; `apply_patch` excludes the patch body and records `patch_chars`, while `shell_run` places the command in its own readable block. Audit timestamps use a compact human-readable form such as `AUG-23-14:23:23` (`src/config.ts`, `src/index.ts`, `src/server/audit-log.ts`, `src/server/http-server.ts`, `src/tools/shell/session.ts`).
+`MCP_CWD` expands `~`, resolves relative values from startup cwd, and becomes the shell/workspace/instruction root. Its `AGENTS.md` is the coding-instructions path advertised to MCP clients. Numeric values are range-checked. Production startup writes completed MCP `tools/call` activity to the gitignored repository-local `agent-commands.yaml`. Each call is one compact YAML document with tool name and duration in the document-start comment; `shell_run` uses a block scalar capped at 2,000 characters, ordinary arguments are capped at 600 characters, and `apply_patch` records only cwd and patch size rather than the patch body (`src/config.ts`, `src/index.ts`, `src/server/audit-log.ts`, `src/server/http-server.ts`).
 
 ## Startup and Shutdown
 

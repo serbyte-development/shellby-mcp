@@ -60,8 +60,6 @@ export interface ShellSessionOptions {
   defaultOutputBytes?: number
   maxOutputBytes?: number
   recordLimit?: number
-  commandLogMode?: CommandLogMode
-  logger?: (message: string) => void
 }
 
 interface CommandRecord {
@@ -76,8 +74,6 @@ interface CommandRecord {
   capturedOutputBytes: number
   droppedOutputBytes: number
 }
-
-export type CommandLogMode = "off" | "summary" | "full"
 
 interface ResetRecord {
   requestId: string
@@ -215,8 +211,6 @@ export class PersistentShellSession {
   private readonly defaultOutputBytes: number
   private readonly maxOutputBytes: number
   private readonly recordLimit: number
-  private readonly logger: ((message: string) => void) | null
-  private readonly commandLogMode: CommandLogMode
   private readonly records = new Map<string, CommandRecord>()
   private readonly resetRecords = new Map<string, ResetRecord>()
   private readonly stopReasons = new WeakMap<ChildProcessWithoutNullStreams, StopReason>()
@@ -251,8 +245,6 @@ export class PersistentShellSession {
       throw new Error("defaultOutputBytes cannot exceed maxOutputBytes.")
     }
     this.recordLimit = positiveInteger(options.recordLimit, DEFAULT_RECORD_LIMIT)
-    this.commandLogMode = options.commandLogMode ?? "off"
-    this.logger = this.commandLogMode === "off" ? null : (options.logger ?? ((message) => console.log(message)))
   }
 
   get initialCwd(): string {
@@ -285,8 +277,6 @@ export class PersistentShellSession {
       defaultOutputBytes: this.defaultOutputBytes,
       maxOutputBytes: this.maxOutputBytes,
       recordLimit: this.recordLimit,
-      commandLogMode: this.commandLogMode,
-      ...(this.logger ? { logger: this.logger } : {}),
     })
   }
 
@@ -354,7 +344,6 @@ export class PersistentShellSession {
     this.pruneCommandRecords()
     this.records.set(record.requestId, record)
     this.active = record
-    this.logCommand(input.command)
     try {
       await writeToStdin(child, buildCommandScript(input.command, token, input.cwd))
     } catch (error) {
@@ -768,17 +757,6 @@ export class PersistentShellSession {
     return Math.min(Math.max(Math.trunc(value), 1), this.maxOutputBytes)
   }
 
-  private logCommand(command: string): void {
-    if (!this.logger) return
-    try {
-      const timestamp = formatLogTime(new Date())
-      const message = this.commandLogMode === "full" ? command : summarizeCommand(command)
-      this.logger(`[${timestamp}] ${message}`)
-    } catch {
-      // Logging must never interfere with shell execution.
-    }
-  }
-
   private pruneCommandRecords(): void {
     while (this.records.size >= this.recordLimit) {
       const oldestCompleted = [...this.records.values()].find((record) => record.status !== "running")
@@ -848,12 +826,6 @@ export class PersistentShellSession {
       if (this.updateVersion !== version || signal?.aborted) done()
     })
   }
-}
-
-function formatLogTime(date: Date): string {
-  const hours = String(date.getHours()).padStart(2, "0")
-  const minutes = String(date.getMinutes()).padStart(2, "0")
-  return `${hours}:${minutes}`
 }
 
 function buildCommandScript(command: string, token: string, cwd?: string): string {
@@ -961,36 +933,4 @@ function isHighSurrogate(value: number): boolean {
 
 function isLowSurrogate(value: number): boolean {
   return value >= 0xdc00 && value <= 0xdfff
-}
-
-function summarizeCommand(command: string): string {
-  const lines = command.split(/\r?\n/)
-  const first =
-    lines
-      .find((line) => {
-        const trimmed = line.trim()
-        return trimmed.length > 0 && !trimmed.startsWith("#")
-      })
-      ?.trim() ?? "(empty command)"
-  const escaped = escapeLogText(first)
-  const previewEnd = utf8BoundedEnd(escaped, 0, escaped.length, 240)
-  const preview = escaped.slice(0, previewEnd)
-  const totalBytes = Buffer.byteLength(command, "utf8")
-  if (lines.length > 1) {
-    return `${preview}${previewEnd < escaped.length ? "…" : ""} … [${lines.length} lines, ${totalBytes} bytes]`
-  }
-  return previewEnd < escaped.length ? `${preview}… [${totalBytes} bytes]` : preview
-}
-
-function escapeLogText(value: string): string {
-  let escaped = ""
-  for (const character of value) {
-    const codePoint = character.codePointAt(0)
-    if (character === "\t") escaped += "\\t"
-    else if (character === "\r") escaped += "\\r"
-    else if (codePoint !== undefined && (codePoint < 0x20 || codePoint === 0x7f)) {
-      escaped += `\\u{${codePoint.toString(16)}}`
-    } else escaped += character
-  }
-  return escaped
 }

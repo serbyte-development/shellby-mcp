@@ -4,11 +4,11 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import test from "node:test"
 
-import { characterCount, compactTimestamp, extractResultCharacterCounts, McpAuditLogger } from "../src/server/audit-log.js"
+import { characterCount, formatAuditTime, McpAuditLogger } from "../src/server/audit-log.js"
 
-test("formats shell commands as readable blocks and records completion metadata", async (t) => {
+test("writes one compact YAML document for a shell command", async (t) => {
   const directory = await mkdtemp(join(tmpdir(), "mcp-audit-log-"))
-  const file = join(directory, "agent-commands.log")
+  const file = join(directory, "agent-commands.yaml")
   t.after(() => rm(directory, { recursive: true, force: true }))
 
   const timestamp = new Date(2026, 7, 7, 20, 58, 30)
@@ -18,88 +18,86 @@ test("formats shell commands as readable blocks and records completion metadata"
     () => timestamp,
     () => clock
   )
-  const args = {
-    shell_id: "api-audit",
-    request_id: "scan-1",
-    command: "rg -n foo src",
-  }
-
   const [call] = logger.startToolCalls({
     jsonrpc: "2.0",
     id: 1,
     method: "tools/call",
-    params: { name: "shell_run", arguments: args },
+    params: {
+      name: "shell_run",
+      arguments: {
+        shell_id: "api-audit",
+        request_id: "scan-1",
+        command: "rg -n foo src",
+      },
+    },
   })
   assert.ok(call)
   clock = 1_275
-  call.finish({ httpStatus: 200, state: "finished", outputChars: 42 })
-  call.finish({ httpStatus: 500, state: "closed", outputChars: 999 })
+  call.finish({ httpStatus: 200, state: "finished" })
+  call.finish({ httpStatus: 500, state: "closed" })
 
-  const serializedArguments = JSON.stringify(args)
-  assert.equal(compactTimestamp(timestamp), "AUG-7-20:58:30")
+  assert.equal(formatAuditTime(timestamp), "20:58:30")
   assert.equal(characterCount("🙂a"), 2)
   assert.equal(
     await readFile(file, "utf8"),
-    [
-      `AUG-7-20:58:30\tCALL\tshell_run\tchars=${characterCount(serializedArguments)}\t${JSON.stringify({ shell_id: "api-audit", request_id: "scan-1" })}`,
-      `COMMAND\tchars=${characterCount(args.command)}`,
-      args.command,
-      "END COMMAND",
-      "AUG-7-20:58:30\tRESULT\tshell_run\tchars=42\tduration_ms=275\thttp_status=200\tstate=finished",
-      "",
-      "",
-    ].join("\n")
+    ["--- # 20:58:30 - shell_run - 275ms", 'shell: "api-audit/scan-1"', "command: |-", "  rg -n foo src", "", ""].join("\n")
   )
 })
 
-test("omits apply_patch bodies while retaining metadata and patch size", async (t) => {
+test("omits apply_patch bodies while retaining cwd and patch size", async (t) => {
   const directory = await mkdtemp(join(tmpdir(), "mcp-audit-log-"))
-  const file = join(directory, "agent-commands.log")
+  const file = join(directory, "agent-commands.yaml")
   t.after(() => rm(directory, { recursive: true, force: true }))
 
   const timestamp = new Date(2026, 7, 7, 21, 12, 3)
-  const logger = new McpAuditLogger(file, () => timestamp)
-  const args = {
-    patch: "*** Begin Patch\n*** Update File: src/a.ts\n@@\n-old\n+new\n*** End Patch",
-    cwd: "/workspace/project",
-  }
-
-  logger.startToolCalls({
+  let clock = 2_000
+  const logger = new McpAuditLogger(
+    file,
+    () => timestamp,
+    () => clock
+  )
+  const patch = "*** Begin Patch\n*** Update File: src/a.ts\n@@\n-old\n+new\n*** End Patch"
+  const [call] = logger.startToolCalls({
     jsonrpc: "2.0",
     id: 2,
     method: "tools/call",
-    params: { name: "apply_patch", arguments: args },
+    params: { name: "apply_patch", arguments: { patch, cwd: "/workspace/project" } },
   })
+  assert.ok(call)
+  clock = 2_051
+  call.finish({ httpStatus: 200, state: "finished" })
 
   const log = await readFile(file, "utf8")
-  assert.equal(
-    log,
-    `AUG-7-21:12:03\tCALL\tapply_patch\tchars=${characterCount(JSON.stringify(args))}\tpatch_chars=${characterCount(args.patch)}\t${JSON.stringify({ cwd: args.cwd })}\n`
-  )
+  assert.equal(log, `--- # 21:12:03 - apply_patch - 51ms\ncwd: "/workspace/project"\npatch_chars: ${characterCount(patch)}\n\n`)
   assert.doesNotMatch(log, /Begin Patch|Update File|old|new/)
 })
 
-test("counts only the JSON-RPC tool result or error payload", () => {
-  const payload = JSON.stringify([
-    {
-      jsonrpc: "2.0",
-      id: 1,
-      result: { structuredContent: { response: "hello" } },
-    },
-    {
-      jsonrpc: "2.0",
-      id: "two",
-      error: { code: -32000, message: "failed" },
-    },
-  ])
-  const counts = extractResultCharacterCounts(payload)
-  assert.equal(counts.get("1"), characterCount(JSON.stringify({ structuredContent: { response: "hello" } })))
-  assert.equal(counts.get("two"), characterCount(JSON.stringify({ code: -32000, message: "failed" })))
+test("caps large ordinary tool arguments", async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), "mcp-audit-log-"))
+  const file = join(directory, "agent-commands.yaml")
+  t.after(() => rm(directory, { recursive: true, force: true }))
+
+  const logger = new McpAuditLogger(
+    file,
+    () => new Date(2026, 7, 7, 22, 0, 0),
+    () => 0
+  )
+  const [call] = logger.startToolCalls({
+    method: "tools/call",
+    params: { name: "feedback_submit", arguments: { feedback: "x".repeat(2_000) } },
+  })
+  assert.ok(call)
+  call.finish({ httpStatus: 200, state: "finished" })
+
+  const log = await readFile(file, "utf8")
+  assert.match(log, /^--- # 22:00:00 - feedback_submit - 0ms\nargs: "/)
+  assert.match(log, /chars omitted/)
+  assert.ok(log.length < 800)
 })
 
 test("ignores non-tool MCP requests", async (t) => {
   const directory = await mkdtemp(join(tmpdir(), "mcp-audit-log-"))
-  const file = join(directory, "agent-commands.log")
+  const file = join(directory, "agent-commands.yaml")
   t.after(() => rm(directory, { recursive: true, force: true }))
 
   const logger = new McpAuditLogger(file)

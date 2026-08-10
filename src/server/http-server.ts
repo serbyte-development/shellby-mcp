@@ -7,7 +7,7 @@ import { ShellyAuthError, type ShellyAuthStore } from "../auth/auth.js"
 import { MCP_CONFIG } from "../config.js"
 import { ChatGptSubagentModule, DEFAULT_CHATGPT_CDP_ENDPOINT, type ChatGptSubagentService } from "../tools/subagent/chatgpt-subagent.js"
 import { createMcpServer } from "./mcp-server.js"
-import { characterCount, extractResultCharacterCounts, McpAuditLogger } from "./audit-log.js"
+import { McpAuditLogger } from "./audit-log.js"
 import { FeedbackStore } from "../tools/feedback.js"
 import { PeekabooClient } from "../tools/computer/peekaboo.js"
 import { PersistentShellSession } from "../tools/shell/session.js"
@@ -67,20 +67,21 @@ export async function startMcpHttpServer(options: StartMcpServerOptions = {}): P
 
   const handleMcpPost = async (req: Request, res: Response): Promise<void> => {
     const auditCalls = auditLogger?.startToolCalls(req.body) ?? []
-    const responseChunks: string[] = []
-    if (auditCalls.length > 0) captureResponseBody(res, responseChunks)
+    let responseBytes = 0
+    if (auditCalls.length > 0) {
+      countResponseBytes(res, (bytes) => {
+        responseBytes += bytes
+      })
+    }
     let auditFinished = false
     const finishAudit = (state: "finished" | "closed") => {
       if (auditFinished) return
       auditFinished = true
-      const responseText = responseChunks.join("")
-      const resultCharacterCounts = extractResultCharacterCounts(responseText)
-      const fallbackOutputChars = characterCount(responseText)
       for (const auditCall of auditCalls) {
         auditCall.finish({
           httpStatus: res.statusCode,
           state,
-          outputChars: resultCharacterCounts.get(auditCall.requestIdKey) ?? fallbackOutputChars,
+          responseBytes,
         })
       }
     }
@@ -206,6 +207,30 @@ export async function startMcpHttpServer(options: StartMcpServerOptions = {}): P
   }
 }
 
+function countResponseBytes(res: Response, addBytes: (bytes: number) => void): void {
+  const originalWrite = res.write.bind(res) as (...args: unknown[]) => boolean
+  const originalEnd = res.end.bind(res) as (...args: unknown[]) => Response
+
+  res.write = ((...args: unknown[]) => {
+    addBytes(responseChunkBytes(args[0], args[1]))
+    return originalWrite(...args)
+  }) as typeof res.write
+
+  res.end = ((...args: unknown[]) => {
+    addBytes(responseChunkBytes(args[0], args[1]))
+    return originalEnd(...args)
+  }) as typeof res.end
+}
+
+function responseChunkBytes(chunk: unknown, encoding: unknown): number {
+  if (typeof chunk === "string") {
+    const normalizedEncoding = typeof encoding === "string" && Buffer.isEncoding(encoding) ? (encoding as BufferEncoding) : "utf8"
+    return Buffer.byteLength(chunk, normalizedEncoding)
+  }
+  if (Buffer.isBuffer(chunk) || chunk instanceof Uint8Array) return chunk.byteLength
+  return 0
+}
+
 function containsToolCall(payload: unknown): boolean {
   const requests = Array.isArray(payload) ? payload : [payload]
   return requests.some((value) => {
@@ -231,31 +256,6 @@ function remoteAuthError(res: Response, error: unknown): void {
 
   console.error("Remote MCP authentication failed:", error)
   jsonRpcError(res, 503, -32003, "Remote MCP authentication is unavailable.")
-}
-
-function captureResponseBody(res: Response, chunks: string[]): void {
-  const originalWrite = res.write.bind(res) as (...args: unknown[]) => boolean
-  const originalEnd = res.end.bind(res) as (...args: unknown[]) => Response
-
-  res.write = ((...args: unknown[]) => {
-    captureResponseChunk(chunks, args[0], args[1])
-    return originalWrite(...args)
-  }) as typeof res.write
-
-  res.end = ((...args: unknown[]) => {
-    captureResponseChunk(chunks, args[0], args[1])
-    return originalEnd(...args)
-  }) as typeof res.end
-}
-
-function captureResponseChunk(chunks: string[], chunk: unknown, encoding: unknown): void {
-  if (typeof chunk === "string") {
-    chunks.push(chunk)
-    return
-  }
-  if (!Buffer.isBuffer(chunk) && !(chunk instanceof Uint8Array)) return
-  const normalizedEncoding = typeof encoding === "string" && Buffer.isEncoding(encoding) ? (encoding as BufferEncoding) : "utf8"
-  chunks.push(Buffer.from(chunk).toString(normalizedEncoding))
 }
 
 function jsonRpcError(res: Response, status: number, code: number, message: string): void {

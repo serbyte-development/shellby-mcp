@@ -114,49 +114,6 @@ test("deduplicates retries and rejects request id conflicts", { timeout: 10_000 
   )
 })
 
-test("logs each accepted command once without duplicating retries", { timeout: 10_000 }, async (t) => {
-  const messages: string[] = []
-  const shell = new PersistentShellSession({
-    commandLogMode: "full",
-    logger: (message) => messages.push(message),
-  })
-  t.after(() => shell.close())
-
-  await runToCompletion(shell, "logged-command", "printf logged")
-  await runToCompletion(shell, "logged-command", "printf logged")
-
-  assert.equal(messages.length, 1)
-  assert.match(messages[0], /^\[(?:[01]\d|2[0-3]):[0-5]\d\] printf logged$/)
-})
-
-test("summarizes multiline command logs", { timeout: 10_000 }, async (t) => {
-  const messages: string[] = []
-  const shell = new PersistentShellSession({
-    commandLogMode: "summary",
-    logger: (message) => messages.push(message),
-  })
-  t.after(() => shell.close())
-
-  await runToCompletion(shell, "summarized-command", ["# edit files", "printf first", "printf second"].join("\n"))
-
-  assert.equal(messages.length, 1)
-  assert.match(messages[0], /^\[(?:[01]\d|2[0-3]):[0-5]\d\] printf first … \[3 lines, 39 bytes\]$/)
-})
-
-test("escapes control characters in summary logs", { timeout: 10_000 }, async (t) => {
-  const messages: string[] = []
-  const shell = new PersistentShellSession({
-    commandLogMode: "summary",
-    logger: (message) => messages.push(message),
-  })
-  t.after(() => shell.close())
-
-  await runToCompletion(shell, "control-log", "printf 'safe\rhidden'")
-
-  assert.equal(messages.length, 1)
-  assert.match(messages[0], /^\[(?:[01]\d|2[0-3]):[0-5]\d\] printf 'safe\\rhidden'$/)
-})
-
 test("does not leak errexit into later commands", { timeout: 10_000 }, async (t) => {
   const shell = new PersistentShellSession()
   t.after(() => shell.close())

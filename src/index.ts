@@ -13,11 +13,10 @@ import { PeekabooClient } from "./tools/computer/peekaboo.js"
 
 const host = process.env.HOST ?? MCP_CONFIG.defaults.host
 const port = parsePositiveInteger(process.env.PORT, MCP_CONFIG.defaults.port)
-const commandLogMode = parseCommandLogMode(process.env.MCP_LOG_COMMANDS)
 const defaultOutputBytes = parsePositiveInteger(process.env.MCP_OUTPUT_BYTES, 2 * 1024)
 const maxOutputBytes = parsePositiveInteger(process.env.MCP_MAX_OUTPUT_BYTES, 32 * 1024)
 const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..")
-const auditLogPath = resolve(repositoryRoot, "agent-commands.log")
+const auditLogPath = resolve(repositoryRoot, "agent-commands.yaml")
 const auditLogger = new McpAuditLogger(auditLogPath)
 const authStore = new ShellyAuthStore()
 await authStore.ensureState()
@@ -39,7 +38,6 @@ const shellOptions: ShellSessionOptions = {
   defaultOutputBytes,
   maxOutputBytes,
   recordLimit: parsePositiveInteger(process.env.MCP_RECORD_LIMIT, 1024),
-  commandLogMode,
 }
 const shells = new ShellSessionManager({
   createShell: () => new PersistentShellSession(shellOptions),
@@ -101,15 +99,4 @@ function parseNonNegativeInteger(value: string | undefined, fallback: number): n
     throw new Error(`Expected a non-negative integer, received ${JSON.stringify(value)}.`)
   }
   return parsed
-}
-
-function parseCommandLogMode(value: string | undefined): "off" | "summary" | "full" {
-  if (value === undefined) return MCP_CONFIG.defaults.logCommands
-  const normalized = value.toLowerCase()
-  if (["1", "true", "yes", "on", "summary"].includes(normalized)) {
-    return "summary"
-  }
-  if (normalized === "full") return "full"
-  if (["0", "false", "no", "off"].includes(normalized)) return "off"
-  throw new Error(`Expected MCP_LOG_COMMANDS to be off, summary, or full; received ${JSON.stringify(value)}.`)
 }

@@ -1,6 +1,7 @@
 node_modules/
 dist/
 .env
-/agent-commands.log
+/agent-commands.md
+/agent-commands.yaml
 *.log
 /wiki/_private/

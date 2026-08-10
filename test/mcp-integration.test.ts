@@ -395,7 +395,7 @@ test("shares async ChatGPT subagent turns across stateless MCP requests", { time
 test("audits tool calls at the HTTP MCP boundary", { timeout: 10_000 }, async (t) => {
   const root = await mkdtemp(join(tmpdir(), "mcp-audit-integration-"))
   t.after(() => rm(root, { recursive: true, force: true }))
-  const auditPath = join(root, "agent-commands.log")
+  const auditPath = join(root, "agent-commands.yaml")
   const auditLogger = new McpAuditLogger(auditPath)
   const chatGptSubagents: ChatGptSubagentService = {
     async ask({ agentId }) {
@@ -439,10 +439,8 @@ test("audits tool calls at the HTTP MCP boundary", { timeout: 10_000 }, async (t
   })
 
   const log = await readFile(auditPath, "utf8")
-  assert.match(log, /\tCALL\tshell_list\tchars=2\t\{\}/)
-  assert.match(log, /\tRESULT\tshell_list\tchars=\d+\tduration_ms=\d+\thttp_status=200\tstate=finished/)
-  assert.match(log, /\tCALL\tchatgpt_subagent\tchars=\d+\t\{"agent_id":"audit-check","prompt":"Inspect the audit path\."\}/)
-  assert.match(log, /\tRESULT\tchatgpt_subagent\tchars=\d+\tduration_ms=\d+\thttp_status=200\tstate=finished/)
+  assert.match(log, /--- # \d{2}:\d{2}:\d{2} - shell_list - \d+ms\nargs: \{\}/)
+  assert.match(log, /--- # \d{2}:\d{2}:\d{2} - chatgpt_subagent - \d+ms\nargs: \{"agent_id":"audit-check","prompt":"Inspect the audit path\."\}/)
 })
 
 test("exposes a stable Peekaboo Computer Use surface and preserves semantic errors", { timeout: 10_000 }, async (t) => {

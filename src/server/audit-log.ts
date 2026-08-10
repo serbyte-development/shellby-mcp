@@ -1,5 +1,10 @@
 import { appendFileSync } from "node:fs"
 
+const MAX_INLINE_ARGUMENT_CHARS = 600
+const MAX_SHELL_COMMAND_CHARS = 2_000
+const LARGE_RESPONSE_BYTES = 8 * 1024
+const SLOW_CALL_MS = 5_000
+
 interface JsonRpcToolCall {
   method?: unknown
   params?: {
@@ -9,8 +14,7 @@ interface JsonRpcToolCall {
 }
 
 export interface McpAuditCall {
-  requestIdKey: string
-  finish(input: { httpStatus: number; state: "finished" | "closed"; outputChars: number }): void
+  finish(input: { httpStatus: number; state: "finished" | "closed"; responseBytes: number }): void
 }
 
 export class McpAuditLogger {
@@ -27,19 +31,24 @@ export class McpAuditLogger {
       if (!parsed) return []
 
       const startedAt = this.clock()
-      const serializedArguments = JSON.stringify(parsed.arguments ?? {})
-      this.append(formatCallEntry(compactTimestamp(this.now()), parsed.name, parsed.arguments, characterCount(serializedArguments)))
-
+      const startedTime = this.now()
       let finished = false
+
       return [
         {
-          requestIdKey: jsonRpcIdKey(parsed.id),
-          finish: ({ httpStatus, state, outputChars }) => {
+          finish: ({ httpStatus, state, responseBytes }) => {
             if (finished) return
             finished = true
-            const durationMs = Math.max(0, this.clock() - startedAt)
             this.append(
-              `${compactTimestamp(this.now())}\tRESULT\t${parsed.name}\tchars=${outputChars}\tduration_ms=${durationMs}\thttp_status=${httpStatus}\tstate=${state}\n\n`
+              formatEntry({
+                time: startedTime,
+                toolName: parsed.name,
+                argumentsValue: parsed.arguments,
+                durationMs: Math.max(0, this.clock() - startedAt),
+                httpStatus,
+                state,
+                responseBytes,
+              })
             )
           },
         },
@@ -47,84 +56,107 @@ export class McpAuditLogger {
     })
   }
 
-  private append(line: string): void {
+  private append(entry: string): void {
     try {
-      appendFileSync(this.filePath, line, "utf8")
+      appendFileSync(this.filePath, entry, "utf8")
     } catch (error) {
       console.warn(`Could not append MCP audit log: ${errorMessage(error)}`)
     }
   }
 }
 
-export function compactTimestamp(date: Date): string {
-  const month = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"][date.getMonth()]
-  return `${month}-${date.getDate()}-${date.getHours()}:${twoDigits(date.getMinutes())}:${twoDigits(date.getSeconds())}`
-}
-
-export function extractResultCharacterCounts(payload: string): Map<string, number> {
-  let parsed: unknown
-  try {
-    parsed = JSON.parse(payload)
-  } catch {
-    return new Map()
-  }
-
-  const responses = Array.isArray(parsed) ? parsed : [parsed]
-  const counts = new Map<string, number>()
-  for (const response of responses) {
-    if (!response || typeof response !== "object" || Array.isArray(response)) continue
-    const record = response as Record<string, unknown>
-    if (!("result" in record) && !("error" in record)) continue
-    const value = "result" in record ? record.result : record.error
-    const serialized = JSON.stringify(value ?? null)
-    counts.set(jsonRpcIdKey(record.id), characterCount(serialized))
-  }
-  return counts
+export function formatAuditTime(date: Date): string {
+  return `${twoDigits(date.getHours())}:${twoDigits(date.getMinutes())}:${twoDigits(date.getSeconds())}`
 }
 
 export function characterCount(value: string): number {
   return Array.from(value).length
 }
 
-function formatCallEntry(timestamp: string, toolName: string, argumentsValue: unknown, inputChars: number): string {
-  const argumentsRecord = asRecord(argumentsValue)
+function formatEntry(input: {
+  time: Date
+  toolName: string
+  argumentsValue: unknown
+  durationMs: number
+  httpStatus: number
+  state: "finished" | "closed"
+  responseBytes: number
+}): string {
+  const abnormal = input.httpStatus >= 400 || input.state !== "finished" ? ` - HTTP ${input.httpStatus} ${input.state}` : ""
+  const largeResponse = input.responseBytes >= LARGE_RESPONSE_BYTES ? ` - ${formatBytes(input.responseBytes)}` : ""
+  const tag = auditTag(input)
+  const heading = `--- # ${tag} ${formatAuditTime(input.time)} - ${input.toolName} - ${input.durationMs}ms${largeResponse}${abnormal}`
+  const details = formatArguments(input.toolName, input.argumentsValue)
+  return details ? `${heading}\n${details}\n\n` : `${heading}\n\n`
+}
+
+function auditTag(input: { durationMs: number; httpStatus: number; state: "finished" | "closed"; responseBytes: number }): string {
+  if (input.httpStatus >= 400 || input.state !== "finished") return "!"
+  if (input.durationMs >= SLOW_CALL_MS) return "~"
+  if (input.responseBytes >= LARGE_RESPONSE_BYTES) return "?"
+  return "^"
+}
+
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes}B`
+  const kilobytes = bytes / 1024
+  return `${kilobytes >= 10 ? Math.round(kilobytes) : kilobytes.toFixed(1)}KB`
+}
+
+function formatArguments(toolName: string, value: unknown): string {
+  const argumentsRecord = asRecord(value)
+
   if (toolName === "apply_patch" && argumentsRecord) {
-    const { patch, ...metadata } = argumentsRecord
-    const patchChars = typeof patch === "string" ? characterCount(patch) : 0
-    return `${timestamp}\tCALL\t${toolName}\tchars=${inputChars}\tpatch_chars=${patchChars}\t${JSON.stringify(metadata)}\n`
+    const patch = typeof argumentsRecord.patch === "string" ? argumentsRecord.patch : ""
+    const cwd = typeof argumentsRecord.cwd === "string" ? argumentsRecord.cwd : ""
+    return `cwd: ${yamlString(cwd)}\npatch_chars: ${characterCount(patch)}`
   }
 
   if (toolName === "shell_run" && argumentsRecord) {
-    const { command, ...metadata } = argumentsRecord
-    const commandText = typeof command === "string" ? command : ""
-    return [
-      `${timestamp}\tCALL\t${toolName}\tchars=${inputChars}\t${JSON.stringify(metadata)}`,
-      `COMMAND\tchars=${characterCount(commandText)}`,
-      commandText,
-      "END COMMAND",
-      "",
-    ].join("\n")
+    const command = typeof argumentsRecord.command === "string" ? argumentsRecord.command : ""
+    const shellId = typeof argumentsRecord.shell_id === "string" ? argumentsRecord.shell_id : "default"
+    const requestId = typeof argumentsRecord.request_id === "string" ? argumentsRecord.request_id : ""
+    const commandText = truncate(command, MAX_SHELL_COMMAND_CHARS)
+    const cwd = typeof argumentsRecord.cwd === "string" ? `\ncwd: ${yamlString(argumentsRecord.cwd)}` : ""
+    return `shell: ${yamlString(`${shellId}/${requestId}`)}${cwd}\ncommand: |-\n${indentBlock(commandText)}`
   }
 
-  return `${timestamp}\tCALL\t${toolName}\tchars=${inputChars}\t${JSON.stringify(argumentsValue ?? {})}\n`
+  const serialized = JSON.stringify(value ?? {})
+  if (characterCount(serialized) <= MAX_INLINE_ARGUMENT_CHARS) {
+    return `args: ${serialized}`
+  }
+  return `args: ${yamlString(truncate(serialized, MAX_INLINE_ARGUMENT_CHARS))}`
 }
 
-function parseToolCall(value: unknown): { id?: unknown; name: string; arguments?: unknown } | undefined {
+function indentBlock(content: string): string {
+  return content
+    .split("\n")
+    .map((line) => `  ${line}`)
+    .join("\n")
+}
+
+function yamlString(value: string): string {
+  return JSON.stringify(value)
+}
+
+function truncate(value: string, maxChars: number): string {
+  const characters = Array.from(value)
+  if (characters.length <= maxChars) return value
+  const omitted = characters.length - maxChars
+  return `${characters.slice(0, maxChars).join("")}… [${omitted} chars omitted]`
+}
+
+function parseToolCall(value: unknown): { name: string; arguments?: unknown } | undefined {
   if (!value || typeof value !== "object" || Array.isArray(value)) return undefined
-  const request = value as JsonRpcToolCall & { id?: unknown }
+  const request = value as JsonRpcToolCall
   if (request.method !== "tools/call") return undefined
   const name = request.params?.name
   if (typeof name !== "string" || !name) return undefined
-  return { id: request.id, name, arguments: request.params?.arguments }
+  return { name, arguments: request.params?.arguments }
 }
 
 function asRecord(value: unknown): Record<string, unknown> | undefined {
   return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : undefined
-}
-
-function jsonRpcIdKey(id: unknown): string {
-  if (typeof id === "string" || typeof id === "number") return String(id)
-  return JSON.stringify(id ?? null)
 }
 
 function twoDigits(value: number): string {

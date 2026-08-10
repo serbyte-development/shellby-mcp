@@ -21,7 +21,6 @@ export const MCP_CONFIG = {
     host: "127.0.0.1",
     port: 3333,
     workspace: "~/Desktop/chatgpt-workspace",
-    logCommands: "summary" as const,
   },
 }
 
