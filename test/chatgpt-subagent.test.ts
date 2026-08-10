@@ -7,7 +7,7 @@ import {
   ChatGptSubagentModule,
   extractConversationMessages,
   extractConversationNodes,
-} from "../src/chatgpt-subagent.js"
+} from "../src/tools/subagent/chatgpt-subagent.js"
 
 test("module fails clearly when the expected Chrome CDP endpoint is unavailable", async () => {
   const module = new ChatGptSubagentModule({

@@ -2,17 +2,17 @@ import { mkdir } from "node:fs/promises"
 import { dirname, resolve } from "node:path"
 import { fileURLToPath } from "node:url"
 
-import { ShellyAuthStore } from "./auth.js"
-import { ChatGptSubagentModule, DEFAULT_CHATGPT_CDP_ENDPOINT } from "./chatgpt-subagent.js"
-import { McpAuditLogger } from "./mcp-audit-log.js"
-import { PersistentShellSession, type ShellSessionOptions } from "./shell-session.js"
-import { ShellSessionManager } from "./shell-session-manager.js"
-import { startMcpHttpServer } from "./http-server.js"
-import { PeekabooClient } from "./peekaboo.js"
-import { prepareApplyPatch, resolveWorkspacePath } from "./workspace-tools.js"
+import { ShellyAuthStore } from "./auth/auth.js"
+import { MCP_CONFIG, resolveWorkspacePath } from "./config.js"
+import { ChatGptSubagentModule, DEFAULT_CHATGPT_CDP_ENDPOINT } from "./tools/subagent/chatgpt-subagent.js"
+import { McpAuditLogger } from "./server/audit-log.js"
+import { PersistentShellSession, type ShellSessionOptions } from "./tools/shell/session.js"
+import { ShellSessionManager } from "./tools/shell/session-manager.js"
+import { startMcpHttpServer } from "./server/http-server.js"
+import { PeekabooClient } from "./tools/computer/peekaboo.js"
 
-const host = process.env.HOST ?? "127.0.0.1"
-const port = parsePositiveInteger(process.env.PORT, 3333)
+const host = process.env.HOST ?? MCP_CONFIG.defaults.host
+const port = parsePositiveInteger(process.env.PORT, MCP_CONFIG.defaults.port)
 const commandLogMode = parseCommandLogMode(process.env.MCP_LOG_COMMANDS)
 const defaultOutputBytes = parsePositiveInteger(process.env.MCP_OUTPUT_BYTES, 2 * 1024)
 const maxOutputBytes = parsePositiveInteger(process.env.MCP_MAX_OUTPUT_BYTES, 32 * 1024)
@@ -21,9 +21,8 @@ const auditLogPath = resolve(repositoryRoot, "agent-commands.log")
 const auditLogger = new McpAuditLogger(auditLogPath)
 const authStore = new ShellyAuthStore()
 await authStore.ensureState()
-const cwd = resolveWorkspacePath(process.env.MCP_CWD)
+const cwd = resolveWorkspacePath(process.env.MCP_CWD ?? MCP_CONFIG.defaults.workspace)
 await mkdir(cwd, { recursive: true })
-const applyPatch = await prepareApplyPatch(cwd, process.env.MCP_CODEX_BIN)
 const peekaboo = new PeekabooClient({
   executable: process.env.MCP_PEEKABOO_BIN ?? "peekaboo",
 })
@@ -35,7 +34,6 @@ const chatGptSubagents = new ChatGptSubagentModule({
 const shellOptions: ShellSessionOptions = {
   shellPath: process.env.MCP_SHELL ?? "/bin/zsh",
   cwd,
-  pathPrepend: [applyPatch.binDirectory],
   transcriptLimit: parsePositiveInteger(process.env.MCP_TRANSCRIPT_CHARS, 1024 * 1024),
   commandTranscriptBytes: parsePositiveInteger(process.env.MCP_COMMAND_TRANSCRIPT_BYTES, 256 * 1024),
   defaultOutputBytes,
@@ -53,7 +51,6 @@ const running = await startMcpHttpServer({
   host,
   port,
   shellManager: shells,
-  applyPatchExecutable: applyPatch.executable,
   peekaboo,
   chatGptSubagents,
   auditLogger,
@@ -65,11 +62,6 @@ console.log(`Shell: ${process.env.MCP_SHELL ?? "/bin/zsh"}`)
 console.log(`Default workspace: ${cwd}`)
 console.log(`Maximum named shells: ${shells.maximumShells}`)
 console.log(`Agent MCP audit log: ${auditLogPath}`)
-if (applyPatch.available) {
-  console.log(`apply_patch: ${applyPatch.executable}`)
-} else {
-  console.warn(`apply_patch unavailable: ${applyPatch.warning}`)
-}
 console.log(`Computer Use: Peekaboo CLI (${running.peekaboo.executable})`)
 console.log(`ChatGPT Subagents: attach-only CDP ${chatGptCdpEndpoint}`)
 
@@ -112,7 +104,7 @@ function parseNonNegativeInteger(value: string | undefined, fallback: number): n
 }
 
 function parseCommandLogMode(value: string | undefined): "off" | "summary" | "full" {
-  if (value === undefined) return "summary"
+  if (value === undefined) return MCP_CONFIG.defaults.logCommands
   const normalized = value.toLowerCase()
   if (["1", "true", "yes", "on", "summary"].includes(normalized)) {
     return "summary"

@@ -1,8 +1,8 @@
 import assert from "node:assert/strict"
 import test from "node:test"
 
-import { PersistentShellSession } from "../src/shell-session.js"
-import { DEFAULT_SHELL_ID, ShellSessionManager } from "../src/shell-session-manager.js"
+import { PersistentShellSession } from "../src/tools/shell/session.js"
+import { DEFAULT_SHELL_ID, ShellSessionManager } from "../src/tools/shell/session-manager.js"
 
 test("creates named shells lazily and keeps their state isolated", async (t) => {
   const manager = new ShellSessionManager()

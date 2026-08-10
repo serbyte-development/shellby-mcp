@@ -1,10 +1,10 @@
 import assert from "node:assert/strict"
-import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises"
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import test from "node:test"
 
-import { PersistentShellSession, ShellSessionError, type ShellSnapshot } from "../src/shell-session.js"
+import { PersistentShellSession, ShellSessionError, type ShellSnapshot } from "../src/tools/shell/session.js"
 
 test("retains cwd and environment across commands", { timeout: 10_000 }, async (t) => {
   const directory = await mkdtemp(join(tmpdir(), "shell-mcp-state-"))
@@ -68,25 +68,6 @@ test("rejects invalid explicit working directories", { timeout: 10_000 }, async 
     }),
     (error: unknown) => error instanceof ShellSessionError && error.code === "invalid_command" && /not a directory/.test(error.message)
   )
-})
-
-test("prepends configured executable directories after login-shell startup", { timeout: 10_000 }, async (t) => {
-  const directory = await mkdtemp(join(tmpdir(), "shell-mcp-path-"))
-  const binDirectory = join(directory, "bin")
-  await mkdir(binDirectory, { recursive: true })
-  const executable = join(binDirectory, "mcp-path-check")
-  await writeFile(executable, "#!/bin/sh\nprintf path-ready\n")
-  await chmod(executable, 0o755)
-
-  const shell = new PersistentShellSession({ pathPrepend: [binDirectory] })
-  t.after(async () => {
-    await shell.close()
-    await rm(directory, { recursive: true, force: true })
-  })
-
-  const result = await runToCompletion(shell, "path-prepend", "mcp-path-check")
-  assert.equal(result.output, "path-ready")
-  assert.equal(result.snapshot.exit_code, 0)
 })
 
 test("isolates protocol stdin and restores redirected descriptors", { timeout: 10_000 }, async (t) => {

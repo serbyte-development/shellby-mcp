@@ -3,15 +3,16 @@ import { createMcpExpressApp } from "@modelcontextprotocol/express"
 import { NodeStreamableHTTPServerTransport } from "@modelcontextprotocol/node"
 import type { Request, Response } from "express"
 
-import { ShellyAuthError, type ShellyAuthStore } from "./auth.js"
-import { ChatGptSubagentModule, DEFAULT_CHATGPT_CDP_ENDPOINT, type ChatGptSubagentService } from "./chatgpt-subagent.js"
+import { ShellyAuthError, type ShellyAuthStore } from "../auth/auth.js"
+import { MCP_CONFIG } from "../config.js"
+import { ChatGptSubagentModule, DEFAULT_CHATGPT_CDP_ENDPOINT, type ChatGptSubagentService } from "../tools/subagent/chatgpt-subagent.js"
 import { createMcpServer } from "./mcp-server.js"
-import { characterCount, extractResultCharacterCounts, McpAuditLogger } from "./mcp-audit-log.js"
-import { FeedbackStore } from "./feedback.js"
-import { PeekabooClient } from "./peekaboo.js"
-import { PersistentShellSession } from "./shell-session.js"
-import { ShellSessionManager } from "./shell-session-manager.js"
-import { WebPageOpener } from "./web-open.js"
+import { characterCount, extractResultCharacterCounts, McpAuditLogger } from "./audit-log.js"
+import { FeedbackStore } from "../tools/feedback.js"
+import { PeekabooClient } from "../tools/computer/peekaboo.js"
+import { PersistentShellSession } from "../tools/shell/session.js"
+import { ShellSessionManager } from "../tools/shell/session-manager.js"
+import { WebPageOpener } from "../tools/web/web-open.js"
 
 interface InFlightMcpRequest {
   server: ReturnType<typeof createMcpServer>
@@ -45,8 +46,8 @@ export interface StartMcpServerOptions {
 }
 
 export async function startMcpHttpServer(options: StartMcpServerOptions = {}): Promise<RunningMcpServer> {
-  const host = options.host ?? "127.0.0.1"
-  const port = options.port ?? 3333
+  const host = options.host ?? MCP_CONFIG.defaults.host
+  const port = options.port ?? MCP_CONFIG.defaults.port
   const shells = options.shellManager ?? new ShellSessionManager({ defaultShell: options.shell })
   const shell = shells.defaultShell
   const peekaboo = options.peekaboo ?? new PeekabooClient()
@@ -54,7 +55,6 @@ export async function startMcpHttpServer(options: StartMcpServerOptions = {}): P
   const auditLogger = options.auditLogger
   const authStore = options.authStore
   const feedbackStore = options.feedbackStore ?? new FeedbackStore()
-  const applyPatchExecutable = options.applyPatchExecutable ?? "apply_patch"
   const webPageOpener = options.webPageOpener ?? new WebPageOpener()
   const inFlightRequests = new Set<InFlightMcpRequest>()
 
@@ -90,7 +90,7 @@ export async function startMcpHttpServer(options: StartMcpServerOptions = {}): P
     const mcpServer = createMcpServer(shells, {
       chatGptSubagents,
       feedbackStore,
-      applyPatchExecutable,
+      applyPatchExecutable: options.applyPatchExecutable,
       peekaboo,
       webPageOpener,
     })

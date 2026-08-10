@@ -11,7 +11,7 @@
 
 #### Staleness / conflict notes
 
-- Rewritten on 2026-08-10 after the MCP v2/auth migration. It now describes the ngrok ChatGPT-source trust boundary, bound OpenAI subject, current PM2 commands, browser subagents, and modular MCP v2 packages at a public-user level (`src/auth.ts`, `src/http-server.ts`, `package.json`, `ecosystem.config.cjs`).
+- Rewritten on 2026-08-10 after the MCP v2/auth migration. It now describes the ngrok ChatGPT-source trust boundary, bound OpenAI subject, current PM2 commands, browser subagents, and modular MCP v2 packages at a public-user level (`src/auth/auth.ts`, `src/server/http-server.ts`, `package.json`, `ecosystem.config.cjs`).
 - Removed the maintainer-specific ngrok domain from the README and executable tunnel configuration. ngrok now assigns the user's public URL unless optional `NGROK_URL` supplies their own fixed domain (`README.md`, `package.json`, `ecosystem.config.cjs`).
 
 ### Maintainer workstation app-bundle survey, 2026-07-20
@@ -29,7 +29,7 @@
 - Stored as: [[raw/ChatGPT and Local Capability Survey 2026-08-01]].
 - Feeds: [[pages/Architecture Map]] and [[pages/Open Questions and Risks]].
 - Secret handling: no tokens, credential values, messages, screenshots, accessibility trees, recordings, history artifacts, or account data were read or stored.
-- Staleness note: its ChatGPT Computer Use child-MCP inventory remains historical evidence, but that child is not used by the current server. Direct Peekaboo integration supersedes the survey's Computer Use implementation direction (`src/index.ts`, `src/peekaboo.ts`, `src/computer-use-tools.ts`).
+- Staleness note: its ChatGPT Computer Use child-MCP inventory remains historical evidence, but that child is not used by the current server. Direct Peekaboo integration supersedes the survey's Computer Use implementation direction (`src/index.ts`, `src/tools/computer/peekaboo.ts`, `src/tools/computer/computer-tools.ts`).
 
 ### Peekaboo CLI documentation and installed help, 2026-08-01
 
@@ -44,13 +44,14 @@
 These are current implementation evidence, not copied raw notes:
 
 - Startup and configuration: `src/index.ts`, `package.json`, `tsconfig.json`.
-- HTTP boundary: `src/http-server.ts`, `test/mcp-integration.test.ts`.
-- Tool contracts and model instructions: `src/mcp-server.ts`, `test/mcp-integration.test.ts`.
-- Peekaboo invocation, snapshots, coordinate mapping, and focused Computer Use schemas: `src/peekaboo.ts`, `src/computer-use-tools.ts`, `test/peekaboo.test.ts`, `test/mcp-integration.test.ts`.
-- Shell, transcript, idempotency, and reset behavior: `src/shell-session.ts`, `test/shell-session.test.ts`.
-- Named-shell lifecycle: `src/shell-session-manager.ts`, `test/shell-session-manager.test.ts`.
-- Workspace `apply_patch` integration: `src/workspace-tools.ts`, `test/workspace-tools.test.ts`.
-- Webpage extraction and cached pagination: `src/web-open.ts`, `test/web-open.test.ts`, `test/mcp-integration.test.ts`.
+- HTTP boundary: `src/server/http-server.ts`, `test/mcp-integration.test.ts`.
+- Tool contracts and model instructions: `src/server/mcp-server.ts`, `test/mcp-integration.test.ts`.
+- Peekaboo invocation, snapshots, coordinate mapping, and focused Computer Use schemas: `src/tools/computer/peekaboo.ts`, `src/tools/computer/computer-tools.ts`, `test/peekaboo.test.ts`, `test/mcp-integration.test.ts`.
+- Shell, transcript, idempotency, and reset behavior: `src/tools/shell/session.ts`, `test/shell-session.test.ts`.
+- Named-shell lifecycle: `src/tools/shell/session-manager.ts`, `test/shell-session-manager.test.ts`.
+- Workspace path resolution: `src/config.ts`, `test/config.test.ts`.
+- First-class `apply_patch` runtime and vendored binary: `src/tools/apply-patch/apply-patch.ts`, `vendor/apply-patch/`, `test/mcp-integration.test.ts`.
+- Webpage extraction and cached pagination: `src/tools/web/web-open.ts`, `test/web-open.test.ts`, `test/mcp-integration.test.ts`.
 - Tunnel helper: `ngrok-traffic-policy.yml`, `package.json`.
 - Change tripwire: current implementation through commit `d00978c` (`Refresh wiki and align subagent polling`).
 

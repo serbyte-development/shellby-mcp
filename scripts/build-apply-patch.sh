@@ -36,8 +36,10 @@ target_triple="aarch64-apple-darwin"
 target_dir="$codex_root/codex-rs/target"
 temporary_root="$(mktemp -d "${TMPDIR:-/tmp}/codex-apply-patch.XXXXXX")"
 source_worktree="$temporary_root/codex"
-temporary_binary="$(mktemp "$repo_root/vendor/.apply_patch.XXXXXX")"
-temporary_provenance="$(mktemp "$repo_root/vendor/.apply_patch.provenance.XXXXXX")"
+vendor_dir="$repo_root/vendor/apply-patch"
+mkdir -p "$vendor_dir"
+temporary_binary="$(mktemp "$vendor_dir/.apply_patch.XXXXXX")"
+temporary_provenance="$(mktemp "$vendor_dir/.provenance.XXXXXX")"
 worktree_added=false
 
 cleanup() {
@@ -65,7 +67,6 @@ if [[ ! -x "$built_binary" ]]; then
   exit 1
 fi
 
-mkdir -p "$repo_root/vendor/codex"
 cp "$built_binary" "$temporary_binary"
 strip -x "$temporary_binary"
 chmod 0755 "$temporary_binary"
@@ -115,11 +116,11 @@ fs.writeFileSync(output, `${JSON.stringify(provenance, null, 2)}\n`);
 NODE
 
 chmod 0644 "$temporary_provenance"
-cp "$source_worktree/LICENSE" "$repo_root/vendor/codex/LICENSE"
-cp "$source_worktree/NOTICE" "$repo_root/vendor/codex/NOTICE"
-mv "$temporary_binary" "$repo_root/vendor/apply_patch"
-mv "$temporary_provenance" "$repo_root/vendor/apply_patch.provenance.json"
+cp "$source_worktree/LICENSE" "$vendor_dir/LICENSE"
+cp "$source_worktree/NOTICE" "$vendor_dir/NOTICE"
+mv "$temporary_binary" "$vendor_dir/apply_patch"
+mv "$temporary_provenance" "$vendor_dir/provenance.json"
 
 echo "Vendored codex-apply-patch $source_commit"
-echo "Binary: $repo_root/vendor/apply_patch ($size_bytes bytes)"
+echo "Binary: $vendor_dir/apply_patch ($size_bytes bytes)"
 echo "SHA-256: $sha256"

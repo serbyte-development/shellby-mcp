@@ -4,7 +4,7 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import test from "node:test"
 
-import { MAX_SKILL_BYTES, SkillCatalog, SkillCatalogError } from "../src/skills.js"
+import { MAX_SKILL_BYTES, SkillCatalog, SkillCatalogError } from "../src/tools/skills.js"
 
 test("lists workspace skills from frontmatter and loads the complete SKILL.md", async (t) => {
   const workspace = await mkdtemp(join(tmpdir(), "mcp-skills-"))

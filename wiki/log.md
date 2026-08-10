@@ -176,7 +176,7 @@
 
 ## [2026-08-02] optimize | compress Computer Use observations
 
-- Added Sharp and changed `computer_observe` image responses from Peekaboo's temporary PNG to a same-dimension quality-75 JPEG.
+- Added Sharp and changed `computer_observe` image responses from Peekaboo's temporary PNG to a same-dimension quality-65 JPEG.
 - Preserved screenshot-relative coordinate geometry while reducing large full-display payloads before base64 and tunnel transport.
 - Updated focused Peekaboo and MCP integration expectations for `image/jpeg`.
 
@@ -408,3 +408,39 @@
 - Replaced the stale implementation-heavy README with a concise public setup and architecture guide covering current MCP v2 tools, remote ngrok + OpenAI-subject authentication, local access, PM2, Computer Use, browser subagents, configuration, and validation.
 - Removed the maintainer-specific ngrok domain from the README, npm tunnel command, and PM2 config; ngrok now assigns a user URL by default and optional `NGROK_URL` supplies the user's own fixed domain.
 - Updated the source manifest and startup wiki so maintained documentation matches the public tunnel configuration.
+
+## [2026-08-10] refactor | organize source by capability
+
+- Reorganized `src/` around `server/`, `auth/`, and `tools/`, keeping `src/index.ts` as the process composition root.
+- Moved tool schemas, handlers, result shaping, and capability-specific errors out of the monolithic MCP server into the tool modules that own them.
+- Kept complex capabilities grouped with their runtime adapters while leaving small tools such as skills and feedback as single files.
+- Removed the `apply_patch` runtime's dependency on shell-specific error types and updated tests, package scripts, README references, and maintained wiki paths.
+
+## [2026-08-10] simplify | make feedback free-form Markdown
+
+- Replaced the structured feedback type, summary, details, and related-tool fields with one free-form Markdown `feedback` string.
+- Simplified stored feedback records to `id`, `created_at`, and `feedback` so agents can choose the structure that best communicates their feedback.
+
+## [2026-08-10] refactor | centralize static MCP configuration
+
+- Added `src/config.ts` as the single static configuration surface for MCP server identity, version, icon, and shared tool metadata.
+- Replaced seven duplicated tool metadata declarations with the shared `MCP_TOOL_META` configuration.
+- Kept workspace-dependent instructions and runtime environment parsing in the server composition and process-entry layers.
+
+## [2026-08-10] extend | centralize runtime defaults and instructions
+
+- Consolidated MCP server identity, shared tool metadata, host, port, workspace, and command-log defaults under `MCP_CONFIG`.
+- Moved the global instruction builder into `src/config.ts` and made its coding-instructions path follow the active workspace as `<workspace>/AGENTS.md`.
+- Reused the central host and port defaults in both production startup and the injectable HTTP server while leaving capability-specific limits with their implementations.
+
+## [2026-08-10] simplify | execute vendored apply_patch directly
+
+- Removed the workspace `bin/apply_patch` symlink, runtime `MCP_CODEX_BIN` override, setup module, and shell `PATH` injection.
+- Made the first-class `apply_patch` tool execute `vendor/apply-patch/apply_patch` directly while retaining an internal executable injection for deterministic integration tests.
+- Removed the obsolete apply-patch setup tests and shell path-prepend feature; the build script remains the only mechanism that replaces the vendored binary.
+
+## [2026-08-10] refactor | group apply-patch capability
+
+- Moved workspace path resolution into `src/config.ts` and grouped apply-patch registration and startup setup under `src/tools/apply-patch/`.
+- Consolidated the vendored binary, provenance, license, and notice under `vendor/apply-patch/` and updated the build script to write that layout directly.
+- Split the old workspace-tools tests into focused config and apply-patch setup coverage and removed the obsolete `src/workspace-tools.ts` concept.

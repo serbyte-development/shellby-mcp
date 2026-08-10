@@ -5,7 +5,7 @@ import { dirname, join } from "node:path"
 import test from "node:test"
 import { fileURLToPath } from "node:url"
 
-import { PeekabooClient, PeekabooError } from "../src/peekaboo.js"
+import { PeekabooClient, PeekabooError } from "../src/tools/computer/peekaboo.js"
 
 const fixture = join(dirname(fileURLToPath(import.meta.url)), "fixtures/fake-peekaboo.mjs")
 

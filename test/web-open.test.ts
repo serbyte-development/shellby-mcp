@@ -1,7 +1,7 @@
 import assert from "node:assert/strict"
 import test from "node:test"
 
-import { WebOpenError, WebPageOpener } from "../src/web-open.js"
+import { WebOpenError, WebPageOpener } from "../src/tools/web/web-open.js"
 
 test("paginates fetched content without reopening the page", async () => {
   const expected = "🙂".repeat(1_500)

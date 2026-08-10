@@ -244,7 +244,7 @@ peekaboo permissions status --all-sources --json
 
 ## `apply_patch`
 
-The repository includes a pinned macOS arm64 standalone `apply_patch` executable under `vendor/`. Startup exposes it through the workspace and the MCP registers it as a first-class tool.
+The repository includes a pinned macOS arm64 standalone `apply_patch` executable at `vendor/apply-patch/apply_patch`. The MCP executes that vendored binary directly as a first-class tool; it is not installed into or exposed through the workspace shell.
 
 Each call requires an absolute `cwd` and a normal Codex-style patch. It runs independently of shell state and has abort escalation. Failure diagnostics are capped internally at 4 KiB so callers cannot expand patch errors into large context-consuming responses.
 
@@ -257,7 +257,6 @@ Each call requires an absolute `cwd` and a normal Codex-style patch. It runs ind
 | `NGROK_URL`                    | unset                         | Optional fixed ngrok domain used by tunnel helpers |
 | `MCP_SHELL`                    | `/bin/zsh`                    | Persistent shell executable                        |
 | `MCP_CWD`                      | `~/Desktop/chatgpt-workspace` | Initial/default workspace                          |
-| `MCP_CODEX_BIN`                | `vendor/apply_patch`          | Optional `apply_patch` executable override         |
 | `MCP_PEEKABOO_BIN`             | `peekaboo`                    | Peekaboo executable                                |
 | `MCP_CHATGPT_CDP_ENDPOINT`     | `http://127.0.0.1:9222`       | Chrome CDP endpoint for browser subagents          |
 | `MCP_TRANSCRIPT_CHARS`         | `1048576`                     | Rolling transcript size                            |

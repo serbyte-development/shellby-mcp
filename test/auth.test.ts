@@ -4,7 +4,7 @@ import { tmpdir } from "node:os"
 import { dirname, join } from "node:path"
 import test from "node:test"
 
-import { ShellyAuthError, ShellyAuthStore } from "../src/auth.js"
+import { ShellyAuthError, ShellyAuthStore } from "../src/auth/auth.js"
 
 test("creates durable auth state with owner-only permissions", async (t) => {
   const root = await mkdtemp(join(tmpdir(), "shelly-auth-"))

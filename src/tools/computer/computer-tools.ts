@@ -2,11 +2,8 @@ import { McpServer } from "@modelcontextprotocol/server"
 import type { CallToolResult } from "@modelcontextprotocol/server"
 import { z } from "zod"
 
+import { MCP_CONFIG } from "../../config.js"
 import { PeekabooClient, PeekabooError, type PeekabooObservation, type PeekabooResult, type PeekabooSnapshotTarget } from "./peekaboo.js"
-
-const noAuthMeta = {
-  securitySchemes: [{ type: "noauth" }],
-}
 
 const appInput = z.string().min(1).describe("Application name, bundle identifier, or PID:12345 token.")
 const snapshotInput = z.string().min(1).describe("Snapshot ID returned by computer_observe.")
@@ -56,7 +53,7 @@ export function registerComputerUseTools(server: McpServer, peekaboo: PeekabooCl
         idempotentHint: true,
         openWorldHint: false,
       },
-      _meta: noAuthMeta,
+      _meta: MCP_CONFIG.toolMeta,
     },
     async ({ kind, app, include_hidden, include_background }, ctx) => {
       let args: string[]
@@ -105,7 +102,7 @@ export function registerComputerUseTools(server: McpServer, peekaboo: PeekabooCl
         idempotentHint: true,
         openWorldHint: false,
       },
-      _meta: noAuthMeta,
+      _meta: MCP_CONFIG.toolMeta,
     },
     async ({ app, window_id, screen_index, annotate }, ctx) => {
       const args: string[] = []
@@ -145,7 +142,7 @@ export function registerComputerUseTools(server: McpServer, peekaboo: PeekabooCl
         idempotentHint: true,
         openWorldHint: false,
       },
-      _meta: noAuthMeta,
+      _meta: MCP_CONFIG.toolMeta,
     },
     async ({ snapshot_id, max_depth, max_elements, max_children }, ctx) => {
       try {
@@ -218,7 +215,7 @@ export function registerComputerUseTools(server: McpServer, peekaboo: PeekabooCl
         idempotentHint: false,
         openWorldHint: false,
       },
-      _meta: noAuthMeta,
+      _meta: MCP_CONFIG.toolMeta,
     },
     async (input, ctx) => {
       const args = ["click"]
@@ -271,7 +268,7 @@ export function registerComputerUseTools(server: McpServer, peekaboo: PeekabooCl
         idempotentHint: false,
         openWorldHint: false,
       },
-      _meta: noAuthMeta,
+      _meta: MCP_CONFIG.toolMeta,
     },
     async (input, ctx) => {
       const args = ["type", "--text", input.text]
@@ -306,7 +303,7 @@ export function registerComputerUseTools(server: McpServer, peekaboo: PeekabooCl
         idempotentHint: false,
         openWorldHint: false,
       },
-      _meta: noAuthMeta,
+      _meta: MCP_CONFIG.toolMeta,
     },
     async (input, ctx) => {
       const args = ["press", ...input.keys]
@@ -333,7 +330,7 @@ export function registerComputerUseTools(server: McpServer, peekaboo: PeekabooCl
         idempotentHint: false,
         openWorldHint: false,
       },
-      _meta: noAuthMeta,
+      _meta: MCP_CONFIG.toolMeta,
     },
     async (input, ctx) => {
       const args = ["hotkey", "--keys", input.keys.join(",")]
@@ -372,7 +369,7 @@ export function registerComputerUseTools(server: McpServer, peekaboo: PeekabooCl
         idempotentHint: false,
         openWorldHint: false,
       },
-      _meta: noAuthMeta,
+      _meta: MCP_CONFIG.toolMeta,
     },
     async (input, ctx) => {
       const args = ["scroll", "--direction", input.direction]
@@ -410,7 +407,7 @@ export function registerComputerUseTools(server: McpServer, peekaboo: PeekabooCl
         idempotentHint: false,
         openWorldHint: false,
       },
-      _meta: noAuthMeta,
+      _meta: MCP_CONFIG.toolMeta,
     },
     async (input, ctx) => {
       let target: PeekabooSnapshotTarget
@@ -467,7 +464,7 @@ export function registerComputerUseTools(server: McpServer, peekaboo: PeekabooCl
         idempotentHint: false,
         openWorldHint: false,
       },
-      _meta: noAuthMeta,
+      _meta: MCP_CONFIG.toolMeta,
     },
     async ({ action, app, open, force }, ctx) => {
       const args = appCommandArgs(action, app, open, force ?? false)
@@ -540,7 +537,7 @@ export function registerComputerUseTools(server: McpServer, peekaboo: PeekabooCl
         idempotentHint: false,
         openWorldHint: false,
       },
-      _meta: noAuthMeta,
+      _meta: MCP_CONFIG.toolMeta,
     },
     async (input, ctx) => {
       const subcommand = input.action === "set_bounds" ? "set-bounds" : input.action

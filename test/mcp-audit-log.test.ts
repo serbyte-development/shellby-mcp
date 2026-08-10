@@ -4,7 +4,7 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import test from "node:test"
 
-import { characterCount, compactTimestamp, extractResultCharacterCounts, McpAuditLogger } from "../src/mcp-audit-log.js"
+import { characterCount, compactTimestamp, extractResultCharacterCounts, McpAuditLogger } from "../src/server/audit-log.js"
 
 test("formats shell commands as readable blocks and records completion metadata", async (t) => {
   const directory = await mkdtemp(join(tmpdir(), "mcp-audit-log-"))

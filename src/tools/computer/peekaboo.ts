@@ -161,7 +161,7 @@ export class PeekabooClient {
         const image = await readFile(imagePath)
         const encodedImage = await sharp(image)
           .jpeg({
-            quality: 75,
+            quality: 65,
             progressive: true,
             chromaSubsampling: "4:4:4",
           })

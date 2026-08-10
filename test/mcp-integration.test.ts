@@ -6,14 +6,14 @@ import { join } from "node:path"
 import test from "node:test"
 import { fileURLToPath } from "node:url"
 import { Client, StreamableHTTPClientTransport, LATEST_PROTOCOL_VERSION } from "@modelcontextprotocol/client"
-import { ShellyAuthStore } from "../src/auth.js"
-import type { ChatGptSubagentService } from "../src/chatgpt-subagent.js"
-import { FeedbackStore } from "../src/feedback.js"
-import { startMcpHttpServer } from "../src/http-server.js"
-import { McpAuditLogger } from "../src/mcp-audit-log.js"
-import { PeekabooClient } from "../src/peekaboo.js"
-import { PersistentShellSession } from "../src/shell-session.js"
-import { WebPageOpener } from "../src/web-open.js"
+import { ShellyAuthStore } from "../src/auth/auth.js"
+import type { ChatGptSubagentService } from "../src/tools/subagent/chatgpt-subagent.js"
+import { FeedbackStore } from "../src/tools/feedback.js"
+import { startMcpHttpServer } from "../src/server/http-server.js"
+import { McpAuditLogger } from "../src/server/audit-log.js"
+import { PeekabooClient } from "../src/tools/computer/peekaboo.js"
+import { PersistentShellSession } from "../src/tools/shell/session.js"
+import { WebPageOpener } from "../src/tools/web/web-open.js"
 
 test("serves shell tools through Streamable HTTP and retains state across MCP sessions", { timeout: 20_000 }, async (t) => {
   const running = await startMcpHttpServer({ port: 0 })
@@ -136,8 +136,8 @@ test("serves shell tools through Streamable HTTP and retains state across MCP se
     properties?: Record<string, Record<string, unknown>>
     required?: string[]
   }
-  assert.deepEqual(feedbackInputSchema.properties?.type?.enum, ["problem", "improvement", "feature_request", "dream_feature"])
-  assert.deepEqual(feedbackInputSchema.required?.sort(), ["details", "summary", "type"])
+  assert.deepEqual(Object.keys(feedbackInputSchema.properties ?? {}), ["feedback"])
+  assert.deepEqual(feedbackInputSchema.required, ["feedback"])
   const subagentTool = tools.tools.find((tool) => tool.name === "chatgpt_subagent")
   assert.equal(subagentTool?.annotations?.readOnlyHint, false)
   assert.equal(subagentTool?.annotations?.destructiveHint, false)
@@ -257,10 +257,7 @@ test("records agent feedback through MCP", { timeout: 10_000 }, async (t) => {
   const result = await connected.client.callTool({
     name: "feedback_submit",
     arguments: {
-      type: "improvement",
-      summary: "Make polling clearer",
-      details: "The agent had trouble distinguishing progress from a stalled turn.",
-      related_tool: "chatgpt_subagent_poll",
+      feedback: "## Polling feedback\n\n`chatgpt_subagent_poll` should make progress easier to distinguish from a stalled turn.",
     },
   })
 
@@ -271,10 +268,7 @@ test("records agent feedback through MCP", { timeout: 10_000 }, async (t) => {
   assert.deepEqual(JSON.parse((await readFile(feedbackPath, "utf8")).trim()), {
     id: "fb_test",
     created_at: "2026-08-09T22:00:00.000Z",
-    type: "improvement",
-    summary: "Make polling clearer",
-    details: "The agent had trouble distinguishing progress from a stalled turn.",
-    related_tool: "chatgpt_subagent_poll",
+    feedback: "## Polling feedback\n\n`chatgpt_subagent_poll` should make progress easier to distinguish from a stalled turn.",
   })
 })
 

@@ -1,5 +1,9 @@
 import { readdir, readFile, stat } from "node:fs/promises"
 import { join } from "node:path"
+import { McpServer } from "@modelcontextprotocol/server"
+import { z } from "zod"
+
+import { MCP_CONFIG } from "../config.js"
 
 export const MAX_SKILL_BYTES = 256 * 1024
 
@@ -101,6 +105,91 @@ export function isValidSkillName(name: string): boolean {
   return SKILL_NAME_PATTERN.test(name)
 }
 
+export function registerSkillTools(server: McpServer, workspace: string): void {
+  const skills = new SkillCatalog(join(workspace, "skills"))
+
+  server.registerTool(
+    "skill_list",
+    {
+      title: "List reusable skills",
+      description: "List available reusable skills. Use when a task may have a specialized workflow.",
+      inputSchema: z.object({}),
+      outputSchema: z.object({
+        skills: z.array(
+          z.object({
+            name: z.string(),
+            description: z.string().optional(),
+          })
+        ),
+      }),
+      annotations: {
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: false,
+      },
+      _meta: MCP_CONFIG.toolMeta,
+    },
+    async (_input, ctx) => {
+      try {
+        const available = await skills.list(ctx.mcpReq.signal)
+        return {
+          structuredContent: { skills: available },
+          content: [
+            {
+              type: "text" as const,
+              text:
+                available.length === 0
+                  ? "No workspace skills are available."
+                  : `Available workspace skills: ${available.map((skill) => skill.name).join(", ")}`,
+            },
+          ],
+        }
+      } catch (error) {
+        return skillToolError(error)
+      }
+    }
+  )
+
+  server.registerTool(
+    "skill_load",
+    {
+      title: "Load reusable skill",
+      description: "Load the instructions for a reusable skill. Use when a listed skill matches the current task.",
+      inputSchema: z.object({
+        name: z.string().min(1).max(128).refine(isValidSkillName, "Invalid skill name.").describe("Skill name returned by skill_list."),
+      }),
+      outputSchema: z.object({
+        name: z.string(),
+        path: z.string().describe("Local SKILL.md path for resolving referenced assets and files."),
+        instructions: z.string().describe("Complete skill instructions."),
+      }),
+      annotations: {
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: false,
+      },
+      _meta: MCP_CONFIG.toolMeta,
+    },
+    async ({ name }, ctx) => {
+      try {
+        const loaded = await skills.read(name, ctx.mcpReq.signal)
+        return {
+          structuredContent: {
+            name: loaded.name,
+            path: loaded.path,
+            instructions: loaded.content,
+          },
+          content: [{ type: "text" as const, text: `Loaded skill ${loaded.name}.` }],
+        }
+      } catch (error) {
+        return skillToolError(error)
+      }
+    }
+  )
+}
+
 function validateSkillName(name: string): void {
   if (isValidSkillName(name)) return
   throw new SkillCatalogError(
@@ -137,4 +226,13 @@ function unquote(value: string): string {
 
 function isFsError(error: unknown, code: string): boolean {
   return error instanceof Error && "code" in error && (error as NodeJS.ErrnoException).code === code
+}
+
+function skillToolError(error: unknown) {
+  const text =
+    error instanceof SkillCatalogError ? `${error.code}: ${error.message}` : `skill_failed: ${error instanceof Error ? error.message : String(error)}`
+  return {
+    isError: true,
+    content: [{ type: "text" as const, text }],
+  }
 }

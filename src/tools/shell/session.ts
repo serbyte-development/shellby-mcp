@@ -55,7 +55,6 @@ export interface ShellSessionOptions {
   shellPath?: string
   cwd?: string
   env?: NodeJS.ProcessEnv
-  pathPrepend?: string[]
   transcriptLimit?: number
   commandTranscriptBytes?: number
   defaultOutputBytes?: number
@@ -210,7 +209,6 @@ export class PersistentShellSession {
   private readonly shellPath: string
   private readonly cwd: string
   private readonly env: NodeJS.ProcessEnv
-  private readonly pathPrepend: string[]
   private readonly transcriptLimit: number
   private readonly transcript: TranscriptBuffer
   private readonly commandTranscriptBytes: number
@@ -244,7 +242,6 @@ export class PersistentShellSession {
     this.cwd = options.cwd ?? process.cwd()
     this.currentCwd = this.cwd
     this.env = options.env ?? process.env
-    this.pathPrepend = (options.pathPrepend ?? []).filter((entry) => entry.length > 0)
     this.transcriptLimit = positiveInteger(options.transcriptLimit, DEFAULT_TRANSCRIPT_LIMIT)
     this.transcript = new TranscriptBuffer(this.transcriptLimit)
     this.commandTranscriptBytes = positiveInteger(options.commandTranscriptBytes, DEFAULT_COMMAND_TRANSCRIPT_BYTES)
@@ -283,7 +280,6 @@ export class PersistentShellSession {
       shellPath: this.shellPath,
       cwd: this.cwd,
       env: this.env,
-      pathPrepend: [...this.pathPrepend],
       transcriptLimit: this.transcriptLimit,
       commandTranscriptBytes: this.commandTranscriptBytes,
       defaultOutputBytes: this.defaultOutputBytes,
@@ -545,16 +541,7 @@ export class PersistentShellSession {
       }, READY_TIMEOUT_MS)
 
       this.readyState = { child, marker, resolve, reject, timer }
-      writeToStdin(
-        child,
-        [
-          this.pathPrepend.length > 0 ? `builtin export PATH=${singleQuote(this.pathPrepend.join(":"))}:"$PATH"` : null,
-          `builtin printf '\\036__MCP_READY_${token}__\\037'`,
-          "",
-        ]
-          .filter((line) => line !== null)
-          .join("\n")
-      ).catch((error) => {
+      writeToStdin(child, [`builtin printf '\\036__MCP_READY_${token}__\\037'`, ""].join("\n")).catch((error) => {
         clearTimeout(timer)
         this.readyState = null
         reject(error instanceof Error ? error : new Error(String(error)))

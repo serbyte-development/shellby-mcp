@@ -1,9 +1,9 @@
-import { PersistentShellSession, ShellSessionError } from "./shell-session.js"
+import { PersistentShellSession, ShellSessionError } from "./session.js"
 
 export const DEFAULT_SHELL_ID = "default"
 
 const DEFAULT_MAX_SHELLS = 8
-const DEFAULT_IDLE_TIMEOUT_MS = 30 * 60 * 1000
+const DEFAULT_IDLE_TIMEOUT_MS = 30 * 60 * 1000 // 30 minutes
 const DEFAULT_CLEANUP_INTERVAL_MS = 60 * 1000
 const MAX_SHELL_ID_LENGTH = 64
 
