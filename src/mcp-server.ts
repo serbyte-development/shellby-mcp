@@ -34,7 +34,7 @@ const shellIdInput = z
   .optional()
   .default(DEFAULT_SHELL_ID)
   .describe(
-    "Short task or project label for a persistent shell, such as api-audit. Omit for default; reuse it to retain cwd and environment, or use a different ID for concurrent work."
+    "Short task or project label for a persistent shell, such as api-audit. Use to retain cwd and environment, or use a different ID for concurrent work."
   )
 
 const closableShellIdInput = z
@@ -83,12 +83,6 @@ export function createMcpServer(shells: ShellSessionManager, options: CreateMcpS
     .optional()
     .default(shells.defaultReadBytes)
     .describe(`Maximum UTF-8 bytes returned in this response. DO NOT pass in max_output_bytes unless the default is too small.`)
-  const applyPatchMaxOutputBytesInput = z
-    .int()
-    .min(256)
-    .max(shells.maximumReadBytes)
-    .optional()
-    .describe(`Maximum UTF-8 bytes returned in apply_patch failure diagnostics. Omit for ${APPLY_PATCH_FAILURE_OUTPUT_BYTES}.`)
   const server = new McpServer(
     {
       name: "chatgpt-local-shell",
@@ -133,7 +127,7 @@ export function createMcpServer(shells: ShellSessionManager, options: CreateMcpS
           .max(webPageOpener.maximumOutputBytes)
           .optional()
           .default(webPageOpener.defaultOutputBytes)
-          .describe(`Maximum UTF-8 content bytes returned. Omit for ${webPageOpener.defaultOutputBytes}; maximum ${webPageOpener.maximumOutputBytes}.`),
+          .describe(`Maximum UTF-8 content bytes returned.`),
       }),
       outputSchema: z.object({
         url: z.string(),
@@ -461,7 +455,6 @@ export function createMcpServer(shells: ShellSessionManager, options: CreateMcpS
       inputSchema: z.object({
         patch: z.string().min(1).max(262_144).describe("The complete patch text, beginning with *** Begin Patch and ending with *** End Patch."),
         cwd: z.string().min(1).refine(isAbsolute, "cwd must be an absolute path.").describe("Required absolute directory used as the patch root."),
-        max_output_bytes: applyPatchMaxOutputBytesInput,
       }),
       outputSchema: z.object({
         status: z.enum(["completed", "failed"]),
@@ -478,13 +471,12 @@ export function createMcpServer(shells: ShellSessionManager, options: CreateMcpS
       },
       _meta: noAuthMeta,
     },
-    async ({ patch, cwd, max_output_bytes }, ctx) => {
+    async ({ patch, cwd }, ctx) => {
       try {
         const result = await applyPatch({
           patch,
           cwd,
           executable: applyPatchExecutable,
-          maxOutputBytes: max_output_bytes,
           signal: ctx.mcpReq.signal,
         })
         return {
@@ -798,7 +790,6 @@ interface ApplyPatchInput {
   patch: string
   cwd: string
   executable: string
-  maxOutputBytes?: number
   signal?: AbortSignal
 }
 
@@ -856,7 +847,7 @@ async function applyPatch(input: ApplyPatchInput): Promise<ApplyPatchResult> {
     let settled = false
     let terminateTimer: NodeJS.Timeout | null = null
     let forceSettleTimer: NodeJS.Timeout | null = null
-    const maxOutputBytes = input.maxOutputBytes ?? APPLY_PATCH_FAILURE_OUTPUT_BYTES
+    const maxOutputBytes = APPLY_PATCH_FAILURE_OUTPUT_BYTES
 
     const appendOutput = (value: string) => {
       const bounded = utf8Prefix(value, Math.max(0, maxOutputBytes - outputBytes))

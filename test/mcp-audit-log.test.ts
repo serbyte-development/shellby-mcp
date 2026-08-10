@@ -62,7 +62,6 @@ test("omits apply_patch bodies while retaining metadata and patch size", async (
   const args = {
     patch: "*** Begin Patch\n*** Update File: src/a.ts\n@@\n-old\n+new\n*** End Patch",
     cwd: "/workspace/project",
-    max_output_bytes: 4096,
   }
 
   logger.startToolCalls({
@@ -75,7 +74,7 @@ test("omits apply_patch bodies while retaining metadata and patch size", async (
   const log = await readFile(file, "utf8")
   assert.equal(
     log,
-    `AUG-7-21:12:03\tCALL\tapply_patch\tchars=${characterCount(JSON.stringify(args))}\tpatch_chars=${characterCount(args.patch)}\t${JSON.stringify({ cwd: args.cwd, max_output_bytes: args.max_output_bytes })}\n`
+    `AUG-7-21:12:03\tCALL\tapply_patch\tchars=${characterCount(JSON.stringify(args))}\tpatch_chars=${characterCount(args.patch)}\t${JSON.stringify({ cwd: args.cwd })}\n`
   )
   assert.doesNotMatch(log, /Begin Patch|Update File|old|new/)
 })

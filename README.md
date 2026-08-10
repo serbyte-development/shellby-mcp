@@ -246,7 +246,7 @@ peekaboo permissions status --all-sources --json
 
 The repository includes a pinned macOS arm64 standalone `apply_patch` executable under `vendor/`. Startup exposes it through the workspace and the MCP registers it as a first-class tool.
 
-Each call requires an absolute `cwd` and a normal Codex-style patch. It runs independently of shell state and has bounded output and abort escalation.
+Each call requires an absolute `cwd` and a normal Codex-style patch. It runs independently of shell state and has abort escalation. Failure diagnostics are capped internally at 4 KiB so callers cannot expand patch errors into large context-consuming responses.
 
 ## Configuration
 

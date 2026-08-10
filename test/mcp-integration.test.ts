@@ -91,7 +91,7 @@ test("serves shell tools through Streamable HTTP and retains state across MCP se
     properties?: Record<string, unknown>
     required?: string[]
   }
-  assert.deepEqual(Object.keys(applyPatchInputSchema.properties ?? {}).sort(), ["cwd", "max_output_bytes", "patch"])
+  assert.deepEqual(Object.keys(applyPatchInputSchema.properties ?? {}).sort(), ["cwd", "patch"])
   assert.deepEqual(applyPatchInputSchema.required?.sort(), ["cwd", "patch"])
   const applyPatchOutputSchema = applyPatchTool?.outputSchema as {
     properties?: Record<string, unknown>
@@ -1014,26 +1014,6 @@ test("applies patches through the native MCP tool", { timeout: 20_000 }, async (
   assert.equal(Buffer.byteLength(failedContent.output, "utf8"), 4 * 1024)
   assert.equal(failedContent.output_truncated, true)
   assert.equal(failedContent.omitted_output_bytes, 1)
-
-  const explicitlyBounded = await connected.client.callTool({
-    name: "apply_patch",
-    arguments: {
-      cwd: project,
-      patch: `${patch}\nFAIL_PATCH`,
-      max_output_bytes: 256,
-    },
-  })
-  assert.equal(explicitlyBounded.isError, true)
-  const explicitlyBoundedContent = explicitlyBounded.structuredContent as {
-    status: "failed"
-    exit_code: number
-    output: string
-    output_truncated?: true
-    omitted_output_bytes?: number
-  }
-  assert.equal(Buffer.byteLength(explicitlyBoundedContent.output, "utf8"), 256)
-  assert.equal(explicitlyBoundedContent.output_truncated, true)
-  assert.equal(explicitlyBoundedContent.omitted_output_bytes, 4097 - 256)
 
   const invalid = await connected.client.callTool({
     name: "apply_patch",

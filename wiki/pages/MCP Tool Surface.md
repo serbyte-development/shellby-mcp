@@ -8,38 +8,38 @@ Verified 2026-08-10.
 
 ## Core Tools
 
-| Tool | Contract |
-| --- | --- |
-| `fetch_website` | Fetch one HTTP(S) URL as Markdown, cleaned HTML, or raw HTML. Cursor reads reuse the same URL and format. Cache: 20 documents, 10 minutes, 2 MiB each (`src/web-open.ts`). |
-| `skill_list` | Dynamically list `<workspace>/skills/*/SKILL.md` entries with their names and optional frontmatter descriptions. The catalog is read from disk on every call (`src/skills.ts`, `src/mcp-server.ts`). |
-| `skill_load` | Load the complete instructions and local `SKILL.md` path for one name returned by `skill_list`. Skill names are path-safe and files are capped at 256 KiB (`src/skills.ts`, `src/mcp-server.ts`). |
-| `feedback_submit` | Append an agent-reported `problem`, `improvement`, `feature_request`, or `dream_feature` to the repository feedback inbox. The server supplies the feedback ID and timestamp (`src/feedback.ts`, `src/mcp-server.ts`). |
-| `chatgpt_subagent` | Submit one turn to a caller-named persistent ChatGPT subagent through an already-running debuggable Chrome instance. First use of `agent_id` creates the conversation; reuse continues it. Returns immediately after submission with a `turn_id` (`src/chatgpt-subagent.ts`, `src/mcp-server.ts`). |
-| `chatgpt_subagent_poll` | Read one detached subagent turn without resubmitting it. Running results include coarse `activity` plus `activity_age_ms`; completed results contain the final response and failed results contain stable error fields (`src/chatgpt-subagent.ts`, `src/mcp-server.ts`). |
-| `apply_patch` | Run a Codex patch in required absolute `cwd`. Direct process; no shell ID, request ID, or polling. Output is byte-capped (`src/mcp-server.ts`, `src/workspace-tools.ts`). |
-| `shell_run` | Run up to 262,144 command characters in a named persistent shell. Requires `request_id`; optional `shell_id`, absolute `cwd`, `wait_ms`, and response cap (`src/mcp-server.ts`). |
-| `shell_poll` | Continue the same shell/request from `next_cursor`; cannot read before command start or beyond command completion (`src/mcp-server.ts`, `src/shell-session.ts`). |
-| `shell_reset` | Replace one shell generation and deduplicate exact retries by request ID plus reason. The `default` shell may be reset (`src/shell-session.ts`). |
-| `shell_list` | Return open shells, activity, idle time, capacity, and close eligibility without refreshing idle timers (`src/shell-session-manager.ts`). |
-| `shell_close` | Terminate a non-default shell and release its slot. The `default` shell cannot be closed (`src/shell-session-manager.ts`). |
+| Tool                    | Contract                                                                                                                                                                                                                                                                                           |
+| ----------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `fetch_website`         | Fetch one HTTP(S) URL as Markdown, cleaned HTML, or raw HTML. Cursor reads reuse the same URL and format. Cache: 20 documents, 10 minutes, 2 MiB each (`src/web-open.ts`).                                                                                                                         |
+| `skill_list`            | Dynamically list `<workspace>/skills/*/SKILL.md` entries with their names and optional frontmatter descriptions. The catalog is read from disk on every call (`src/skills.ts`, `src/mcp-server.ts`).                                                                                               |
+| `skill_load`            | Load the complete instructions and local `SKILL.md` path for one name returned by `skill_list`. Skill names are path-safe and files are capped at 256 KiB (`src/skills.ts`, `src/mcp-server.ts`).                                                                                                  |
+| `feedback_submit`       | Append an agent-reported `problem`, `improvement`, `feature_request`, or `dream_feature` to the repository feedback inbox. The server supplies the feedback ID and timestamp (`src/feedback.ts`, `src/mcp-server.ts`).                                                                             |
+| `chatgpt_subagent`      | Submit one turn to a caller-named persistent ChatGPT subagent through an already-running debuggable Chrome instance. First use of `agent_id` creates the conversation; reuse continues it. Returns immediately after submission with a `turn_id` (`src/chatgpt-subagent.ts`, `src/mcp-server.ts`). |
+| `chatgpt_subagent_poll` | Read one detached subagent turn without resubmitting it. Running results include coarse `activity` plus `activity_age_ms`; completed results contain the final response and failed results contain stable error fields (`src/chatgpt-subagent.ts`, `src/mcp-server.ts`).                           |
+| `apply_patch`           | Run a Codex patch in required absolute `cwd`. Direct process; no shell ID, request ID, polling, or caller-controlled output limit. Failure diagnostics are capped internally at 4 KiB (`src/mcp-server.ts`, `src/workspace-tools.ts`).                                                             |
+| `shell_run`             | Run up to 262,144 command characters in a named persistent shell. Requires `request_id`; optional `shell_id`, absolute `cwd`, `wait_ms`, and response cap (`src/mcp-server.ts`).                                                                                                                   |
+| `shell_poll`            | Continue the same shell/request from `next_cursor`; cannot read before command start or beyond command completion (`src/mcp-server.ts`, `src/shell-session.ts`).                                                                                                                                   |
+| `shell_reset`           | Replace one shell generation and deduplicate exact retries by request ID plus reason. The `default` shell may be reset (`src/shell-session.ts`).                                                                                                                                                   |
+| `shell_list`            | Return open shells, activity, idle time, capacity, and close eligibility without refreshing idle timers (`src/shell-session-manager.ts`).                                                                                                                                                          |
+| `shell_close`           | Terminate a non-default shell and release its slot. The `default` shell cannot be closed (`src/shell-session-manager.ts`).                                                                                                                                                                         |
 
 `shell_id` defaults to `default`; stable IDs retain cwd and environment, while different IDs run concurrently. `request_id` accepts 1–128 characters and is unique within one shell. `wait_ms` is 0–10,000; output caps range from 256 bytes to `MCP_MAX_OUTPUT_BYTES` (`src/mcp-server.ts`, `test/mcp-integration.test.ts`).
 
 ## Computer Use Tools
 
-| Tool | Contract |
-| --- | --- |
-| `computer_list` | List apps, windows, screens, or Peekaboo permission status. |
+| Tool               | Contract                                                                                                       |
+| ------------------ | -------------------------------------------------------------------------------------------------------------- |
+| `computer_list`    | List apps, windows, screens, or Peekaboo permission status.                                                    |
 | `computer_observe` | Capture one target as same-dimension quality-75 JPEG; return snapshot and target metadata without AX elements. |
-| `computer_inspect` | Return bounded accessibility text for an existing snapshot when visual state is insufficient. |
-| `computer_click` | Click one element ID, text query, or coordinate pair against an explicit snapshot. |
-| `computer_type` | Type literal text into an app, window, or snapshot target. |
-| `computer_press` | Press sequential key tokens. |
-| `computer_hotkey` | Press one simultaneous shortcut. |
-| `computer_scroll` | Scroll at the pointer or an observed element. |
-| `computer_drag` | Drag between snapshot elements, coordinates, or an application destination. |
-| `computer_app` | Launch, switch, quit, relaunch, hide, or unhide an application. |
-| `computer_window` | Focus, close, minimize, maximize, move, resize, or set bounds for one window. |
+| `computer_inspect` | Return bounded accessibility text for an existing snapshot when visual state is insufficient.                  |
+| `computer_click`   | Click one element ID, text query, or coordinate pair against an explicit snapshot.                             |
+| `computer_type`    | Type literal text into an app, window, or snapshot target.                                                     |
+| `computer_press`   | Press sequential key tokens.                                                                                   |
+| `computer_hotkey`  | Press one simultaneous shortcut.                                                                               |
+| `computer_scroll`  | Scroll at the pointer or an observed element.                                                                  |
+| `computer_drag`    | Drag between snapshot elements, coordinates, or an application destination.                                    |
+| `computer_app`     | Launch, switch, quit, relaunch, hide, or unhide an application.                                                |
+| `computer_window`  | Focus, close, minimize, maximize, move, resize, or set bounds for one window.                                  |
 
 The focused tools translate screenshot-relative coordinates through retained capture bounds and share one serialized `PeekabooClient`. The adapter uses exact argv plus `--json`, bounds process output, preserves upstream semantic failures, returns images only for observation, and never retries stateful actions. Advanced Peekaboo operations remain available through `shell_run` (`src/computer-use-tools.ts`, `src/peekaboo.ts`, `test/peekaboo.test.ts`).
 
