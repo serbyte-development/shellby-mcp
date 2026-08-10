@@ -1,16 +1,16 @@
 # HTTP Transport
 
-Verified 2026-08-09.
+Verified 2026-08-10.
 
 ## Routes and Middleware
 
-- Express parses JSON with a 1 MiB limit and applies the MCP SDK's localhost Host-header validator before routes (`src/http-server.ts`).
+- `createMcpExpressApp({ host, jsonLimit: "1mb" })` creates the Express app and applies the MCP v2 adapter's JSON parsing plus localhost Host/Origin guards. No custom `allowedOrigins` list is configured (`src/http-server.ts`).
 - `GET /healthz` returns `{ "ok": true }` (`src/http-server.ts`).
-- Exact `POST /mcp` is the only MCP endpoint. Direct localhost clients remain unauthenticated. Trusted tunnel traffic is marked by ngrok; on marked `tools/call` requests Shelly requires `X-OpenAI-Subject`, binds the first subject before dispatch, and requires that subject thereafter. The tool does not need to exist or succeed for the first call to bind (`src/http-server.ts`, `src/auth.ts`).
+- Exact `POST /mcp` is the only MCP endpoint; a regex route keeps `/mcp/` distinct because the MCP Express factory initializes Express routing before application code can enable strict routing. Direct localhost clients remain unauthenticated. Trusted tunnel traffic is marked by ngrok; on marked `tools/call` requests Shelly requires `X-OpenAI-Subject`, binds the first subject before dispatch, and requires that subject thereafter. The tool does not need to exist or succeed for the first call to bind (`src/http-server.ts`, `src/auth.ts`).
 - `GET` and `DELETE /mcp` return a JSON-RPC-shaped 405 response with `Allow: POST` (`src/http-server.ts`).
 - Tool metadata continues to declare `noauth` because Shelly does not use MCP OAuth or per-tool security schemes; remote authorization is enforced at the HTTP/deployment boundary (`src/mcp-server.ts`, `src/http-server.ts`).
 
-Host validation protects the localhost listener from mismatched Host headers; it is not caller authentication. The ngrok policy rejects traffic outside ngrok's `com.openai.chatgpt` IP category, exposes only exact `/mcp`, rewrites Host to `localhost:3333`, and adds `X-Shelly-Remote: 1`. Shelly uses that marker only to distinguish already-origin-verified tunnel traffic from direct localhost clients (`ngrok-traffic-policy.yml`, `src/http-server.ts`).
+The MCP Express Host/Origin guards protect the localhost HTTP listener from DNS-rebinding/browser-origin attacks; they are not caller authentication. The ngrok policy remains the remote trust boundary: it rejects traffic outside ngrok's `com.openai.chatgpt` IP category, exposes only exact `/mcp`, rewrites Host to `localhost:3333`, and adds `X-Shelly-Remote: 1`. Shelly uses that marker only to distinguish already-origin-verified tunnel traffic from direct localhost clients (`ngrok-traffic-policy.yml`, `src/http-server.ts`).
 
 ## ChatGPT Identity Metadata
 
@@ -20,7 +20,7 @@ Shelly currently uses `X-OpenAI-Subject` as the remote owner identifier (`src/ht
 
 ## Connection Model
 
-Every accepted POST creates a new `McpServer` and `StreamableHTTPServerTransport` with no session ID generator. The response's `finish` or `close` event closes that request's transport/server, while all requests share the injected `ShellSessionManager`, `WebPageOpener`, `PeekabooClient`, `ChatGptSubagentService`, and production `ShellyAuthStore` (`src/http-server.ts`, `src/index.ts`).
+Every accepted POST creates a new v2 `McpServer` and `NodeStreamableHTTPServerTransport` with no session ID generator. The response's `finish` or `close` event closes that request's transport/server, while all requests share the injected `ShellSessionManager`, `WebPageOpener`, `PeekabooClient`, `ChatGptSubagentService`, and production `ShellyAuthStore` (`src/http-server.ts`, `src/index.ts`).
 
 When `src/index.ts` starts the production server it also injects one `McpAuditLogger`. The HTTP boundary inspects only JSON-RPC `tools/call` requests and writes the tool name plus input character count to `agent-commands.log`. Most tools retain their full serialized arguments; `apply_patch` omits the patch body while preserving its character count and remaining parameters, and `shell_run` writes command text as a readable block separate from the other arguments. Completion lines record the serialized JSON-RPC result/error character count, duration, HTTP status, and whether the response finished or closed. Full tool output is not persisted. Audit failures are best-effort and never alter MCP dispatch (`src/index.ts`, `src/http-server.ts`, `src/mcp-audit-log.ts`).
 

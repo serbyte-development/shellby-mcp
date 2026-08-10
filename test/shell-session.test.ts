@@ -517,6 +517,7 @@ test("reset kills a TERM-resistant background descendant", { timeout: 10_000 }, 
   const readyFile = join(directory, "ready")
   const shell = new PersistentShellSession()
   let descendantPid: number | undefined
+  // eslint-disable-next-line prefer-const -- assigned after cleanup registration so early failures can still clean up the old process group.
   let oldProcessGroup: number | undefined
   t.after(async () => {
     await shell.close()
@@ -540,6 +541,7 @@ test("reset kills a TERM-resistant background descendant", { timeout: 10_000 }, 
       `printf '%s|%s' "$descendant" "$$"`,
     ].join("; ")
   )
+  // eslint-disable-next-line prefer-const -- destructured assignment happens after cleanup registration.
   ;[descendantPid, oldProcessGroup] = started.output.split("|").map((value) => Number.parseInt(value, 10))
   assert.ok(Number.isSafeInteger(descendantPid))
   assert.ok(Number.isSafeInteger(oldProcessGroup))

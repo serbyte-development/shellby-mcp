@@ -1,5 +1,5 @@
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js"
-import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js"
+import { McpServer } from "@modelcontextprotocol/server"
+import type { CallToolResult } from "@modelcontextprotocol/server"
 import { z } from "zod"
 
 import { PeekabooClient, PeekabooError, type PeekabooObservation, type PeekabooResult, type PeekabooSnapshotTarget } from "./peekaboo.js"
@@ -58,7 +58,7 @@ export function registerComputerUseTools(server: McpServer, peekaboo: PeekabooCl
       },
       _meta: noAuthMeta,
     },
-    async ({ kind, app, include_hidden, include_background }, extra) => {
+    async ({ kind, app, include_hidden, include_background }, ctx) => {
       let args: string[]
       if (kind === "apps") {
         args = ["app", "list"]
@@ -71,7 +71,7 @@ export function registerComputerUseTools(server: McpServer, peekaboo: PeekabooCl
       } else {
         args = ["permissions", "status", "--all-sources"]
       }
-      return callPeekaboo(peekaboo, args, extra.signal, `Listed computer ${kind}.`)
+      return callPeekaboo(peekaboo, args, ctx.mcpReq.signal, `Listed computer ${kind}.`)
     }
   )
 
@@ -107,7 +107,7 @@ export function registerComputerUseTools(server: McpServer, peekaboo: PeekabooCl
       },
       _meta: noAuthMeta,
     },
-    async ({ app, window_id, screen_index, annotate }, extra) => {
+    async ({ app, window_id, screen_index, annotate }, ctx) => {
       const args: string[] = []
       if (app !== undefined) args.push("--app", app)
       else if (window_id !== undefined) args.push("--window-id", String(window_id))
@@ -119,7 +119,7 @@ export function registerComputerUseTools(server: McpServer, peekaboo: PeekabooCl
       args.push("--no-web-focus")
 
       try {
-        const observation = await peekaboo.observe(args, { annotate: annotate ?? false }, extra.signal)
+        const observation = await peekaboo.observe(args, { annotate: annotate ?? false }, ctx.mcpReq.signal)
         return observationResult(observation)
       } catch (error) {
         return peekabooToolError(error)
@@ -133,12 +133,12 @@ export function registerComputerUseTools(server: McpServer, peekaboo: PeekabooCl
       title: "Inspect accessible UI",
       description:
         "Return a bounded accessibility-tree text view for an existing observation snapshot. Use only when its screenshot is insufficient; prefer small limits and inspect again after the UI changes.",
-      inputSchema: {
+      inputSchema: z.object({
         snapshot_id: snapshotInput,
         max_depth: z.number().int().min(1).max(20).optional().default(8),
         max_elements: z.number().int().min(1).max(500).optional().default(100),
         max_children: z.number().int().min(1).max(100).optional().default(25),
-      },
+      }),
       annotations: {
         readOnlyHint: true,
         destructiveHint: false,
@@ -147,7 +147,7 @@ export function registerComputerUseTools(server: McpServer, peekaboo: PeekabooCl
       },
       _meta: noAuthMeta,
     },
-    async ({ snapshot_id, max_depth, max_elements, max_children }, extra) => {
+    async ({ snapshot_id, max_depth, max_elements, max_children }, ctx) => {
       try {
         const result = await peekaboo.run(
           [
@@ -161,7 +161,7 @@ export function registerComputerUseTools(server: McpServer, peekaboo: PeekabooCl
             "--max-children",
             String(max_children),
           ],
-          extra.signal
+          ctx.mcpReq.signal
         )
         return inspectionResult(result)
       } catch (error) {
@@ -220,7 +220,7 @@ export function registerComputerUseTools(server: McpServer, peekaboo: PeekabooCl
       },
       _meta: noAuthMeta,
     },
-    async (input, extra) => {
+    async (input, ctx) => {
       const args = ["click"]
       let forceForeground = false
       if (input.element_id) {
@@ -248,7 +248,7 @@ export function registerComputerUseTools(server: McpServer, peekaboo: PeekabooCl
         args.push("--foreground")
       }
       if (input.wait_ms !== undefined) args.push("--wait-for", String(input.wait_ms))
-      return callPeekaboo(peekaboo, args, extra.signal, "Click completed.")
+      return callPeekaboo(peekaboo, args, ctx.mcpReq.signal, "Click completed.")
     }
   )
 
@@ -257,14 +257,14 @@ export function registerComputerUseTools(server: McpServer, peekaboo: PeekabooCl
     {
       title: "Type on the computer",
       description: "Type literal text into a targeted or focused app. Use snapshot_id or app to avoid typing into the wrong window.",
-      inputSchema: {
+      inputSchema: z.object({
         ...targetFields,
         text: z.string().min(1).describe("Literal text to type."),
         clear: z.boolean().optional(),
         press_return: z.boolean().optional(),
         foreground: z.boolean().optional(),
         delay_ms: z.number().int().min(0).max(1_000).optional(),
-      },
+      }),
       annotations: {
         readOnlyHint: false,
         destructiveHint: false,
@@ -273,14 +273,14 @@ export function registerComputerUseTools(server: McpServer, peekaboo: PeekabooCl
       },
       _meta: noAuthMeta,
     },
-    async (input, extra) => {
+    async (input, ctx) => {
       const args = ["type", "--text", input.text]
       addTargetArgs(args, input)
       if (input.clear) args.push("--clear")
       if (input.press_return) args.push("--return")
       if (input.foreground) args.push("--foreground")
       if (input.delay_ms !== undefined) args.push("--delay", String(input.delay_ms))
-      return callPeekaboo(peekaboo, args, extra.signal, "Typing completed.")
+      return callPeekaboo(peekaboo, args, ctx.mcpReq.signal, "Typing completed.")
     }
   )
 
@@ -294,12 +294,12 @@ export function registerComputerUseTools(server: McpServer, peekaboo: PeekabooCl
     {
       title: "Press computer keys",
       description: "Press one or more special keys sequentially, such as tab, tab, return. Use computer_hotkey for simultaneous shortcuts.",
-      inputSchema: {
+      inputSchema: z.object({
         ...targetFields,
         keys: z.array(keyToken).min(1).max(16),
         count: z.number().int().min(1).max(100).optional(),
         foreground: z.boolean().optional(),
-      },
+      }),
       annotations: {
         readOnlyHint: false,
         destructiveHint: false,
@@ -308,12 +308,12 @@ export function registerComputerUseTools(server: McpServer, peekaboo: PeekabooCl
       },
       _meta: noAuthMeta,
     },
-    async (input, extra) => {
+    async (input, ctx) => {
       const args = ["press", ...input.keys]
       addTargetArgs(args, input)
       if (input.count !== undefined) args.push("--count", String(input.count))
       if (input.foreground) args.push("--foreground")
-      return callPeekaboo(peekaboo, args, extra.signal, "Key press completed.")
+      return callPeekaboo(peekaboo, args, ctx.mcpReq.signal, "Key press completed.")
     }
   )
 
@@ -322,11 +322,11 @@ export function registerComputerUseTools(server: McpServer, peekaboo: PeekabooCl
     {
       title: "Press a computer shortcut",
       description: "Press one simultaneous keyboard shortcut, such as cmd+shift+t. Use computer_press for sequential keys.",
-      inputSchema: {
+      inputSchema: z.object({
         ...targetFields,
         keys: z.array(keyToken).min(1).max(8),
         foreground: z.boolean().optional(),
-      },
+      }),
       annotations: {
         readOnlyHint: false,
         destructiveHint: false,
@@ -335,11 +335,11 @@ export function registerComputerUseTools(server: McpServer, peekaboo: PeekabooCl
       },
       _meta: noAuthMeta,
     },
-    async (input, extra) => {
+    async (input, ctx) => {
       const args = ["hotkey", "--keys", input.keys.join(",")]
       addTargetArgs(args, input)
       if (input.foreground) args.push("--foreground")
-      return callPeekaboo(peekaboo, args, extra.signal, "Shortcut completed.")
+      return callPeekaboo(peekaboo, args, ctx.mcpReq.signal, "Shortcut completed.")
     }
   )
 
@@ -374,13 +374,13 @@ export function registerComputerUseTools(server: McpServer, peekaboo: PeekabooCl
       },
       _meta: noAuthMeta,
     },
-    async (input, extra) => {
+    async (input, ctx) => {
       const args = ["scroll", "--direction", input.direction]
       if (input.amount !== undefined) args.push("--amount", String(input.amount))
       if (input.element_id) args.push("--on", input.element_id)
       addTargetArgs(args, input)
       if (input.smooth) args.push("--smooth")
-      return callPeekaboo(peekaboo, args, extra.signal, "Scroll completed.")
+      return callPeekaboo(peekaboo, args, ctx.mcpReq.signal, "Scroll completed.")
     }
   )
 
@@ -412,7 +412,7 @@ export function registerComputerUseTools(server: McpServer, peekaboo: PeekabooCl
       },
       _meta: noAuthMeta,
     },
-    async (input, extra) => {
+    async (input, ctx) => {
       let target: PeekabooSnapshotTarget
       try {
         target = requireSnapshotTarget(peekaboo, input.snapshot_id)
@@ -428,7 +428,7 @@ export function registerComputerUseTools(server: McpServer, peekaboo: PeekabooCl
       if (input.duration_ms !== undefined) args.push("--duration", String(input.duration_ms))
       if (input.steps !== undefined) args.push("--steps", String(input.steps))
       if (input.modifiers?.length) args.push("--modifiers", input.modifiers.join(","))
-      return callPeekaboo(peekaboo, args, extra.signal, "Drag completed.")
+      return callPeekaboo(peekaboo, args, ctx.mcpReq.signal, "Drag completed.")
     }
   )
 
@@ -469,9 +469,9 @@ export function registerComputerUseTools(server: McpServer, peekaboo: PeekabooCl
       },
       _meta: noAuthMeta,
     },
-    async ({ action, app, open, force }, extra) => {
+    async ({ action, app, open, force }, ctx) => {
       const args = appCommandArgs(action, app, open, force ?? false)
-      return callPeekaboo(peekaboo, args, extra.signal, `Application ${action} completed.`)
+      return callPeekaboo(peekaboo, args, ctx.mcpReq.signal, `Application ${action} completed.`)
     }
   )
 
@@ -542,7 +542,7 @@ export function registerComputerUseTools(server: McpServer, peekaboo: PeekabooCl
       },
       _meta: noAuthMeta,
     },
-    async (input, extra) => {
+    async (input, ctx) => {
       const subcommand = input.action === "set_bounds" ? "set-bounds" : input.action
       const args = ["window", subcommand]
       if (input.app) args.push("--app", input.app)
@@ -553,7 +553,7 @@ export function registerComputerUseTools(server: McpServer, peekaboo: PeekabooCl
       if (input.width !== undefined) args.push("--width", String(input.width))
       if (input.height !== undefined) args.push("--height", String(input.height))
       if (input.action === "focus") args.push("--verify")
-      return callPeekaboo(peekaboo, args, extra.signal, `Window ${input.action} completed.`)
+      return callPeekaboo(peekaboo, args, ctx.mcpReq.signal, `Window ${input.action} completed.`)
     }
   )
 }

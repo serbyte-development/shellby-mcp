@@ -63,8 +63,8 @@ test("passes literal values as exact argv without invoking a shell", async (t) =
   const markerPath = join(root, "must-not-exist")
   const client = fakeClient({ FAKE_PEEKABOO_LOG: logPath })
   t.after(() => client.close())
-  const app = `Text Editor ' quoted \" app`
-  const text = `--literal $() \`ticks\` 'quotes' \"double\"\n$(touch ${markerPath})`
+  const app = `Text Editor ' quoted " app`
+  const text = `--literal $() \`ticks\` 'quotes' "double"\n$(touch ${markerPath})`
 
   await client.run(["type", "--text", text, "--app", app])
 

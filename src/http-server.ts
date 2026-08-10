@@ -1,8 +1,7 @@
 import { createServer, type Server as HttpServer } from "node:http"
-
-import { localhostHostValidation } from "@modelcontextprotocol/sdk/server/middleware/hostHeaderValidation.js"
-import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js"
-import express, { type Request, type Response } from "express"
+import { createMcpExpressApp } from "@modelcontextprotocol/express"
+import { NodeStreamableHTTPServerTransport } from "@modelcontextprotocol/node"
+import type { Request, Response } from "express"
 
 import { ShellyAuthError, type ShellyAuthStore } from "./auth.js"
 import { ChatGptSubagentModule, DEFAULT_CHATGPT_CDP_ENDPOINT, type ChatGptSubagentService } from "./chatgpt-subagent.js"
@@ -16,7 +15,7 @@ import { WebPageOpener } from "./web-open.js"
 
 interface InFlightMcpRequest {
   server: ReturnType<typeof createMcpServer>
-  transport: StreamableHTTPServerTransport
+  transport: NodeStreamableHTTPServerTransport
   close: () => Promise<void>
 }
 
@@ -59,10 +58,8 @@ export async function startMcpHttpServer(options: StartMcpServerOptions = {}): P
   const webPageOpener = options.webPageOpener ?? new WebPageOpener()
   const inFlightRequests = new Set<InFlightMcpRequest>()
 
-  const app = express()
-  app.set("strict routing", true)
-  app.use(localhostHostValidation())
-  app.use(express.json({ limit: "1mb" }))
+  const app = createMcpExpressApp({ host, jsonLimit: "1mb" })
+  const mcpRoute = /^\/mcp$/
 
   app.get("/healthz", (_req, res) => {
     res.json({ ok: true })
@@ -97,7 +94,7 @@ export async function startMcpHttpServer(options: StartMcpServerOptions = {}): P
       peekaboo,
       webPageOpener,
     })
-    const transport = new StreamableHTTPServerTransport({
+    const transport = new NodeStreamableHTTPServerTransport({
       sessionIdGenerator: undefined,
     })
 
@@ -148,7 +145,7 @@ export async function startMcpHttpServer(options: StartMcpServerOptions = {}): P
     }
   }
 
-  app.post("/mcp", async (req: Request, res: Response) => {
+  app.post(mcpRoute, async (req: Request, res: Response) => {
     if (authStore && isTrustedRemoteRequest(req) && containsToolCall(req.body)) {
       try {
         await authStore.authorizeToolCall(req.get("x-openai-subject"))
@@ -164,8 +161,8 @@ export async function startMcpHttpServer(options: StartMcpServerOptions = {}): P
     res.setHeader("Allow", "POST")
     jsonRpcError(res, 405, -32000, "Method not allowed.")
   }
-  app.get("/mcp", methodNotAllowed)
-  app.delete("/mcp", methodNotAllowed)
+  app.get(mcpRoute, methodNotAllowed)
+  app.delete(mcpRoute, methodNotAllowed)
 
   const httpServer = createServer(app)
   let boundPort: number

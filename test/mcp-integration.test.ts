@@ -5,11 +5,7 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import test from "node:test"
 import { fileURLToPath } from "node:url"
-
-import { Client } from "@modelcontextprotocol/sdk/client/index.js"
-import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js"
-import { LATEST_PROTOCOL_VERSION } from "@modelcontextprotocol/sdk/types.js"
-
+import { Client, StreamableHTTPClientTransport, LATEST_PROTOCOL_VERSION } from "@modelcontextprotocol/client"
 import { ShellyAuthStore } from "../src/auth.js"
 import type { ChatGptSubagentService } from "../src/chatgpt-subagent.js"
 import { FeedbackStore } from "../src/feedback.js"
@@ -408,7 +404,7 @@ test("audits tool calls at the HTTP MCP boundary", { timeout: 10_000 }, async (t
   const auditPath = join(root, "agent-commands.log")
   const auditLogger = new McpAuditLogger(auditPath)
   const chatGptSubagents: ChatGptSubagentService = {
-    async ask({ agentId, prompt }) {
+    async ask({ agentId }) {
       return {
         agentId,
         turnId: `turn-${agentId}`,
@@ -1080,13 +1076,16 @@ test("force-kills a SIGTERM-resistant apply_patch after request abort", { skip: 
     applyPatchExecutable: executable,
   })
   let patchPid: number | undefined
+  // eslint-disable-next-line prefer-const -- assigned after cleanup registration so early failures can still destroy it.
   let request: ReturnType<typeof httpRequest> | undefined
   t.after(async () => {
     request?.destroy()
     if (patchPid) {
       try {
         process.kill(-patchPid, "SIGKILL")
-      } catch {}
+      } catch {
+        // Best-effort cleanup if the process already exited.
+      }
     }
     await running.close()
     await rm(directory, { recursive: true, force: true })
@@ -1179,7 +1178,19 @@ test("remote MCP binds on the first tool call while local MCP remains available"
     await rm(root, { recursive: true, force: true })
   })
 
-  await assert.rejects(() => connectClient(`${running.url}/`, "remote-trailing-slash-bypass", "subject-a", true), /cannot post \/mcp\/|404|not found/i)
+  assert.equal(
+    await postWithHost(`${running.url}/`, `localhost:${running.port}`, {
+      jsonrpc: "2.0",
+      id: 1,
+      method: "initialize",
+      params: {
+        protocolVersion: LATEST_PROTOCOL_VERSION,
+        capabilities: {},
+        clientInfo: { name: "remote-trailing-slash-bypass", version: "1.0.0" },
+      },
+    }),
+    404
+  )
 
   const local = await connectClient(running.url, "local-auth-bypass")
   assert.ok((await local.client.callTool({ name: "shell_list", arguments: {} })).content)
@@ -1191,8 +1202,7 @@ test("remote MCP binds on the first tool call while local MCP remains available"
   assert.equal((await authStore.readState()).subject, null)
 
   const failedOwner = await connectClient(running.url, "remote-failed-owner", "subject-a", true)
-  const failedCall = await failedOwner.client.callTool({ name: "tool_that_does_not_exist", arguments: {} })
-  assert.equal(failedCall.isError, true)
+  await assert.rejects(() => failedOwner.client.callTool({ name: "tool_that_does_not_exist", arguments: {} }), /not found/i)
   assert.equal((await authStore.readState()).subject, "subject-a")
 
   const owner = await connectClient(running.url, "remote-owner", "subject-a", true)

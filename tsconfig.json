@@ -8,6 +8,7 @@
     "strict": true,
     "noUncheckedIndexedAccess": true,
     "esModuleInterop": true,
+    "types": ["node"],
     "skipLibCheck": true,
     "declaration": true,
     "sourceMap": true

@@ -1,11 +1,11 @@
 # Open Questions and Risks
 
-Verified 2026-08-09.
+Verified 2026-08-10.
 
 ## Active Risks
 
 - **Remote trust depends on the deployment boundary:** production remote access relies on ngrok's `com.openai.chatgpt` source category plus the `X-Shelly-Remote: 1` marker it adds after that check. A different public proxy must provide an equivalent trusted-origin check and marker; otherwise Shelly will treat unmarked `/mcp` traffic as local (`ngrok-traffic-policy.yml`, `src/http-server.ts`, `src/auth.ts`).
-- **Local MCP remains intentionally unauthenticated:** exact `/mcp` is still available to local clients, while strict routing rejects `/mcp/`. The checked-in ngrok policy blocks public `/mcp`, but changing the tunnel/reverse-proxy policy can still expose the local endpoint remotely (`ngrok-traffic-policy.yml`, `src/http-server.ts`).
+- **Local MCP remains intentionally unauthenticated:** exact `/mcp` is still available to local clients, while the exact regex route rejects `/mcp/`. The checked-in ngrok policy exposes only public `/mcp`, but changing the tunnel/reverse-proxy policy can still expose the local endpoint remotely (`ngrok-traffic-policy.yml`, `src/http-server.ts`).
 - **Authenticated browser delegation:** `chatgpt_subagent` can act through the ChatGPT account already authenticated in the configured debuggable Chrome instance. The MCP trust boundary therefore includes that browser session; the server does not launch Chrome or choose a profile (`src/chatgpt-subagent.ts`, `src/mcp-server.ts`).
 - **Caller-selected shell boundaries are not per-user ACLs:** remote ChatGPT is single-owner by default, but local MCP clients share the same named-shell namespace. Any authorized/local caller that knows or guesses another `shell_id` can access or reset that shell, and all shells retain the same operating-system permissions (`src/auth.ts`, `src/mcp-server.ts`, `src/shell-session-manager.ts`).
 - **Child-process resource use is not sandboxed:** the named-shell count, transcripts, command records, and idle lifetime are bounded, and abandoned named shells are closed automatically. A currently active command or background process can still consume arbitrary CPU or memory under the local user account (`src/shell-session-manager.ts`, `src/shell-session.ts`).

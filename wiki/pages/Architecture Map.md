@@ -1,13 +1,13 @@
 # Architecture Map
 
-Verified 2026-08-09.
+Verified 2026-08-10.
 
 ## Layers
 
 | Layer                 | Responsibility                                                                                                 | Implementation                 |
 | --------------------- | -------------------------------------------------------------------------------------------------------------- | ------------------------------ |
 | Process entry         | Parse configuration, prepare workspace tooling, compose dependencies, handle shutdown                          | `src/index.ts`                 |
-| HTTP boundary         | Bind localhost, validate Host, expose health and MCP routes, own request transports                            | `src/http-server.ts`           |
+| HTTP boundary         | Bind localhost, apply MCP Express HTTP guards, expose health and MCP routes, own request transports            | `src/http-server.ts`           |
 | Remote authentication | Persist the bound ChatGPT subject outside the repo                                                             | `src/auth.ts`                  |
 | MCP audit log         | Record every `tools/call` request and compact completion metadata without affecting dispatch                   | `src/mcp-audit-log.ts`         |
 | MCP contract          | Publish instructions, schemas, annotations, and core tool handlers                                             | `src/mcp-server.ts`            |
@@ -24,7 +24,7 @@ Verified 2026-08-09.
 ## Request Lifecycle
 
 1. `src/index.ts` parses configuration, ensures durable authentication state under `~/.shelly/auth.json`, prepares the workspace, and creates a `ShellSessionManager`, shared `PeekabooClient`, shared `ChatGptSubagentModule`, and repository-local `McpAuditLogger`; the HTTP boundary composes the shared `FeedbackStore` and webpage opener when not injected (`src/index.ts`, `src/auth.ts`).
-2. Exact `POST /mcp` serves both direct localhost clients and the ngrok tunnel. ngrok-origin-verified requests carry `X-Shelly-Remote: 1`; the first marked `tools/call` binds `X-OpenAI-Subject` before dispatch and later marked tool calls require the same subject. Discovery does not bind. Local requests have no marker and continue normally. Each accepted POST creates a short-lived `McpServer` and stateless `StreamableHTTPServerTransport` (`src/http-server.ts`, `src/auth.ts`, `ngrok-traffic-policy.yml`).
+2. Exact `POST /mcp` serves both direct localhost clients and the ngrok tunnel. `createMcpExpressApp` provides JSON parsing plus localhost Host/Origin guards; ngrok remains the remote trust boundary and marks ChatGPT-origin-verified requests with `X-Shelly-Remote: 1`. The first marked `tools/call` binds `X-OpenAI-Subject` before dispatch and later marked tool calls require the same subject. Discovery does not bind. Each accepted POST creates a short-lived `McpServer` and stateless `NodeStreamableHTTPServerTransport` (`src/http-server.ts`, `src/auth.ts`, `ngrok-traffic-policy.yml`).
 3. Shell handlers resolve `shell_id` through the shared shell manager. `skill_list` and `skill_load` read `<workspace>/skills` directly on each call, so catalog changes require no server rebuild. `feedback_submit` appends through the shared process-level `FeedbackStore`, which serializes writes to `feedback/agent-feedback.jsonl`. `chatgpt_subagent` resolves caller-named `agent_id` through the shared process-level subagent module. `apply_patch` bypasses the shell manager and directly spawns the prepared Codex executable. All request-scoped Computer Use handlers share the same process-level `PeekabooClient`.
 4. The adapter serializes Computer Use calls and invokes `peekaboo` with `execFile`, exact argv, `--json`, a 30-second timeout, and a 4 MiB process-output cap. It checks the JSON `success` field and does not retry failures (`src/peekaboo.ts`).
 5. Each `PersistentShellSession` writes commands into its own child login shell and detects completion through randomized control markers.

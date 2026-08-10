@@ -847,7 +847,6 @@ export class PersistentShellSession {
 
     await new Promise<void>((resolve) => {
       let settled = false
-      let timer: NodeJS.Timeout
       const done = () => {
         if (settled) return
         settled = true
@@ -856,7 +855,7 @@ export class PersistentShellSession {
         signal?.removeEventListener("abort", done)
         resolve()
       }
-      timer = setTimeout(done, waitMs)
+      const timer = setTimeout(done, waitMs)
       this.updateWaiters.add(done)
       signal?.addEventListener("abort", done, { once: true })
       if (this.updateVersion !== version || signal?.aborted) done()

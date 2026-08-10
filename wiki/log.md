@@ -379,3 +379,14 @@
 - Removed capability generation, private `/mcp/:capability` routing, URL rotation, response buffering, and the cross-process lock dependency.
 - Remote ChatGPT now uses exact `/mcp`; ngrok verifies ChatGPT origin and adds `X-Shelly-Remote: 1`, while Shelly binds the first marked `tools/call` to `X-OpenAI-Subject` before dispatch even when the tool call is invalid.
 - Kept direct localhost `/mcp` unauthenticated and simplified reset to clearing only the bound subject.
+
+## [2026-08-10] upgrade | migrate MCP TypeScript SDK to v2
+
+- Replaced `@modelcontextprotocol/sdk` v1 with the modular v2 server, Node, Express, and client packages while preserving stateless request transports and shared runtime state.
+- Adopted v2 Standard Schema tool definitions, handler request context, `NodeStreamableHTTPServerTransport`, and `createMcpExpressApp` with the existing 1 MiB JSON limit.
+- Preserved ngrok's ChatGPT source-IP trust boundary and Shelly's `X-OpenAI-Subject` owner binding unchanged; kept exact `/mcp` matching with an explicit regex route.
+- Updated v2 client regression expectations for trailing-slash routing and unknown-tool protocol errors.
+## [2026-08-10] tooling | restore ESLint after MCP v2 install
+
+- Restored the ESLint 10 + typescript-eslint toolchain required by `eslint.config.js` and pinned TypeScript to `6.0.3`, the newest compatible compiler line.
+- Cleared the existing 11-rule baseline without changing runtime behavior; `npm ci`, lint, type-check, tests, and build pass.
