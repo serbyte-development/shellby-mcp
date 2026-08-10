@@ -1,246 +1,292 @@
-# ChatGPT Local Shell MCP
+# Unhinged Terminal MCP
 
-An intentionally unauthenticated MCP server that lets ChatGPT Developer mode run commands in named persistent shells on this computer.
+A local MCP agent harness for giving ChatGPT and other local MCP clients controlled access to persistent shells, file patching, webpage fetching, macOS Computer Use, and browser-backed ChatGPT subagents.
 
-> **Danger:** anyone who can reach the public MCP URL can execute arbitrary commands with your user account's permissions. Run this only for temporary testing, stop it when finished, and never expose it on a trusted production machine.
+> **Security:** this server can execute arbitrary commands with your macOS user permissions. Remote ChatGPT access is restricted by the included ngrok traffic policy and a bound OpenAI subject, but an authorized caller still has the power of your local user account. Run it only on a machine you trust.
 
-Maintainers: start with the [architecture wiki](wiki/index.md) before changing the server.
+Maintainers should start with the [architecture wiki](wiki/index.md).
 
-## How it works
+## What it provides
+
+- Named persistent shells with retained cwd, environment, bounded output, polling, reset, and parallel shell IDs.
+- Native `apply_patch` for source edits without routing patches through a shell.
+- `fetch_website` with cleaned Markdown/HTML and cached pagination.
+- Eleven focused macOS `computer_*` tools backed by Peekaboo.
+- Persistent browser-backed ChatGPT subagents through an already-running Chrome CDP session.
+- Dynamic workspace skills loaded from `<workspace>/skills/*/SKILL.md`.
+- Agent feedback logging and compact MCP tool-call auditing.
+
+The server uses MCP TypeScript SDK v2 with stateless Streamable HTTP requests. Shared runtime state such as shells, browser subagents, and Peekaboo spans independent requests but resets when the process restarts. The bound remote owner is durable and survives restarts in `~/.shelly/auth.json`.
+
+## Architecture
+
+Remote ChatGPT traffic:
 
 ```text
-ChatGPT web -> HTTPS tunnel -> localhost:3333/mcp -> shells, webpage extraction, direct Peekaboo Computer Use
+ChatGPT
+  -> ngrok
+     -> allow only com.openai.chatgpt source traffic
+     -> expose exact /mcp
+     -> add X-Shelly-Remote: 1
+  -> localhost:3333/mcp
+     -> bind/check X-OpenAI-Subject
+     -> MCP tools
 ```
 
-Each named shell lives in the local Node process. Its working directory, exported environment variables, functions, transcript, command lock, and background processes remain available between MCP calls. Omit `shell_id` to use `default`, or reuse another stable ID for independent state. Different shells can run foreground commands concurrently. State is lost when that shell resets or exits; after an unexpected exit, the server automatically starts a clean generation for that shell.
+Direct local MCP clients connect to:
 
-By default, new repositories and generated projects belong in `~/Desktop/chatgpt-workspace`. The server creates that directory automatically, starts every fresh shell there, and tells the model to return there before cloning or creating a project unless you explicitly provide another location.
+```text
+http://127.0.0.1:3333/mcp
+```
 
-The server-level model instructions are intentionally narrow. Normal tool selection, arguments, polling, lifecycle, and targeting behavior belong in each tool's description and JSON schema. The shared instruction block contains only cross-tool policy, safety boundaries, and local workspace conventions that cannot be reliably inferred from one tool contract. This keeps the prompt smaller and prevents duplicated instructions from drifting away from the implemented schemas.
+Local access is intentionally unauthenticated. The remote ChatGPT path relies on ngrok to prove the caller came from ChatGPT infrastructure, then binds the first remote tool caller's `X-OpenAI-Subject` as the owner.
+
+Authentication state is stored outside the repository at:
+
+```text
+~/.shelly/auth.json
+```
+
+Reset the bound ChatGPT owner with:
+
+```bash
+npm run auth:reset
+```
 
 ## Requirements
 
-- Node.js 22 or newer
-- A public HTTPS tunnel such as [ngrok](https://ngrok.com/)
-- ChatGPT Developer mode access
-- [Peekaboo](https://peekaboo.sh/) for the `computer_*` tools:
+- macOS
+- Node.js 22+
+- npm
+- ngrok CLI for remote ChatGPT access
+- ChatGPT Developer mode for remote use
+- [Peekaboo](https://peekaboo.sh/) for `computer_*` tools
+- An authenticated Chrome instance with CDP enabled for `chatgpt_subagent`
 
-  ```bash
-  brew install steipete/tap/peekaboo
-  ```
+Install Peekaboo if you want Computer Use:
 
-## Run it
-
-```text
-cd ~/Desktop/chatgpt-local-shell-mcp
-npm install
+```bash
+brew install steipete/tap/peekaboo
+peekaboo permissions grant
 ```
 
-For foreground development, run the server and tunnel in separate terminals:
+The server still starts when Peekaboo or Chrome are unavailable. Only the dependent tools fail.
+
+## Install
+
+```bash
+git clone https://github.com/Austin1serb/unhinged-terminal-mcp.git
+cd unhinged-terminal-mcp
+npm ci
+```
+
+## Run locally
+
+Start the MCP server:
 
 ```bash
 npm run dev
+```
+
+The local endpoint is:
+
+```text
+http://127.0.0.1:3333/mcp
+```
+
+You can inspect it with:
+
+```bash
+npm run inspect
+```
+
+## Connect ChatGPT through ngrok
+
+Authenticate your ngrok CLI first using your own ngrok account.
+
+Then start the tunnel:
+
+```bash
 npm run tunnel
 ```
 
-To keep both processes alive through PM2, use:
+By default ngrok assigns the public URL. Use the HTTPS URL it gives you and append `/mcp`:
+
+```text
+https://<your-ngrok-domain>/mcp
+```
+
+If you have a fixed ngrok domain, set it before starting the tunnel:
+
+```bash
+export NGROK_URL="<your-ngrok-domain>"
+npm run tunnel
+```
+
+`NGROK_URL` is optional. The repository contains no maintainer-specific public MCP URL.
+
+Configure ChatGPT to use the resulting HTTPS `/mcp` endpoint as a no-auth MCP endpoint. This server does not use MCP OAuth; remote authorization is enforced by the ngrok ChatGPT source check plus the bound OpenAI subject.
+
+The first trusted remote `tools/call` binds that Shelly installation to the calling ChatGPT subject. Later remote tool calls must carry the same subject. Discovery does not bind ownership.
+
+## Run with PM2
+
+Build and start both the MCP server and ngrok:
 
 ```bash
 npm run pm2:start
 ```
 
-Use `npm run pm2:reload`, `npm run pm2:status`, `npm run pm2:logs`, and `npm run pm2:stop` to manage the checked-in server and ngrok apps.
+For a fixed ngrok domain:
 
-The included ngrok traffic policy rewrites the origin Host header so ngrok can reach the server while its local Host validation protects against DNS-rebinding attacks. It is not authentication, a CORS policy, or a caller restriction: anyone who can reach the public tunnel URL can still invoke the shell tools.
-
-This project is configured to use the account's fixed ngrok development domain. The ChatGPT MCP URL is:
-
-```text
-https://geologic-catalog-deodorant.ngrok-free.dev/mcp
+```bash
+export NGROK_URL="<your-ngrok-domain>"
+npm run pm2:start
 ```
 
-Opening the free ngrok URL in Chrome shows ngrok's **You are about to visit** warning. That is expected and does not block MCP: ngrok applies the warning to browser HTML traffic, not programmatic API requests such as ChatGPT's MCP calls. Do not use a browser visit as the connection test; paste the `/mcp` URL directly into ChatGPT.
+Management commands:
 
-In ChatGPT:
+```bash
+npm run pm2:restart
+npm run pm2:status
+npm run pm2:logs
+npm run pm2:stop
+```
 
-1. Enable **Settings -> Security and login -> Developer mode**.
-2. Open **Settings -> Plugins** and create a developer-mode app.
-3. Enter the HTTPS `/mcp` URL and choose **No Authentication**.
-4. Add the app to a conversation from the composer.
-5. If ChatGPT offers it and you accept the risk, choose **Always allow** for the app's tool calls.
+`pm2:restart` rebuilds the server and reloads the PM2 configuration with the current environment.
 
-There is no CORS allowlist, authentication middleware, command approval layer, hosted relay, UI, or database.
+## Browser ChatGPT subagents
+
+`chatgpt_subagent` and `chatgpt_subagent_poll` use an already-running authenticated Chrome instance exposed through the Chrome DevTools Protocol.
+
+Default endpoint:
+
+```text
+http://127.0.0.1:9222
+```
+
+Override it with:
+
+```bash
+export MCP_CHATGPT_CDP_ENDPOINT="http://127.0.0.1:9222"
+```
+
+The server does not launch Chrome or choose a browser profile. Chrome lifecycle and authentication remain outside the MCP process.
 
 ## Tools
 
-- `apply_patch`: applies a Codex-format source patch from a required absolute project `cwd`. It runs independently of persistent shells and returns after the patch process finishes.
-- `shell_run`: executes a command in the selected named shell. Every new command needs a `request_id` unique within that shell; retrying the same ID and command does not execute it twice while the record remains retained.
-- `shell_poll`: reads additional output using the same `shell_id`, `request_id`, and returned `next_cursor`.
-- `shell_reset`: attempts to terminate only the selected shell's process group and starts a clean generation. Process-group cleanup is best effort. Reset idempotency is also scoped to `shell_id`.
-- `shell_list`: lists open shells, activity state, idle duration, and available capacity without refreshing idle timers.
-- `shell_close`: terminates a named shell, discards its state and retained records, and releases its slot immediately. The `default` shell cannot be closed.
-- `fetch_website`: fetches a known HTTP or HTTPS URL and returns cleaned Markdown by default, cleaned main-content HTML with `clean_html`, or the complete rendered page source with `raw_html`. A returned `next_cursor` reads the next cached chunk without fetching the page again.
-- `computer_list`: lists apps, windows, displays, or Peekaboo permission state.
-- `computer_observe`: returns a screenshot and fresh snapshot ID for an app, window, display, or the frontmost window without an accessibility-tree payload.
-- `computer_inspect`: returns a separately bounded accessibility-tree text view for an existing observation snapshot when visual targeting is insufficient.
-- `computer_click` and `computer_drag`: act against an explicit observation snapshot. Element IDs and screenshot-relative coordinates are not reused implicitly.
-- `computer_type`, `computer_press`, `computer_hotkey`, and `computer_scroll`: focused keyboard and pointer actions with optional app, window, or snapshot targeting.
-- `computer_app` and `computer_window`: launch/focus/quit apps and manage windows.
+Core tools:
 
-These eleven tools call the installed `peekaboo` CLI directly with literal argument arrays; there is no child MCP or shell interpolation. One process-level `PeekabooClient` serializes calls, checks Peekaboo's JSON success envelope, caps process output, drops verbose debug logs from model-facing results, and never retries an action. The tool metadata stays stable even when Peekaboo is missing; calls then return a clear installation error.
+- `fetch_website`
+- `skill_list`
+- `skill_load`
+- `feedback_submit`
+- `chatgpt_subagent`
+- `chatgpt_subagent_poll`
+- `apply_patch`
 
-Call `computer_observe` before snapshot-based actions and observe again after the UI changes. Stay visual-first; call `computer_inspect` with conservative depth, element, and child limits only when the screenshot is insufficient. Display observations translate screenshot-relative coordinates through the recorded display origin; app and window observations retain the exact capture target. The in-memory target map is bounded, so an old or server-restart-invalidated snapshot produces an explicit error instead of clicking an ambiguous location. Advanced Peekaboo commands that do not justify another MCP schema remain available through `shell_run`.
+Shell tools:
 
-### Computer Use permissions
+- `shell_run`
+- `shell_poll`
+- `shell_reset`
+- `shell_list`
+- `shell_close`
 
-Check every available Peekaboo permission source before testing UI actions:
+Computer Use tools:
+
+- `computer_list`
+- `computer_observe`
+- `computer_inspect`
+- `computer_click`
+- `computer_type`
+- `computer_press`
+- `computer_hotkey`
+- `computer_scroll`
+- `computer_drag`
+- `computer_app`
+- `computer_window`
+
+For exact schemas, lifecycle behavior, output limits, and model-facing descriptions, see [MCP Tool Surface](wiki/pages/MCP%20Tool%20Surface.md).
+
+## Persistent shells
+
+`shell_id` defaults to `default`. Reusing the same ID preserves cwd, environment variables, functions, transcript, and background processes. Different shell IDs run independently and may execute foreground work concurrently.
+
+Each new `shell_run` command requires a `request_id`. Retrying the same request ID with the same command returns the retained result rather than executing it twice. Reusing the ID with different command text returns a conflict.
+
+Defaults:
+
+- 8 live shells including `default`
+- 30-minute idle timeout for named shells
+- 2 KiB response output
+- 32 KiB maximum response override
+- 256 KiB retained output per command
+- 1 MiB rolling shell transcript
+
+The workspace defaults to:
+
+```text
+~/Desktop/chatgpt-workspace
+```
+
+This is a default working directory and model convention, not a sandbox.
+
+## Computer Use
+
+Peekaboo permissions can be inspected with:
 
 ```bash
 peekaboo permissions status --all-sources --json
-peekaboo permissions grant
 ```
 
-`permissions grant` prints the current macOS setup instructions. Peekaboo also provides direct prompts for the two capture/input grants it can request:
+`computer_observe` returns a screenshot plus snapshot ID. Snapshot-based actions use that retained capture target so coordinates are interpreted against the correct screen/window. Observe again after the UI changes rather than reusing stale coordinates.
 
-```bash
-peekaboo permissions request-screen-recording
-peekaboo permissions request-event-synthesizing
-```
+## `apply_patch`
 
-Follow the macOS prompts and re-run the status command. Screen Recording enables capture, Accessibility enables UI automation, and Event Synthesizing enables background synthesized input. See [Configuration and Startup](wiki/pages/Configuration%20and%20Startup.md) for the runtime boundary.
+The repository includes a pinned macOS arm64 standalone `apply_patch` executable under `vendor/`. Startup exposes it through the workspace and the MCP registers it as a first-class tool.
 
-`shell_id` is optional and defaults to `default`. It accepts 1–64 characters. The server creates shells lazily and permits eight by default. A single agent can use multiple shell IDs for parallel commands, and multiple agents avoid shared cwd, environment, transcript, reset, and foreground-command state by using distinct IDs. `shell_run` and `shell_poll` echo `shell_id` only for non-default shells, keeping normal default-shell responses compact. Named shells are closed after 30 minutes without tool activity by default; `shell_list` exposes their current lifecycle state and `shell_close` releases a named shell immediately. The `default` shell is retained for backward compatibility and cannot be closed, though `shell_reset` remains available to recover it. Idle cleanup never closes a shell while it is running a foreground command or reset.
-
-`shell_run.cwd` is an optional absolute directory switch for starting or intentionally moving a shell. The MCP validates that the path exists and is a directory before execution. A successful directory change becomes persistent, so later calls using the same `shell_id` should omit `cwd` until another switch is needed. Agents may instead `cd` once inside the shell. Fresh shells start in `~/Desktop/chatgpt-workspace` unless the server is configured with a different `MCP_CWD`. Run and poll results include `cwd`; completed results report the shell's resulting persistent directory.
-
-`shell_run` and `shell_poll` return at most 2048 UTF-8 output bytes by default. The model may set `max_output_bytes` for a specific response when more is necessary, up to the hard 32768-byte maximum. Byte limits and rolling transcript eviction never retain only half of a Unicode surrogate pair. When continuation is needed, the response includes `request_id` and `next_cursor`; `has_more` is present only when retained output remains unread. A poll cursor must belong to the requested command, so it cannot read output from an earlier command. Normal completed responses omit pagination and false/zero diagnostic fields.
-
-This MCP targets ChatGPT web only. Tool output intentionally lives in `structuredContent`, while the text content remains a compact status summary to avoid duplicating command output in context.
-
-Each command also has a retained-output ceiling, controlled by `MCP_COMMAND_TRANSCRIPT_BYTES`. The shell continues draining and executing after that ceiling is reached, but excess output is discarded. Snapshots expose `output_truncated` and the exact UTF-8 `dropped_output_bytes`; discarded output cannot be recovered by polling.
-
-`shell_run` waits for completion until `wait_ms` expires or the output byte cap is reached. Once a command completes, later polls are bounded to that command and cannot consume output from subsequent commands. Background processes should therefore redirect their output to a file for later inspection.
-
-The shared instructions and `shell_run` schema tell the model to prefer installed RTK equivalents whenever available for reads, searches, listings, diffs, logs, tests, builds, and other noisy commands. Examples include `rtk read`, `rtk ls`, `rtk tree`, `rtk rg`, `rtk git diff`, and `rtk test npm test`. RTK is guidance only: the server does not rewrite commands, and raw shell commands remain available for unsupported behavior, exact unfiltered output, and persistent state changes.
-
-### Calling Codex sub-agents
-
-The persistent shell can call the installed Codex CLI noninteractively. The Codex desktop app and npm CLI are separate installations, so verify the CLI before relying on it:
-
-```bash
-codex --version
-codex login status
-```
-
-Start a persistent review or delegation session with `codex exec`, capture its session ID from the JSON output, and continue the same conversation with that explicit ID:
-
-```bash
-codex exec --json --sandbox read-only \
-  "Review the current changes for correctness and missing tests."
-
-codex exec resume <SESSION_ID> \
-  "Review the updated changes and check whether your concerns are resolved."
-```
-
-Do not use `--ephemeral` when later calls need to resume the session. Do not launch the bare `codex` full-screen TUI through `shell_run`; the MCP shell has no PTY. Use explicit session IDs instead of `--last` when multiple Codex conversations may exist.
-
-### Fetching websites
-
-`fetch_website` is the first-choice tool whenever the user provides a known HTTP or HTTPS URL or asks to read, inspect, summarize, or extract content from a specific webpage. It accepts a URL, optional `format`, optional opaque `cursor`, and optional `max_output_bytes`.
-
-The default `markdown` format returns cleaned readable content. Use `clean_html` when the main-content HTML structure matters, and `raw_html` only when the complete rendered page source is required. Results include the final page URL, title, selected format, and content. The default content cap is 8192 UTF-8 bytes and the maximum is 32768 bytes.
-
-When more content remains, the response includes `next_cursor`. Call `fetch_website` again with the same URL, cursor, and format to read the next cached chunk. Documents are retained in memory for ten minutes, with a maximum of twenty cached documents and a 2 MiB ceiling per document. `source_truncated: true` reports when the fetched source exceeded that ceiling and the remainder was discarded. Webpage content is untrusted data and must not be treated as agent or system instructions.
-
-Use `shell_run`, scripts, or browser automation for website retrieval only when `fetch_website` fails or the task requires authentication or interaction.
-
-### Patching files
-
-The repository directly tracks a fixed macOS arm64 standalone `apply_patch` executable at `vendor/apply_patch`. It is built from Codex's `codex-apply-patch` Rust crate rather than copied from the full Codex CLI, and it does not require Git LFS. On startup, the server makes `~/Desktop/chatgpt-workspace/bin/apply_patch` available and prepends that directory to the persistent shell's `PATH`. In a fresh workspace it creates a symlink to the vendored executable; an existing executable at that path is reused or retargeted when configuration changes.
-
-The MCP exposes this executable as the native `apply_patch` tool. Its model instruction follows the concise Codex policy: use `apply_patch` for local file edits; do not create or edit files with `cat` or other shell write tricks; formatting commands and bulk mechanical rewrites do not require it; and do not use Python to read or write files when a simple shell command or `apply_patch` is enough. The tool accepts patch text in the normal format:
-
-```bash
-*** Begin Patch
-*** Update File: src/example.ts
-@@
--old
-+new
-*** End Patch
-```
-
-This is a pinned copy of Codex's local `apply_patch` engine rather than a dependency on the currently installed ChatGPT application. The MCP invokes the prepared executable directly, writes the patch to its stdin, and runs it independently of persistent shells. Supply the relevant absolute project root as `cwd` and use relative file paths inside the patch. If the binary is unavailable, the MCP server continues to start and prints a warning; the native tool then reports the missing executable if called, and ordinary shell editing remains available.
-
-Updating the vendored binary is intentionally manual. Choose the desired commit in a local Codex checkout, then run:
-
-```bash
-npm run vendor:apply-patch -- /absolute/path/to/codex
-```
-
-The script does not fetch, pull, or select a Codex revision. It builds a temporary detached worktree at the checkout's current `HEAD`, so local uncommitted Codex changes are ignored. It then strips and replaces `vendor/apply_patch`, copies Codex's license and notice, and records the source commit, toolchain, checksum, and size in `vendor/apply_patch.provenance.json`. It refuses non-macOS-arm64 hosts.
-
-Patch output is capped by `max_output_bytes`. Truncated results include `omitted_output_bytes` and `output_truncated: true`; native patch output is not pollable after the tool returns. Patch output appears only in structured content rather than being duplicated in the text summary.
-
-Recent command and reset records are bounded in memory. Once an old record has been evicted, its `request_id` is no longer available for retry deduplication, so always generate a fresh ID for a genuinely new operation.
-
-### Reusable generated tools
-
-The server instructions establish `~/Desktop/chatgpt-workspace/tools` as the convention for reusable tools and `~/Desktop/chatgpt-workspace/TOOLS.md` as their compact catalog. The server does not create or validate this structure; the model manages it through `shell_run`. Generated tools are ordinary local executables rather than dynamically registered MCP tools, so creating one does not require restarting the server or refreshing ChatGPT's MCP metadata.
-
-Each tool has its own directory containing an executable `run` entrypoint and a `TOOL.md` contract. The model is instructed to inspect the catalog before creating a new tool, avoid turning one-off commands into tools, validate new tools before cataloging them, and never store secrets in tool code or documentation.
-
-Each named shell admits one foreground command at a time. Use another `shell_id` for parallel foreground work. To keep a long-running process inside one shell while reusing it, use normal shell backgrounding and redirect its log:
-
-```bash
-npm run dev > /tmp/my-app.log 2>&1 &
-echo $!
-```
-
-Then inspect it with later commands such as `tail -n 100 /tmp/my-app.log` or `ps -p <pid>`.
+Each call requires an absolute `cwd` and a normal Codex-style patch. It runs independently of shell state and has bounded output and abort escalation.
 
 ## Configuration
 
-| Variable                       | Default                                              | Purpose                                                                                      |
-| ------------------------------ | ---------------------------------------------------- | -------------------------------------------------------------------------------------------- |
-| `HOST`                         | `127.0.0.1`                                          | Local HTTP bind address                                                                      |
-| `PORT`                         | `3333`                                               | Local HTTP port                                                                              |
-| `MCP_SHELL`                    | `/bin/zsh`                                           | Persistent shell executable                                                                  |
-| `MCP_CWD`                      | `~/Desktop/chatgpt-workspace`                        | Absolute-resolved default workspace and initial shell working directory                      |
-| `MCP_CODEX_BIN`                | Repository `vendor/apply_patch`                      | Optional executable override targeted by the workspace `apply_patch` symlink                 |
-| `MCP_PEEKABOO_BIN`             | `peekaboo`                                           | Peekaboo executable name or absolute path for the Computer Use adapter                        |
-| `MCP_TRANSCRIPT_CHARS`         | `1048576`                                            | Retained rolling transcript limit in JavaScript UTF-16 code units                            |
-| `MCP_COMMAND_TRANSCRIPT_BYTES` | `262144`                                             | Maximum UTF-8 command output retained before excess bytes are discarded                      |
-| `MCP_OUTPUT_BYTES`             | `2048`                                               | Default UTF-8 output bytes returned per tool call                                            |
-| `MCP_MAX_OUTPUT_BYTES`         | `32768`                                              | Hard maximum for a per-call `max_output_bytes` override                                      |
-| `MCP_RECORD_LIMIT`             | `1024`                                               | Maximum recent command and reset records retained for idempotency                            |
-| `MCP_MAX_SHELLS`               | `8`                                                  | Maximum named persistent shells, including `default`                                         |
-| `MCP_SHELL_IDLE_TTL_MS`        | `1800000`                                            | Close inactive named shells after this many milliseconds; `0` disables idle cleanup          |
-| `MCP_LOG_COMMANDS`             | `summary`                                            | Command logging mode: `off`, `summary`, or `full`; boolean true-like values map to `summary` |
+| Variable                       | Default                       | Purpose                                            |
+| ------------------------------ | ----------------------------- | -------------------------------------------------- |
+| `HOST`                         | `127.0.0.1`                   | MCP HTTP bind address                              |
+| `PORT`                         | `3333`                        | MCP HTTP port                                      |
+| `NGROK_URL`                    | unset                         | Optional fixed ngrok domain used by tunnel helpers |
+| `MCP_SHELL`                    | `/bin/zsh`                    | Persistent shell executable                        |
+| `MCP_CWD`                      | `~/Desktop/chatgpt-workspace` | Initial/default workspace                          |
+| `MCP_CODEX_BIN`                | `vendor/apply_patch`          | Optional `apply_patch` executable override         |
+| `MCP_PEEKABOO_BIN`             | `peekaboo`                    | Peekaboo executable                                |
+| `MCP_CHATGPT_CDP_ENDPOINT`     | `http://127.0.0.1:9222`       | Chrome CDP endpoint for browser subagents          |
+| `MCP_TRANSCRIPT_CHARS`         | `1048576`                     | Rolling transcript size                            |
+| `MCP_COMMAND_TRANSCRIPT_BYTES` | `262144`                      | Per-command retained output ceiling                |
+| `MCP_OUTPUT_BYTES`             | `2048`                        | Default response bytes                             |
+| `MCP_MAX_OUTPUT_BYTES`         | `32768`                       | Maximum response bytes                             |
+| `MCP_RECORD_LIMIT`             | `1024`                        | Recent command/reset records                       |
+| `MCP_MAX_SHELLS`               | `8`                           | Maximum live shells                                |
+| `MCP_SHELL_IDLE_TTL_MS`        | `1800000`                     | Named-shell idle timeout; `0` disables cleanup     |
+| `MCP_LOG_COMMANDS`             | `summary`                     | `off`, `summary`, or `full` shell logging          |
 
-`PORT` changes only the HTTP listener. The included `npm run tunnel` command and ngrok Host rewrite are fixed to port 3333, so update `package.json` and `ngrok-traffic-policy.yml` together when using another port.
+The included ngrok helper and traffic policy assume local port `3333`. If you change `PORT`, update the ngrok command and Host rewrite as well.
 
-`MCP_CWD` expands `~` and `~/...`; relative values are resolved from the server's startup directory. Startup uses the resulting absolute path consistently for shell cwd, workspace tooling, and model instructions. Each native `apply_patch` call requires its own absolute `cwd`.
+## Development
 
-The shell is non-interactive and has no PTY. Commands that require terminal input are unsupported; stdin is `/dev/null` so a command cannot consume the MCP control stream. A login shell does not necessarily load interactive `.zshrc` aliases.
-
-The command wrapper clears `errexit` (`set -e`) before and after each tool call so it cannot leak into later commands. A command that explicitly enables `set -e` can still end its current shell on failure; the server reports the lost state and starts a clean shell without terminating the MCP HTTP server.
-
-`MCP_CWD` is a default and model instruction, not a filesystem sandbox. An explicit task can still use another path. After changing the workspace or server instructions, restart this server and refresh the app from its ChatGPT plugin settings so ChatGPT reloads the MCP metadata.
-
-The MCP HTTP transport is stateless. Rebuilding and restarting the server on the same URL does not require an existing client to reconnect before its next request. Any request in flight during the restart can fail, and all process-local shell and webpage-cache state is reset. Refresh the ChatGPT app only when tool names, schemas, descriptions, or server instructions change.
-
-## Activity log
-
-By default, every newly accepted shell command prints one compact line prefixed with the server's local time in 24-hour `HH:MM` format, followed by the first non-comment command line plus multiline line/byte counts. Control characters are escaped, and long previews are byte-capped. Direct native `apply_patch` calls are not included in shell command logging. Set `MCP_LOG_COMMANDS=full` for raw multiline commands or `MCP_LOG_COMMANDS=off` to disable logging.
-
-There are no request IDs, completion lines, reset or polling entries, or duplicated retry entries. Command output is not copied into the log, so the performance impact is negligible.
-
-Every newly accepted `shell_run` command is also appended to the repository-local, gitignored `agent-commands.log`. Each physical line contains a compact local timestamp such as `260805T062530`, a tab, and the JSON-escaped command. Escaping keeps multiline commands on one line. Internal commands generated by the native `apply_patch` tool are not included.
-
-## Validate
+Validation:
 
 ```bash
-npm test
+npm ci
+npm run lint
 npm run type-check
+npm test
 npm run build
 ```
+
+Format code with:
+
+```bash
+npm run format
+```
+
+The wiki under [`wiki/`](wiki/) is the concise source of truth for maintainers. Current code and tests outrank historical raw notes and README text when they disagree.

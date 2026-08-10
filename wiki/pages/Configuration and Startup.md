@@ -8,6 +8,7 @@ Verified 2026-08-10.
 | ------------------------------ | ------------------------------- | ------------------------------------------------------- |
 | `HOST`                         | `127.0.0.1`                     | HTTP bind address                                       |
 | `PORT`                         | `3333`                          | HTTP port                                               |
+| `NGROK_URL`                    | unset                           | Optional fixed domain for the npm/PM2 ngrok helpers     |
 | `MCP_SHELL`                    | `/bin/zsh`                      | Login shell executable                                  |
 | `MCP_CWD`                      | `~/Desktop/chatgpt-workspace`   | Absolute-resolved workspace and initial cwd             |
 | `MCP_CODEX_BIN`                | Repository `vendor/apply_patch` | Optional `apply_patch` symlink-target override          |
@@ -44,10 +45,10 @@ Screen Recording enables capture; Accessibility and Event Synthesizing enable ac
 
 - Development: `dev`, `build`, `start`, `inspect`.
 - PM2: `pm2:start`, `pm2:restart`, `pm2:status`, `pm2:logs`, `pm2:stop`.
-- Tunnel: `tunnel` exposes port 3333 through the checked-in ngrok domain and policy with the ngrok agent's local HTTP inspector disabled (`package.json`, `ecosystem.config.cjs`).
-- Authentication: `auth:reset` performs the local warning/confirmation flow and clears the bound subject. The MCP URL does not change (`package.json`, `src/auth-reset.ts`).
+- Tunnel: `tunnel` exposes port 3333 through the checked-in ngrok policy with the ngrok agent's local HTTP inspector disabled. ngrok assigns the public URL unless `NGROK_URL` supplies the caller's own fixed domain; the PM2 ngrok app follows the same rule (`package.json`, `ecosystem.config.cjs`).
+- Authentication: `auth:reset` performs the local warning/confirmation flow and clears the bound subject. Reset does not generate or rotate an ngrok URL (`package.json`, `src/auth-reset.ts`).
 - Quality: `test`, `type-check`, `lint`, `lint:fix`, and `format` cover automated tests, TypeScript checking, ESLint, and Prettier (`package.json`, `eslint.config.js`, `.prettierrc`).
 
 The tunnel policy is the trusted-origin half of remote authentication: it allows only ngrok's ChatGPT IP category on exact `/mcp`, rewrites Host, and adds `X-Shelly-Remote: 1`. Shelly then binds or checks `X-OpenAI-Subject` only for marked `tools/call` requests. The checked-in commands use `--inspect=false` to disable the local ngrok inspector (`ngrok-traffic-policy.yml`, `package.json`, `ecosystem.config.cjs`, `src/http-server.ts`, `src/auth.ts`).
 
-`PORT` changes only HTTP; the tunnel script, PM2 ngrok app, and Host rewrite remain fixed at 3333 and must be edited together (`src/index.ts`, `package.json`, `ecosystem.config.cjs`, `ngrok-traffic-policy.yml`).
+`PORT` changes only HTTP; the tunnel script, PM2 ngrok app, and Host rewrite remain fixed at 3333 and must be edited together. `NGROK_URL` changes only the optional public domain passed to ngrok (`src/index.ts`, `package.json`, `ecosystem.config.cjs`, `ngrok-traffic-policy.yml`).

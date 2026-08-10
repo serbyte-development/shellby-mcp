@@ -402,3 +402,9 @@
 
 - Raised `ChatGptSubagentModule.poll()`'s maximum long-poll wait from 10 seconds to 60 seconds to match the published `chatgpt_subagent_poll.wait_ms` schema.
 - Removed the resolved wait-limit mismatch from current browser-subagent and risk documentation.
+
+## [2026-08-10] document | rewrite README for public repository
+
+- Replaced the stale implementation-heavy README with a concise public setup and architecture guide covering current MCP v2 tools, remote ngrok + OpenAI-subject authentication, local access, PM2, Computer Use, browser subagents, configuration, and validation.
+- Removed the maintainer-specific ngrok domain from the README, npm tunnel command, and PM2 config; ngrok now assigns a user URL by default and optional `NGROK_URL` supplies the user's own fixed domain.
+- Updated the source manifest and startup wiki so maintained documentation matches the public tunnel configuration.
