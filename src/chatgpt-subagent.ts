@@ -336,7 +336,7 @@ export class ChatGptSubagentModule {
       throw new ChatGptSubagentError("UNKNOWN_TURN", `Unknown ChatGPT subagent turn: ${normalizedTurnId}`)
     }
 
-    const boundedWaitMs = Math.min(Math.max(0, waitMs), 10_000)
+    const boundedWaitMs = Math.min(Math.max(0, waitMs), 60_000)
     if (turn.status === "running" && boundedWaitMs > 0) {
       await Promise.race([turn.completion, delay(boundedWaitMs, signal)])
     }

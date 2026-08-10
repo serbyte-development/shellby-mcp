@@ -1,10 +1,10 @@
 # MCP Tool Surface
 
-Verified 2026-08-09.
+Verified 2026-08-10.
 
 ## Published Order
 
-`tools/list` returns `fetch_website`, `skill_list`, `skill_load`, `feedback_submit`, `chatgpt_subagent`, `chatgpt_subagent_poll`, `apply_patch`, five `shell_*` tools, then eleven `computer_*` tools. Integration tests assert the order and schema mechanics without locking prose descriptions or instructions; tools remain registered when optional host capabilities are unavailable (`src/mcp-server.ts`, `src/computer-use-tools.ts`, `test/mcp-integration.test.ts`).
+`tools/list` returns 23 tools: `fetch_website`, `skill_list`, `skill_load`, `feedback_submit`, `chatgpt_subagent`, `chatgpt_subagent_poll`, `apply_patch`, five `shell_*` tools, then eleven `computer_*` tools. MCP v2 tool inputs and outputs use Standard Schema-compatible Zod objects. Integration tests assert the order and schema mechanics without locking prose descriptions or instructions; tools remain registered when optional host capabilities are unavailable (`src/mcp-server.ts`, `src/computer-use-tools.ts`, `test/mcp-integration.test.ts`).
 
 ## Core Tools
 

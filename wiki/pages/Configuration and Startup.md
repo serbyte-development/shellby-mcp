@@ -1,6 +1,6 @@
 # Configuration and Startup
 
-Verified 2026-08-09.
+Verified 2026-08-10.
 
 ## Environment Inputs
 
@@ -43,9 +43,10 @@ Screen Recording enables capture; Accessibility and Event Synthesizing enable ac
 ## Package Scripts
 
 - Development: `dev`, `build`, `start`, `inspect`.
-- PM2: `pm2:start`, `pm2:reload`, `pm2:status`, `pm2:logs`, `pm2:stop`.
+- PM2: `pm2:start`, `pm2:restart`, `pm2:status`, `pm2:logs`, `pm2:stop`.
 - Tunnel: `tunnel` exposes port 3333 through the checked-in ngrok domain and policy with the ngrok agent's local HTTP inspector disabled (`package.json`, `ecosystem.config.cjs`).
 - Authentication: `auth:reset` performs the local warning/confirmation flow and clears the bound subject. The MCP URL does not change (`package.json`, `src/auth-reset.ts`).
+- Quality: `test`, `type-check`, `lint`, `lint:fix`, and `format` cover automated tests, TypeScript checking, ESLint, and Prettier (`package.json`, `eslint.config.js`, `.prettierrc`).
 
 The tunnel policy is the trusted-origin half of remote authentication: it allows only ngrok's ChatGPT IP category on exact `/mcp`, rewrites Host, and adds `X-Shelly-Remote: 1`. Shelly then binds or checks `X-OpenAI-Subject` only for marked `tools/call` requests. The checked-in commands use `--inspect=false` to disable the local ngrok inspector (`ngrok-traffic-policy.yml`, `package.json`, `ecosystem.config.cjs`, `src/http-server.ts`, `src/auth.ts`).
 

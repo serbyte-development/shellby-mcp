@@ -386,7 +386,19 @@
 - Adopted v2 Standard Schema tool definitions, handler request context, `NodeStreamableHTTPServerTransport`, and `createMcpExpressApp` with the existing 1 MiB JSON limit.
 - Preserved ngrok's ChatGPT source-IP trust boundary and Shelly's `X-OpenAI-Subject` owner binding unchanged; kept exact `/mcp` matching with an explicit regex route.
 - Updated v2 client regression expectations for trailing-slash routing and unknown-tool protocol errors.
+
 ## [2026-08-10] tooling | restore ESLint after MCP v2 install
 
 - Restored the ESLint 10 + typescript-eslint toolchain required by `eslint.config.js` and pinned TypeScript to `6.0.3`, the newest compatible compiler line.
 - Cleared the existing 11-rule baseline without changing runtime behavior; `npm ci`, lint, type-check, tests, and build pass.
+
+## [2026-08-10] document | refresh wiki after MCP v2 migration
+
+- Updated startup and build documentation for `pm2:restart`, MCP v2 packages, ESLint, Prettier, clean `npm ci`, and the current 97-test baseline.
+- Recast the browser-subagent page from proposal notes to implemented architecture, removed an informal scratch note, and documented the detached-turn polling risk plus the current 60s-schema/10s-runtime wait mismatch.
+- Marked README auth/tunnel/MCP-package guidance as stale, advanced the source-manifest implementation tripwire to `55ad62e`, and removed the obsolete Possible Features page now that browser subagents are implemented.
+
+## [2026-08-10] fix | align subagent poll wait with schema
+
+- Raised `ChatGptSubagentModule.poll()`'s maximum long-poll wait from 10 seconds to 60 seconds to match the published `chatgpt_subagent_poll.wait_ms` schema.
+- Removed the resolved wait-limit mismatch from current browser-subagent and risk documentation.
