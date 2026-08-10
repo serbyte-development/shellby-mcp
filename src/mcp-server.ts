@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process"
+import { readFileSync } from "node:fs"
 import { isAbsolute, join } from "node:path"
 import { StringDecoder } from "node:string_decoder"
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js"
@@ -18,6 +19,11 @@ const noAuthMeta = {
 
 const APPLY_PATCH_FAILURE_OUTPUT_BYTES = 4 * 1024
 const APPLY_PATCH_STOP_GRACE_MS = 500
+const SERVER_ICON = {
+  src: `data:image/png;base64,${readFileSync(new URL("../icon-256_square.png", import.meta.url)).toString("base64")}`,
+  mimeType: "image/png",
+  sizes: ["256x256"],
+}
 
 const requestIdInput = z.string().min(1).max(128).describe("Short operation label, unique within this shell. Reuse only to retry the exact same operation.")
 
@@ -87,6 +93,7 @@ export function createMcpServer(shells: ShellSessionManager, options: CreateMcpS
     {
       name: "chatgpt-local-shell",
       version: "0.1.0",
+      icons: [SERVER_ICON],
     },
     {
       instructions: [
