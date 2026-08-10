@@ -1,5 +1,5 @@
-import assert from "node:assert/strict";
-import test from "node:test";
+import assert from "node:assert/strict"
+import test from "node:test"
 
 import {
   ChatGptConversationTracker,
@@ -7,25 +7,22 @@ import {
   ChatGptSubagentModule,
   extractConversationMessages,
   extractConversationNodes,
-} from "../src/chatgpt-subagent.js";
+} from "../src/chatgpt-subagent.js"
 
 test("module fails clearly when the expected Chrome CDP endpoint is unavailable", async () => {
   const module = new ChatGptSubagentModule({
     cdpEndpoint: "http://127.0.0.1:1",
     connectTimeoutMs: 250,
-  });
+  })
 
-  await assert.rejects(
-    module.connect(),
-    /already-running debuggable Chrome instance.*attach-only.*will not launch Chrome/i,
-  );
-});
+  await assert.rejects(module.connect(), /already-running debuggable Chrome instance.*attach-only.*will not launch Chrome/i)
+})
 
 test("forgets an agent whose page is lost before a conversation can be recovered", async () => {
   const module = new ChatGptSubagentModule({
     cdpEndpoint: "http://127.0.0.1:1",
-  });
-  let trackerDisposed = false;
+  })
+  let trackerDisposed = false
   const state = {
     agentId: "lost-before-conversation",
     page: {
@@ -33,31 +30,26 @@ test("forgets an agent whose page is lost before a conversation can be recovered
     },
     tracker: {
       dispose: () => {
-        trackerDisposed = true;
+        trackerDisposed = true
       },
     },
-  };
+  }
   const internals = module as unknown as {
-    agents: Map<string, typeof state>;
-    ensureActivePage(value: typeof state): Promise<unknown>;
-  };
-  internals.agents.set(state.agentId, state);
+    agents: Map<string, typeof state>
+    ensureActivePage(value: typeof state): Promise<unknown>
+  }
+  internals.agents.set(state.agentId, state)
 
-  await assert.rejects(
-    internals.ensureActivePage(state),
-    (error: unknown) =>
-      error instanceof ChatGptSubagentError &&
-      error.code === "AGENT_TARGET_LOST",
-  );
+  await assert.rejects(internals.ensureActivePage(state), (error: unknown) => error instanceof ChatGptSubagentError && error.code === "AGENT_TARGET_LOST")
 
-  assert.equal(trackerDisposed, true);
-  assert.deepEqual(module.listAgents(), []);
-});
+  assert.equal(trackerDisposed, true)
+  assert.deepEqual(module.listAgents(), [])
+})
 
 test("keeps an unbound new-chat page through ChatGPT's transient web conversation route", async () => {
   const module = new ChatGptSubagentModule({
     cdpEndpoint: "http://127.0.0.1:1",
-  });
+  })
   const state = {
     agentId: "transient-new-chat",
     page: {
@@ -65,16 +57,16 @@ test("keeps an unbound new-chat page through ChatGPT's transient web conversatio
       url: () => "https://chatgpt.com/c/WEB%3Atemporary-conversation-id",
     },
     tracker: { dispose() {} },
-  };
+  }
   const internals = module as unknown as {
-    agents: Map<string, typeof state>;
-    ensureActivePage(value: typeof state): Promise<typeof state>;
-  };
-  internals.agents.set(state.agentId, state);
+    agents: Map<string, typeof state>
+    ensureActivePage(value: typeof state): Promise<typeof state>
+  }
+  internals.agents.set(state.agentId, state)
 
-  const active = await internals.ensureActivePage(state);
+  const active = await internals.ensureActivePage(state)
 
-  assert.equal(active, state);
+  assert.equal(active, state)
   assert.deepEqual(module.listAgents(), [
     {
       agentId: state.agentId,
@@ -83,17 +75,17 @@ test("keeps an unbound new-chat page through ChatGPT's transient web conversatio
       targetId: undefined,
       pageClosed: false,
     },
-  ]);
-});
+  ])
+})
 
 test("poll returns immediately while a turn runs and can wait for completion", async () => {
   const module = new ChatGptSubagentModule({
     cdpEndpoint: "http://127.0.0.1:1",
-  });
-  let finish!: () => void;
+  })
+  let finish!: () => void
   const completion = new Promise<void>((resolve) => {
-    finish = resolve;
-  });
+    finish = resolve
+  })
   const turn = {
     turnId: "turn-test",
     agentId: "poll-test",
@@ -102,50 +94,53 @@ test("poll returns immediately while a turn runs and can wait for completion", a
     lastActivityAt: Date.now() - 1_000,
     completion,
     response: undefined as string | undefined,
-  };
+  }
   const internals = module as unknown as {
-    turns: Map<string, typeof turn>;
-  };
-  internals.turns.set(turn.turnId, turn);
+    turns: Map<string, typeof turn>
+  }
+  internals.turns.set(turn.turnId, turn)
 
-  const running = await module.poll(turn.turnId);
-  assert.equal(running.agentId, "poll-test");
-  assert.equal(running.turnId, "turn-test");
-  assert.equal(running.status, "running");
-  assert.equal(running.activity, "Searching the web");
-  assert.ok((running.activityAgeMs ?? 0) >= 1_000);
-  assert.ok((running.activityAgeMs ?? Number.POSITIVE_INFINITY) < 2_000);
-  assert.deepEqual({
-    conversationId: running.conversationId,
-    conversationUrl: running.conversationUrl,
-    messageId: running.messageId,
-    response: running.response,
-    errorCode: running.errorCode,
-    errorMessage: running.errorMessage,
-  }, {
-    conversationId: undefined,
-    conversationUrl: undefined,
-    messageId: undefined,
-    response: undefined,
-    errorCode: undefined,
-    errorMessage: undefined,
-  });
+  const running = await module.poll(turn.turnId)
+  assert.equal(running.agentId, "poll-test")
+  assert.equal(running.turnId, "turn-test")
+  assert.equal(running.status, "running")
+  assert.equal(running.activity, "Searching the web")
+  assert.ok((running.activityAgeMs ?? 0) >= 1_000)
+  assert.ok((running.activityAgeMs ?? Number.POSITIVE_INFINITY) < 2_000)
+  assert.deepEqual(
+    {
+      conversationId: running.conversationId,
+      conversationUrl: running.conversationUrl,
+      messageId: running.messageId,
+      response: running.response,
+      errorCode: running.errorCode,
+      errorMessage: running.errorMessage,
+    },
+    {
+      conversationId: undefined,
+      conversationUrl: undefined,
+      messageId: undefined,
+      response: undefined,
+      errorCode: undefined,
+      errorMessage: undefined,
+    }
+  )
 
   setTimeout(() => {
-    turn.status = "completed";
-    turn.response = "finished";
-    finish();
-  }, 10);
+    turn.status = "completed"
+    turn.response = "finished"
+    finish()
+  }, 10)
 
-  const completed = await module.poll(turn.turnId, 100);
-  assert.equal(completed.status, "completed");
-  assert.equal(completed.response, "finished");
-});
+  const completed = await module.poll(turn.turnId, 100)
+  assert.equal(completed.status, "completed")
+  assert.equal(completed.response, "finished")
+})
 
 test("tracker emits coarse activity only when observed conversation state changes", () => {
-  const tracker = new ChatGptConversationTracker();
-  const activities: string[] = [];
-  tracker.setActivityListener((activity) => activities.push(activity));
+  const tracker = new ChatGptConversationTracker()
+  const activities: string[] = []
+  tracker.setActivityListener((activity) => activities.push(activity))
 
   const webNode = {
     id: "tool-1",
@@ -159,17 +154,17 @@ test("tracker emits coarse activity only when observed conversation state change
       recipient: "web.run",
     },
     children: [],
-  };
+  }
 
-  tracker.ingestPayload(webNode);
-  tracker.ingestPayload(webNode);
+  tracker.ingestPayload(webNode)
+  tracker.ingestPayload(webNode)
   tracker.ingestPayload({
     ...webNode,
     message: {
       ...webNode.message,
       content: { parts: ["searching more"] },
     },
-  });
+  })
   tracker.ingestPayload({
     id: "assistant-1",
     message: {
@@ -182,60 +177,56 @@ test("tracker emits coarse activity only when observed conversation state change
       recipient: "all",
     },
     children: [],
-  });
+  })
 
-  assert.deepEqual(activities, [
-    "Searching the web",
-    "Searching the web",
-    "Generating response",
-  ]);
-});
+  assert.deepEqual(activities, ["Searching the web", "Searching the web", "Generating response"])
+})
 
 test("dispose closes managed agent pages but leaves user-repurposed tabs alone", async () => {
   const module = new ChatGptSubagentModule({
     cdpEndpoint: "http://127.0.0.1:1",
-  });
-  let managedCloses = 0;
-  let repurposedCloses = 0;
-  const tracker = { dispose() {} };
+  })
+  let managedCloses = 0
+  let repurposedCloses = 0
+  const tracker = { dispose() {} }
   const managed = {
     agentId: "managed",
     page: {
       isClosed: () => false,
       url: () => "https://chatgpt.com/c/conversation-1",
       close: async () => {
-        managedCloses += 1;
+        managedCloses += 1
       },
     },
     tracker,
     conversationId: "conversation-1",
     conversationUrl: "https://chatgpt.com/c/conversation-1",
-  };
+  }
   const repurposed = {
     agentId: "repurposed",
     page: {
       isClosed: () => false,
       url: () => "https://example.com/",
       close: async () => {
-        repurposedCloses += 1;
+        repurposedCloses += 1
       },
     },
     tracker,
     conversationId: "conversation-2",
     conversationUrl: "https://chatgpt.com/c/conversation-2",
-  };
+  }
   const internals = module as unknown as {
-    agents: Map<string, typeof managed | typeof repurposed>;
-  };
-  internals.agents.set(managed.agentId, managed);
-  internals.agents.set(repurposed.agentId, repurposed);
+    agents: Map<string, typeof managed | typeof repurposed>
+  }
+  internals.agents.set(managed.agentId, managed)
+  internals.agents.set(repurposed.agentId, repurposed)
 
-  await module.dispose();
+  await module.dispose()
 
-  assert.equal(managedCloses, 1);
-  assert.equal(repurposedCloses, 0);
-  assert.deepEqual(module.listAgents(), []);
-});
+  assert.equal(managedCloses, 1)
+  assert.equal(repurposedCloses, 0)
+  assert.deepEqual(module.listAgents(), [])
+})
 
 test("extractConversationNodes normalizes ChatGPT mapping nodes", () => {
   const payload = {
@@ -285,15 +276,15 @@ test("extractConversationNodes normalizes ChatGPT mapping nodes", () => {
         children: [],
       },
     },
-  };
+  }
 
-  const nodes = extractConversationNodes(payload);
-  assert.equal(nodes.length, 3);
-  assert.equal(nodes.find((node) => node.id === "a1")?.message.text, "final answer");
-});
+  const nodes = extractConversationNodes(payload)
+  assert.equal(nodes.length, 3)
+  assert.equal(nodes.find((node) => node.id === "a1")?.message.text, "final answer")
+})
 
 test("tracker returns only the new final assistant response for a turn", () => {
-  const tracker = new ChatGptConversationTracker();
+  const tracker = new ChatGptConversationTracker()
   tracker.ingestPayload({
     id: "old",
     message: {
@@ -307,8 +298,8 @@ test("tracker returns only the new final assistant response for a turn", () => {
       recipient: "all",
     },
     children: [],
-  });
-  const baseline = tracker.snapshotIds();
+  })
+  const baseline = tracker.snapshotIds()
 
   tracker.ingestPayload([
     {
@@ -355,20 +346,20 @@ test("tracker returns only the new final assistant response for a turn", () => {
       parent: "tool2",
       children: [],
     },
-  ]);
+  ])
 
   const result = tracker.findFinalResponse({
     baselineIds: baseline,
     prompt: "next question",
     sentAtSeconds: 2,
-  });
+  })
 
-  assert.equal(result?.id, "a2");
-  assert.equal(result?.message.text, "new response");
-});
+  assert.equal(result?.id, "a2")
+  assert.equal(result?.message.text, "new response")
+})
 
 test("tracker does not return an already-seen assistant response", () => {
-  const tracker = new ChatGptConversationTracker();
+  const tracker = new ChatGptConversationTracker()
   tracker.ingestPayload({
     id: "a1",
     message: {
@@ -382,17 +373,14 @@ test("tracker does not return an already-seen assistant response", () => {
       recipient: "all",
     },
     children: [],
-  });
+  })
 
-  assert.equal(
-    tracker.findFinalResponse({ baselineIds: tracker.snapshotIds() }),
-    undefined,
-  );
-});
+  assert.equal(tracker.findFinalResponse({ baselineIds: tracker.snapshotIds() }), undefined)
+})
 
 test("tracker rejects completed assistant nodes that explicitly do not end the turn", () => {
-  const tracker = new ChatGptConversationTracker();
-  const baseline = tracker.snapshotIds();
+  const tracker = new ChatGptConversationTracker()
+  const baseline = tracker.snapshotIds()
   tracker.ingestPayload({
     id: "intermediate",
     message: {
@@ -406,10 +394,10 @@ test("tracker rejects completed assistant nodes that explicitly do not end the t
       recipient: "all",
     },
     children: [],
-  });
+  })
 
-  assert.equal(tracker.findFinalResponse({ baselineIds: baseline }), undefined);
-});
+  assert.equal(tracker.findFinalResponse({ baselineIds: baseline }), undefined)
+})
 
 test("extractConversationMessages follows the active branch and excludes tool nodes", () => {
   const payload = {
@@ -485,12 +473,12 @@ test("extractConversationMessages follows the active branch and excludes tool no
         children: [],
       },
     },
-  };
+  }
 
   assert.deepEqual(extractConversationMessages(payload), [
     { id: "u1", role: "user", text: "first" },
     { id: "a1", role: "assistant", text: "one" },
     { id: "u2", role: "user", text: "second" },
     { id: "a2", role: "assistant", text: "two" },
-  ]);
-});
+  ])
+})

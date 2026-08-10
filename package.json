@@ -19,7 +19,10 @@
     "tunnel": "ngrok http 3333 --url=geologic-catalog-deodorant.ngrok-free.dev --traffic-policy-file ./ngrok-traffic-policy.yml",
     "test": "tsx --test test/*.test.ts",
     "type-check": "tsc -p tsconfig.json --noEmit",
-    "vendor:apply-patch": "scripts/build-apply-patch.sh"
+    "vendor:apply-patch": "scripts/build-apply-patch.sh",
+    "lint": "eslint src test",
+    "lint:fix": "eslint src test --fix",
+    "format": "prettier --write src test package.json tsconfig.json eslint.config.js ecosystem.config.cjs"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "1.30.0",

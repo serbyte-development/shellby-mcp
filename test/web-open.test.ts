@@ -1,70 +1,70 @@
-import assert from "node:assert/strict";
-import test from "node:test";
+import assert from "node:assert/strict"
+import test from "node:test"
 
-import { WebOpenError, WebPageOpener } from "../src/web-open.js";
+import { WebOpenError, WebPageOpener } from "../src/web-open.js"
 
 test("paginates fetched content without reopening the page", async () => {
-  const expected = "🙂".repeat(1_500);
-  let renders = 0;
+  const expected = "🙂".repeat(1_500)
+  let renders = 0
   const opener = new WebPageOpener({
     defaultOutputBytes: 2_048,
     renderPage: async () => {
-      renders += 1;
+      renders += 1
       return {
         url: "https://example.com/final",
         title: "Example",
         content: expected,
-      };
+      }
     },
-  });
+  })
 
-  let result = await opener.open({ url: "https://example.com/start" });
-  let content = result.content;
-  assert.equal(Buffer.byteLength(result.content, "utf8"), 2_048);
-  assert.equal(result.url, "https://example.com/final");
-  assert.equal(result.format, "markdown");
+  let result = await opener.open({ url: "https://example.com/start" })
+  let content = result.content
+  assert.equal(Buffer.byteLength(result.content, "utf8"), 2_048)
+  assert.equal(result.url, "https://example.com/final")
+  assert.equal(result.format, "markdown")
 
   while (result.next_cursor) {
     result = await opener.open({
       url: "https://example.com/start",
       cursor: result.next_cursor,
-    });
-    content += result.content;
+    })
+    content += result.content
   }
 
-  assert.equal(content, expected);
-  assert.equal(renders, 1);
-});
+  assert.equal(content, expected)
+  assert.equal(renders, 1)
+})
 
 test("forwards the requested format and requires it for cursor continuation", async () => {
-  const formats: string[] = [];
+  const formats: string[] = []
   const opener = new WebPageOpener({
     defaultOutputBytes: 256,
     renderPage: async (_url, format) => {
-      formats.push(format);
+      formats.push(format)
       return {
         url: "https://example.com/",
         title: "Formatted page",
         content: "x".repeat(300),
-      };
+      }
     },
-  });
+  })
 
   const first = await opener.open({
     url: "https://example.com",
     format: "clean_html",
-  });
-  assert.equal(first.format, "clean_html");
-  assert.deepEqual(formats, ["clean_html"]);
-  assert.ok(first.next_cursor);
+  })
+  assert.equal(first.format, "clean_html")
+  assert.deepEqual(formats, ["clean_html"])
+  assert.ok(first.next_cursor)
 
   const second = await opener.open({
     url: "https://example.com",
     format: "clean_html",
     cursor: first.next_cursor,
-  });
-  assert.equal(second.format, "clean_html");
-  assert.equal(formats.length, 1);
+  })
+  assert.equal(second.format, "clean_html")
+  assert.equal(formats.length, 1)
 
   await assert.rejects(
     opener.open({
@@ -72,10 +72,9 @@ test("forwards the requested format and requires it for cursor continuation", as
       format: "raw_html",
       cursor: first.next_cursor,
     }),
-    (error: unknown) =>
-      error instanceof WebOpenError && error.code === "invalid_cursor",
-  );
-});
+    (error: unknown) => error instanceof WebOpenError && error.code === "invalid_cursor"
+  )
+})
 
 test("accepts the final redirected URL for cursor reads", async () => {
   const opener = new WebPageOpener({
@@ -85,19 +84,19 @@ test("accepts the final redirected URL for cursor reads", async () => {
       title: "Redirected",
       content: "x".repeat(300),
     }),
-  });
+  })
 
-  const first = await opener.open({ url: "https://example.com/start" });
-  assert.ok(first.next_cursor);
+  const first = await opener.open({ url: "https://example.com/start" })
+  assert.ok(first.next_cursor)
   const second = await opener.open({
     url: first.url,
     cursor: first.next_cursor,
-  });
-  assert.equal(second.content, "x".repeat(44));
-});
+  })
+  assert.equal(second.content, "x".repeat(44))
+})
 
 test("rejects invalid and expired cursors", async () => {
-  let now = 1_000;
+  let now = 1_000
   const opener = new WebPageOpener({
     defaultOutputBytes: 256,
     documentTtlMs: 100,
@@ -107,27 +106,25 @@ test("rejects invalid and expired cursors", async () => {
       title: "Example",
       content: "x".repeat(300),
     }),
-  });
+  })
 
   await assert.rejects(
     opener.open({ url: "https://example.com", cursor: "not-a-cursor" }),
-    (error: unknown) =>
-      error instanceof WebOpenError && error.code === "invalid_cursor",
-  );
+    (error: unknown) => error instanceof WebOpenError && error.code === "invalid_cursor"
+  )
 
-  const first = await opener.open({ url: "https://example.com" });
-  assert.ok(first.next_cursor);
-  now += 101;
+  const first = await opener.open({ url: "https://example.com" })
+  assert.ok(first.next_cursor)
+  now += 101
 
   await assert.rejects(
     opener.open({
       url: "https://example.com",
       cursor: first.next_cursor,
     }),
-    (error: unknown) =>
-      error instanceof WebOpenError && error.code === "cursor_expired",
-  );
-});
+    (error: unknown) => error instanceof WebOpenError && error.code === "cursor_expired"
+  )
+})
 
 test("bounds cached extracted documents and reports source truncation", async () => {
   const opener = new WebPageOpener({
@@ -138,18 +135,18 @@ test("bounds cached extracted documents and reports source truncation", async ()
       title: "Large page",
       content: "x".repeat(500),
     }),
-  });
+  })
 
-  const first = await opener.open({ url: "https://example.com" });
-  assert.equal(first.content, "x".repeat(256));
-  assert.equal(first.source_truncated, true);
-  assert.ok(first.next_cursor);
+  const first = await opener.open({ url: "https://example.com" })
+  assert.equal(first.content, "x".repeat(256))
+  assert.equal(first.source_truncated, true)
+  assert.ok(first.next_cursor)
 
   const second = await opener.open({
     url: "https://example.com",
     cursor: first.next_cursor,
-  });
-  assert.equal(second.content, "x".repeat(44));
-  assert.equal(second.source_truncated, true);
-  assert.equal(second.next_cursor, undefined);
-});
+  })
+  assert.equal(second.content, "x".repeat(44))
+  assert.equal(second.source_truncated, true)
+  assert.equal(second.next_cursor, undefined)
+})

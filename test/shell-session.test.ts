@@ -1,893 +1,636 @@
-import assert from "node:assert/strict";
-import {
-  chmod,
-  mkdir,
-  mkdtemp,
-  readFile,
-  rm,
-  writeFile,
-} from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import test from "node:test";
+import assert from "node:assert/strict"
+import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
+import test from "node:test"
 
-import {
-  PersistentShellSession,
-  ShellSessionError,
-  type ShellSnapshot,
-} from "../src/shell-session.js";
+import { PersistentShellSession, ShellSessionError, type ShellSnapshot } from "../src/shell-session.js"
 
-test(
-  "retains cwd and environment across commands",
-  { timeout: 10_000 },
-  async (t) => {
-    const directory = await mkdtemp(join(tmpdir(), "shell-mcp-state-"));
-    const shell = new PersistentShellSession();
-    t.after(async () => {
-      await shell.close();
-      await rm(directory, { recursive: true, force: true });
-    });
+test("retains cwd and environment across commands", { timeout: 10_000 }, async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), "shell-mcp-state-"))
+  const shell = new PersistentShellSession()
+  t.after(async () => {
+    await shell.close()
+    await rm(directory, { recursive: true, force: true })
+  })
 
-    const first = await runToCompletion(
-      shell,
-      "state-1",
-      `cd ${quote(directory)}; export MCP_RETAINED=present`,
-    );
-    assert.equal(first.snapshot.exit_code, 0);
+  const first = await runToCompletion(shell, "state-1", `cd ${quote(directory)}; export MCP_RETAINED=present`)
+  assert.equal(first.snapshot.exit_code, 0)
 
-    const second = await runToCompletion(
-      shell,
-      "state-2",
-      `printf '%s|%s' "$PWD" "$MCP_RETAINED"`,
-    );
-    assert.equal(second.output, `${directory}|present`);
-    assert.equal(second.snapshot.exit_code, 0);
-  },
-);
+  const second = await runToCompletion(shell, "state-2", `printf '%s|%s' "$PWD" "$MCP_RETAINED"`)
+  assert.equal(second.output, `${directory}|present`)
+  assert.equal(second.snapshot.exit_code, 0)
+})
 
-test(
-  "starts in an explicit cwd, reports it, and retains it",
-  { timeout: 10_000 },
-  async (t) => {
-    const directory = await mkdtemp(join(tmpdir(), "shell-mcp-explicit-cwd-"));
-    const shell = new PersistentShellSession();
-    t.after(async () => {
-      await shell.close();
-      await rm(directory, { recursive: true, force: true });
-    });
+test("starts in an explicit cwd, reports it, and retains it", { timeout: 10_000 }, async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), "shell-mcp-explicit-cwd-"))
+  const shell = new PersistentShellSession()
+  t.after(async () => {
+    await shell.close()
+    await rm(directory, { recursive: true, force: true })
+  })
 
-    const first = await runToCompletion(shell, "explicit-cwd", "printf '%s' \"$PWD\"", {
-      cwd: directory,
-    });
-    assert.equal(first.output, directory);
-    assert.equal(first.snapshot.cwd, directory);
+  const first = await runToCompletion(shell, "explicit-cwd", "printf '%s' \"$PWD\"", {
+    cwd: directory,
+  })
+  assert.equal(first.output, directory)
+  assert.equal(first.snapshot.cwd, directory)
 
-    const second = await runToCompletion(
-      shell,
-      "retained-explicit-cwd",
-      "printf '%s' \"$PWD\"",
-    );
-    assert.equal(second.output, directory);
-    assert.equal(second.snapshot.cwd, directory);
-  },
-);
+  const second = await runToCompletion(shell, "retained-explicit-cwd", "printf '%s' \"$PWD\"")
+  assert.equal(second.output, directory)
+  assert.equal(second.snapshot.cwd, directory)
+})
 
-test(
-  "rejects invalid explicit working directories",
-  { timeout: 10_000 },
-  async (t) => {
-    const directory = await mkdtemp(join(tmpdir(), "shell-mcp-invalid-cwd-"));
-    const file = join(directory, "file.txt");
-    await writeFile(file, "not a directory");
-    const shell = new PersistentShellSession();
-    t.after(async () => {
-      await shell.close();
-      await rm(directory, { recursive: true, force: true });
-    });
+test("rejects invalid explicit working directories", { timeout: 10_000 }, async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), "shell-mcp-invalid-cwd-"))
+  const file = join(directory, "file.txt")
+  await writeFile(file, "not a directory")
+  const shell = new PersistentShellSession()
+  t.after(async () => {
+    await shell.close()
+    await rm(directory, { recursive: true, force: true })
+  })
 
-    await assert.rejects(
-      shell.runCommand({
-        requestId: "relative-cwd",
-        command: "printf blocked",
-        cwd: "relative/path",
-      }),
-      (error: unknown) =>
-        error instanceof ShellSessionError &&
-        error.code === "invalid_command" &&
-        /absolute path/.test(error.message),
-    );
+  await assert.rejects(
+    shell.runCommand({
+      requestId: "relative-cwd",
+      command: "printf blocked",
+      cwd: "relative/path",
+    }),
+    (error: unknown) => error instanceof ShellSessionError && error.code === "invalid_command" && /absolute path/.test(error.message)
+  )
 
-    await assert.rejects(
-      shell.runCommand({
-        requestId: "file-cwd",
-        command: "printf blocked",
-        cwd: file,
-      }),
-      (error: unknown) =>
-        error instanceof ShellSessionError &&
-        error.code === "invalid_command" &&
-        /not a directory/.test(error.message),
-    );
-  },
-);
+  await assert.rejects(
+    shell.runCommand({
+      requestId: "file-cwd",
+      command: "printf blocked",
+      cwd: file,
+    }),
+    (error: unknown) => error instanceof ShellSessionError && error.code === "invalid_command" && /not a directory/.test(error.message)
+  )
+})
 
-test(
-  "prepends configured executable directories after login-shell startup",
-  { timeout: 10_000 },
-  async (t) => {
-    const directory = await mkdtemp(join(tmpdir(), "shell-mcp-path-"));
-    const binDirectory = join(directory, "bin");
-    await mkdir(binDirectory, { recursive: true });
-    const executable = join(binDirectory, "mcp-path-check");
-    await writeFile(executable, "#!/bin/sh\nprintf path-ready\n");
-    await chmod(executable, 0o755);
+test("prepends configured executable directories after login-shell startup", { timeout: 10_000 }, async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), "shell-mcp-path-"))
+  const binDirectory = join(directory, "bin")
+  await mkdir(binDirectory, { recursive: true })
+  const executable = join(binDirectory, "mcp-path-check")
+  await writeFile(executable, "#!/bin/sh\nprintf path-ready\n")
+  await chmod(executable, 0o755)
 
-    const shell = new PersistentShellSession({ pathPrepend: [binDirectory] });
-    t.after(async () => {
-      await shell.close();
-      await rm(directory, { recursive: true, force: true });
-    });
+  const shell = new PersistentShellSession({ pathPrepend: [binDirectory] })
+  t.after(async () => {
+    await shell.close()
+    await rm(directory, { recursive: true, force: true })
+  })
 
-    const result = await runToCompletion(
-      shell,
-      "path-prepend",
-      "mcp-path-check",
-    );
-    assert.equal(result.output, "path-ready");
-    assert.equal(result.snapshot.exit_code, 0);
-  },
-);
+  const result = await runToCompletion(shell, "path-prepend", "mcp-path-check")
+  assert.equal(result.output, "path-ready")
+  assert.equal(result.snapshot.exit_code, 0)
+})
 
-test(
-  "isolates protocol stdin and restores redirected descriptors",
-  { timeout: 10_000 },
-  async (t) => {
-    const directory = await mkdtemp(join(tmpdir(), "shell-mcp-fds-"));
-    const redirected = join(directory, "redirected.txt");
-    const shell = new PersistentShellSession();
-    t.after(async () => {
-      await shell.close();
-      await rm(directory, { recursive: true, force: true });
-    });
+test("isolates protocol stdin and restores redirected descriptors", { timeout: 10_000 }, async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), "shell-mcp-fds-"))
+  const redirected = join(directory, "redirected.txt")
+  const shell = new PersistentShellSession()
+  t.after(async () => {
+    await shell.close()
+    await rm(directory, { recursive: true, force: true })
+  })
 
-    const catResult = await runToCompletion(
-      shell,
-      "stdin",
-      "cat; printf protocol-safe",
-    );
-    assert.equal(catResult.output, "protocol-safe");
+  const catResult = await runToCompletion(shell, "stdin", "cat; printf protocol-safe")
+  assert.equal(catResult.output, "protocol-safe")
 
-    const redirectResult = await runToCompletion(
-      shell,
-      "redirect",
-      `exec >${quote(redirected)}; printf hidden`,
-    );
-    assert.equal(redirectResult.output, "");
-    assert.equal(await readFile(redirected, "utf8"), "hidden");
+  const redirectResult = await runToCompletion(shell, "redirect", `exec >${quote(redirected)}; printf hidden`)
+  assert.equal(redirectResult.output, "")
+  assert.equal(await readFile(redirected, "utf8"), "hidden")
 
-    const after = await runToCompletion(
-      shell,
-      "after-redirect",
-      "printf visible",
-    );
-    assert.equal(after.output, "visible");
-  },
-);
+  const after = await runToCompletion(shell, "after-redirect", "printf visible")
+  assert.equal(after.output, "visible")
+})
 
-test(
-  "deduplicates retries and rejects request id conflicts",
-  { timeout: 10_000 },
-  async (t) => {
-    const directory = await mkdtemp(join(tmpdir(), "shell-mcp-dedupe-"));
-    const outputFile = join(directory, "count.txt");
-    const shell = new PersistentShellSession();
-    t.after(async () => {
-      await shell.close();
-      await rm(directory, { recursive: true, force: true });
-    });
+test("deduplicates retries and rejects request id conflicts", { timeout: 10_000 }, async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), "shell-mcp-dedupe-"))
+  const outputFile = join(directory, "count.txt")
+  const shell = new PersistentShellSession()
+  t.after(async () => {
+    await shell.close()
+    await rm(directory, { recursive: true, force: true })
+  })
 
-    const command = `printf x >> ${quote(outputFile)}`;
-    await runToCompletion(shell, "dedupe", command);
-    await runToCompletion(shell, "dedupe", command);
-    assert.equal(await readFile(outputFile, "utf8"), "x");
+  const command = `printf x >> ${quote(outputFile)}`
+  await runToCompletion(shell, "dedupe", command)
+  await runToCompletion(shell, "dedupe", command)
+  assert.equal(await readFile(outputFile, "utf8"), "x")
 
-    await assert.rejects(
-      shell.runCommand({
-        requestId: "dedupe",
-        command: "printf different",
-        waitMs: 0,
-      }),
-      (error: unknown) =>
-        error instanceof ShellSessionError && error.code === "request_conflict",
-    );
-  },
-);
+  await assert.rejects(
+    shell.runCommand({
+      requestId: "dedupe",
+      command: "printf different",
+      waitMs: 0,
+    }),
+    (error: unknown) => error instanceof ShellSessionError && error.code === "request_conflict"
+  )
+})
 
-test(
-  "logs each accepted command once without duplicating retries",
-  { timeout: 10_000 },
-  async (t) => {
-    const messages: string[] = [];
-    const shell = new PersistentShellSession({
-      commandLogMode: "full",
-      logger: (message) => messages.push(message),
-    });
-    t.after(() => shell.close());
+test("logs each accepted command once without duplicating retries", { timeout: 10_000 }, async (t) => {
+  const messages: string[] = []
+  const shell = new PersistentShellSession({
+    commandLogMode: "full",
+    logger: (message) => messages.push(message),
+  })
+  t.after(() => shell.close())
 
-    await runToCompletion(shell, "logged-command", "printf logged");
-    await runToCompletion(shell, "logged-command", "printf logged");
+  await runToCompletion(shell, "logged-command", "printf logged")
+  await runToCompletion(shell, "logged-command", "printf logged")
 
-    assert.equal(messages.length, 1);
-    assert.match(messages[0], /^\[(?:[01]\d|2[0-3]):[0-5]\d\] printf logged$/);
-  },
-);
+  assert.equal(messages.length, 1)
+  assert.match(messages[0], /^\[(?:[01]\d|2[0-3]):[0-5]\d\] printf logged$/)
+})
 
 test("summarizes multiline command logs", { timeout: 10_000 }, async (t) => {
-  const messages: string[] = [];
+  const messages: string[] = []
   const shell = new PersistentShellSession({
     commandLogMode: "summary",
     logger: (message) => messages.push(message),
-  });
-  t.after(() => shell.close());
+  })
+  t.after(() => shell.close())
 
-  await runToCompletion(
+  await runToCompletion(shell, "summarized-command", ["# edit files", "printf first", "printf second"].join("\n"))
+
+  assert.equal(messages.length, 1)
+  assert.match(messages[0], /^\[(?:[01]\d|2[0-3]):[0-5]\d\] printf first … \[3 lines, 39 bytes\]$/)
+})
+
+test("escapes control characters in summary logs", { timeout: 10_000 }, async (t) => {
+  const messages: string[] = []
+  const shell = new PersistentShellSession({
+    commandLogMode: "summary",
+    logger: (message) => messages.push(message),
+  })
+  t.after(() => shell.close())
+
+  await runToCompletion(shell, "control-log", "printf 'safe\rhidden'")
+
+  assert.equal(messages.length, 1)
+  assert.match(messages[0], /^\[(?:[01]\d|2[0-3]):[0-5]\d\] printf 'safe\\rhidden'$/)
+})
+
+test("does not leak errexit into later commands", { timeout: 10_000 }, async (t) => {
+  const shell = new PersistentShellSession()
+  t.after(() => shell.close())
+
+  await runToCompletion(shell, "enable-errexit", "set -e")
+  const after = await runToCompletion(shell, "after-errexit", "false; printf survived")
+
+  assert.equal(after.output, "survived")
+  assert.equal(after.snapshot.exit_code, 0)
+})
+
+test("keeps a completed retry bounded after later commands", { timeout: 10_000 }, async (t) => {
+  const shell = new PersistentShellSession()
+  t.after(() => shell.close())
+
+  const first = await runToCompletion(shell, "bounded-retry", "printf first")
+  await runToCompletion(shell, "later-command", "printf later")
+
+  const retry = await shell.runCommand({
+    requestId: "bounded-retry",
+    command: "printf first",
+    waitMs: 0,
+  })
+  assert.equal(retry.output, "first")
+  assert.equal(retry.next_cursor, first.snapshot.next_cursor)
+  assert.equal(retry.has_more, false)
+})
+
+test("admits only one concurrent command without corrupting the active record", { timeout: 10_000 }, async (t) => {
+  const shell = new PersistentShellSession()
+  t.after(() => shell.close())
+
+  const commands = new Map([
+    ["concurrent-a", "sleep 0.1; printf A"],
+    ["concurrent-b", "sleep 0.1; printf B"],
+  ])
+  const attempts = await Promise.allSettled([...commands].map(([requestId, command]) => shell.runCommand({ requestId, command, waitMs: 0 })))
+  const admitted = attempts.filter((result): result is PromiseFulfilledResult<ShellSnapshot> => result.status === "fulfilled")
+  const rejected = attempts.filter((result): result is PromiseRejectedResult => result.status === "rejected")
+
+  assert.equal(admitted.length, 1)
+  assert.equal(rejected.length, 1)
+  assert.ok(rejected[0].reason instanceof ShellSessionError && rejected[0].reason.code === "busy")
+
+  const completed = await pollToCompletion(shell, admitted[0].value)
+  const expectedOutput = admitted[0].value.request_id === "concurrent-a" ? "A" : "B"
+  assert.equal(completed.output, expectedOutput)
+  assert.equal(completed.snapshot.status, "completed")
+
+  const next = await runToCompletion(shell, "after-concurrent", "printf clean")
+  assert.equal(next.output, "clean")
+})
+
+test("polls bounded output without duplicates", { timeout: 10_000 }, async (t) => {
+  const shell = new PersistentShellSession({
+    defaultOutputBytes: 7,
+    maxOutputBytes: 7,
+  })
+  t.after(() => shell.close())
+
+  const result = await runToCompletion(shell, "chunks", "printf abcdefghijklmnopqrstuvwxyz")
+  assert.equal(result.output, "abcdefghijklmnopqrstuvwxyz")
+  assert.equal(result.snapshot.status, "completed")
+  assert.equal(result.snapshot.exit_code, 0)
+})
+
+test("caps UTF-8 bytes without splitting characters and allows an override", { timeout: 10_000 }, async (t) => {
+  const shell = new PersistentShellSession({
+    defaultOutputBytes: 4,
+    maxOutputBytes: 16,
+  })
+  t.after(() => shell.close())
+
+  const first = await shell.runCommand({
+    requestId: "utf8-byte-cap",
+    command: "printf '🙂éA'",
+    waitMs: 1_000,
+  })
+  assert.equal(first.output, "🙂")
+  assert.equal(Buffer.byteLength(first.output, "utf8"), 4)
+  assert.equal(first.has_more, true)
+
+  const rest = await shell.pollCommand({
+    requestId: "utf8-byte-cap",
+    cursor: first.next_cursor,
+    waitMs: 0,
+    maxOutputBytes: 16,
+  })
+  assert.equal(rest.output, "éA")
+  assert.equal(Buffer.byteLength(rest.output, "utf8"), 3)
+  assert.equal(rest.has_more, false)
+})
+
+test("drops output beyond the per-command transcript ceiling", { timeout: 10_000 }, async (t) => {
+  const shell = new PersistentShellSession({
+    commandTranscriptBytes: 7,
+    defaultOutputBytes: 16,
+    maxOutputBytes: 16,
+  })
+  t.after(() => shell.close())
+
+  const result = await runToCompletion(shell, "command-transcript-cap", "printf '🙂éAB'")
+  assert.equal(result.output, "🙂éA")
+  assert.equal(result.snapshot.output_truncated, true)
+  assert.equal(result.snapshot.dropped_output_bytes, 1)
+
+  const after = await runToCompletion(shell, "after-command-transcript-cap", "printf healthy")
+  assert.equal(after.output, "healthy")
+  assert.equal(after.snapshot.output_truncated, false)
+  assert.equal(after.snapshot.dropped_output_bytes, 0)
+})
+
+test("keeps surrogate pairs intact while scanning for a delayed marker", { timeout: 10_000 }, async (t) => {
+  const shell = new PersistentShellSession({
+    commandTranscriptBytes: 4,
+    defaultOutputBytes: 16,
+    maxOutputBytes: 16,
+  })
+  t.after(() => shell.close())
+
+  const result = await runToCompletion(shell, "surrogate-marker-boundary", `printf '${"🙂"}${"a".repeat(45)}'; sleep 0.1`)
+
+  assert.equal(result.output, "🙂")
+  assert.equal(result.snapshot.output_truncated, true)
+  assert.equal(result.snapshot.dropped_output_bytes, 45)
+})
+
+test("drops a whole surrogate pair at the rolling transcript boundary", { timeout: 10_000 }, async (t) => {
+  const shell = new PersistentShellSession({
+    transcriptLimit: 1,
+    defaultOutputBytes: 16,
+    maxOutputBytes: 16,
+  })
+  t.after(() => shell.close())
+
+  const evicted = await runToCompletion(shell, "surrogate-transcript-boundary", "printf '🙂'")
+  assert.equal(evicted.output, "")
+  assert.equal(evicted.snapshot.cursor_expired, true)
+
+  const after = await runToCompletion(shell, "after-surrogate-transcript-boundary", "printf A")
+  assert.equal(after.output, "A")
+})
+
+test("contains readonly wrapper variables to one command", { timeout: 10_000 }, async (t) => {
+  const shell = new PersistentShellSession()
+  t.after(() => shell.close())
+
+  const poisoned = await runToCompletion(shell, "readonly-wrapper-variable", "readonly __mcp_command; printf contained")
+  assert.equal(poisoned.output, "contained")
+  assert.equal(poisoned.snapshot.status, "completed")
+
+  const after = await runToCompletion(shell, "after-readonly-wrapper-variable", "printf healthy")
+  assert.equal(after.output, "healthy")
+})
+
+test("waits for a quick command to complete instead of returning on its first output", { timeout: 10_000 }, async (t) => {
+  const shell = new PersistentShellSession()
+  t.after(() => shell.close())
+
+  const result = await shell.runCommand({
+    requestId: "wait-for-completion",
+    command: "printf first; sleep 0.05; printf second",
+    waitMs: 1_000,
+  })
+
+  assert.equal(result.status, "completed")
+  assert.equal(result.output, "firstsecond")
+  assert.equal(result.exit_code, 0)
+})
+
+test("keeps completed command polling bounded after later commands", { timeout: 10_000 }, async (t) => {
+  const shell = new PersistentShellSession()
+  t.after(() => shell.close())
+
+  const first = await runToCompletion(shell, "poll-boundary-first", "printf first")
+  await runToCompletion(shell, "poll-boundary-second", "printf second")
+
+  const stalePoll = await shell.pollCommand({
+    requestId: "poll-boundary-first",
+    cursor: first.snapshot.next_cursor,
+    waitMs: 0,
+  })
+
+  assert.equal(stalePoll.output, "")
+  assert.equal(stalePoll.has_more, false)
+})
+
+test("rejects poll cursors before the requested command", { timeout: 10_000 }, async (t) => {
+  const shell = new PersistentShellSession()
+  t.after(() => shell.close())
+
+  await runToCompletion(shell, "poll-before-first", "printf first-secret")
+  await runToCompletion(shell, "poll-before-second", "printf second")
+
+  await assert.rejects(
+    shell.pollCommand({
+      requestId: "poll-before-second",
+      cursor: 0,
+      waitMs: 0,
+    }),
+    (error: unknown) => error instanceof ShellSessionError && error.code === "invalid_cursor"
+  )
+})
+
+test("wakes a foreground long-poll when delayed output arrives", { timeout: 10_000 }, async (t) => {
+  const shell = new PersistentShellSession()
+  t.after(() => shell.close())
+
+  const running = await shell.runCommand({
+    requestId: "delayed-foreground",
+    command: "sleep 0.1; printf awakened",
+    waitMs: 0,
+  })
+  assert.equal(running.status, "running")
+
+  const startedAt = Date.now()
+  const awakened = await shell.pollCommand({
+    requestId: "delayed-foreground",
+    cursor: running.next_cursor,
+    waitMs: 3_000,
+  })
+  assert.ok(Date.now() - startedAt < 1_500, "poll should wake before its timeout")
+
+  const completed = await pollToCompletion(shell, awakened)
+  assert.equal(completed.output, "awakened")
+  assert.equal(completed.snapshot.status, "completed")
+})
+
+test("handles multiline commands, quotes, and redirected background output", { timeout: 10_000 }, async (t) => {
+  const shell = new PersistentShellSession()
+  t.after(() => shell.close())
+
+  const quoted = await runToCompletion(shell, "quoted", ["value=$(cat <<'VALUE_EOF'", "a'b", "VALUE_EOF", ")", `printf '%s' "$value"`].join("\n"))
+  assert.equal(quoted.output, "a'b")
+
+  const backgroundFile = `/tmp/chatgpt-shell-background-${process.pid}`
+  const background = await shell.runCommand({
+    requestId: "background",
+    command: `(sleep 0.1; printf background-finished > ${quote(backgroundFile)}) &`,
+    waitMs: 500,
+  })
+  assert.equal(background.status, "completed")
+  const readBackground = await runToCompletion(
     shell,
-    "summarized-command",
-    ["# edit files", "printf first", "printf second"].join("\n"),
-  );
+    "background-output",
+    `sleep 0.2; value=$(<${quote(backgroundFile)}); rm ${quote(backgroundFile)}; printf '%s' "$value"`
+  )
+  assert.equal(readBackground.output, "background-finished")
+})
 
-  assert.equal(messages.length, 1);
-  assert.match(
-    messages[0],
-    /^\[(?:[01]\d|2[0-3]):[0-5]\d\] printf first … \[3 lines, 39 bytes\]$/,
-  );
-});
+test("reports shell loss and automatically starts a clean generation", { timeout: 10_000 }, async (t) => {
+  const shell = new PersistentShellSession()
+  t.after(() => shell.close())
 
-test(
-  "escapes control characters in summary logs",
-  { timeout: 10_000 },
-  async (t) => {
-    const messages: string[] = [];
-    const shell = new PersistentShellSession({
-      commandLogMode: "summary",
-      logger: (message) => messages.push(message),
-    });
-    t.after(() => shell.close());
+  await runToCompletion(shell, "before-exit", "printf initial")
+  const exited = await runUntilTerminal(shell, "exit-shell", "exit 7")
+  assert.equal(exited.snapshot.status, "shell_exited")
 
-    await runToCompletion(shell, "control-log", "printf 'safe\rhidden'");
+  const recovered = await runToCompletion(shell, "after-exit", "printf recovered")
+  assert.equal(recovered.output, "recovered")
+  assert.equal(recovered.snapshot.status, "completed")
+})
 
-    assert.equal(messages.length, 1);
-    assert.match(
-      messages[0],
-      /^\[(?:[01]\d|2[0-3]):[0-5]\d\] printf 'safe\\rhidden'$/,
-    );
-  },
-);
+test("recovers when process-group cleanup is denied", { timeout: 10_000 }, async (t) => {
+  const shell = new PersistentShellSession()
+  t.after(() => shell.close())
 
-test(
-  "does not leak errexit into later commands",
-  { timeout: 10_000 },
-  async (t) => {
-    const shell = new PersistentShellSession();
-    t.after(() => shell.close());
-
-    await runToCompletion(shell, "enable-errexit", "set -e");
-    const after = await runToCompletion(
-      shell,
-      "after-errexit",
-      "false; printf survived",
-    );
-
-    assert.equal(after.output, "survived");
-    assert.equal(after.snapshot.exit_code, 0);
-  },
-);
-
-test(
-  "keeps a completed retry bounded after later commands",
-  { timeout: 10_000 },
-  async (t) => {
-    const shell = new PersistentShellSession();
-    t.after(() => shell.close());
-
-    const first = await runToCompletion(shell, "bounded-retry", "printf first");
-    await runToCompletion(shell, "later-command", "printf later");
-
-    const retry = await shell.runCommand({
-      requestId: "bounded-retry",
-      command: "printf first",
-      waitMs: 0,
-    });
-    assert.equal(retry.output, "first");
-    assert.equal(retry.next_cursor, first.snapshot.next_cursor);
-    assert.equal(retry.has_more, false);
-  },
-);
-
-test(
-  "admits only one concurrent command without corrupting the active record",
-  { timeout: 10_000 },
-  async (t) => {
-    const shell = new PersistentShellSession();
-    t.after(() => shell.close());
-
-    const commands = new Map([
-      ["concurrent-a", "sleep 0.1; printf A"],
-      ["concurrent-b", "sleep 0.1; printf B"],
-    ]);
-    const attempts = await Promise.allSettled(
-      [...commands].map(([requestId, command]) =>
-        shell.runCommand({ requestId, command, waitMs: 0 }),
-      ),
-    );
-    const admitted = attempts.filter(
-      (result): result is PromiseFulfilledResult<ShellSnapshot> =>
-        result.status === "fulfilled",
-    );
-    const rejected = attempts.filter(
-      (result): result is PromiseRejectedResult => result.status === "rejected",
-    );
-
-    assert.equal(admitted.length, 1);
-    assert.equal(rejected.length, 1);
-    assert.ok(
-      rejected[0].reason instanceof ShellSessionError &&
-        rejected[0].reason.code === "busy",
-    );
-
-    const completed = await pollToCompletion(shell, admitted[0].value);
-    const expectedOutput =
-      admitted[0].value.request_id === "concurrent-a" ? "A" : "B";
-    assert.equal(completed.output, expectedOutput);
-    assert.equal(completed.snapshot.status, "completed");
-
-    const next = await runToCompletion(
-      shell,
-      "after-concurrent",
-      "printf clean",
-    );
-    assert.equal(next.output, "clean");
-  },
-);
-
-test(
-  "polls bounded output without duplicates",
-  { timeout: 10_000 },
-  async (t) => {
-    const shell = new PersistentShellSession({
-      defaultOutputBytes: 7,
-      maxOutputBytes: 7,
-    });
-    t.after(() => shell.close());
-
-    const result = await runToCompletion(
-      shell,
-      "chunks",
-      "printf abcdefghijklmnopqrstuvwxyz",
-    );
-    assert.equal(result.output, "abcdefghijklmnopqrstuvwxyz");
-    assert.equal(result.snapshot.status, "completed");
-    assert.equal(result.snapshot.exit_code, 0);
-  },
-);
-
-test(
-  "caps UTF-8 bytes without splitting characters and allows an override",
-  { timeout: 10_000 },
-  async (t) => {
-    const shell = new PersistentShellSession({
-      defaultOutputBytes: 4,
-      maxOutputBytes: 16,
-    });
-    t.after(() => shell.close());
-
-    const first = await shell.runCommand({
-      requestId: "utf8-byte-cap",
-      command: "printf '🙂éA'",
-      waitMs: 1_000,
-    });
-    assert.equal(first.output, "🙂");
-    assert.equal(Buffer.byteLength(first.output, "utf8"), 4);
-    assert.equal(first.has_more, true);
-
-    const rest = await shell.pollCommand({
-      requestId: "utf8-byte-cap",
-      cursor: first.next_cursor,
-      waitMs: 0,
-      maxOutputBytes: 16,
-    });
-    assert.equal(rest.output, "éA");
-    assert.equal(Buffer.byteLength(rest.output, "utf8"), 3);
-    assert.equal(rest.has_more, false);
-  },
-);
-
-test(
-  "drops output beyond the per-command transcript ceiling",
-  { timeout: 10_000 },
-  async (t) => {
-    const shell = new PersistentShellSession({
-      commandTranscriptBytes: 7,
-      defaultOutputBytes: 16,
-      maxOutputBytes: 16,
-    });
-    t.after(() => shell.close());
-
-    const result = await runToCompletion(
-      shell,
-      "command-transcript-cap",
-      "printf '🙂éAB'",
-    );
-    assert.equal(result.output, "🙂éA");
-    assert.equal(result.snapshot.output_truncated, true);
-    assert.equal(result.snapshot.dropped_output_bytes, 1);
-
-    const after = await runToCompletion(
-      shell,
-      "after-command-transcript-cap",
-      "printf healthy",
-    );
-    assert.equal(after.output, "healthy");
-    assert.equal(after.snapshot.output_truncated, false);
-    assert.equal(after.snapshot.dropped_output_bytes, 0);
-  },
-);
-
-test(
-  "keeps surrogate pairs intact while scanning for a delayed marker",
-  { timeout: 10_000 },
-  async (t) => {
-    const shell = new PersistentShellSession({
-      commandTranscriptBytes: 4,
-      defaultOutputBytes: 16,
-      maxOutputBytes: 16,
-    });
-    t.after(() => shell.close());
-
-    const result = await runToCompletion(
-      shell,
-      "surrogate-marker-boundary",
-      `printf '${"🙂"}${"a".repeat(45)}'; sleep 0.1`,
-    );
-
-    assert.equal(result.output, "🙂");
-    assert.equal(result.snapshot.output_truncated, true);
-    assert.equal(result.snapshot.dropped_output_bytes, 45);
-  },
-);
-
-test(
-  "drops a whole surrogate pair at the rolling transcript boundary",
-  { timeout: 10_000 },
-  async (t) => {
-    const shell = new PersistentShellSession({
-      transcriptLimit: 1,
-      defaultOutputBytes: 16,
-      maxOutputBytes: 16,
-    });
-    t.after(() => shell.close());
-
-    const evicted = await runToCompletion(
-      shell,
-      "surrogate-transcript-boundary",
-      "printf '🙂'",
-    );
-    assert.equal(evicted.output, "");
-    assert.equal(evicted.snapshot.cursor_expired, true);
-
-    const after = await runToCompletion(
-      shell,
-      "after-surrogate-transcript-boundary",
-      "printf A",
-    );
-    assert.equal(after.output, "A");
-  },
-);
-
-test(
-  "contains readonly wrapper variables to one command",
-  { timeout: 10_000 },
-  async (t) => {
-    const shell = new PersistentShellSession();
-    t.after(() => shell.close());
-
-    const poisoned = await runToCompletion(
-      shell,
-      "readonly-wrapper-variable",
-      "readonly __mcp_command; printf contained",
-    );
-    assert.equal(poisoned.output, "contained");
-    assert.equal(poisoned.snapshot.status, "completed");
-
-    const after = await runToCompletion(
-      shell,
-      "after-readonly-wrapper-variable",
-      "printf healthy",
-    );
-    assert.equal(after.output, "healthy");
-  },
-);
-
-test(
-  "waits for a quick command to complete instead of returning on its first output",
-  { timeout: 10_000 },
-  async (t) => {
-    const shell = new PersistentShellSession();
-    t.after(() => shell.close());
-
-    const result = await shell.runCommand({
-      requestId: "wait-for-completion",
-      command: "printf first; sleep 0.05; printf second",
-      waitMs: 1_000,
-    });
-
-    assert.equal(result.status, "completed");
-    assert.equal(result.output, "firstsecond");
-    assert.equal(result.exit_code, 0);
-  },
-);
-
-test(
-  "keeps completed command polling bounded after later commands",
-  { timeout: 10_000 },
-  async (t) => {
-    const shell = new PersistentShellSession();
-    t.after(() => shell.close());
-
-    const first = await runToCompletion(
-      shell,
-      "poll-boundary-first",
-      "printf first",
-    );
-    await runToCompletion(shell, "poll-boundary-second", "printf second");
-
-    const stalePoll = await shell.pollCommand({
-      requestId: "poll-boundary-first",
-      cursor: first.snapshot.next_cursor,
-      waitMs: 0,
-    });
-
-    assert.equal(stalePoll.output, "");
-    assert.equal(stalePoll.has_more, false);
-  },
-);
-
-test(
-  "rejects poll cursors before the requested command",
-  { timeout: 10_000 },
-  async (t) => {
-    const shell = new PersistentShellSession();
-    t.after(() => shell.close());
-
-    await runToCompletion(shell, "poll-before-first", "printf first-secret");
-    await runToCompletion(shell, "poll-before-second", "printf second");
-
-    await assert.rejects(
-      shell.pollCommand({
-        requestId: "poll-before-second",
-        cursor: 0,
-        waitMs: 0,
-      }),
-      (error: unknown) =>
-        error instanceof ShellSessionError && error.code === "invalid_cursor",
-    );
-  },
-);
-
-test(
-  "wakes a foreground long-poll when delayed output arrives",
-  { timeout: 10_000 },
-  async (t) => {
-    const shell = new PersistentShellSession();
-    t.after(() => shell.close());
-
-    const running = await shell.runCommand({
-      requestId: "delayed-foreground",
-      command: "sleep 0.1; printf awakened",
-      waitMs: 0,
-    });
-    assert.equal(running.status, "running");
-
-    const startedAt = Date.now();
-    const awakened = await shell.pollCommand({
-      requestId: "delayed-foreground",
-      cursor: running.next_cursor,
-      waitMs: 3_000,
-    });
-    assert.ok(
-      Date.now() - startedAt < 1_500,
-      "poll should wake before its timeout",
-    );
-
-    const completed = await pollToCompletion(shell, awakened);
-    assert.equal(completed.output, "awakened");
-    assert.equal(completed.snapshot.status, "completed");
-  },
-);
-
-test(
-  "handles multiline commands, quotes, and redirected background output",
-  { timeout: 10_000 },
-  async (t) => {
-    const shell = new PersistentShellSession();
-    t.after(() => shell.close());
-
-    const quoted = await runToCompletion(
-      shell,
-      "quoted",
-      [
-        "value=$(cat <<'VALUE_EOF'",
-        "a'b",
-        "VALUE_EOF",
-        ")",
-        `printf '%s' "$value"`,
-      ].join("\n"),
-    );
-    assert.equal(quoted.output, "a'b");
-
-    const backgroundFile = `/tmp/chatgpt-shell-background-${process.pid}`;
-    const background = await shell.runCommand({
-      requestId: "background",
-      command: `(sleep 0.1; printf background-finished > ${quote(backgroundFile)}) &`,
-      waitMs: 500,
-    });
-    assert.equal(background.status, "completed");
-    const readBackground = await runToCompletion(
-      shell,
-      "background-output",
-      `sleep 0.2; value=$(<${quote(backgroundFile)}); rm ${quote(backgroundFile)}; printf '%s' "$value"`,
-    );
-    assert.equal(readBackground.output, "background-finished");
-  },
-);
-
-test(
-  "reports shell loss and automatically starts a clean generation",
-  { timeout: 10_000 },
-  async (t) => {
-    const shell = new PersistentShellSession();
-    t.after(() => shell.close());
-
-    await runToCompletion(shell, "before-exit", "printf initial");
-    const exited = await runUntilTerminal(shell, "exit-shell", "exit 7");
-    assert.equal(exited.snapshot.status, "shell_exited");
-
-    const recovered = await runToCompletion(
-      shell,
-      "after-exit",
-      "printf recovered",
-    );
-    assert.equal(recovered.output, "recovered");
-    assert.equal(recovered.snapshot.status, "completed");
-  },
-);
-
-test(
-  "recovers when process-group cleanup is denied",
-  { timeout: 10_000 },
-  async (t) => {
-    const shell = new PersistentShellSession();
-    t.after(() => shell.close());
-
-    const originalKill = process.kill;
-    let injected = false;
-    process.kill = ((pid: number, signal?: NodeJS.Signals | number) => {
-      if (!injected && pid < 0 && signal === "SIGKILL") {
-        injected = true;
-        const error = new Error("kill EPERM") as NodeJS.ErrnoException;
-        error.code = "EPERM";
-        throw error;
-      }
-      return originalKill(pid, signal);
-    }) as typeof process.kill;
-
-    let exited: Awaited<ReturnType<typeof runUntilTerminal>>;
-    try {
-      exited = await runUntilTerminal(shell, "eperm-exit", "exit 7");
-    } finally {
-      process.kill = originalKill;
+  const originalKill = process.kill
+  let injected = false
+  process.kill = ((pid: number, signal?: NodeJS.Signals | number) => {
+    if (!injected && pid < 0 && signal === "SIGKILL") {
+      injected = true
+      const error = new Error("kill EPERM") as NodeJS.ErrnoException
+      error.code = "EPERM"
+      throw error
     }
+    return originalKill(pid, signal)
+  }) as typeof process.kill
 
-    assert.equal(injected, true);
-    assert.equal(exited.snapshot.status, "shell_exited");
-    const recovered = await runToCompletion(
-      shell,
-      "after-eperm",
-      "printf recovered",
-    );
-    assert.equal(recovered.output, "recovered");
-  },
-);
+  let exited: Awaited<ReturnType<typeof runUntilTerminal>>
+  try {
+    exited = await runUntilTerminal(shell, "eperm-exit", "exit 7")
+  } finally {
+    process.kill = originalKill
+  }
 
-test(
-  "reset cancels a stuck command and creates a clean shell",
-  { timeout: 10_000 },
-  async (t) => {
-    const shell = new PersistentShellSession();
-    t.after(() => shell.close());
+  assert.equal(injected, true)
+  assert.equal(exited.snapshot.status, "shell_exited")
+  const recovered = await runToCompletion(shell, "after-eperm", "printf recovered")
+  assert.equal(recovered.output, "recovered")
+})
 
-    const running = await shell.runCommand({
-      requestId: "stuck",
-      command: "export SHOULD_DISAPPEAR=yes; sleep 30",
-      waitMs: 25,
-    });
-    assert.equal(running.status, "running");
+test("reset cancels a stuck command and creates a clean shell", { timeout: 10_000 }, async (t) => {
+  const shell = new PersistentShellSession()
+  t.after(() => shell.close())
 
-    const reset = await shell.reset({
-      requestId: "reset-stuck",
-      reason: "test reset",
-    });
-    assert.equal(reset.status, "ready");
+  const running = await shell.runCommand({
+    requestId: "stuck",
+    command: "export SHOULD_DISAPPEAR=yes; sleep 30",
+    waitMs: 25,
+  })
+  assert.equal(running.status, "running")
 
-    const retriedReset = await shell.reset({
-      requestId: "reset-stuck",
-      reason: "test reset",
-    });
-    assert.deepEqual(retriedReset, reset);
+  const reset = await shell.reset({
+    requestId: "reset-stuck",
+    reason: "test reset",
+  })
+  assert.equal(reset.status, "ready")
 
-    await assert.rejects(
-      shell.reset({ requestId: "reset-stuck", reason: "different reset" }),
-      (error: unknown) =>
-        error instanceof ShellSessionError && error.code === "request_conflict",
-    );
+  const retriedReset = await shell.reset({
+    requestId: "reset-stuck",
+    reason: "test reset",
+  })
+  assert.deepEqual(retriedReset, reset)
 
-    const old = await shell.pollCommand({
-      requestId: "stuck",
-      cursor: running.next_cursor,
-      waitMs: 0,
-    });
-    assert.equal(old.status, "reset");
+  await assert.rejects(
+    shell.reset({ requestId: "reset-stuck", reason: "different reset" }),
+    (error: unknown) => error instanceof ShellSessionError && error.code === "request_conflict"
+  )
 
-    const recovered = await runToCompletion(
-      shell,
-      "after-reset",
-      "printf '%s' \"${SHOULD_DISAPPEAR-unset}\"",
-    );
-    assert.equal(recovered.output, "unset");
-  },
-);
+  const old = await shell.pollCommand({
+    requestId: "stuck",
+    cursor: running.next_cursor,
+    waitMs: 0,
+  })
+  assert.equal(old.status, "reset")
 
-test(
-  "reset kills a TERM-resistant background descendant",
-  { timeout: 10_000 },
-  async (t) => {
-    if (process.platform === "win32") {
-      t.skip("process-group signaling is POSIX-specific");
-      return;
-    }
+  const recovered = await runToCompletion(shell, "after-reset", "printf '%s' \"${SHOULD_DISAPPEAR-unset}\"")
+  assert.equal(recovered.output, "unset")
+})
 
-    const directory = await mkdtemp(join(tmpdir(), "shell-mcp-resistant-"));
-    const readyFile = join(directory, "ready");
-    const shell = new PersistentShellSession();
-    let descendantPid: number | undefined;
-    let oldProcessGroup: number | undefined;
-    t.after(async () => {
-      await shell.close();
-      if (oldProcessGroup && isProcessAlive(-oldProcessGroup)) {
-        try {
-          process.kill(-oldProcessGroup, "SIGKILL");
-        } catch (error) {
-          if (!isMissingProcess(error)) throw error;
-        }
+test("reset kills a TERM-resistant background descendant", { timeout: 10_000 }, async (t) => {
+  if (process.platform === "win32") {
+    t.skip("process-group signaling is POSIX-specific")
+    return
+  }
+
+  const directory = await mkdtemp(join(tmpdir(), "shell-mcp-resistant-"))
+  const readyFile = join(directory, "ready")
+  const shell = new PersistentShellSession()
+  let descendantPid: number | undefined
+  let oldProcessGroup: number | undefined
+  t.after(async () => {
+    await shell.close()
+    if (oldProcessGroup && isProcessAlive(-oldProcessGroup)) {
+      try {
+        process.kill(-oldProcessGroup, "SIGKILL")
+      } catch (error) {
+        if (!isMissingProcess(error)) throw error
       }
-      await rm(directory, { recursive: true, force: true });
-    });
+    }
+    await rm(directory, { recursive: true, force: true })
+  })
 
-    const started = await runToCompletion(
-      shell,
-      "resistant-background",
-      [
-        `(trap '' TERM; printf ready > ${quote(readyFile)}; while :; do sleep 1; done) &`,
-        "descendant=$!",
-        `while [[ ! -s ${quote(readyFile)} ]]; do sleep 0.01; done`,
-        `printf '%s|%s' "$descendant" "$$"`,
-      ].join("; "),
-    );
-    [descendantPid, oldProcessGroup] = started.output
-      .split("|")
-      .map((value) => Number.parseInt(value, 10));
-    assert.ok(Number.isSafeInteger(descendantPid));
-    assert.ok(Number.isSafeInteger(oldProcessGroup));
-    assert.equal(isProcessAlive(descendantPid), true);
-    assert.equal(isProcessAlive(-oldProcessGroup), true);
+  const started = await runToCompletion(
+    shell,
+    "resistant-background",
+    [
+      `(trap '' TERM; printf ready > ${quote(readyFile)}; while :; do sleep 1; done) &`,
+      "descendant=$!",
+      `while [[ ! -s ${quote(readyFile)} ]]; do sleep 0.01; done`,
+      `printf '%s|%s' "$descendant" "$$"`,
+    ].join("; ")
+  )
+  ;[descendantPid, oldProcessGroup] = started.output.split("|").map((value) => Number.parseInt(value, 10))
+  assert.ok(Number.isSafeInteger(descendantPid))
+  assert.ok(Number.isSafeInteger(oldProcessGroup))
+  assert.equal(isProcessAlive(descendantPid), true)
+  assert.equal(isProcessAlive(-oldProcessGroup), true)
 
-    await shell.reset({
-      requestId: "reset-resistant-background",
-      reason: "kill resistant descendant",
-    });
+  await shell.reset({
+    requestId: "reset-resistant-background",
+    reason: "kill resistant descendant",
+  })
 
-    assert.equal(await waitForProcessExit(descendantPid), true);
-    assert.equal(await waitForProcessExit(-oldProcessGroup), true);
-  },
-);
+  assert.equal(await waitForProcessExit(descendantPid), true)
+  assert.equal(await waitForProcessExit(-oldProcessGroup), true)
+})
 
 async function runToCompletion(
   shell: PersistentShellSession,
   requestId: string,
   command: string,
-  options: { cwd?: string } = {},
+  options: { cwd?: string } = {}
 ): Promise<{ output: string; snapshot: ShellSnapshot }> {
   const first = await shell.runCommand({
     requestId,
     command,
     cwd: options.cwd,
     waitMs: 1_000,
-  });
-  let output = first.output;
-  let snapshot = first;
+  })
+  let output = first.output
+  let snapshot = first
 
   for (let attempt = 0; attempt < 100; attempt += 1) {
     if (snapshot.status !== "running" && !snapshot.has_more) {
-      return { output, snapshot };
+      return { output, snapshot }
     }
     snapshot = await shell.pollCommand({
       requestId,
       cursor: snapshot.next_cursor,
       waitMs: 100,
-    });
-    output += snapshot.output;
+    })
+    output += snapshot.output
   }
 
-  throw new Error(`Command ${requestId} did not complete.`);
+  throw new Error(`Command ${requestId} did not complete.`)
 }
 
-async function pollToCompletion(
-  shell: PersistentShellSession,
-  first: ShellSnapshot,
-): Promise<{ output: string; snapshot: ShellSnapshot }> {
-  let output = first.output;
-  let snapshot = first;
+async function pollToCompletion(shell: PersistentShellSession, first: ShellSnapshot): Promise<{ output: string; snapshot: ShellSnapshot }> {
+  let output = first.output
+  let snapshot = first
 
   for (let attempt = 0; attempt < 100; attempt += 1) {
     if (snapshot.status !== "running" && !snapshot.has_more) {
-      return { output, snapshot };
+      return { output, snapshot }
     }
     snapshot = await shell.pollCommand({
       requestId: first.request_id,
       cursor: snapshot.next_cursor,
       waitMs: 100,
-    });
-    output += snapshot.output;
+    })
+    output += snapshot.output
   }
 
-  throw new Error(`Command ${first.request_id} did not complete.`);
+  throw new Error(`Command ${first.request_id} did not complete.`)
 }
 
-async function runUntilTerminal(
-  shell: PersistentShellSession,
-  requestId: string,
-  command: string,
-): Promise<{ output: string; snapshot: ShellSnapshot }> {
-  const result = await runToCompletion(shell, requestId, command);
-  return result;
+async function runUntilTerminal(shell: PersistentShellSession, requestId: string, command: string): Promise<{ output: string; snapshot: ShellSnapshot }> {
+  const result = await runToCompletion(shell, requestId, command)
+  return result
 }
 
 function quote(value: string): string {
-  return `'${value.replaceAll("'", `'\\''`)}'`;
+  return `'${value.replaceAll("'", `'\\''`)}'`
 }
 
 function isProcessAlive(pid: number): boolean {
   try {
-    process.kill(pid, 0);
-    return true;
+    process.kill(pid, 0)
+    return true
   } catch (error) {
-    if (isMissingProcess(error)) return false;
-    throw error;
+    if (isMissingProcess(error)) return false
+    throw error
   }
 }
 
 async function waitForProcessExit(pid: number): Promise<boolean> {
   for (let attempt = 0; attempt < 80; attempt += 1) {
-    if (!isProcessAlive(pid)) return true;
-    await new Promise((resolve) => setTimeout(resolve, 25));
+    if (!isProcessAlive(pid)) return true
+    await new Promise((resolve) => setTimeout(resolve, 25))
   }
-  return false;
+  return false
 }
 
 function isMissingProcess(error: unknown): boolean {
-  return (
-    error instanceof Error &&
-    "code" in error &&
-    (error as NodeJS.ErrnoException).code === "ESRCH"
-  );
+  return error instanceof Error && "code" in error && (error as NodeJS.ErrnoException).code === "ESRCH"
 }

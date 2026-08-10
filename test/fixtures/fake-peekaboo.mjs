@@ -1,66 +1,59 @@
 #!/usr/bin/env node
 
-import { appendFileSync, writeFileSync } from "node:fs";
+import { appendFileSync, writeFileSync } from "node:fs"
 
-const args = process.argv.slice(2);
-const command = args[0] ?? "unknown";
-const logPath = process.env.FAKE_PEEKABOO_LOG;
-const delayMs = parseInteger(process.env.FAKE_PEEKABOO_DELAY_MS);
+const args = process.argv.slice(2)
+const command = args[0] ?? "unknown"
+const logPath = process.env.FAKE_PEEKABOO_LOG
+const delayMs = parseInteger(process.env.FAKE_PEEKABOO_DELAY_MS)
 
-log({ event: "start", command, args, pid: process.pid });
+log({ event: "start", command, args, pid: process.pid })
 
 process.on("SIGTERM", () => {
-  log({ event: "signal", command, args, pid: process.pid, signal: "SIGTERM" });
-  process.exit(143);
-});
+  log({ event: "signal", command, args, pid: process.pid, signal: "SIGTERM" })
+  process.exit(143)
+})
 
 if (delayMs > 0) {
-  await new Promise((resolve) => setTimeout(resolve, delayMs));
+  await new Promise((resolve) => setTimeout(resolve, delayMs))
 }
 
-let screenshotPath;
+let screenshotPath
 if (command === "see") {
-  screenshotPath = optionValue("--path");
+  screenshotPath = optionValue("--path")
   if (screenshotPath) {
-    writeFileSync(
-      screenshotPath,
-      Buffer.from(
-        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
-        "base64",
-      ),
-    );
+    writeFileSync(screenshotPath, Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=", "base64"))
   }
 }
 
-const stdoutBytes = parseInteger(process.env.FAKE_PEEKABOO_STDOUT_BYTES);
+const stdoutBytes = parseInteger(process.env.FAKE_PEEKABOO_STDOUT_BYTES)
 if (stdoutBytes > 0) {
-  log({ event: "end", command, args, pid: process.pid });
-  process.stdout.write("x".repeat(stdoutBytes));
-  process.exit(0);
+  log({ event: "end", command, args, pid: process.pid })
+  process.stdout.write("x".repeat(stdoutBytes))
+  process.exit(0)
 }
 
-const stderrBytes = parseInteger(process.env.FAKE_PEEKABOO_STDERR_BYTES);
+const stderrBytes = parseInteger(process.env.FAKE_PEEKABOO_STDERR_BYTES)
 if (stderrBytes > 0) {
-  process.stderr.write("e".repeat(stderrBytes));
+  process.stderr.write("e".repeat(stderrBytes))
 }
 
 if (process.env.FAKE_PEEKABOO_MALFORMED_JSON === "1") {
-  log({ event: "end", command, args, pid: process.pid });
-  process.stdout.write("not-json");
-  process.exit(0);
+  log({ event: "end", command, args, pid: process.pid })
+  process.stdout.write("not-json")
+  process.exit(0)
 }
 
-const exitCode = parseInteger(process.env.FAKE_PEEKABOO_EXIT_CODE);
+const exitCode = parseInteger(process.env.FAKE_PEEKABOO_EXIT_CODE)
 if (exitCode > 0) {
-  log({ event: "end", command, args, pid: process.pid });
-  process.stderr.write("fake process failure");
-  process.exit(exitCode);
+  log({ event: "end", command, args, pid: process.pid })
+  process.stderr.write("fake process failure")
+  process.exit(exitCode)
 }
 
 if (
   process.env.FAKE_PEEKABOO_FAIL_COMMAND === command &&
-  (!process.env.FAKE_PEEKABOO_FAIL_SUBCOMMAND ||
-    process.env.FAKE_PEEKABOO_FAIL_SUBCOMMAND === args[1])
+  (!process.env.FAKE_PEEKABOO_FAIL_SUBCOMMAND || process.env.FAKE_PEEKABOO_FAIL_SUBCOMMAND === args[1])
 ) {
   respond({
     success: false,
@@ -70,9 +63,9 @@ if (
       details: "fixture requested failure",
     },
     debug_logs: ["fixture debug output"],
-  });
+  })
 } else if (command === "see") {
-  const screenCapture = args.includes("--mode") && optionValue("--mode") === "screen";
+  const screenCapture = args.includes("--mode") && optionValue("--mode") === "screen"
   respond({
     success: true,
     data: {
@@ -82,15 +75,11 @@ if (
           id: "B1",
           role: "AXButton",
           label: "Continue",
-          bounds: screenCapture
-            ? { x: 1090, y: 1620, width: 100, height: 40 }
-            : { x: 60, y: 95, width: 100, height: 40 },
+          bounds: screenCapture ? { x: 1090, y: 1620, width: 100, height: 40 } : { x: 60, y: 95, width: 100, height: 40 },
         },
       ],
       screenshot_raw: screenshotPath,
-      screenshot_annotated: args.includes("--annotate")
-        ? screenshotPath
-        : undefined,
+      screenshot_annotated: args.includes("--annotate") ? screenshotPath : undefined,
       observation: {
         target: screenCapture
           ? {
@@ -99,14 +88,17 @@ if (
           : {
               resolved_kind: "window-id",
               window_id: 4242,
-              bounds: [[50, 75], [800, 600]],
+              bounds: [
+                [50, 75],
+                [800, 600],
+              ],
             },
       },
     },
     summary: "see:ok",
     messages: ["ready", 42],
     debug_logs: ["fixture debug output"],
-  });
+  })
 } else if (command === "inspect-ui") {
   respond({
     success: true,
@@ -116,7 +108,7 @@ if (
       content: [{ type: "text", text: '[B1] button "Continue"' }],
     },
     debug_logs: ["fixture debug output"],
-  });
+  })
 } else if (command === "list" && args[1] === "screens") {
   respond({
     success: true,
@@ -130,7 +122,7 @@ if (
     summary: "list:ok",
     messages: ["ready", 42],
     debug_logs: ["fixture debug output"],
-  });
+  })
 } else {
   respond({
     success: true,
@@ -138,24 +130,24 @@ if (
     summary: `${command}:ok`,
     messages: ["ready", 42],
     debug_logs: ["fixture debug output"],
-  });
+  })
 }
 
 function respond(value) {
-  log({ event: "end", command, args, pid: process.pid });
-  process.stdout.write(JSON.stringify(value));
+  log({ event: "end", command, args, pid: process.pid })
+  process.stdout.write(JSON.stringify(value))
 }
 
 function optionValue(name) {
-  const index = args.indexOf(name);
-  return index >= 0 ? args[index + 1] : undefined;
+  const index = args.indexOf(name)
+  return index >= 0 ? args[index + 1] : undefined
 }
 
 function parseInteger(value) {
-  const parsed = Number.parseInt(value ?? "0", 10);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
+  const parsed = Number.parseInt(value ?? "0", 10)
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 0
 }
 
 function log(value) {
-  if (logPath) appendFileSync(logPath, `${JSON.stringify(value)}\n`);
+  if (logPath) appendFileSync(logPath, `${JSON.stringify(value)}\n`)
 }

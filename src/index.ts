@@ -1,75 +1,50 @@
-import { mkdir } from "node:fs/promises";
-import { dirname, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { mkdir } from "node:fs/promises"
+import { dirname, resolve } from "node:path"
+import { fileURLToPath } from "node:url"
 
-import {
-  ChatGptSubagentModule,
-  DEFAULT_CHATGPT_CDP_ENDPOINT,
-} from "./chatgpt-subagent.js";
-import { McpAuditLogger } from "./mcp-audit-log.js";
-import {
-  PersistentShellSession,
-  type ShellSessionOptions,
-} from "./shell-session.js";
-import { ShellSessionManager } from "./shell-session-manager.js";
-import { startMcpHttpServer } from "./http-server.js";
-import { PeekabooClient } from "./peekaboo.js";
-import {
-  prepareApplyPatch,
-  resolveWorkspacePath,
-} from "./workspace-tools.js";
+import { ChatGptSubagentModule, DEFAULT_CHATGPT_CDP_ENDPOINT } from "./chatgpt-subagent.js"
+import { McpAuditLogger } from "./mcp-audit-log.js"
+import { PersistentShellSession, type ShellSessionOptions } from "./shell-session.js"
+import { ShellSessionManager } from "./shell-session-manager.js"
+import { startMcpHttpServer } from "./http-server.js"
+import { PeekabooClient } from "./peekaboo.js"
+import { prepareApplyPatch, resolveWorkspacePath } from "./workspace-tools.js"
 
-const host = process.env.HOST ?? "127.0.0.1";
-const port = parsePositiveInteger(process.env.PORT, 3333);
-const commandLogMode = parseCommandLogMode(process.env.MCP_LOG_COMMANDS);
-const defaultOutputBytes = parsePositiveInteger(
-  process.env.MCP_OUTPUT_BYTES,
-  2 * 1024,
-);
-const maxOutputBytes = parsePositiveInteger(
-  process.env.MCP_MAX_OUTPUT_BYTES,
-  32 * 1024,
-);
-const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const auditLogPath = resolve(repositoryRoot, "agent-commands.log");
-const auditLogger = new McpAuditLogger(auditLogPath);
-const cwd = resolveWorkspacePath(process.env.MCP_CWD);
-await mkdir(cwd, { recursive: true });
-const applyPatch = await prepareApplyPatch(cwd, process.env.MCP_CODEX_BIN);
+const host = process.env.HOST ?? "127.0.0.1"
+const port = parsePositiveInteger(process.env.PORT, 3333)
+const commandLogMode = parseCommandLogMode(process.env.MCP_LOG_COMMANDS)
+const defaultOutputBytes = parsePositiveInteger(process.env.MCP_OUTPUT_BYTES, 2 * 1024)
+const maxOutputBytes = parsePositiveInteger(process.env.MCP_MAX_OUTPUT_BYTES, 32 * 1024)
+const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..")
+const auditLogPath = resolve(repositoryRoot, "agent-commands.log")
+const auditLogger = new McpAuditLogger(auditLogPath)
+const cwd = resolveWorkspacePath(process.env.MCP_CWD)
+await mkdir(cwd, { recursive: true })
+const applyPatch = await prepareApplyPatch(cwd, process.env.MCP_CODEX_BIN)
 const peekaboo = new PeekabooClient({
   executable: process.env.MCP_PEEKABOO_BIN ?? "peekaboo",
-});
-const chatGptCdpEndpoint =
-  process.env.MCP_CHATGPT_CDP_ENDPOINT ?? DEFAULT_CHATGPT_CDP_ENDPOINT;
+})
+const chatGptCdpEndpoint = process.env.MCP_CHATGPT_CDP_ENDPOINT ?? DEFAULT_CHATGPT_CDP_ENDPOINT
 const chatGptSubagents = new ChatGptSubagentModule({
   cdpEndpoint: chatGptCdpEndpoint,
-});
+})
 
 const shellOptions: ShellSessionOptions = {
   shellPath: process.env.MCP_SHELL ?? "/bin/zsh",
   cwd,
   pathPrepend: [applyPatch.binDirectory],
-  transcriptLimit: parsePositiveInteger(
-    process.env.MCP_TRANSCRIPT_CHARS,
-    1024 * 1024,
-  ),
-  commandTranscriptBytes: parsePositiveInteger(
-    process.env.MCP_COMMAND_TRANSCRIPT_BYTES,
-    256 * 1024,
-  ),
+  transcriptLimit: parsePositiveInteger(process.env.MCP_TRANSCRIPT_CHARS, 1024 * 1024),
+  commandTranscriptBytes: parsePositiveInteger(process.env.MCP_COMMAND_TRANSCRIPT_BYTES, 256 * 1024),
   defaultOutputBytes,
   maxOutputBytes,
   recordLimit: parsePositiveInteger(process.env.MCP_RECORD_LIMIT, 1024),
   commandLogMode,
-};
+}
 const shells = new ShellSessionManager({
   createShell: () => new PersistentShellSession(shellOptions),
   maxShells: parsePositiveInteger(process.env.MCP_MAX_SHELLS, 8),
-  idleTimeoutMs: parseNonNegativeInteger(
-    process.env.MCP_SHELL_IDLE_TTL_MS,
-    30 * 60 * 1000,
-  ),
-});
+  idleTimeoutMs: parseNonNegativeInteger(process.env.MCP_SHELL_IDLE_TTL_MS, 30 * 60 * 1000),
+})
 
 const running = await startMcpHttpServer({
   host,
@@ -79,79 +54,65 @@ const running = await startMcpHttpServer({
   peekaboo,
   chatGptSubagents,
   auditLogger,
-});
-console.log(`Local shell MCP server: ${running.url}`);
-console.log(`Shell: ${process.env.MCP_SHELL ?? "/bin/zsh"}`);
-console.log(`Default workspace: ${cwd}`);
-console.log(`Maximum named shells: ${shells.maximumShells}`);
-console.log(`Agent MCP audit log: ${auditLogPath}`);
+})
+console.log(`Local shell MCP server: ${running.url}`)
+console.log(`Shell: ${process.env.MCP_SHELL ?? "/bin/zsh"}`)
+console.log(`Default workspace: ${cwd}`)
+console.log(`Maximum named shells: ${shells.maximumShells}`)
+console.log(`Agent MCP audit log: ${auditLogPath}`)
 if (applyPatch.available) {
-  console.log(`apply_patch: ${applyPatch.executable}`);
+  console.log(`apply_patch: ${applyPatch.executable}`)
 } else {
-  console.warn(`apply_patch unavailable: ${applyPatch.warning}`);
+  console.warn(`apply_patch unavailable: ${applyPatch.warning}`)
 }
-console.log(`Computer Use: Peekaboo CLI (${running.peekaboo.executable})`);
-console.log(`ChatGPT Subagents: attach-only CDP ${chatGptCdpEndpoint}`);
+console.log(`Computer Use: Peekaboo CLI (${running.peekaboo.executable})`)
+console.log(`ChatGPT Subagents: attach-only CDP ${chatGptCdpEndpoint}`)
 
-let shuttingDown = false;
+let shuttingDown = false
 const shutdown = async (signal: string) => {
-  if (shuttingDown) return;
-  shuttingDown = true;
-  console.log(`Received ${signal}; shutting down.`);
-  await running.close();
-};
+  if (shuttingDown) return
+  shuttingDown = true
+  console.log(`Received ${signal}; shutting down.`)
+  await running.close()
+}
 
 for (const signal of ["SIGINT", "SIGTERM"] as const) {
   process.once(signal, () => {
     void shutdown(signal).then(
       () => process.exit(0),
       (error) => {
-        console.error("Shutdown failed:", error);
-        process.exit(1);
-      },
-    );
-  });
+        console.error("Shutdown failed:", error)
+        process.exit(1)
+      }
+    )
+  })
 }
 
-function parsePositiveInteger(
-  value: string | undefined,
-  fallback: number,
-): number {
-  if (value === undefined) return fallback;
-  const parsed = Number.parseInt(value, 10);
+function parsePositiveInteger(value: string | undefined, fallback: number): number {
+  if (value === undefined) return fallback
+  const parsed = Number.parseInt(value, 10)
   if (!Number.isSafeInteger(parsed) || parsed <= 0) {
-    throw new Error(
-      `Expected a positive integer, received ${JSON.stringify(value)}.`,
-    );
+    throw new Error(`Expected a positive integer, received ${JSON.stringify(value)}.`)
   }
-  return parsed;
+  return parsed
 }
 
-function parseNonNegativeInteger(
-  value: string | undefined,
-  fallback: number,
-): number {
-  if (value === undefined) return fallback;
-  const parsed = Number.parseInt(value, 10);
+function parseNonNegativeInteger(value: string | undefined, fallback: number): number {
+  if (value === undefined) return fallback
+  const parsed = Number.parseInt(value, 10)
   if (!Number.isSafeInteger(parsed) || parsed < 0) {
-    throw new Error(
-      `Expected a non-negative integer, received ${JSON.stringify(value)}.`,
-    );
+    throw new Error(`Expected a non-negative integer, received ${JSON.stringify(value)}.`)
   }
-  return parsed;
+  return parsed
 }
 
-function parseCommandLogMode(
-  value: string | undefined,
-): "off" | "summary" | "full" {
-  if (value === undefined) return "summary";
-  const normalized = value.toLowerCase();
+function parseCommandLogMode(value: string | undefined): "off" | "summary" | "full" {
+  if (value === undefined) return "summary"
+  const normalized = value.toLowerCase()
   if (["1", "true", "yes", "on", "summary"].includes(normalized)) {
-    return "summary";
+    return "summary"
   }
-  if (normalized === "full") return "full";
-  if (["0", "false", "no", "off"].includes(normalized)) return "off";
-  throw new Error(
-    `Expected MCP_LOG_COMMANDS to be off, summary, or full; received ${JSON.stringify(value)}.`,
-  );
+  if (normalized === "full") return "full"
+  if (["0", "false", "no", "off"].includes(normalized)) return "off"
+  throw new Error(`Expected MCP_LOG_COMMANDS to be off, summary, or full; received ${JSON.stringify(value)}.`)
 }

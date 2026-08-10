@@ -1,1248 +1,1261 @@
-import assert from "node:assert/strict";
-import { chmod, mkdir, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
-import { request as httpRequest } from "node:http";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import test from "node:test";
-import { fileURLToPath } from "node:url";
+import assert from "node:assert/strict"
+import { chmod, mkdir, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises"
+import { request as httpRequest } from "node:http"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
+import test from "node:test"
+import { fileURLToPath } from "node:url"
 
-import { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
-import { LATEST_PROTOCOL_VERSION } from "@modelcontextprotocol/sdk/types.js";
+import { Client } from "@modelcontextprotocol/sdk/client/index.js"
+import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js"
+import { LATEST_PROTOCOL_VERSION } from "@modelcontextprotocol/sdk/types.js"
 
-import type { ChatGptSubagentService } from "../src/chatgpt-subagent.js";
-import { FeedbackStore } from "../src/feedback.js";
-import { startMcpHttpServer } from "../src/http-server.js";
-import { McpAuditLogger } from "../src/mcp-audit-log.js";
-import { PeekabooClient } from "../src/peekaboo.js";
-import { PersistentShellSession } from "../src/shell-session.js";
-import { WebPageOpener } from "../src/web-open.js";
+import type { ChatGptSubagentService } from "../src/chatgpt-subagent.js"
+import { FeedbackStore } from "../src/feedback.js"
+import { startMcpHttpServer } from "../src/http-server.js"
+import { McpAuditLogger } from "../src/mcp-audit-log.js"
+import { PeekabooClient } from "../src/peekaboo.js"
+import { PersistentShellSession } from "../src/shell-session.js"
+import { WebPageOpener } from "../src/web-open.js"
 
 test("serves shell tools through Streamable HTTP and retains state across MCP sessions", { timeout: 20_000 }, async (t) => {
-	const running = await startMcpHttpServer({ port: 0 });
-	t.after(() => running.close());
+  const running = await startMcpHttpServer({ port: 0 })
+  t.after(() => running.close())
 
-	const first = await connectClient(running.url, "integration-client-1");
+  const first = await connectClient(running.url, "integration-client-1")
 
-	const tools = await first.client.listTools();
-	assert.deepEqual(
-		tools.tools.map((tool) => tool.name),
-		[
-			"fetch_website",
-			"skill_list",
-			"skill_load",
-			"feedback_submit",
-			"chatgpt_subagent",
-			"chatgpt_subagent_poll",
-			"apply_patch",
-			"shell_run",
-			"shell_poll",
-			"shell_reset",
-			"shell_list",
-			"shell_close",
-			"computer_list",
-			"computer_observe",
-			"computer_inspect",
-			"computer_click",
-			"computer_type",
-			"computer_press",
-			"computer_hotkey",
-			"computer_scroll",
-			"computer_drag",
-			"computer_app",
-			"computer_window",
-		]
-	);
-	const runTool = tools.tools.find((tool) => tool.name === "shell_run");
-	assert.equal(runTool?.annotations?.readOnlyHint, false);
-	assert.equal(runTool?.annotations?.destructiveHint, true);
-	assert.equal(runTool?.annotations?.openWorldHint, true);
-	const shellIdSchema = (runTool?.inputSchema.properties as Record<string, Record<string, unknown>>).shell_id;
-	assert.equal(shellIdSchema.default, "default");
-	assert.equal(shellIdSchema.maxLength, 64);
-	const cwdSchema = (runTool?.inputSchema.properties as Record<string, Record<string, unknown>>).cwd;
-	assert.equal(cwdSchema.minLength, 1);
-	const maxOutputSchema = (runTool?.inputSchema.properties as Record<string, Record<string, unknown>>).max_output_bytes;
-	assert.equal(maxOutputSchema.default, 2048);
-	assert.equal(maxOutputSchema.maximum, 32768);
-	const requestIdSchema = (runTool?.inputSchema.properties as Record<string, Record<string, unknown>>).request_id;
-	assert.equal(requestIdSchema.pattern, undefined);
-	assert.equal(requestIdSchema.minLength, 1);
-	assert.equal(requestIdSchema.maxLength, 128);
-	const outputSchema = runTool?.outputSchema as {
-		properties?: Record<string, unknown>;
-		required?: string[];
-	};
-	assert.deepEqual(Object.keys(outputSchema.properties ?? {}).sort(), [
-		"cursor_expired",
-		"cwd",
-		"dropped_output_bytes",
-		"exit_code",
-		"has_more",
-		"next_cursor",
-		"output",
-		"output_truncated",
-		"request_id",
-		"shell_id",
-		"status",
-	]);
-	assert.deepEqual(outputSchema.required?.sort(), ["cwd", "exit_code", "output", "status"]);
-	const applyPatchTool = tools.tools.find((tool) => tool.name === "apply_patch");
-	assert.equal(applyPatchTool?.annotations?.destructiveHint, true);
-	assert.equal(applyPatchTool?.annotations?.idempotentHint, false);
-	const applyPatchInputSchema = applyPatchTool?.inputSchema as {
-		properties?: Record<string, unknown>;
-		required?: string[];
-	};
-	assert.deepEqual(Object.keys(applyPatchInputSchema.properties ?? {}).sort(), ["cwd", "max_output_bytes", "patch"]);
-	assert.deepEqual(applyPatchInputSchema.required?.sort(), ["cwd", "patch"]);
-	const applyPatchOutputSchema = applyPatchTool?.outputSchema as {
-		properties?: Record<string, unknown>;
-		required?: string[];
-	};
-	assert.deepEqual(Object.keys(applyPatchOutputSchema.properties ?? {}).sort(), ["exit_code", "omitted_output_bytes", "output", "output_truncated", "status"]);
-	assert.deepEqual(applyPatchOutputSchema.required?.sort(), ["exit_code", "status"]);
-	const shellListTool = tools.tools.find((tool) => tool.name === "shell_list");
-	assert.equal(shellListTool?.annotations?.readOnlyHint, true);
-	assert.equal(shellListTool?.annotations?.idempotentHint, true);
-	const shellCloseTool = tools.tools.find((tool) => tool.name === "shell_close");
-	assert.equal(shellCloseTool?.annotations?.destructiveHint, true);
-	assert.equal(shellCloseTool?.annotations?.idempotentHint, false);
-	const closeShellIdSchema = (shellCloseTool?.inputSchema.properties as Record<string, Record<string, unknown>>).shell_id;
-	assert.equal(closeShellIdSchema.default, undefined);
-	const fetchWebsiteTool = tools.tools.find((tool) => tool.name === "fetch_website");
-	assert.equal(fetchWebsiteTool?.annotations?.readOnlyHint, true);
-	assert.equal(fetchWebsiteTool?.annotations?.openWorldHint, true);
-	const webMaxOutputSchema = (fetchWebsiteTool?.inputSchema.properties as Record<string, Record<string, unknown>>).max_output_bytes;
-	assert.equal(webMaxOutputSchema.default, 8192);
-	assert.equal(webMaxOutputSchema.maximum, 32768);
-	const websiteFormatSchema = (fetchWebsiteTool?.inputSchema.properties as Record<string, Record<string, unknown>>).format;
-	assert.equal(websiteFormatSchema.default, "markdown");
-	assert.deepEqual(websiteFormatSchema.enum, ["markdown", "clean_html", "raw_html"]);
-	const skillListTool = tools.tools.find((tool) => tool.name === "skill_list");
-	assert.equal(skillListTool?.annotations?.readOnlyHint, true);
-	assert.equal(skillListTool?.annotations?.idempotentHint, true);
-	const skillLoadTool = tools.tools.find((tool) => tool.name === "skill_load");
-	assert.equal(skillLoadTool?.annotations?.readOnlyHint, true);
-	const skillLoadInputSchema = skillLoadTool?.inputSchema as {
-		properties?: Record<string, Record<string, unknown>>;
-		required?: string[];
-	};
-	assert.deepEqual(Object.keys(skillLoadInputSchema.properties ?? {}), ["name"]);
-	assert.deepEqual(skillLoadInputSchema.required, ["name"]);
-	const feedbackTool = tools.tools.find((tool) => tool.name === "feedback_submit");
-	assert.equal(feedbackTool?.annotations?.readOnlyHint, false);
-	assert.equal(feedbackTool?.annotations?.destructiveHint, false);
-	assert.equal(feedbackTool?.annotations?.idempotentHint, false);
-	assert.equal(feedbackTool?.annotations?.openWorldHint, false);
-	const feedbackInputSchema = feedbackTool?.inputSchema as {
-		properties?: Record<string, Record<string, unknown>>;
-		required?: string[];
-	};
-	assert.deepEqual(feedbackInputSchema.properties?.type?.enum, ["problem", "improvement", "feature_request", "dream_feature"]);
-	assert.deepEqual(feedbackInputSchema.required?.sort(), ["details", "summary", "type"]);
-	const subagentTool = tools.tools.find((tool) => tool.name === "chatgpt_subagent");
-	assert.equal(subagentTool?.annotations?.readOnlyHint, false);
-	assert.equal(subagentTool?.annotations?.destructiveHint, false);
-	assert.equal(subagentTool?.annotations?.idempotentHint, false);
-	assert.equal(subagentTool?.annotations?.openWorldHint, true);
-	const subagentInputSchema = subagentTool?.inputSchema as {
-		properties?: Record<string, Record<string, unknown>>;
-		required?: string[];
-	};
-	assert.deepEqual(Object.keys(subagentInputSchema.properties ?? {}).sort(), ["agent_id", "oververbosity", "prompt"]);
-	assert.deepEqual(subagentInputSchema.required?.sort(), ["agent_id", "prompt"]);
-	assert.equal(subagentInputSchema.properties?.agent_id?.maxLength, 64);
-	assert.equal(subagentInputSchema.properties?.oververbosity?.default, 2);
-	assert.equal(subagentInputSchema.properties?.oververbosity?.minimum, 1);
-	assert.equal(subagentInputSchema.properties?.oververbosity?.maximum, 5);
-	const subagentPollTool = tools.tools.find((tool) => tool.name === "chatgpt_subagent_poll");
-	assert.equal(subagentPollTool?.annotations?.readOnlyHint, true);
-	assert.equal(subagentPollTool?.annotations?.idempotentHint, true);
-	const subagentPollInputSchema = subagentPollTool?.inputSchema as {
-		properties?: Record<string, Record<string, unknown>>;
-		required?: string[];
-	};
-	const subagentPollOutputSchema = subagentPollTool?.outputSchema as {
-		properties?: Record<string, Record<string, unknown>>;
-	};
-	assert.deepEqual(subagentPollOutputSchema.properties?.activity?.enum, ["Working", "Searching the web", "Using tools", "Generating response"]);
-	assert.equal(subagentPollOutputSchema.properties?.activity_age_ms?.type, "integer");
-	assert.deepEqual(Object.keys(subagentPollInputSchema.properties ?? {}).sort(), ["turn_id", "wait_ms"]);
-	assert.deepEqual(subagentPollInputSchema.required?.sort(), ["turn_id"]);
-	assert.equal(subagentPollInputSchema.properties?.wait_ms?.default, 0);
-	assert.equal(subagentPollInputSchema.properties?.wait_ms?.maximum, 60_000);
+  const tools = await first.client.listTools()
+  assert.deepEqual(
+    tools.tools.map((tool) => tool.name),
+    [
+      "fetch_website",
+      "skill_list",
+      "skill_load",
+      "feedback_submit",
+      "chatgpt_subagent",
+      "chatgpt_subagent_poll",
+      "apply_patch",
+      "shell_run",
+      "shell_poll",
+      "shell_reset",
+      "shell_list",
+      "shell_close",
+      "computer_list",
+      "computer_observe",
+      "computer_inspect",
+      "computer_click",
+      "computer_type",
+      "computer_press",
+      "computer_hotkey",
+      "computer_scroll",
+      "computer_drag",
+      "computer_app",
+      "computer_window",
+    ]
+  )
+  const runTool = tools.tools.find((tool) => tool.name === "shell_run")
+  assert.equal(runTool?.annotations?.readOnlyHint, false)
+  assert.equal(runTool?.annotations?.destructiveHint, true)
+  assert.equal(runTool?.annotations?.openWorldHint, true)
+  const shellIdSchema = (runTool?.inputSchema.properties as Record<string, Record<string, unknown>>).shell_id
+  assert.equal(shellIdSchema.default, "default")
+  assert.equal(shellIdSchema.maxLength, 64)
+  const cwdSchema = (runTool?.inputSchema.properties as Record<string, Record<string, unknown>>).cwd
+  assert.equal(cwdSchema.minLength, 1)
+  const maxOutputSchema = (runTool?.inputSchema.properties as Record<string, Record<string, unknown>>).max_output_bytes
+  assert.equal(maxOutputSchema.default, 2048)
+  assert.equal(maxOutputSchema.maximum, 32768)
+  const requestIdSchema = (runTool?.inputSchema.properties as Record<string, Record<string, unknown>>).request_id
+  assert.equal(requestIdSchema.pattern, undefined)
+  assert.equal(requestIdSchema.minLength, 1)
+  assert.equal(requestIdSchema.maxLength, 128)
+  const outputSchema = runTool?.outputSchema as {
+    properties?: Record<string, unknown>
+    required?: string[]
+  }
+  assert.deepEqual(Object.keys(outputSchema.properties ?? {}).sort(), [
+    "cursor_expired",
+    "cwd",
+    "dropped_output_bytes",
+    "exit_code",
+    "has_more",
+    "next_cursor",
+    "output",
+    "output_truncated",
+    "request_id",
+    "shell_id",
+    "status",
+  ])
+  assert.deepEqual(outputSchema.required?.sort(), ["cwd", "exit_code", "output", "status"])
+  const applyPatchTool = tools.tools.find((tool) => tool.name === "apply_patch")
+  assert.equal(applyPatchTool?.annotations?.destructiveHint, true)
+  assert.equal(applyPatchTool?.annotations?.idempotentHint, false)
+  const applyPatchInputSchema = applyPatchTool?.inputSchema as {
+    properties?: Record<string, unknown>
+    required?: string[]
+  }
+  assert.deepEqual(Object.keys(applyPatchInputSchema.properties ?? {}).sort(), ["cwd", "max_output_bytes", "patch"])
+  assert.deepEqual(applyPatchInputSchema.required?.sort(), ["cwd", "patch"])
+  const applyPatchOutputSchema = applyPatchTool?.outputSchema as {
+    properties?: Record<string, unknown>
+    required?: string[]
+  }
+  assert.deepEqual(Object.keys(applyPatchOutputSchema.properties ?? {}).sort(), ["exit_code", "omitted_output_bytes", "output", "output_truncated", "status"])
+  assert.deepEqual(applyPatchOutputSchema.required?.sort(), ["exit_code", "status"])
+  const shellListTool = tools.tools.find((tool) => tool.name === "shell_list")
+  assert.equal(shellListTool?.annotations?.readOnlyHint, true)
+  assert.equal(shellListTool?.annotations?.idempotentHint, true)
+  const shellCloseTool = tools.tools.find((tool) => tool.name === "shell_close")
+  assert.equal(shellCloseTool?.annotations?.destructiveHint, true)
+  assert.equal(shellCloseTool?.annotations?.idempotentHint, false)
+  const closeShellIdSchema = (shellCloseTool?.inputSchema.properties as Record<string, Record<string, unknown>>).shell_id
+  assert.equal(closeShellIdSchema.default, undefined)
+  const fetchWebsiteTool = tools.tools.find((tool) => tool.name === "fetch_website")
+  assert.equal(fetchWebsiteTool?.annotations?.readOnlyHint, true)
+  assert.equal(fetchWebsiteTool?.annotations?.openWorldHint, true)
+  const webMaxOutputSchema = (fetchWebsiteTool?.inputSchema.properties as Record<string, Record<string, unknown>>).max_output_bytes
+  assert.equal(webMaxOutputSchema.default, 8192)
+  assert.equal(webMaxOutputSchema.maximum, 32768)
+  const websiteFormatSchema = (fetchWebsiteTool?.inputSchema.properties as Record<string, Record<string, unknown>>).format
+  assert.equal(websiteFormatSchema.default, "markdown")
+  assert.deepEqual(websiteFormatSchema.enum, ["markdown", "clean_html", "raw_html"])
+  const skillListTool = tools.tools.find((tool) => tool.name === "skill_list")
+  assert.equal(skillListTool?.annotations?.readOnlyHint, true)
+  assert.equal(skillListTool?.annotations?.idempotentHint, true)
+  const skillLoadTool = tools.tools.find((tool) => tool.name === "skill_load")
+  assert.equal(skillLoadTool?.annotations?.readOnlyHint, true)
+  const skillLoadInputSchema = skillLoadTool?.inputSchema as {
+    properties?: Record<string, Record<string, unknown>>
+    required?: string[]
+  }
+  assert.deepEqual(Object.keys(skillLoadInputSchema.properties ?? {}), ["name"])
+  assert.deepEqual(skillLoadInputSchema.required, ["name"])
+  const feedbackTool = tools.tools.find((tool) => tool.name === "feedback_submit")
+  assert.equal(feedbackTool?.annotations?.readOnlyHint, false)
+  assert.equal(feedbackTool?.annotations?.destructiveHint, false)
+  assert.equal(feedbackTool?.annotations?.idempotentHint, false)
+  assert.equal(feedbackTool?.annotations?.openWorldHint, false)
+  const feedbackInputSchema = feedbackTool?.inputSchema as {
+    properties?: Record<string, Record<string, unknown>>
+    required?: string[]
+  }
+  assert.deepEqual(feedbackInputSchema.properties?.type?.enum, ["problem", "improvement", "feature_request", "dream_feature"])
+  assert.deepEqual(feedbackInputSchema.required?.sort(), ["details", "summary", "type"])
+  const subagentTool = tools.tools.find((tool) => tool.name === "chatgpt_subagent")
+  assert.equal(subagentTool?.annotations?.readOnlyHint, false)
+  assert.equal(subagentTool?.annotations?.destructiveHint, false)
+  assert.equal(subagentTool?.annotations?.idempotentHint, false)
+  assert.equal(subagentTool?.annotations?.openWorldHint, true)
+  const subagentInputSchema = subagentTool?.inputSchema as {
+    properties?: Record<string, Record<string, unknown>>
+    required?: string[]
+  }
+  assert.deepEqual(Object.keys(subagentInputSchema.properties ?? {}).sort(), ["agent_id", "oververbosity", "prompt"])
+  assert.deepEqual(subagentInputSchema.required?.sort(), ["agent_id", "prompt"])
+  assert.equal(subagentInputSchema.properties?.agent_id?.maxLength, 64)
+  assert.equal(subagentInputSchema.properties?.oververbosity?.default, 2)
+  assert.equal(subagentInputSchema.properties?.oververbosity?.minimum, 1)
+  assert.equal(subagentInputSchema.properties?.oververbosity?.maximum, 5)
+  const subagentPollTool = tools.tools.find((tool) => tool.name === "chatgpt_subagent_poll")
+  assert.equal(subagentPollTool?.annotations?.readOnlyHint, true)
+  assert.equal(subagentPollTool?.annotations?.idempotentHint, true)
+  const subagentPollInputSchema = subagentPollTool?.inputSchema as {
+    properties?: Record<string, Record<string, unknown>>
+    required?: string[]
+  }
+  const subagentPollOutputSchema = subagentPollTool?.outputSchema as {
+    properties?: Record<string, Record<string, unknown>>
+  }
+  assert.deepEqual(subagentPollOutputSchema.properties?.activity?.enum, ["Working", "Searching the web", "Using tools", "Generating response"])
+  assert.equal(subagentPollOutputSchema.properties?.activity_age_ms?.type, "integer")
+  assert.deepEqual(Object.keys(subagentPollInputSchema.properties ?? {}).sort(), ["turn_id", "wait_ms"])
+  assert.deepEqual(subagentPollInputSchema.required?.sort(), ["turn_id"])
+  assert.equal(subagentPollInputSchema.properties?.wait_ms?.default, 0)
+  assert.equal(subagentPollInputSchema.properties?.wait_ms?.maximum, 60_000)
 
-	const firstResult = await callUntilComplete(first.client, "mcp001", ["cd /tmp", "export MCP_HTTP_RETAINED=yes", "printf initialized"].join("; "));
-	assert.equal(firstResult.output, "initialized");
-	assert.equal(firstResult.exit_code, 0);
-	assert.equal(firstResult.cwd, "/tmp");
-	assert.deepEqual(Object.keys(firstResult).sort(), ["cwd", "exit_code", "output", "status"]);
+  const firstResult = await callUntilComplete(first.client, "mcp001", ["cd /tmp", "export MCP_HTTP_RETAINED=yes", "printf initialized"].join("; "))
+  assert.equal(firstResult.output, "initialized")
+  assert.equal(firstResult.exit_code, 0)
+  assert.equal(firstResult.cwd, "/tmp")
+  assert.deepEqual(Object.keys(firstResult).sort(), ["cwd", "exit_code", "output", "status"])
 
-	await first.client.close();
+  await first.client.close()
 
-	const second = await connectClient(running.url, "integration-client-2");
-	t.after(() => second.client.close());
-	const secondResult = await callUntilComplete(second.client, "MCP-State-2", `printf '%s|%s' "$PWD" "$MCP_HTTP_RETAINED"`);
-	assert.equal(secondResult.output, "/tmp|yes");
-	assert.equal(secondResult.exit_code, 0);
-	assert.equal(secondResult.cwd, "/tmp");
+  const second = await connectClient(running.url, "integration-client-2")
+  t.after(() => second.client.close())
+  const secondResult = await callUntilComplete(second.client, "MCP-State-2", `printf '%s|%s' "$PWD" "$MCP_HTTP_RETAINED"`)
+  assert.equal(secondResult.output, "/tmp|yes")
+  assert.equal(secondResult.exit_code, 0)
+  assert.equal(secondResult.cwd, "/tmp")
 
-	const expectedPagedOutput = "🙂".repeat(1_500);
-	const pagedResult = await callUntilComplete(second.client, "page01", `node -e ${JSON.stringify(`process.stdout.write(${JSON.stringify(expectedPagedOutput)})`)}`);
-	assert.equal(pagedResult.output, expectedPagedOutput);
-	assert.equal(Buffer.byteLength(pagedResult.output, "utf8"), 6_000);
-});
+  const expectedPagedOutput = "🙂".repeat(1_500)
+  const pagedResult = await callUntilComplete(
+    second.client,
+    "page01",
+    `node -e ${JSON.stringify(`process.stdout.write(${JSON.stringify(expectedPagedOutput)})`)}`
+  )
+  assert.equal(pagedResult.output, expectedPagedOutput)
+  assert.equal(Buffer.byteLength(pagedResult.output, "utf8"), 6_000)
+})
 
 test("lists and loads dynamic workspace skills through MCP", { timeout: 10_000 }, async (t) => {
-	const workspace = await mkdtemp(join(tmpdir(), "mcp-skill-integration-"));
-	t.after(() => rm(workspace, { recursive: true, force: true }));
-	const skillDirectory = join(workspace, "skills", "create-wiki");
-	await mkdir(skillDirectory, { recursive: true });
-	const content = "---\nname: create-wiki\ndescription: Create a project wiki.\n---\n\n# Create Wiki\n";
-	await writeFile(join(skillDirectory, "SKILL.md"), content);
+  const workspace = await mkdtemp(join(tmpdir(), "mcp-skill-integration-"))
+  t.after(() => rm(workspace, { recursive: true, force: true }))
+  const skillDirectory = join(workspace, "skills", "create-wiki")
+  await mkdir(skillDirectory, { recursive: true })
+  const content = "---\nname: create-wiki\ndescription: Create a project wiki.\n---\n\n# Create Wiki\n"
+  await writeFile(join(skillDirectory, "SKILL.md"), content)
 
-	const running = await startMcpHttpServer({
-		port: 0,
-		shell: new PersistentShellSession({ cwd: workspace }),
-	});
-	t.after(() => running.close());
-	const connected = await connectClient(running.url, "skill-integration-client");
-	t.after(() => connected.client.close());
+  const running = await startMcpHttpServer({
+    port: 0,
+    shell: new PersistentShellSession({ cwd: workspace }),
+  })
+  t.after(() => running.close())
+  const connected = await connectClient(running.url, "skill-integration-client")
+  t.after(() => connected.client.close())
 
-	const listed = await connected.client.callTool({
-		name: "skill_list",
-		arguments: {},
-	});
-	assert.deepEqual(listed.structuredContent, {
-		skills: [
-			{
-				name: "create-wiki",
-				description: "Create a project wiki.",
-			},
-		],
-	});
+  const listed = await connected.client.callTool({
+    name: "skill_list",
+    arguments: {},
+  })
+  assert.deepEqual(listed.structuredContent, {
+    skills: [
+      {
+        name: "create-wiki",
+        description: "Create a project wiki.",
+      },
+    ],
+  })
 
-	const loaded = await connected.client.callTool({
-		name: "skill_load",
-		arguments: { name: "create-wiki" },
-	});
-	assert.deepEqual(loaded.structuredContent, {
-		name: "create-wiki",
-		path: join(skillDirectory, "SKILL.md"),
-		instructions: content,
-	});
-});
+  const loaded = await connected.client.callTool({
+    name: "skill_load",
+    arguments: { name: "create-wiki" },
+  })
+  assert.deepEqual(loaded.structuredContent, {
+    name: "create-wiki",
+    path: join(skillDirectory, "SKILL.md"),
+    instructions: content,
+  })
+})
 
 test("records agent feedback through MCP", { timeout: 10_000 }, async (t) => {
-	const workspace = await mkdtemp(join(tmpdir(), "mcp-feedback-integration-"));
-	t.after(() => rm(workspace, { recursive: true, force: true }));
-	const feedbackPath = join(workspace, "agent-feedback.jsonl");
-	const feedbackStore = new FeedbackStore({
-		path: feedbackPath,
-		now: () => new Date("2026-08-09T22:00:00.000Z"),
-		createId: () => "fb_test",
-	});
+  const workspace = await mkdtemp(join(tmpdir(), "mcp-feedback-integration-"))
+  t.after(() => rm(workspace, { recursive: true, force: true }))
+  const feedbackPath = join(workspace, "agent-feedback.jsonl")
+  const feedbackStore = new FeedbackStore({
+    path: feedbackPath,
+    now: () => new Date("2026-08-09T22:00:00.000Z"),
+    createId: () => "fb_test",
+  })
 
-	const running = await startMcpHttpServer({
-		port: 0,
-		shell: new PersistentShellSession({ cwd: workspace }),
-		feedbackStore,
-	});
-	t.after(() => running.close());
-	const connected = await connectClient(running.url, "feedback-integration-client");
-	t.after(() => connected.client.close());
+  const running = await startMcpHttpServer({
+    port: 0,
+    shell: new PersistentShellSession({ cwd: workspace }),
+    feedbackStore,
+  })
+  t.after(() => running.close())
+  const connected = await connectClient(running.url, "feedback-integration-client")
+  t.after(() => connected.client.close())
 
-	const result = await connected.client.callTool({
-		name: "feedback_submit",
-		arguments: {
-			type: "improvement",
-			summary: "Make polling clearer",
-			details: "The agent had trouble distinguishing progress from a stalled turn.",
-			related_tool: "chatgpt_subagent_poll",
-		},
-	});
+  const result = await connected.client.callTool({
+    name: "feedback_submit",
+    arguments: {
+      type: "improvement",
+      summary: "Make polling clearer",
+      details: "The agent had trouble distinguishing progress from a stalled turn.",
+      related_tool: "chatgpt_subagent_poll",
+    },
+  })
 
-	assert.deepEqual(result.structuredContent, {
-		id: "fb_test",
-		created_at: "2026-08-09T22:00:00.000Z",
-	});
-	assert.deepEqual(JSON.parse((await readFile(feedbackPath, "utf8")).trim()), {
-		id: "fb_test",
-		created_at: "2026-08-09T22:00:00.000Z",
-		type: "improvement",
-		summary: "Make polling clearer",
-		details: "The agent had trouble distinguishing progress from a stalled turn.",
-		related_tool: "chatgpt_subagent_poll",
-	});
-});
+  assert.deepEqual(result.structuredContent, {
+    id: "fb_test",
+    created_at: "2026-08-09T22:00:00.000Z",
+  })
+  assert.deepEqual(JSON.parse((await readFile(feedbackPath, "utf8")).trim()), {
+    id: "fb_test",
+    created_at: "2026-08-09T22:00:00.000Z",
+    type: "improvement",
+    summary: "Make polling clearer",
+    details: "The agent had trouble distinguishing progress from a stalled turn.",
+    related_tool: "chatgpt_subagent_poll",
+  })
+})
 
 test("shares async ChatGPT subagent turns across stateless MCP requests", { timeout: 10_000 }, async (t) => {
-	const turns = new Map<string, string[]>();
-	const completed = new Map<string, { agentId: string; response: string }>();
-	const chatGptSubagents: ChatGptSubagentService = {
-		async ask({ agentId, prompt }) {
-			const history = turns.get(agentId) ?? [];
-			history.push(prompt);
-			turns.set(agentId, history);
-			const turnId = `turn-${agentId}-${history.length}`;
-			completed.set(turnId, {
-				agentId,
-				response: `${agentId}:${history.length}:${prompt}`,
-			});
-			return {
-				agentId,
-				turnId,
-				status: "running",
-				submitted: true,
-				conversationUrl: `https://chatgpt.com/c/fake-${agentId}`,
-			};
-		},
-		async poll(turnId) {
-			if (turnId === "heartbeat-fixture") {
-				return {
-					agentId: "heartbeat-agent",
-					turnId,
-					status: "running",
-					activity: "Searching the web",
-					activityAgeMs: 2_750,
-				};
-			}
-			const result = completed.get(turnId);
-			if (!result) throw new Error(`unknown turn ${turnId}`);
-			return {
-				agentId: result.agentId,
-				turnId,
-				status: "completed",
-				conversationUrl: `https://chatgpt.com/c/fake-${result.agentId}`,
-				response: result.response,
-			};
-		},
-		async dispose() {},
-	};
-	const running = await startMcpHttpServer({
-		port: 0,
-		chatGptSubagents,
-	});
-	t.after(() => running.close());
+  const turns = new Map<string, string[]>()
+  const completed = new Map<string, { agentId: string; response: string }>()
+  const chatGptSubagents: ChatGptSubagentService = {
+    async ask({ agentId, prompt }) {
+      const history = turns.get(agentId) ?? []
+      history.push(prompt)
+      turns.set(agentId, history)
+      const turnId = `turn-${agentId}-${history.length}`
+      completed.set(turnId, {
+        agentId,
+        response: `${agentId}:${history.length}:${prompt}`,
+      })
+      return {
+        agentId,
+        turnId,
+        status: "running",
+        submitted: true,
+        conversationUrl: `https://chatgpt.com/c/fake-${agentId}`,
+      }
+    },
+    async poll(turnId) {
+      if (turnId === "heartbeat-fixture") {
+        return {
+          agentId: "heartbeat-agent",
+          turnId,
+          status: "running",
+          activity: "Searching the web",
+          activityAgeMs: 2_750,
+        }
+      }
+      const result = completed.get(turnId)
+      if (!result) throw new Error(`unknown turn ${turnId}`)
+      return {
+        agentId: result.agentId,
+        turnId,
+        status: "completed",
+        conversationUrl: `https://chatgpt.com/c/fake-${result.agentId}`,
+        response: result.response,
+      }
+    },
+    async dispose() {},
+  }
+  const running = await startMcpHttpServer({
+    port: 0,
+    chatGptSubagents,
+  })
+  t.after(() => running.close())
 
-	const first = await connectClient(running.url, "subagent-client-1");
-	const firstResult = await first.client.callTool({
-		name: "chatgpt_subagent",
-		arguments: {
-			agent_id: "architecture-reviewer",
-			prompt: "Review the architecture.",
-		},
-	});
-	assert.deepEqual(firstResult.structuredContent, {
-		agent_id: "architecture-reviewer",
-		turn_id: "turn-architecture-reviewer-1",
-		status: "running",
-		submitted: true,
-		conversation_url: "https://chatgpt.com/c/fake-architecture-reviewer",
-	});
-	await first.client.close();
+  const first = await connectClient(running.url, "subagent-client-1")
+  const firstResult = await first.client.callTool({
+    name: "chatgpt_subagent",
+    arguments: {
+      agent_id: "architecture-reviewer",
+      prompt: "Review the architecture.",
+    },
+  })
+  assert.deepEqual(firstResult.structuredContent, {
+    agent_id: "architecture-reviewer",
+    turn_id: "turn-architecture-reviewer-1",
+    status: "running",
+    submitted: true,
+    conversation_url: "https://chatgpt.com/c/fake-architecture-reviewer",
+  })
+  await first.client.close()
 
-	const second = await connectClient(running.url, "subagent-client-2");
-	t.after(() => second.client.close());
-	const heartbeatPoll = await second.client.callTool({
-		name: "chatgpt_subagent_poll",
-		arguments: { turn_id: "heartbeat-fixture" },
-	});
-	assert.deepEqual(heartbeatPoll.structuredContent, {
-		agent_id: "heartbeat-agent",
-		turn_id: "heartbeat-fixture",
-		status: "running",
-		activity: "Searching the web",
-		activity_age_ms: 2_750,
-	});
-	const firstPoll = await second.client.callTool({
-		name: "chatgpt_subagent_poll",
-		arguments: {
-			turn_id: "turn-architecture-reviewer-1",
-			wait_ms: 0,
-		},
-	});
-	assert.deepEqual(firstPoll.structuredContent, {
-		agent_id: "architecture-reviewer",
-		turn_id: "turn-architecture-reviewer-1",
-		status: "completed",
-		conversation_url: "https://chatgpt.com/c/fake-architecture-reviewer",
-		response: "architecture-reviewer:1:Review the architecture.",
-	});
-	const secondResult = await second.client.callTool({
-		name: "chatgpt_subagent",
-		arguments: {
-			agent_id: "architecture-reviewer",
-			prompt: "Now critique your answer.",
-		},
-	});
-	assert.deepEqual(secondResult.structuredContent, {
-		agent_id: "architecture-reviewer",
-		turn_id: "turn-architecture-reviewer-2",
-		status: "running",
-		submitted: true,
-		conversation_url: "https://chatgpt.com/c/fake-architecture-reviewer",
-	});
-	const secondPoll = await second.client.callTool({
-		name: "chatgpt_subagent_poll",
-		arguments: { turn_id: "turn-architecture-reviewer-2" },
-	});
-	assert.deepEqual(secondPoll.structuredContent, {
-		agent_id: "architecture-reviewer",
-		turn_id: "turn-architecture-reviewer-2",
-		status: "completed",
-		conversation_url: "https://chatgpt.com/c/fake-architecture-reviewer",
-		response: "architecture-reviewer:2:Now critique your answer.",
-	});
-});
+  const second = await connectClient(running.url, "subagent-client-2")
+  t.after(() => second.client.close())
+  const heartbeatPoll = await second.client.callTool({
+    name: "chatgpt_subagent_poll",
+    arguments: { turn_id: "heartbeat-fixture" },
+  })
+  assert.deepEqual(heartbeatPoll.structuredContent, {
+    agent_id: "heartbeat-agent",
+    turn_id: "heartbeat-fixture",
+    status: "running",
+    activity: "Searching the web",
+    activity_age_ms: 2_750,
+  })
+  const firstPoll = await second.client.callTool({
+    name: "chatgpt_subagent_poll",
+    arguments: {
+      turn_id: "turn-architecture-reviewer-1",
+      wait_ms: 0,
+    },
+  })
+  assert.deepEqual(firstPoll.structuredContent, {
+    agent_id: "architecture-reviewer",
+    turn_id: "turn-architecture-reviewer-1",
+    status: "completed",
+    conversation_url: "https://chatgpt.com/c/fake-architecture-reviewer",
+    response: "architecture-reviewer:1:Review the architecture.",
+  })
+  const secondResult = await second.client.callTool({
+    name: "chatgpt_subagent",
+    arguments: {
+      agent_id: "architecture-reviewer",
+      prompt: "Now critique your answer.",
+    },
+  })
+  assert.deepEqual(secondResult.structuredContent, {
+    agent_id: "architecture-reviewer",
+    turn_id: "turn-architecture-reviewer-2",
+    status: "running",
+    submitted: true,
+    conversation_url: "https://chatgpt.com/c/fake-architecture-reviewer",
+  })
+  const secondPoll = await second.client.callTool({
+    name: "chatgpt_subagent_poll",
+    arguments: { turn_id: "turn-architecture-reviewer-2" },
+  })
+  assert.deepEqual(secondPoll.structuredContent, {
+    agent_id: "architecture-reviewer",
+    turn_id: "turn-architecture-reviewer-2",
+    status: "completed",
+    conversation_url: "https://chatgpt.com/c/fake-architecture-reviewer",
+    response: "architecture-reviewer:2:Now critique your answer.",
+  })
+})
 
 test("audits tool calls at the HTTP MCP boundary", { timeout: 10_000 }, async (t) => {
-	const root = await mkdtemp(join(tmpdir(), "mcp-audit-integration-"));
-	t.after(() => rm(root, { recursive: true, force: true }));
-	const auditPath = join(root, "agent-commands.log");
-	const auditLogger = new McpAuditLogger(auditPath);
-	const chatGptSubagents: ChatGptSubagentService = {
-		async ask({ agentId, prompt }) {
-			return {
-				agentId,
-				turnId: `turn-${agentId}`,
-				status: "running",
-				submitted: true,
-				conversationUrl: `https://chatgpt.com/c/fake-${agentId}`,
-			};
-		},
-		async poll(turnId) {
-			return {
-				agentId: "audit-check",
-				turnId,
-				status: "completed",
-				response: "fake:Inspect the audit path.",
-			};
-		},
-		async dispose() {},
-	};
-	const running = await startMcpHttpServer({
-		port: 0,
-		auditLogger,
-		chatGptSubagents,
-	});
-	t.after(() => running.close());
+  const root = await mkdtemp(join(tmpdir(), "mcp-audit-integration-"))
+  t.after(() => rm(root, { recursive: true, force: true }))
+  const auditPath = join(root, "agent-commands.log")
+  const auditLogger = new McpAuditLogger(auditPath)
+  const chatGptSubagents: ChatGptSubagentService = {
+    async ask({ agentId, prompt }) {
+      return {
+        agentId,
+        turnId: `turn-${agentId}`,
+        status: "running",
+        submitted: true,
+        conversationUrl: `https://chatgpt.com/c/fake-${agentId}`,
+      }
+    },
+    async poll(turnId) {
+      return {
+        agentId: "audit-check",
+        turnId,
+        status: "completed",
+        response: "fake:Inspect the audit path.",
+      }
+    },
+    async dispose() {},
+  }
+  const running = await startMcpHttpServer({
+    port: 0,
+    auditLogger,
+    chatGptSubagents,
+  })
+  t.after(() => running.close())
 
-	const connected = await connectClient(running.url, "audit-integration-client");
-	t.after(() => connected.client.close());
-	await connected.client.callTool({
-		name: "shell_list",
-		arguments: {},
-	});
-	await connected.client.callTool({
-		name: "chatgpt_subagent",
-		arguments: {
-			agent_id: "audit-check",
-			prompt: "Inspect the audit path.",
-		},
-	});
+  const connected = await connectClient(running.url, "audit-integration-client")
+  t.after(() => connected.client.close())
+  await connected.client.callTool({
+    name: "shell_list",
+    arguments: {},
+  })
+  await connected.client.callTool({
+    name: "chatgpt_subagent",
+    arguments: {
+      agent_id: "audit-check",
+      prompt: "Inspect the audit path.",
+    },
+  })
 
-	const log = await readFile(auditPath, "utf8");
-	assert.match(log, /\tCALL\tshell_list\tchars=2\t\{\}/);
-	assert.match(log, /\tRESULT\tshell_list\tchars=\d+\tduration_ms=\d+\thttp_status=200\tstate=finished/);
-	assert.match(log, /\tCALL\tchatgpt_subagent\tchars=\d+\t\{"agent_id":"audit-check","prompt":"Inspect the audit path\."\}/);
-	assert.match(log, /\tRESULT\tchatgpt_subagent\tchars=\d+\tduration_ms=\d+\thttp_status=200\tstate=finished/);
-});
+  const log = await readFile(auditPath, "utf8")
+  assert.match(log, /\tCALL\tshell_list\tchars=2\t\{\}/)
+  assert.match(log, /\tRESULT\tshell_list\tchars=\d+\tduration_ms=\d+\thttp_status=200\tstate=finished/)
+  assert.match(log, /\tCALL\tchatgpt_subagent\tchars=\d+\t\{"agent_id":"audit-check","prompt":"Inspect the audit path\."\}/)
+  assert.match(log, /\tRESULT\tchatgpt_subagent\tchars=\d+\tduration_ms=\d+\thttp_status=200\tstate=finished/)
+})
 
 test("exposes a stable Peekaboo Computer Use surface and preserves semantic errors", { timeout: 10_000 }, async (t) => {
-	const root = await mkdtemp(join(tmpdir(), "peekaboo-mcp-integration-"));
-	t.after(() => rm(root, { recursive: true, force: true }));
-	const fixture = join(fileURLToPath(new URL(".", import.meta.url)), "fixtures/fake-peekaboo.mjs");
-	const peekaboo = new PeekabooClient({
-		executable: process.execPath,
-		baseArgs: [fixture],
-		env: {
-			...process.env,
-			FAKE_PEEKABOO_FAIL_COMMAND: "app",
-			FAKE_PEEKABOO_FAIL_SUBCOMMAND: "switch",
-			FAKE_PEEKABOO_LOG: join(root, "peekaboo.jsonl"),
-		},
-		timeoutMs: 2_000,
-	});
-	const running = await startMcpHttpServer({
-		port: 0,
-		peekaboo,
-	});
-	t.after(() => running.close());
+  const root = await mkdtemp(join(tmpdir(), "peekaboo-mcp-integration-"))
+  t.after(() => rm(root, { recursive: true, force: true }))
+  const fixture = join(fileURLToPath(new URL(".", import.meta.url)), "fixtures/fake-peekaboo.mjs")
+  const peekaboo = new PeekabooClient({
+    executable: process.execPath,
+    baseArgs: [fixture],
+    env: {
+      ...process.env,
+      FAKE_PEEKABOO_FAIL_COMMAND: "app",
+      FAKE_PEEKABOO_FAIL_SUBCOMMAND: "switch",
+      FAKE_PEEKABOO_LOG: join(root, "peekaboo.jsonl"),
+    },
+    timeoutMs: 2_000,
+  })
+  const running = await startMcpHttpServer({
+    port: 0,
+    peekaboo,
+  })
+  t.after(() => running.close())
 
-	const connected = await connectClient(running.url, "computer-use-integration-client");
-	t.after(() => connected.client.close());
+  const connected = await connectClient(running.url, "computer-use-integration-client")
+  t.after(() => connected.client.close())
 
-	const tools = await connected.client.listTools();
-	const computerTools = tools.tools
-		.map((tool) => tool.name)
-		.filter((name) => name.startsWith("computer_"))
-		.sort();
-	assert.deepEqual(computerTools, [
-		"computer_app",
-		"computer_click",
-		"computer_drag",
-		"computer_hotkey",
-		"computer_inspect",
-		"computer_list",
-		"computer_observe",
-		"computer_press",
-		"computer_scroll",
-		"computer_type",
-		"computer_window",
-	]);
+  const tools = await connected.client.listTools()
+  const computerTools = tools.tools
+    .map((tool) => tool.name)
+    .filter((name) => name.startsWith("computer_"))
+    .sort()
+  assert.deepEqual(computerTools, [
+    "computer_app",
+    "computer_click",
+    "computer_drag",
+    "computer_hotkey",
+    "computer_inspect",
+    "computer_list",
+    "computer_observe",
+    "computer_press",
+    "computer_scroll",
+    "computer_type",
+    "computer_window",
+  ])
 
-	const state = await connected.client.callTool({
-		name: "computer_observe",
-		arguments: { app: "Finder" },
-	});
-	assert.equal(state.isError, undefined);
-	assert.ok(Array.isArray(state.content));
-	assert.deepEqual(
-		state.content.map((block) => block.type),
-		["text", "image"]
-	);
-	assert.equal(state.content[0]?.type, "text");
-	assert.equal(state.content[0]?.type === "text" ? state.content[0].text : undefined, "Observed computer.");
-	assert.equal(state.content[1]?.type, "image");
-	assert.equal(state.content[1]?.type === "image" ? state.content[1].mimeType : undefined, "image/jpeg");
-	assert.ok(state.content[1]?.type === "image" && state.content[1].data.length > 0);
-	assert.deepEqual(state.structuredContent, { snapshot_id: "snapshot-42" });
+  const state = await connected.client.callTool({
+    name: "computer_observe",
+    arguments: { app: "Finder" },
+  })
+  assert.equal(state.isError, undefined)
+  assert.ok(Array.isArray(state.content))
+  assert.deepEqual(
+    state.content.map((block) => block.type),
+    ["text", "image"]
+  )
+  assert.equal(state.content[0]?.type, "text")
+  assert.equal(state.content[0]?.type === "text" ? state.content[0].text : undefined, "Observed computer.")
+  assert.equal(state.content[1]?.type, "image")
+  assert.equal(state.content[1]?.type === "image" ? state.content[1].mimeType : undefined, "image/jpeg")
+  assert.ok(state.content[1]?.type === "image" && state.content[1].data.length > 0)
+  assert.deepEqual(state.structuredContent, { snapshot_id: "snapshot-42" })
 
-	const inspection = await connected.client.callTool({
-		name: "computer_inspect",
-		arguments: {
-			snapshot_id: "snapshot-42",
-			max_depth: 4,
-			max_elements: 20,
-			max_children: 10,
-		},
-	});
-	assert.equal(inspection.isError, undefined);
-	assert.deepEqual(inspection.content, [{ type: "text", text: '[B1] button "Continue"' }]);
-	assert.equal(inspection.structuredContent, undefined);
+  const inspection = await connected.client.callTool({
+    name: "computer_inspect",
+    arguments: {
+      snapshot_id: "snapshot-42",
+      max_depth: 4,
+      max_elements: 20,
+      max_children: 10,
+    },
+  })
+  assert.equal(inspection.isError, undefined)
+  assert.deepEqual(inspection.content, [{ type: "text", text: '[B1] button "Continue"' }])
+  assert.equal(inspection.structuredContent, undefined)
 
-	const invalidClick = await connected.client.callTool({
-		name: "computer_click",
-		arguments: { element_id: "B1" },
-	});
-	assert.equal(invalidClick.isError, true);
-	assert.match(JSON.stringify(invalidClick.content), /snapshot_id/);
+  const invalidClick = await connected.client.callTool({
+    name: "computer_click",
+    arguments: { element_id: "B1" },
+  })
+  assert.equal(invalidClick.isError, true)
+  assert.match(JSON.stringify(invalidClick.content), /snapshot_id/)
 
-	const click = await connected.client.callTool({
-		name: "computer_click",
-		arguments: { snapshot_id: "snapshot-42", element_id: "B1" },
-	});
-	assert.equal(click.isError, undefined);
-	assert.deepEqual(click.content, [{ type: "text", text: "click:ok" }]);
-	assert.deepEqual(click.structuredContent, {
-		command: "click",
-		args: ["click", "--on", "B1", "--snapshot", "snapshot-42", "--json"],
-	});
+  const click = await connected.client.callTool({
+    name: "computer_click",
+    arguments: { snapshot_id: "snapshot-42", element_id: "B1" },
+  })
+  assert.equal(click.isError, undefined)
+  assert.deepEqual(click.content, [{ type: "text", text: "click:ok" }])
+  assert.deepEqual(click.structuredContent, {
+    command: "click",
+    args: ["click", "--on", "B1", "--snapshot", "snapshot-42", "--json"],
+  })
 
-	const windowCoordinateClick = await connected.client.callTool({
-		name: "computer_click",
-		arguments: { snapshot_id: "snapshot-42", x: 10, y: 20 },
-	});
-	assert.deepEqual(windowCoordinateClick.structuredContent, {
-		command: "click",
-		args: ["click", "--coords", "10,20", "--window-id", "4242", "--json"],
-	});
+  const windowCoordinateClick = await connected.client.callTool({
+    name: "computer_click",
+    arguments: { snapshot_id: "snapshot-42", x: 10, y: 20 },
+  })
+  assert.deepEqual(windowCoordinateClick.structuredContent, {
+    command: "click",
+    args: ["click", "--coords", "10,20", "--window-id", "4242", "--json"],
+  })
 
-	const windowCoordinateDrag = await connected.client.callTool({
-		name: "computer_drag",
-		arguments: {
-			snapshot_id: "snapshot-42",
-			from: { x: 10, y: 20 },
-			to: { x: 30, y: 40 },
-		},
-	});
-	assert.deepEqual(windowCoordinateDrag.structuredContent, {
-		command: "drag",
-		args: ["drag", "--snapshot", "snapshot-42", "--from-coords", "60,95", "--to-coords", "80,115", "--window-id", "4242", "--json"],
-	});
+  const windowCoordinateDrag = await connected.client.callTool({
+    name: "computer_drag",
+    arguments: {
+      snapshot_id: "snapshot-42",
+      from: { x: 10, y: 20 },
+      to: { x: 30, y: 40 },
+    },
+  })
+  assert.deepEqual(windowCoordinateDrag.structuredContent, {
+    command: "drag",
+    args: ["drag", "--snapshot", "snapshot-42", "--from-coords", "60,95", "--to-coords", "80,115", "--window-id", "4242", "--json"],
+  })
 
-	const screenState = await connected.client.callTool({
-		name: "computer_observe",
-		arguments: { screen_index: 1 },
-	});
-	assert.deepEqual(screenState.structuredContent, {
-		snapshot_id: "snapshot-screen",
-	});
-	const screenCoordinateClick = await connected.client.callTool({
-		name: "computer_click",
-		arguments: { snapshot_id: "snapshot-screen", x: 10, y: 20 },
-	});
-	assert.deepEqual(screenCoordinateClick.structuredContent, {
-		command: "click",
-		args: ["click", "--coords", "1090,1620", "--global-coords", "--foreground", "--json"],
-	});
+  const screenState = await connected.client.callTool({
+    name: "computer_observe",
+    arguments: { screen_index: 1 },
+  })
+  assert.deepEqual(screenState.structuredContent, {
+    snapshot_id: "snapshot-screen",
+  })
+  const screenCoordinateClick = await connected.client.callTool({
+    name: "computer_click",
+    arguments: { snapshot_id: "snapshot-screen", x: 10, y: 20 },
+  })
+  assert.deepEqual(screenCoordinateClick.structuredContent, {
+    command: "click",
+    args: ["click", "--coords", "1090,1620", "--global-coords", "--foreground", "--json"],
+  })
 
-	const forwardingCases = [
-		{
-			name: "computer_list",
-			arguments: { kind: "apps", include_hidden: true },
-			expected: ["app", "list", "--include-hidden", "--json"],
-		},
-		{
-			name: "computer_type",
-			arguments: {
-				snapshot_id: "snapshot-42",
-				text: "hello",
-				clear: true,
-				press_return: true,
-				foreground: true,
-				delay_ms: 5,
-			},
-			expected: ["type", "--text", "hello", "--snapshot", "snapshot-42", "--clear", "--return", "--foreground", "--delay", "5", "--json"],
-		},
-		{
-			name: "computer_press",
-			arguments: { window_id: 4242, keys: ["tab", "return"], count: 2 },
-			expected: ["press", "tab", "return", "--window-id", "4242", "--count", "2", "--json"],
-		},
-		{
-			name: "computer_hotkey",
-			arguments: { app: "Finder", keys: ["cmd", "shift", "g"] },
-			expected: ["hotkey", "--keys", "cmd,shift,g", "--app", "Finder", "--json"],
-		},
-		{
-			name: "computer_scroll",
-			arguments: {
-				snapshot_id: "snapshot-42",
-				element_id: "B1",
-				direction: "down",
-				amount: 3,
-				smooth: true,
-			},
-			expected: ["scroll", "--direction", "down", "--amount", "3", "--on", "B1", "--snapshot", "snapshot-42", "--smooth", "--json"],
-		},
-		{
-			name: "computer_app",
-			arguments: { action: "launch", app: "TextEdit", open: ["/tmp/note.txt"] },
-			expected: ["app", "launch", "TextEdit", "--wait-until-ready", "--open", "/tmp/note.txt", "--json"],
-		},
-		{
-			name: "computer_window",
-			arguments: {
-				action: "set_bounds",
-				window_id: 4242,
-				x: 10,
-				y: 20,
-				width: 800,
-				height: 600,
-			},
-			expected: ["window", "set-bounds", "--window-id", "4242", "--x", "10", "--y", "20", "--width", "800", "--height", "600", "--json"],
-		},
-	] as const;
-	for (const forwarding of forwardingCases) {
-		const result = await connected.client.callTool({
-			name: forwarding.name,
-			arguments: forwarding.arguments,
-		});
-		assert.equal(result.isError, undefined);
-		assert.deepEqual(result.structuredContent, {
-			command: forwarding.expected[0],
-			args: [...forwarding.expected],
-		});
-	}
+  const forwardingCases = [
+    {
+      name: "computer_list",
+      arguments: { kind: "apps", include_hidden: true },
+      expected: ["app", "list", "--include-hidden", "--json"],
+    },
+    {
+      name: "computer_type",
+      arguments: {
+        snapshot_id: "snapshot-42",
+        text: "hello",
+        clear: true,
+        press_return: true,
+        foreground: true,
+        delay_ms: 5,
+      },
+      expected: ["type", "--text", "hello", "--snapshot", "snapshot-42", "--clear", "--return", "--foreground", "--delay", "5", "--json"],
+    },
+    {
+      name: "computer_press",
+      arguments: { window_id: 4242, keys: ["tab", "return"], count: 2 },
+      expected: ["press", "tab", "return", "--window-id", "4242", "--count", "2", "--json"],
+    },
+    {
+      name: "computer_hotkey",
+      arguments: { app: "Finder", keys: ["cmd", "shift", "g"] },
+      expected: ["hotkey", "--keys", "cmd,shift,g", "--app", "Finder", "--json"],
+    },
+    {
+      name: "computer_scroll",
+      arguments: {
+        snapshot_id: "snapshot-42",
+        element_id: "B1",
+        direction: "down",
+        amount: 3,
+        smooth: true,
+      },
+      expected: ["scroll", "--direction", "down", "--amount", "3", "--on", "B1", "--snapshot", "snapshot-42", "--smooth", "--json"],
+    },
+    {
+      name: "computer_app",
+      arguments: {
+        action: "launch",
+        app: "TextEdit",
+        open: ["/tmp/note.txt"],
+      },
+      expected: ["app", "launch", "TextEdit", "--wait-until-ready", "--open", "/tmp/note.txt", "--json"],
+    },
+    {
+      name: "computer_window",
+      arguments: {
+        action: "set_bounds",
+        window_id: 4242,
+        x: 10,
+        y: 20,
+        width: 800,
+        height: 600,
+      },
+      expected: ["window", "set-bounds", "--window-id", "4242", "--x", "10", "--y", "20", "--width", "800", "--height", "600", "--json"],
+    },
+  ] as const
+  for (const forwarding of forwardingCases) {
+    const result = await connected.client.callTool({
+      name: forwarding.name,
+      arguments: forwarding.arguments,
+    })
+    assert.equal(result.isError, undefined)
+    assert.deepEqual(result.structuredContent, {
+      command: forwarding.expected[0],
+      args: [...forwarding.expected],
+    })
+  }
 
-	for (const argumentsValue of [
-		{ action: "move", window_id: 4242, x: 10.5, y: 20 },
-		{ action: "focus", window_id: 4242, width: 800 },
-	]) {
-		const invalidWindow = await connected.client.callTool({
-			name: "computer_window",
-			arguments: argumentsValue,
-		});
-		assert.equal(invalidWindow.isError, true);
-	}
+  for (const argumentsValue of [
+    { action: "move", window_id: 4242, x: 10.5, y: 20 },
+    { action: "focus", window_id: 4242, width: 800 },
+  ]) {
+    const invalidWindow = await connected.client.callTool({
+      name: "computer_window",
+      arguments: argumentsValue,
+    })
+    assert.equal(invalidWindow.isError, true)
+  }
 
-	const failedApp = await connected.client.callTool({
-		name: "computer_app",
-		arguments: { action: "switch", app: "Finder" },
-	});
-	assert.equal(failedApp.isError, true);
-	assert.deepEqual(failedApp.content, [
-		{
-			type: "text",
-			text: "FAKE_COMMAND_FAILED: Fake Peekaboo failure for app (fixture requested failure)",
-		},
-	]);
+  const failedApp = await connected.client.callTool({
+    name: "computer_app",
+    arguments: { action: "switch", app: "Finder" },
+  })
+  assert.equal(failedApp.isError, true)
+  assert.deepEqual(failedApp.content, [
+    {
+      type: "text",
+      text: "FAKE_COMMAND_FAILED: Fake Peekaboo failure for app (fixture requested failure)",
+    },
+  ])
 
-	const toolsAfterFailure = await connected.client.listTools();
-	assert.deepEqual(
-		toolsAfterFailure.tools
-			.map((tool) => tool.name)
-			.filter((name) => name.startsWith("computer_"))
-			.sort(),
-		computerTools
-	);
-});
+  const toolsAfterFailure = await connected.client.listTools()
+  assert.deepEqual(
+    toolsAfterFailure.tools
+      .map((tool) => tool.name)
+      .filter((name) => name.startsWith("computer_"))
+      .sort(),
+    computerTools
+  )
+})
 
 test("continues serving an existing client after a stateless HTTP server restart", { timeout: 20_000 }, async (t) => {
-	const firstServer = await startMcpHttpServer({ port: 0 });
-	const { port, url } = firstServer;
-	const connection = await connectClient(url, "restart-client");
+  const firstServer = await startMcpHttpServer({ port: 0 })
+  const { port, url } = firstServer
+  const connection = await connectClient(url, "restart-client")
 
-	let activeServer = firstServer;
-	t.after(async () => {
-		await connection.client.close();
-		await activeServer.close();
-	});
+  let activeServer = firstServer
+  t.after(async () => {
+    await connection.client.close()
+    await activeServer.close()
+  })
 
-	const beforeRestart = await callUntilComplete(connection.client, "before-restart", "printf before");
-	assert.equal(beforeRestart.output, "before");
+  const beforeRestart = await callUntilComplete(connection.client, "before-restart", "printf before")
+  assert.equal(beforeRestart.output, "before")
 
-	await firstServer.close();
-	activeServer = await startMcpHttpServer({ port });
+  await firstServer.close()
+  activeServer = await startMcpHttpServer({ port })
 
-	const afterRestart = await callUntilComplete(connection.client, "after-restart", "printf after");
-	assert.equal(afterRestart.output, "after");
-	assert.equal(afterRestart.exit_code, 0);
-});
+  const afterRestart = await callUntilComplete(connection.client, "after-restart", "printf after")
+  assert.equal(afterRestart.output, "after")
+  assert.equal(afterRestart.exit_code, 0)
+})
 
 test("fetches and paginates one cached website across MCP sessions", { timeout: 20_000 }, async (t) => {
-	const expected = "🙂".repeat(200);
-	let renders = 0;
-	const webPageOpener = new WebPageOpener({
-		renderPage: async () => {
-			renders += 1;
-			return {
-				url: "https://example.com/final",
-				title: "Example page",
-				content: expected,
-			};
-		},
-	});
-	const running = await startMcpHttpServer({
-		port: 0,
-		webPageOpener,
-	});
-	t.after(() => running.close());
+  const expected = "🙂".repeat(200)
+  let renders = 0
+  const webPageOpener = new WebPageOpener({
+    renderPage: async () => {
+      renders += 1
+      return {
+        url: "https://example.com/final",
+        title: "Example page",
+        content: expected,
+      }
+    },
+  })
+  const running = await startMcpHttpServer({
+    port: 0,
+    webPageOpener,
+  })
+  t.after(() => running.close())
 
-	const first = await connectClient(running.url, "fetch-website-client-1");
-	const firstResult = await first.client.callTool({
-		name: "fetch_website",
-		arguments: {
-			url: "https://example.com/start",
-			format: "clean_html",
-			max_output_bytes: 256,
-		},
-	});
-	assert.equal(firstResult.isError, undefined);
-	const firstContent = firstResult.structuredContent as {
-		url: string;
-		title: string;
-		format: string;
-		content: string;
-		next_cursor?: string;
-	};
-	assert.equal(firstContent.url, "https://example.com/final");
-	assert.equal(firstContent.title, "Example page");
-	assert.equal(firstContent.format, "clean_html");
-	assert.equal(Buffer.byteLength(firstContent.content, "utf8"), 256);
-	assert.ok(firstContent.next_cursor);
-	await first.client.close();
+  const first = await connectClient(running.url, "fetch-website-client-1")
+  const firstResult = await first.client.callTool({
+    name: "fetch_website",
+    arguments: {
+      url: "https://example.com/start",
+      format: "clean_html",
+      max_output_bytes: 256,
+    },
+  })
+  assert.equal(firstResult.isError, undefined)
+  const firstContent = firstResult.structuredContent as {
+    url: string
+    title: string
+    format: string
+    content: string
+    next_cursor?: string
+  }
+  assert.equal(firstContent.url, "https://example.com/final")
+  assert.equal(firstContent.title, "Example page")
+  assert.equal(firstContent.format, "clean_html")
+  assert.equal(Buffer.byteLength(firstContent.content, "utf8"), 256)
+  assert.ok(firstContent.next_cursor)
+  await first.client.close()
 
-	const second = await connectClient(running.url, "fetch-website-client-2");
-	t.after(() => second.client.close());
-	const secondResult = await second.client.callTool({
-		name: "fetch_website",
-		arguments: {
-			url: "https://example.com/start",
-			format: "clean_html",
-			cursor: firstContent.next_cursor,
-			max_output_bytes: 1024,
-		},
-	});
-	assert.equal(secondResult.isError, undefined);
-	const secondContent = secondResult.structuredContent as {
-		content: string;
-		next_cursor?: string;
-	};
-	assert.equal(firstContent.content + secondContent.content, expected);
-	assert.equal(secondContent.next_cursor, undefined);
-	assert.equal(renders, 1);
-});
+  const second = await connectClient(running.url, "fetch-website-client-2")
+  t.after(() => second.client.close())
+  const secondResult = await second.client.callTool({
+    name: "fetch_website",
+    arguments: {
+      url: "https://example.com/start",
+      format: "clean_html",
+      cursor: firstContent.next_cursor,
+      max_output_bytes: 1024,
+    },
+  })
+  assert.equal(secondResult.isError, undefined)
+  const secondContent = secondResult.structuredContent as {
+    content: string
+    next_cursor?: string
+  }
+  assert.equal(firstContent.content + secondContent.content, expected)
+  assert.equal(secondContent.next_cursor, undefined)
+  assert.equal(renders, 1)
+})
 
 test("isolates named shell state and allows foreground commands in parallel", { timeout: 20_000 }, async (t) => {
-	const running = await startMcpHttpServer({ port: 0 });
-	t.after(() => running.close());
-	const connected = await connectClient(running.url, "named-shell-client");
-	t.after(() => connected.client.close());
+  const running = await startMcpHttpServer({ port: 0 })
+  t.after(() => running.close())
+  const connected = await connectClient(running.url, "named-shell-client")
+  t.after(() => connected.client.close())
 
-	const explicitCwd = await mkdtemp(join(tmpdir(), "mcp-explicit-cwd-"));
-	t.after(() => rm(explicitCwd, { recursive: true, force: true }));
+  const explicitCwd = await mkdtemp(join(tmpdir(), "mcp-explicit-cwd-"))
+  t.after(() => rm(explicitCwd, { recursive: true, force: true }))
 
-	const explicitResult = snapshotFromResult(
-		await connected.client.callTool({
-			name: "shell_run",
-			arguments: {
-				shell_id: "cwd-shell",
-				request_id: "cwd001",
-				cwd: explicitCwd,
-				command: "printf '%s' \"$PWD\"",
-				wait_ms: 1_000,
-			},
-		})
-	);
-	assert.equal(explicitResult.status, "completed");
-	assert.equal(explicitResult.output, explicitCwd);
-	assert.equal(explicitResult.cwd, explicitCwd);
+  const explicitResult = snapshotFromResult(
+    await connected.client.callTool({
+      name: "shell_run",
+      arguments: {
+        shell_id: "cwd-shell",
+        request_id: "cwd001",
+        cwd: explicitCwd,
+        command: "printf '%s' \"$PWD\"",
+        wait_ms: 1_000,
+      },
+    })
+  )
+  assert.equal(explicitResult.status, "completed")
+  assert.equal(explicitResult.output, explicitCwd)
+  assert.equal(explicitResult.cwd, explicitCwd)
 
-	const retainedCwd = await callUntilComplete(connected.client, "cwd002", "printf '%s' \"$PWD\"", "cwd-shell");
-	assert.equal(retainedCwd.output, explicitCwd);
-	assert.equal(retainedCwd.cwd, explicitCwd);
+  const retainedCwd = await callUntilComplete(connected.client, "cwd002", "printf '%s' \"$PWD\"", "cwd-shell")
+  assert.equal(retainedCwd.output, explicitCwd)
+  assert.equal(retainedCwd.cwd, explicitCwd)
 
-	const closedCwdShell = await connected.client.callTool({
-		name: "shell_close",
-		arguments: { shell_id: "cwd-shell" },
-	});
-	assert.equal(closedCwdShell.isError, undefined);
+  const closedCwdShell = await connected.client.callTool({
+    name: "shell_close",
+    arguments: { shell_id: "cwd-shell" },
+  })
+  assert.equal(closedCwdShell.isError, undefined)
 
-	const alphaState = await callUntilComplete(connected.client, "shared-request", "cd /tmp && export NAMED_STATE=alpha && printf alpha-ready", "alpha");
-	const betaState = await callUntilComplete(connected.client, "shared-request", `printf '%s|%s' "$PWD" "\${NAMED_STATE-unset}"`, "beta");
-	assert.equal(alphaState.output, "alpha-ready");
-	assert.equal(alphaState.shell_id, "alpha");
-	assert.match(betaState.output, /\|unset$/);
-	assert.equal(betaState.shell_id, "beta");
+  const alphaState = await callUntilComplete(connected.client, "shared-request", "cd /tmp && export NAMED_STATE=alpha && printf alpha-ready", "alpha")
+  const betaState = await callUntilComplete(connected.client, "shared-request", `printf '%s|%s' "$PWD" "\${NAMED_STATE-unset}"`, "beta")
+  assert.equal(alphaState.output, "alpha-ready")
+  assert.equal(alphaState.shell_id, "alpha")
+  assert.match(betaState.output, /\|unset$/)
+  assert.equal(betaState.shell_id, "beta")
 
-	const slowAlpha = connected.client.callTool({
-		name: "shell_run",
-		arguments: {
-			shell_id: "alpha",
-			request_id: "slow01",
-			command: "sleep 0.3; printf alpha-done",
-			wait_ms: 0,
-		},
-	});
-	await new Promise((resolve) => setTimeout(resolve, 25));
+  const slowAlpha = connected.client.callTool({
+    name: "shell_run",
+    arguments: {
+      shell_id: "alpha",
+      request_id: "slow01",
+      command: "sleep 0.3; printf alpha-done",
+      wait_ms: 0,
+    },
+  })
+  await new Promise((resolve) => setTimeout(resolve, 25))
 
-	const betaWhileAlphaRuns = await callUntilComplete(connected.client, "parallel", "printf beta-done", "beta");
-	assert.equal(betaWhileAlphaRuns.output, "beta-done");
+  const betaWhileAlphaRuns = await callUntilComplete(connected.client, "parallel", "printf beta-done", "beta")
+  assert.equal(betaWhileAlphaRuns.output, "beta-done")
 
-	const alphaBusy = await connected.client.callTool({
-		name: "shell_run",
-		arguments: {
-			shell_id: "alpha",
-			request_id: "blocked",
-			command: "printf should-not-run",
-		},
-	});
-	assert.equal(alphaBusy.isError, true);
-	assert.match(JSON.stringify(alphaBusy.content), /busy/);
+  const alphaBusy = await connected.client.callTool({
+    name: "shell_run",
+    arguments: {
+      shell_id: "alpha",
+      request_id: "blocked",
+      command: "printf should-not-run",
+    },
+  })
+  assert.equal(alphaBusy.isError, true)
+  assert.match(JSON.stringify(alphaBusy.content), /busy/)
 
-	let alphaSnapshot = snapshotFromResult(await slowAlpha);
-	assert.equal(alphaSnapshot.shell_id, "alpha");
-	let alphaOutput = alphaSnapshot.output;
-	for (let attempt = 0; attempt < 20; attempt += 1) {
-		if (alphaSnapshot.status !== "running" && !alphaSnapshot.has_more) break;
-		assert.ok(alphaSnapshot.request_id);
-		assert.notEqual(alphaSnapshot.next_cursor, undefined);
-		alphaSnapshot = snapshotFromResult(
-			await connected.client.callTool({
-				name: "shell_poll",
-				arguments: {
-					shell_id: "alpha",
-					request_id: alphaSnapshot.request_id,
-					cursor: alphaSnapshot.next_cursor,
-					wait_ms: 100,
-				},
-			})
-		);
-		assert.equal(alphaSnapshot.shell_id, "alpha");
-		alphaOutput += alphaSnapshot.output;
-	}
-	assert.equal(alphaSnapshot.status, "completed");
-	assert.equal(alphaOutput, "alpha-done");
+  let alphaSnapshot = snapshotFromResult(await slowAlpha)
+  assert.equal(alphaSnapshot.shell_id, "alpha")
+  let alphaOutput = alphaSnapshot.output
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    if (alphaSnapshot.status !== "running" && !alphaSnapshot.has_more) break
+    assert.ok(alphaSnapshot.request_id)
+    assert.notEqual(alphaSnapshot.next_cursor, undefined)
+    alphaSnapshot = snapshotFromResult(
+      await connected.client.callTool({
+        name: "shell_poll",
+        arguments: {
+          shell_id: "alpha",
+          request_id: alphaSnapshot.request_id,
+          cursor: alphaSnapshot.next_cursor,
+          wait_ms: 100,
+        },
+      })
+    )
+    assert.equal(alphaSnapshot.shell_id, "alpha")
+    alphaOutput += alphaSnapshot.output
+  }
+  assert.equal(alphaSnapshot.status, "completed")
+  assert.equal(alphaOutput, "alpha-done")
 
-	await connected.client.callTool({
-		name: "shell_reset",
-		arguments: {
-			shell_id: "alpha",
-			request_id: "reset1",
-			reason: "test reset isolation",
-		},
-	});
-	const betaAfterReset = await callUntilComplete(connected.client, "after-reset", "printf beta-still-ready", "beta");
-	assert.equal(betaAfterReset.output, "beta-still-ready");
+  await connected.client.callTool({
+    name: "shell_reset",
+    arguments: {
+      shell_id: "alpha",
+      request_id: "reset1",
+      reason: "test reset isolation",
+    },
+  })
+  const betaAfterReset = await callUntilComplete(connected.client, "after-reset", "printf beta-still-ready", "beta")
+  assert.equal(betaAfterReset.output, "beta-still-ready")
 
-	const listed = await connected.client.callTool({ name: "shell_list" });
-	assert.equal(listed.isError, undefined);
-	const listedContent = listed.structuredContent as {
-		shells: Array<{
-			shell_id: string;
-			status: "idle" | "active";
-			is_default: boolean;
-			can_close: boolean;
-			idle_ms: number;
-		}>;
-		count: number;
-		limit: number;
-		idle_timeout_ms: number;
-	};
-	assert.deepEqual(
-		listedContent.shells.map((shell) => shell.shell_id),
-		["default", "alpha", "beta"]
-	);
-	assert.equal(listedContent.count, 3);
-	assert.equal(listedContent.limit, 8);
-	assert.equal(listedContent.idle_timeout_ms, 1_800_000);
-	assert.deepEqual(
-		listedContent.shells.find((shell) => shell.shell_id === "default"),
-		{
-			shell_id: "default",
-			status: "idle",
-			is_default: true,
-			can_close: false,
-			idle_ms: listedContent.shells[0].idle_ms,
-		}
-	);
+  const listed = await connected.client.callTool({ name: "shell_list" })
+  assert.equal(listed.isError, undefined)
+  const listedContent = listed.structuredContent as {
+    shells: Array<{
+      shell_id: string
+      status: "idle" | "active"
+      is_default: boolean
+      can_close: boolean
+      idle_ms: number
+    }>
+    count: number
+    limit: number
+    idle_timeout_ms: number
+  }
+  assert.deepEqual(
+    listedContent.shells.map((shell) => shell.shell_id),
+    ["default", "alpha", "beta"]
+  )
+  assert.equal(listedContent.count, 3)
+  assert.equal(listedContent.limit, 8)
+  assert.equal(listedContent.idle_timeout_ms, 1_800_000)
+  assert.deepEqual(
+    listedContent.shells.find((shell) => shell.shell_id === "default"),
+    {
+      shell_id: "default",
+      status: "idle",
+      is_default: true,
+      can_close: false,
+      idle_ms: listedContent.shells[0].idle_ms,
+    }
+  )
 
-	const closed = await connected.client.callTool({
-		name: "shell_close",
-		arguments: { shell_id: "alpha" },
-	});
-	assert.equal(closed.isError, undefined);
-	assert.deepEqual(closed.structuredContent, {
-		shell_id: "alpha",
-		closed: true,
-	});
+  const closed = await connected.client.callTool({
+    name: "shell_close",
+    arguments: { shell_id: "alpha" },
+  })
+  assert.equal(closed.isError, undefined)
+  assert.deepEqual(closed.structuredContent, {
+    shell_id: "alpha",
+    closed: true,
+  })
 
-	const closeDefault = await connected.client.callTool({
-		name: "shell_close",
-		arguments: { shell_id: "default" },
-	});
-	assert.equal(closeDefault.isError, true);
-	assert.match(JSON.stringify(closeDefault.content), /protected_shell/);
-	assert.match(JSON.stringify(closeDefault.content), /shell_reset/);
+  const closeDefault = await connected.client.callTool({
+    name: "shell_close",
+    arguments: { shell_id: "default" },
+  })
+  assert.equal(closeDefault.isError, true)
+  assert.match(JSON.stringify(closeDefault.content), /protected_shell/)
+  assert.match(JSON.stringify(closeDefault.content), /shell_reset/)
 
-	const resetDefault = await connected.client.callTool({
-		name: "shell_reset",
-		arguments: {
-			shell_id: "default",
-			request_id: "default-reset",
-			reason: "prove protected shell remains resettable",
-		},
-	});
-	assert.equal(resetDefault.isError, undefined);
-	assert.equal((resetDefault.structuredContent as { status: string }).status, "ready");
+  const resetDefault = await connected.client.callTool({
+    name: "shell_reset",
+    arguments: {
+      shell_id: "default",
+      request_id: "default-reset",
+      reason: "prove protected shell remains resettable",
+    },
+  })
+  assert.equal(resetDefault.isError, undefined)
+  assert.equal((resetDefault.structuredContent as { status: string }).status, "ready")
 
-	const afterClose = await connected.client.callTool({ name: "shell_list" });
-	assert.deepEqual(
-		(
-			afterClose.structuredContent as {
-				shells: Array<{ shell_id: string }>;
-			}
-		).shells.map((shell) => shell.shell_id),
-		["default", "beta"]
-	);
-});
+  const afterClose = await connected.client.callTool({ name: "shell_list" })
+  assert.deepEqual(
+    (
+      afterClose.structuredContent as {
+        shells: Array<{ shell_id: string }>
+      }
+    ).shells.map((shell) => shell.shell_id),
+    ["default", "beta"]
+  )
+})
 
 test("applies patches through the native MCP tool", { timeout: 20_000 }, async (t) => {
-	const directory = await realpath(await mkdtemp(join(tmpdir(), "mcp-native-patch-")));
-	const project = join(directory, "project with ' quote");
-	const bin = join(directory, "bin");
-	await mkdir(project, { recursive: true });
-	await mkdir(bin, { recursive: true });
-	const executable = join(bin, "apply_patch");
-	await writeFile(executable, '#!/bin/sh\npatch=$(cat)\ncase "$patch" in *SLOW_PATCH*) sleep 0.2 ;; *FAIL_PATCH*) printf \'%4097s\' x >&2; exit 9 ;; esac\nprintf \'cwd=%s\\n%s\' "$PWD" "$patch"\n');
-	await chmod(executable, 0o755);
+  const directory = await realpath(await mkdtemp(join(tmpdir(), "mcp-native-patch-")))
+  const project = join(directory, "project with ' quote")
+  const bin = join(directory, "bin")
+  await mkdir(project, { recursive: true })
+  await mkdir(bin, { recursive: true })
+  const executable = join(bin, "apply_patch")
+  await writeFile(
+    executable,
+    '#!/bin/sh\npatch=$(cat)\ncase "$patch" in *SLOW_PATCH*) sleep 0.2 ;; *FAIL_PATCH*) printf \'%4097s\' x >&2; exit 9 ;; esac\nprintf \'cwd=%s\\n%s\' "$PWD" "$patch"\n'
+  )
+  await chmod(executable, 0o755)
 
-	const shell = new PersistentShellSession({ cwd: directory });
-	const running = await startMcpHttpServer({
-		port: 0,
-		shell,
-		applyPatchExecutable: executable,
-	});
-	t.after(async () => {
-		await running.close();
-		await rm(directory, { recursive: true, force: true });
-	});
-	const connected = await connectClient(running.url, "native-patch-client");
-	t.after(() => connected.client.close());
+  const shell = new PersistentShellSession({ cwd: directory })
+  const running = await startMcpHttpServer({
+    port: 0,
+    shell,
+    applyPatchExecutable: executable,
+  })
+  t.after(async () => {
+    await running.close()
+    await rm(directory, { recursive: true, force: true })
+  })
+  const connected = await connectClient(running.url, "native-patch-client")
+  t.after(() => connected.client.close())
 
-	const patch = ["*** Begin Patch", "*** Add File: example.txt", "+literal $() `ticks` 'quotes'", "+__MCP_PATCH_not_the_random_token__", "*** End Patch"].join("\n");
-	const result = await connected.client.callTool({
-		name: "apply_patch",
-		arguments: { cwd: project, patch },
-	});
-	assert.equal(result.isError, undefined);
-	assert.deepEqual(result.structuredContent, {
-		status: "completed",
-		exit_code: 0,
-	});
-	assert.doesNotMatch(JSON.stringify(result.content), /literal \$\(\)/);
-	assert.match(JSON.stringify(result.content), /apply_patch completed, exit=0/);
+  const patch = ["*** Begin Patch", "*** Add File: example.txt", "+literal $() `ticks` 'quotes'", "+__MCP_PATCH_not_the_random_token__", "*** End Patch"].join(
+    "\n"
+  )
+  const result = await connected.client.callTool({
+    name: "apply_patch",
+    arguments: { cwd: project, patch },
+  })
+  assert.equal(result.isError, undefined)
+  assert.deepEqual(result.structuredContent, {
+    status: "completed",
+    exit_code: 0,
+  })
+  assert.doesNotMatch(JSON.stringify(result.content), /literal \$\(\)/)
+  assert.match(JSON.stringify(result.content), /apply_patch completed, exit=0/)
 
-	const noisyPatch = ["*** Begin Patch", "*** Add File: noisy.txt", `+${"x".repeat(400)}`, "*** End Patch"].join("\n");
-	const noisyResult = await connected.client.callTool({
-		name: "apply_patch",
-		arguments: { cwd: project, patch: noisyPatch },
-	});
-	assert.deepEqual(noisyResult.structuredContent, {
-		status: "completed",
-		exit_code: 0,
-	});
+  const noisyPatch = ["*** Begin Patch", "*** Add File: noisy.txt", `+${"x".repeat(400)}`, "*** End Patch"].join("\n")
+  const noisyResult = await connected.client.callTool({
+    name: "apply_patch",
+    arguments: { cwd: project, patch: noisyPatch },
+  })
+  assert.deepEqual(noisyResult.structuredContent, {
+    status: "completed",
+    exit_code: 0,
+  })
 
-	const failed = await connected.client.callTool({
-		name: "apply_patch",
-		arguments: { cwd: project, patch: `${patch}\nFAIL_PATCH` },
-	});
-	assert.equal(failed.isError, true);
-	const failedContent = failed.structuredContent as {
-		status: "failed";
-		exit_code: number;
-		output: string;
-		output_truncated?: true;
-		omitted_output_bytes?: number;
-	};
-	assert.equal(failedContent.status, "failed");
-	assert.equal(failedContent.exit_code, 9);
-	assert.equal(Buffer.byteLength(failedContent.output, "utf8"), 4 * 1024);
-	assert.equal(failedContent.output_truncated, true);
-	assert.equal(failedContent.omitted_output_bytes, 1);
+  const failed = await connected.client.callTool({
+    name: "apply_patch",
+    arguments: { cwd: project, patch: `${patch}\nFAIL_PATCH` },
+  })
+  assert.equal(failed.isError, true)
+  const failedContent = failed.structuredContent as {
+    status: "failed"
+    exit_code: number
+    output: string
+    output_truncated?: true
+    omitted_output_bytes?: number
+  }
+  assert.equal(failedContent.status, "failed")
+  assert.equal(failedContent.exit_code, 9)
+  assert.equal(Buffer.byteLength(failedContent.output, "utf8"), 4 * 1024)
+  assert.equal(failedContent.output_truncated, true)
+  assert.equal(failedContent.omitted_output_bytes, 1)
 
-	const explicitlyBounded = await connected.client.callTool({
-		name: "apply_patch",
-		arguments: {
-			cwd: project,
-			patch: `${patch}\nFAIL_PATCH`,
-			max_output_bytes: 256,
-		},
-	});
-	assert.equal(explicitlyBounded.isError, true);
-	const explicitlyBoundedContent = explicitlyBounded.structuredContent as {
-		status: "failed";
-		exit_code: number;
-		output: string;
-		output_truncated?: true;
-		omitted_output_bytes?: number;
-	};
-	assert.equal(Buffer.byteLength(explicitlyBoundedContent.output, "utf8"), 256);
-	assert.equal(explicitlyBoundedContent.output_truncated, true);
-	assert.equal(explicitlyBoundedContent.omitted_output_bytes, 4097 - 256);
+  const explicitlyBounded = await connected.client.callTool({
+    name: "apply_patch",
+    arguments: {
+      cwd: project,
+      patch: `${patch}\nFAIL_PATCH`,
+      max_output_bytes: 256,
+    },
+  })
+  assert.equal(explicitlyBounded.isError, true)
+  const explicitlyBoundedContent = explicitlyBounded.structuredContent as {
+    status: "failed"
+    exit_code: number
+    output: string
+    output_truncated?: true
+    omitted_output_bytes?: number
+  }
+  assert.equal(Buffer.byteLength(explicitlyBoundedContent.output, "utf8"), 256)
+  assert.equal(explicitlyBoundedContent.output_truncated, true)
+  assert.equal(explicitlyBoundedContent.omitted_output_bytes, 4097 - 256)
 
-	const invalid = await connected.client.callTool({
-		name: "apply_patch",
-		arguments: { cwd: "relative/project", patch },
-	});
-	assert.equal(invalid.isError, true);
-	assert.match(JSON.stringify(invalid.content), /cwd must be an absolute path/);
+  const invalid = await connected.client.callTool({
+    name: "apply_patch",
+    arguments: { cwd: "relative/project", patch },
+  })
+  assert.equal(invalid.isError, true)
+  assert.match(JSON.stringify(invalid.content), /cwd must be an absolute path/)
 
-	const slowPatch = connected.client.callTool({
-		name: "apply_patch",
-		arguments: { cwd: project, patch: `${patch}\nSLOW_PATCH` },
-	});
-	await new Promise((resolve) => setTimeout(resolve, 25));
-	const concurrent = await connected.client.callTool({
-		name: "shell_run",
-		arguments: {
-			request_id: "during-patch",
-			command: "printf runs-independently",
-		},
-	});
-	assert.equal(concurrent.isError, undefined);
-	assert.equal((concurrent.structuredContent as { output: string }).output, "runs-independently");
-	assert.equal((await slowPatch).isError, undefined);
-});
+  const slowPatch = connected.client.callTool({
+    name: "apply_patch",
+    arguments: { cwd: project, patch: `${patch}\nSLOW_PATCH` },
+  })
+  await new Promise((resolve) => setTimeout(resolve, 25))
+  const concurrent = await connected.client.callTool({
+    name: "shell_run",
+    arguments: {
+      request_id: "during-patch",
+      command: "printf runs-independently",
+    },
+  })
+  assert.equal(concurrent.isError, undefined)
+  assert.equal((concurrent.structuredContent as { output: string }).output, "runs-independently")
+  assert.equal((await slowPatch).isError, undefined)
+})
 
 test("force-kills a SIGTERM-resistant apply_patch after request abort", { skip: process.platform === "win32", timeout: 10_000 }, async (t) => {
-	const directory = await realpath(await mkdtemp(join(tmpdir(), "mcp-aborted-patch-")));
-	const project = join(directory, "project");
-	const bin = join(directory, "bin");
-	await mkdir(project, { recursive: true });
-	await mkdir(bin, { recursive: true });
-	const executable = join(bin, "apply_patch");
-	await writeFile(executable, "#!/bin/sh\ntrap '' TERM\nprintf '%s\\n' \"$$\" > \"$PWD/patch.pid\"\ncat >/dev/null\nwhile :; do sleep 1; done\n");
-	await chmod(executable, 0o755);
+  const directory = await realpath(await mkdtemp(join(tmpdir(), "mcp-aborted-patch-")))
+  const project = join(directory, "project")
+  const bin = join(directory, "bin")
+  await mkdir(project, { recursive: true })
+  await mkdir(bin, { recursive: true })
+  const executable = join(bin, "apply_patch")
+  await writeFile(executable, "#!/bin/sh\ntrap '' TERM\nprintf '%s\\n' \"$$\" > \"$PWD/patch.pid\"\ncat >/dev/null\nwhile :; do sleep 1; done\n")
+  await chmod(executable, 0o755)
 
-	const shell = new PersistentShellSession({ cwd: directory });
-	const running = await startMcpHttpServer({
-		port: 0,
-		shell,
-		applyPatchExecutable: executable,
-	});
-	let patchPid: number | undefined;
-	let request: ReturnType<typeof httpRequest> | undefined;
-	t.after(async () => {
-		request?.destroy();
-		if (patchPid) {
-			try {
-				process.kill(-patchPid, "SIGKILL");
-			} catch {}
-		}
-		await running.close();
-		await rm(directory, { recursive: true, force: true });
-	});
+  const shell = new PersistentShellSession({ cwd: directory })
+  const running = await startMcpHttpServer({
+    port: 0,
+    shell,
+    applyPatchExecutable: executable,
+  })
+  let patchPid: number | undefined
+  let request: ReturnType<typeof httpRequest> | undefined
+  t.after(async () => {
+    request?.destroy()
+    if (patchPid) {
+      try {
+        process.kill(-patchPid, "SIGKILL")
+      } catch {}
+    }
+    await running.close()
+    await rm(directory, { recursive: true, force: true })
+  })
 
-	const target = new URL(running.url);
-	const body = JSON.stringify({
-		jsonrpc: "2.0",
-		id: 1,
-		method: "tools/call",
-		params: {
-			name: "apply_patch",
-			arguments: {
-				cwd: project,
-				patch: "*** Begin Patch\n*** End Patch",
-			},
-		},
-	});
-	request = httpRequest(
-		{
-			hostname: target.hostname,
-			port: target.port,
-			path: target.pathname,
-			method: "POST",
-			headers: {
-				accept: "application/json, text/event-stream",
-				"content-length": Buffer.byteLength(body),
-				"content-type": "application/json",
-				"mcp-protocol-version": LATEST_PROTOCOL_VERSION,
-			},
-		},
-		(response) => response.resume()
-	);
-	request.on("error", () => {});
-	request.end(body);
+  const target = new URL(running.url)
+  const body = JSON.stringify({
+    jsonrpc: "2.0",
+    id: 1,
+    method: "tools/call",
+    params: {
+      name: "apply_patch",
+      arguments: {
+        cwd: project,
+        patch: "*** Begin Patch\n*** End Patch",
+      },
+    },
+  })
+  request = httpRequest(
+    {
+      hostname: target.hostname,
+      port: target.port,
+      path: target.pathname,
+      method: "POST",
+      headers: {
+        accept: "application/json, text/event-stream",
+        "content-length": Buffer.byteLength(body),
+        "content-type": "application/json",
+        "mcp-protocol-version": LATEST_PROTOCOL_VERSION,
+      },
+    },
+    (response) => response.resume()
+  )
+  request.on("error", () => {})
+  request.end(body)
 
-	for (let attempt = 0; attempt < 100; attempt += 1) {
-		try {
-			patchPid = Number.parseInt(await readFile(join(project, "patch.pid"), "utf8"), 10);
-			break;
-		} catch {
-			await new Promise((resolve) => setTimeout(resolve, 10));
-		}
-	}
-	assert.ok(patchPid && Number.isSafeInteger(patchPid), "fake apply_patch did not start");
+  for (let attempt = 0; attempt < 100; attempt += 1) {
+    try {
+      patchPid = Number.parseInt(await readFile(join(project, "patch.pid"), "utf8"), 10)
+      break
+    } catch {
+      await new Promise((resolve) => setTimeout(resolve, 10))
+    }
+  }
+  assert.ok(patchPid && Number.isSafeInteger(patchPid), "fake apply_patch did not start")
 
-	request.destroy();
+  request.destroy()
 
-	let exited = false;
-	for (let attempt = 0; attempt < 100; attempt += 1) {
-		try {
-			process.kill(patchPid, 0);
-		} catch (error) {
-			if ((error as NodeJS.ErrnoException).code === "ESRCH") {
-				exited = true;
-				break;
-			}
-			throw error;
-		}
-		await new Promise((resolve) => setTimeout(resolve, 20));
-	}
-	assert.equal(exited, true, "SIGTERM-resistant apply_patch process was not force-killed");
-});
+  let exited = false
+  for (let attempt = 0; attempt < 100; attempt += 1) {
+    try {
+      process.kill(patchPid, 0)
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ESRCH") {
+        exited = true
+        break
+      }
+      throw error
+    }
+    await new Promise((resolve) => setTimeout(resolve, 20))
+  }
+  assert.equal(exited, true, "SIGTERM-resistant apply_patch process was not force-killed")
+})
 
 test("rejects a mismatched HTTP Host", { timeout: 10_000 }, async (t) => {
-	const running = await startMcpHttpServer({ port: 0 });
-	t.after(() => running.close());
+  const running = await startMcpHttpServer({ port: 0 })
+  t.after(() => running.close())
 
-	const status = await postWithHost(running.url, "attacker.example", {
-		jsonrpc: "2.0",
-		id: 1,
-		method: "initialize",
-		params: {
-			protocolVersion: LATEST_PROTOCOL_VERSION,
-			capabilities: {},
-			clientInfo: { name: "host-validation-test", version: "1.0.0" },
-		},
-	});
+  const status = await postWithHost(running.url, "attacker.example", {
+    jsonrpc: "2.0",
+    id: 1,
+    method: "initialize",
+    params: {
+      protocolVersion: LATEST_PROTOCOL_VERSION,
+      capabilities: {},
+      clientInfo: { name: "host-validation-test", version: "1.0.0" },
+    },
+  })
 
-	assert.equal(status, 403);
-});
+  assert.equal(status, 403)
+})
 
 function postWithHost(url: string, host: string, value: unknown): Promise<number> {
-	const target = new URL(url);
-	const body = JSON.stringify(value);
+  const target = new URL(url)
+  const body = JSON.stringify(value)
 
-	return new Promise((resolve, reject) => {
-		const request = httpRequest(
-			{
-				hostname: target.hostname,
-				port: target.port,
-				path: target.pathname,
-				method: "POST",
-				headers: {
-					accept: "application/json, text/event-stream",
-					"content-length": Buffer.byteLength(body),
-					"content-type": "application/json",
-					host,
-				},
-			},
-			(response) => {
-				response.resume();
-				response.once("end", () => resolve(response.statusCode ?? 0));
-			}
-		);
-		request.once("error", reject);
-		request.end(body);
-	});
+  return new Promise((resolve, reject) => {
+    const request = httpRequest(
+      {
+        hostname: target.hostname,
+        port: target.port,
+        path: target.pathname,
+        method: "POST",
+        headers: {
+          accept: "application/json, text/event-stream",
+          "content-length": Buffer.byteLength(body),
+          "content-type": "application/json",
+          host,
+        },
+      },
+      (response) => {
+        response.resume()
+        response.once("end", () => resolve(response.statusCode ?? 0))
+      }
+    )
+    request.once("error", reject)
+    request.end(body)
+  })
 }
 
 async function connectClient(url: string, name: string) {
-	const client = new Client({ name, version: "1.0.0" });
-	const transport = new StreamableHTTPClientTransport(new URL(url));
-	await client.connect(transport);
-	return { client, transport };
+  const client = new Client({ name, version: "1.0.0" })
+  const transport = new StreamableHTTPClientTransport(new URL(url))
+  await client.connect(transport)
+  return { client, transport }
 }
 
 interface ToolSnapshot {
-	shell_id?: string;
-	status: "running" | "completed" | "shell_exited" | "reset";
-	exit_code: number | null;
-	cwd: string;
-	output: string;
-	request_id?: string;
-	next_cursor?: number;
-	has_more?: true;
-	cursor_expired?: true;
-	output_truncated?: true;
-	dropped_output_bytes?: number;
+  shell_id?: string
+  status: "running" | "completed" | "shell_exited" | "reset"
+  exit_code: number | null
+  cwd: string
+  output: string
+  request_id?: string
+  next_cursor?: number
+  has_more?: true
+  cursor_expired?: true
+  output_truncated?: true
+  dropped_output_bytes?: number
 }
 
 async function callUntilComplete(client: Client, requestId: string, command: string, shellId?: string): Promise<ToolSnapshot> {
-	let snapshot = snapshotFromResult(
-		await client.callTool({
-			name: "shell_run",
-			arguments: {
-				...(shellId ? { shell_id: shellId } : {}),
-				request_id: requestId,
-				command,
-				wait_ms: 1_000,
-			},
-		})
-	);
-	let output = snapshot.output;
+  let snapshot = snapshotFromResult(
+    await client.callTool({
+      name: "shell_run",
+      arguments: {
+        ...(shellId ? { shell_id: shellId } : {}),
+        request_id: requestId,
+        command,
+        wait_ms: 1_000,
+      },
+    })
+  )
+  let output = snapshot.output
 
-	for (let attempt = 0; attempt < 100; attempt += 1) {
-		if (snapshot.status !== "running" && snapshot.has_more !== true) {
-			return { ...snapshot, output };
-		}
-		assert.ok(snapshot.request_id);
-		assert.notEqual(snapshot.next_cursor, undefined);
-		snapshot = snapshotFromResult(
-			await client.callTool({
-				name: "shell_poll",
-				arguments: {
-					...(shellId ? { shell_id: shellId } : {}),
-					request_id: snapshot.request_id,
-					cursor: snapshot.next_cursor,
-					wait_ms: 100,
-				},
-			})
-		);
-		output += snapshot.output;
-	}
+  for (let attempt = 0; attempt < 100; attempt += 1) {
+    if (snapshot.status !== "running" && snapshot.has_more !== true) {
+      return { ...snapshot, output }
+    }
+    assert.ok(snapshot.request_id)
+    assert.notEqual(snapshot.next_cursor, undefined)
+    snapshot = snapshotFromResult(
+      await client.callTool({
+        name: "shell_poll",
+        arguments: {
+          ...(shellId ? { shell_id: shellId } : {}),
+          request_id: snapshot.request_id,
+          cursor: snapshot.next_cursor,
+          wait_ms: 100,
+        },
+      })
+    )
+    output += snapshot.output
+  }
 
-	throw new Error(`MCP command ${requestId} did not complete.`);
+  throw new Error(`MCP command ${requestId} did not complete.`)
 }
 
 function snapshotFromResult(result: Awaited<ReturnType<Client["callTool"]>>): ToolSnapshot {
-	assert.equal(result.isError, undefined);
-	assert.ok(result.structuredContent);
-	return result.structuredContent as unknown as ToolSnapshot;
+  assert.equal(result.isError, undefined)
+  assert.ok(result.structuredContent)
+  return result.structuredContent as unknown as ToolSnapshot
 }
