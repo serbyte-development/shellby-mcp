@@ -33,8 +33,8 @@ test("writes one compact YAML document for a shell command", async (t) => {
   })
   assert.ok(call)
   clock = 1_275
-  call.finish({ httpStatus: 200, state: "finished" })
-  call.finish({ httpStatus: 500, state: "closed" })
+  call.finish({ httpStatus: 200, state: "finished", responseBytes: 512 })
+  call.finish({ httpStatus: 500, state: "closed", responseBytes: 999 })
 
   assert.equal(formatAuditTime(timestamp), "20:58:30")
   assert.equal(characterCount("🙂a"), 2)
@@ -65,7 +65,7 @@ test("omits apply_patch bodies while retaining cwd and patch size", async (t) =>
   })
   assert.ok(call)
   clock = 2_051
-  call.finish({ httpStatus: 200, state: "finished" })
+  call.finish({ httpStatus: 200, state: "finished", responseBytes: 200 })
 
   const log = await readFile(file, "utf8")
   assert.equal(log, `--- # 21:12:03 - apply_patch - 51ms\ncwd: "/workspace/project"\npatch_chars: ${characterCount(patch)}\n\n`)
@@ -87,12 +87,46 @@ test("caps large ordinary tool arguments", async (t) => {
     params: { name: "feedback_submit", arguments: { feedback: "x".repeat(2_000) } },
   })
   assert.ok(call)
-  call.finish({ httpStatus: 200, state: "finished" })
+  call.finish({ httpStatus: 200, state: "finished", responseBytes: 200 })
 
   const log = await readFile(file, "utf8")
   assert.match(log, /^--- # 22:00:00 - feedback_submit - 0ms\nargs: "/)
   assert.match(log, /chars omitted/)
   assert.ok(log.length < 800)
+})
+
+test("uses Better Comments tags for large, slow, and failed calls", async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), "mcp-audit-log-"))
+  const file = join(directory, "agent-commands.yaml")
+  t.after(() => rm(directory, { recursive: true, force: true }))
+
+  let clock = 0
+  const logger = new McpAuditLogger(
+    file,
+    () => new Date(2026, 7, 7, 22, 30, 0),
+    () => clock
+  )
+  const request = { method: "tools/call", params: { name: "shell_list", arguments: {} } }
+
+  const [large] = logger.startToolCalls(request)
+  assert.ok(large)
+  clock = 100
+  large.finish({ httpStatus: 200, state: "finished", responseBytes: 9 * 1024 })
+
+  const [slow] = logger.startToolCalls(request)
+  assert.ok(slow)
+  clock = 5_200
+  slow.finish({ httpStatus: 200, state: "finished", responseBytes: 9 * 1024 })
+
+  const [failed] = logger.startToolCalls(request)
+  assert.ok(failed)
+  clock = 5_250
+  failed.finish({ httpStatus: 500, state: "closed", responseBytes: 20 * 1024 })
+
+  const log = await readFile(file, "utf8")
+  assert.match(log, /--- # \? 22:30:00 - shell_list - 100ms - 9\.0KB/)
+  assert.match(log, /--- # ~ 22:30:00 - shell_list - 5100ms - 9\.0KB/)
+  assert.match(log, /--- # ! 22:30:00 - shell_list - 50ms - 20KB - HTTP 500 closed/)
 })
 
 test("ignores non-tool MCP requests", async (t) => {

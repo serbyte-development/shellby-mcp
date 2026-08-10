@@ -85,7 +85,8 @@ function formatEntry(input: {
   const abnormal = input.httpStatus >= 400 || input.state !== "finished" ? ` - HTTP ${input.httpStatus} ${input.state}` : ""
   const largeResponse = input.responseBytes >= LARGE_RESPONSE_BYTES ? ` - ${formatBytes(input.responseBytes)}` : ""
   const tag = auditTag(input)
-  const heading = `--- # ${tag} ${formatAuditTime(input.time)} - ${input.toolName} - ${input.durationMs}ms${largeResponse}${abnormal}`
+  const tagPrefix = tag ? `${tag} ` : ""
+  const heading = `--- # ${tagPrefix}${formatAuditTime(input.time)} - ${input.toolName} - ${input.durationMs}ms${largeResponse}${abnormal}`
   const details = formatArguments(input.toolName, input.argumentsValue)
   return details ? `${heading}\n${details}\n\n` : `${heading}\n\n`
 }
@@ -94,7 +95,7 @@ function auditTag(input: { durationMs: number; httpStatus: number; state: "finis
   if (input.httpStatus >= 400 || input.state !== "finished") return "!"
   if (input.durationMs >= SLOW_CALL_MS) return "~"
   if (input.responseBytes >= LARGE_RESPONSE_BYTES) return "?"
-  return "^"
+  return ""
 }
 
 function formatBytes(bytes: number): string {

@@ -51,7 +51,7 @@ These are current implementation evidence, not copied raw notes:
 - Named-shell lifecycle: `src/tools/shell/session-manager.ts`, `test/shell-session-manager.test.ts`.
 - Workspace path resolution: `src/config.ts`, `test/config.test.ts`.
 - First-class `apply_patch` runtime and vendored binary: `src/tools/apply-patch/apply-patch.ts`, `vendor/apply-patch/`, `test/mcp-integration.test.ts`.
-- Webpage extraction and cached pagination: `src/tools/web/web-open.ts`, `test/web-open.test.ts`, `test/mcp-integration.test.ts`.
+- Webpage extraction and cached pagination: `src/tools/web/web-open.ts`, `test/web-fetch.test.ts`, `test/mcp-integration.test.ts`.
 - Tunnel helper: `ngrok-traffic-policy.yml`, `package.json`.
 - Change tripwire: current implementation through commit `d00978c` (`Refresh wiki and align subagent polling`).
 

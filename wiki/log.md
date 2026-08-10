@@ -455,3 +455,13 @@
 
 - Changed the active audit file from `agent-commands.md` to `agent-commands.yaml` for native VS Code syntax highlighting without a Markdown preview.
 - Kept each completed tool call compact as one YAML document; shell commands use block scalars, ordinary arguments stay bounded, and patch bodies remain omitted.
+
+## [2026-08-10] refine | reserve audit tags for noteworthy calls
+
+- Removed the normal `^` audit tag so ordinary YAML entries stay visually neutral.
+- Kept `?` for large responses, `~` for slow calls, and `!` for HTTP/connection failures.
+
+## [2026-08-10] refine | highlight notable MCP audit calls
+
+- Added Better Comments tags to YAML audit headers: `^` normal, `?` responses at least 8 KiB, `~` calls at least 5 seconds, and `!` HTTP/connection failures.
+- Count response bytes in-flight without retaining response bodies and show the size only when the large-response threshold is crossed.
