@@ -121,7 +121,6 @@ export function createMcpServer(shells: ShellSessionManager, options: CreateMcpS
           ),
         cursor: z.string().min(1).optional().describe("Opaque next_cursor from an earlier fetch_website response."),
         max_output_bytes: z
-          .number()
           .int()
           .min(256)
           .max(webPageOpener.maximumOutputBytes)
@@ -451,9 +450,13 @@ export function createMcpServer(shells: ShellSessionManager, options: CreateMcpS
     {
       title: "Apply patch",
       description:
-        "Use the apply_patch tool to edit files. The patch language is a stripped-down, file-oriented diff format designed to be easy to parse and safe to apply.",
+        "Use the apply_patch tool to add, update, or delete files. The patch language is a stripped-down, file-oriented diff format designed to be easy to parse and safe to apply. You can think of it as a high-level envelope: *** Begin Patch [ one or more file sections ] *** End Patch.",
       inputSchema: z.object({
-        patch: z.string().min(1).max(262_144).describe("The complete patch text, beginning with *** Begin Patch and ending with *** End Patch."),
+        patch: z
+          .string()
+          .min(1)
+          .max(262_144)
+          .describe("The complete patch text, beginning with *** Begin Patch and ending with *** End Patch. File references must be relative to cwd."),
         cwd: z.string().min(1).refine(isAbsolute, "cwd must be an absolute path.").describe("Required absolute directory used as the patch root."),
       }),
       outputSchema: z.object({
