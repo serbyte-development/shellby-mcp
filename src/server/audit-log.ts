@@ -3,6 +3,7 @@ import { appendFileSync } from "node:fs"
 const MAX_INLINE_ARGUMENT_CHARS = 600
 const MAX_SHELL_COMMAND_CHARS = 2_000
 const MAX_FAILED_PATCH_CHARS = 32_000
+const MAX_FAILED_MESSAGE_CHARS = 1_000
 const LARGE_RESPONSE_BYTES = 8 * 1024
 const SLOW_CALL_MS = 5_000
 
@@ -42,6 +43,7 @@ export class McpAuditLogger {
           finish: ({ httpStatus, state, responseBytes, responseBody }) => {
             if (finished) return
             finished = true
+            const toolResponse = parseToolResponse(responseBody)
             this.append(
               formatEntry({
                 time: startedTime,
@@ -51,7 +53,8 @@ export class McpAuditLogger {
                 httpStatus,
                 state,
                 responseBytes,
-                toolFailed: responseIndicatesToolFailure(responseBody),
+                toolFailed: toolResponse.failed,
+                failureMessage: toolResponse.failureMessage,
               })
             )
           },
@@ -86,13 +89,14 @@ function formatEntry(input: {
   state: "finished" | "closed"
   responseBytes: number
   toolFailed: boolean
+  failureMessage?: string
 }): string {
   const abnormal = input.httpStatus >= 400 || input.state !== "finished" ? ` - HTTP ${input.httpStatus} ${input.state}` : ""
   const largeResponse = input.responseBytes >= LARGE_RESPONSE_BYTES ? ` - ${formatBytes(input.responseBytes)}` : ""
   const tag = auditTag(input)
   const tagPrefix = tag ? `${tag} ` : ""
   const heading = `--- # ${tagPrefix}${formatAuditTime(input.time)} - ${input.toolName} - ${input.durationMs}ms${largeResponse}${abnormal}`
-  const details = formatArguments(input.toolName, input.argumentsValue, input.toolFailed)
+  const details = formatArguments(input.toolName, input.argumentsValue, input.toolFailed, input.failureMessage)
   return details ? `${heading}\n${details}\n\n` : `${heading}\n\n`
 }
 
@@ -109,7 +113,7 @@ function formatBytes(bytes: number): string {
   return `${kilobytes >= 10 ? Math.round(kilobytes) : kilobytes.toFixed(1)}KB`
 }
 
-function formatArguments(toolName: string, value: unknown, toolFailed: boolean): string {
+function formatArguments(toolName: string, value: unknown, toolFailed: boolean, failureMessage?: string): string {
   const argumentsRecord = asRecord(value)
 
   if (toolName === "apply_patch" && argumentsRecord) {
@@ -117,7 +121,8 @@ function formatArguments(toolName: string, value: unknown, toolFailed: boolean):
     const cwd = typeof argumentsRecord.cwd === "string" ? argumentsRecord.cwd : ""
     const summary = `cwd: ${yamlString(cwd)}\npatch_chars: ${characterCount(patch)}`
     if (!toolFailed) return summary
-    return `${summary}\npatch: |-\n${indentBlock(truncate(patch, MAX_FAILED_PATCH_CHARS))}`
+    const message = failureMessage ? `\nmessage: ${yamlString(truncate(failureMessage, MAX_FAILED_MESSAGE_CHARS))}` : ""
+    return `${summary}${message}\npatch: |-\n${indentBlock(truncate(patch, MAX_FAILED_PATCH_CHARS))}`
   }
 
   if (toolName === "shell_run" && argumentsRecord) {
@@ -136,18 +141,22 @@ function formatArguments(toolName: string, value: unknown, toolFailed: boolean):
   return `args: ${yamlString(truncate(serialized, MAX_INLINE_ARGUMENT_CHARS))}`
 }
 
-function responseIndicatesToolFailure(responseBody: string | undefined): boolean {
-  if (!responseBody) return false
+function parseToolResponse(responseBody: string | undefined): { failed: boolean; failureMessage?: string } {
+  if (!responseBody) return { failed: false }
   try {
     const payload = JSON.parse(responseBody) as unknown
     const responses = Array.isArray(payload) ? payload : [payload]
-    return responses.some((response) => {
-      if (!response || typeof response !== "object" || Array.isArray(response)) return false
+    for (const response of responses) {
+      if (!response || typeof response !== "object" || Array.isArray(response)) continue
       const result = (response as { result?: unknown }).result
-      return !!result && typeof result === "object" && !Array.isArray(result) && (result as { isError?: unknown }).isError === true
-    })
+      if (!result || typeof result !== "object" || Array.isArray(result) || (result as { isError?: unknown }).isError !== true) continue
+      const structuredContent = asRecord((result as { structuredContent?: unknown }).structuredContent)
+      const output = structuredContent && typeof structuredContent.output === "string" ? structuredContent.output : undefined
+      return output ? { failed: true, failureMessage: output } : { failed: true }
+    }
+    return { failed: false }
   } catch {
-    return responseBody.includes('"isError":true')
+    return { failed: responseBody.includes('"isError":true') }
   }
 }
 

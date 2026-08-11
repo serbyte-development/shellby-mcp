@@ -77,10 +77,21 @@ test("logs apply_patch bodies only when the tool fails", async (t) => {
   })
   assert.ok(failedCall)
   clock = 2_100
-  failedCall.finish({ httpStatus: 200, state: "finished", responseBytes: 400, responseBody: '{"result":{"isError":true}}' })
+  failedCall.finish({
+    httpStatus: 200,
+    state: "finished",
+    responseBytes: 400,
+    responseBody: JSON.stringify({
+      result: {
+        isError: true,
+        structuredContent: { status: "failed", exit_code: 1, output: "Invalid patch hunk on line 4\nUnexpected @@" },
+      },
+    }),
+  })
 
   log = await readFile(file, "utf8")
   assert.match(log, /--- # ! 21:12:03 - apply_patch - 49ms/)
+  assert.match(log, /message: "Invalid patch hunk on line 4\\nUnexpected @@"/)
   assert.match(log, /patch: \|-\n {2}\*\*\* Begin Patch/)
   assert.match(log, / {2}\+new/)
 })

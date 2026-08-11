@@ -55,14 +55,18 @@ test("serves shell tools through Streamable HTTP and retains state across MCP se
   assert.equal(runTool?.annotations?.destructiveHint, true)
   assert.equal(runTool?.annotations?.openWorldHint, true)
   const shellIdSchema = (runTool?.inputSchema.properties as Record<string, Record<string, unknown>>).shell_id
+  assert.ok(shellIdSchema)
   assert.equal(shellIdSchema.default, "default")
   assert.equal(shellIdSchema.maxLength, 64)
   const cwdSchema = (runTool?.inputSchema.properties as Record<string, Record<string, unknown>>).cwd
+  assert.ok(cwdSchema)
   assert.equal(cwdSchema.minLength, 1)
   const maxOutputSchema = (runTool?.inputSchema.properties as Record<string, Record<string, unknown>>).max_output_bytes
+  assert.ok(maxOutputSchema)
   assert.equal(maxOutputSchema.default, 2048)
   assert.equal(maxOutputSchema.maximum, 32768)
   const requestIdSchema = (runTool?.inputSchema.properties as Record<string, Record<string, unknown>>).request_id
+  assert.ok(requestIdSchema)
   assert.equal(requestIdSchema.pattern, undefined)
   assert.equal(requestIdSchema.minLength, 1)
   assert.equal(requestIdSchema.maxLength, 128)
@@ -107,14 +111,17 @@ test("serves shell tools through Streamable HTTP and retains state across MCP se
   assert.equal(shellCloseTool?.annotations?.destructiveHint, true)
   assert.equal(shellCloseTool?.annotations?.idempotentHint, false)
   const closeShellIdSchema = (shellCloseTool?.inputSchema.properties as Record<string, Record<string, unknown>>).shell_id
+  assert.ok(closeShellIdSchema)
   assert.equal(closeShellIdSchema.default, undefined)
   const fetchWebsiteTool = tools.tools.find((tool) => tool.name === "fetch_website")
   assert.equal(fetchWebsiteTool?.annotations?.readOnlyHint, true)
   assert.equal(fetchWebsiteTool?.annotations?.openWorldHint, true)
   const webMaxOutputSchema = (fetchWebsiteTool?.inputSchema.properties as Record<string, Record<string, unknown>>).max_output_bytes
+  assert.ok(webMaxOutputSchema)
   assert.equal(webMaxOutputSchema.default, 8192)
   assert.equal(webMaxOutputSchema.maximum, 32768)
   const websiteFormatSchema = (fetchWebsiteTool?.inputSchema.properties as Record<string, Record<string, unknown>>).format
+  assert.ok(websiteFormatSchema)
   assert.equal(websiteFormatSchema.default, "markdown")
   assert.deepEqual(websiteFormatSchema.enum, ["markdown", "clean_html", "raw_html"])
   const skillListTool = tools.tools.find((tool) => tool.name === "skill_list")
@@ -904,16 +911,15 @@ test("isolates named shell state and allows foreground commands in parallel", { 
   assert.equal(listedContent.count, 3)
   assert.equal(listedContent.limit, 8)
   assert.equal(listedContent.idle_timeout_ms, 1_800_000)
-  assert.deepEqual(
-    listedContent.shells.find((shell) => shell.shell_id === "default"),
-    {
-      shell_id: "default",
-      status: "idle",
-      is_default: true,
-      can_close: false,
-      idle_ms: listedContent.shells[0].idle_ms,
-    }
-  )
+  const defaultShell = listedContent.shells.find((shell) => shell.shell_id === "default")
+  assert.ok(defaultShell)
+  assert.deepEqual(defaultShell, {
+    shell_id: "default",
+    status: "idle",
+    is_default: true,
+    can_close: false,
+    idle_ms: defaultShell.idle_ms,
+  })
 
   const closed = await connected.client.callTool({
     name: "shell_close",

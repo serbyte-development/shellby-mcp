@@ -532,3 +532,13 @@
 
 - Kept the structured failure contract unchanged while also appending the bounded native stdout/stderr diagnostic to the MCP text response on failed `apply_patch` calls.
 - Added integration coverage that verifies text-only clients receive both the failed exit summary and diagnostic output; successful responses remain compact (`src/tools/apply-patch/apply-patch.ts`, `test/mcp-integration.test.ts`, `pages/Workspace Tooling.md`).
+
+## [2026-08-11] refine | log apply_patch failure messages
+
+- Added a bounded `message:` field to failed `apply_patch` entries in `agent-commands.yaml`, sourced from the tool's structured native diagnostic.
+- Kept successful patch audit entries unchanged and retained the existing failed-patch body for debugging (`src/server/audit-log.ts`, `test/mcp-audit-log.test.ts`).
+
+## [2026-08-11] refine | separate type-check and build TypeScript scopes
+
+- Kept `src/**/*.ts` and `test/**/*.ts` in the shared `tsconfig.json` so `npm run type-check` validates both production and test code.
+- Added `tsconfig.build.json` for `npm run build`, limiting emitted output to `src/**/*.ts` and restoring the expected `dist/index.js` layout without `dist/test` (`package.json`, `tsconfig.json`, `tsconfig.build.json`, `pages/Build and Test.md`).

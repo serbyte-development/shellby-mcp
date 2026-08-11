@@ -8,16 +8,16 @@ Verified 2026-08-11.
 - MCP uses the modular TypeScript SDK v2 packages: `@modelcontextprotocol/server`, `@modelcontextprotocol/node`, `@modelcontextprotocol/express`, and the integration-test-only client surface from `@modelcontextprotocol/client` (`package.json`).
 - TypeScript is pinned to `6.0.3` because the current `typescript-eslint` release supports TypeScript `<6.1`; ESLint uses the recommended JavaScript and TypeScript rule sets (`package.json`, `eslint.config.js`).
 - Prettier `3.9.6` owns formatting; `eslint-config-prettier` disables ESLint rules that would conflict with formatting. `.prettierrc` uses no semicolons, double quotes, ES5 trailing commas, two-space indentation, and a 160-column print width (`package.json`, `eslint.config.js`, `.prettierrc`).
-- `tsconfig.json` compiles only `src/**/*.ts` to `dist/`, emits declarations and source maps, targets ES2022, and enables strict typing plus unchecked-index protection.
+- `tsconfig.json` is the shared type-check configuration for both `src/**/*.ts` and `test/**/*.ts`; it emits declarations and source maps when emission is enabled, targets ES2022, and enables strict typing plus unchecked-index protection.
+- `tsconfig.build.json` extends the shared config but includes only `src/**/*.ts`, so production builds emit `dist/index.js` and the source tree without compiling tests into `dist/` (`tsconfig.json`, `tsconfig.build.json`, `package.json`).
 - `tsconfig.json` explicitly includes Node types for the MCP v2 server declarations (`tsconfig.json`).
-- Tests are intentionally excluded from the production build and are executed directly from TypeScript (`tsconfig.json`, `package.json`).
 
 ## Validation
 
 | Command              | Purpose                                                |
 | -------------------- | ------------------------------------------------------ |
 | `npm test`           | Run `test/*.test.ts` through `tsx`                     |
-| `npm run type-check` | Check source without emitting                          |
+| `npm run type-check` | Check source and tests without emitting                |
 | `npm run lint`       | Lint `src/` and `test/` with ESLint                    |
 | `npm run format`     | Format source, tests, and project config with Prettier |
 | `npm run build`      | Emit production JavaScript to `dist/`                  |

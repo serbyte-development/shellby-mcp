@@ -12,7 +12,7 @@
     "node": ">=22"
   },
   "scripts": {
-    "build": "rm -rf dist && tsc -p tsconfig.json",
+    "build": "rm -rf dist && tsc -p tsconfig.build.json",
     "dev": "tsx watch src/index.ts",
     "setup": "node scripts/setup.mjs",
     "setup:chatgpt": "node scripts/chatgpt-browser.mjs --setup",
@@ -31,7 +31,7 @@
     "vendor:apply-patch": "scripts/build-apply-patch.sh",
     "lint": "eslint src test",
     "lint:fix": "eslint src test --fix",
-    "format": "prettier --write src test scripts package.json tsconfig.json eslint.config.js ecosystem.config.cjs"
+    "format": "prettier --write src test scripts package.json tsconfig.json tsconfig.build.json eslint.config.js ecosystem.config.cjs"
   },
   "dependencies": {
     "@modelcontextprotocol/client": "2.0.0",

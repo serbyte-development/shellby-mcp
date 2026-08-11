@@ -157,10 +157,14 @@ test("admits only one concurrent command without corrupting the active record", 
 
   assert.equal(admitted.length, 1)
   assert.equal(rejected.length, 1)
-  assert.ok(rejected[0].reason instanceof ShellSessionError && rejected[0].reason.code === "busy")
+  const admittedAttempt = admitted[0]
+  const rejectedAttempt = rejected[0]
+  assert.ok(admittedAttempt)
+  assert.ok(rejectedAttempt)
+  assert.ok(rejectedAttempt.reason instanceof ShellSessionError && rejectedAttempt.reason.code === "busy")
 
-  const completed = await pollToCompletion(shell, admitted[0].value)
-  const expectedOutput = admitted[0].value.request_id === "concurrent-a" ? "A" : "B"
+  const completed = await pollToCompletion(shell, admittedAttempt.value)
+  const expectedOutput = admittedAttempt.value.request_id === "concurrent-a" ? "A" : "B"
   assert.equal(completed.output, expectedOutput)
   assert.equal(completed.snapshot.status, "completed")
 
@@ -482,8 +486,8 @@ test("reset kills a TERM-resistant background descendant", { timeout: 10_000 }, 
   )
   // eslint-disable-next-line prefer-const -- destructured assignment happens after cleanup registration.
   ;[descendantPid, oldProcessGroup] = started.output.split("|").map((value) => Number.parseInt(value, 10))
-  assert.ok(Number.isSafeInteger(descendantPid))
-  assert.ok(Number.isSafeInteger(oldProcessGroup))
+  assert.ok(descendantPid !== undefined && Number.isSafeInteger(descendantPid))
+  assert.ok(oldProcessGroup !== undefined && Number.isSafeInteger(oldProcessGroup))
   assert.equal(isProcessAlive(descendantPid), true)
   assert.equal(isProcessAlive(-oldProcessGroup), true)
 
