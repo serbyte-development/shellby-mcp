@@ -1,6 +1,6 @@
 # Workspace Tooling
 
-Verified 2026-08-10.
+Verified 2026-08-11.
 
 ## Default Workspace
 
@@ -11,6 +11,12 @@ Verified 2026-08-10.
 The MCP registers `apply_patch` as a first-class core tool and resolves the checked-in macOS arm64 executable directly from `vendor/apply-patch/apply_patch`. There is no workspace symlink, shell `PATH` injection, or runtime binary override. Shell callers do not need `apply_patch`; agents use the MCP tool directly (`src/tools/apply-patch/apply-patch.ts`, `vendor/apply-patch/apply_patch`).
 
 The handler requires an absolute patch root, spawns the vendored executable directly in that directory, writes the patch to stdin, and caps combined failure diagnostics internally at 4 KiB; callers cannot raise that limit through the tool schema. On POSIX the child owns a detached process group; request abort sends the group `SIGTERM`, waits 500 ms, escalates to `SIGKILL`, and force-settles after one further bounded grace period if process close never arrives. Windows uses direct child signaling. `apply_patch` remains independent of persistent-shell state and serialization (`src/server/http-server.ts`, `src/tools/apply-patch/apply-patch.ts`, `test/mcp-integration.test.ts`).
+
+Direct MCP probes on 2026-08-11 against the vendored binary pinned in `vendor/apply-patch/provenance.json` verified `Add File`, `Update File`, `Delete File`, `Move to`, multiple file operations, multiple ordinary hunks, `@@ <context>` search anchors, and `*** End of File`. A single `@@` anchor can scope a later matching change within that region. Consecutive `@@` anchors are rejected as an invalid update hunk, despite the copied Codex prompt example that describes nested `@@` anchors. Hunk body lines must begin with space, `-`, or `+`; malformed envelopes and hunks return specific parser diagnostics (`vendor/apply-patch/apply_patch`).
+
+Two parser behaviors are intentionally treated as implementation quirks rather than the MCP contract: `*** Add File` overwrites an existing path, and an absolute path inside a patch is accepted by the vendored binary and can escape `cwd`. The public tool schema and agent instructions still require patch file references to be relative. The wrapper mechanically validates only that `cwd` itself is absolute; it does not parse or sandbox patch-internal paths (`src/tools/apply-patch/apply-patch.ts`, `vendor/apply-patch/apply_patch`).
+
+On failure, `structuredContent` returns `status: failed`, the native exit code, and up to 4 KiB of combined stdout/stderr in `output`; truncation is reported with `output_truncated` and `omitted_output_bytes`. The text `content` also includes the same bounded native diagnostic after the compact `apply_patch failed, exit=...` summary so clients that primarily surface text still receive actionable parser errors. Actual parser failures include useful diagnostics such as missing envelope markers, missing files, unmatched context, and invalid hunk lines. Successful calls intentionally omit native output and return only compact status/exit metadata (`src/tools/apply-patch/apply-patch.ts`, `test/mcp-integration.test.ts`).
 
 The vendored binary, provenance, license, and notice live together under `vendor/apply-patch/`. If additional platform-specific binaries are needed later, pin the Codex repository as a source submodule and build `codex-apply-patch` for each target rather than copying a partial Rust source tree into this repository (`scripts/build-apply-patch.sh`, `vendor/apply-patch/provenance.json`).
 

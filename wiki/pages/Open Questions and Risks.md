@@ -1,6 +1,6 @@
 # Open Questions and Risks
 
-Verified 2026-08-10.
+Verified 2026-08-11.
 
 ## Active Risks
 
@@ -12,6 +12,7 @@ Verified 2026-08-10.
 - **Website fetching is open-world:** `fetch_website` can navigate to HTTP or HTTPS resources reachable from the host, including local or private-network services. Cached documents are count-, TTL-, and byte-bounded, but concurrent fetches can still cause temporary CPU or memory spikes (`src/tools/web/web-tool.ts`, `src/tools/web/web-open.ts`).
 - **Best-effort descendant cleanup:** process-group signaling errors are swallowed to keep the server alive. A process the local user cannot signal may outlive reset or shutdown (`src/tools/shell/session.ts`).
 - **Rolling-output loss:** global eviction is reported through `cursor_expired`; per-command ceiling loss is reported through `output_truncated` and `dropped_output_bytes`. Neither class of discarded output is recoverable (`src/index.ts`, `src/tools/shell/session.ts`).
+- **`apply_patch` path rules are a caller contract, not a sandbox:** the vendored Codex binary accepts absolute patch file paths and `Add File` overwrites an existing path. The MCP validates that `cwd` is absolute but does not parse patch-internal paths, so the relative-path rule is enforced only by the published schema/instructions and the process retains the local user's filesystem permissions (`src/tools/apply-patch/apply-patch.ts`, `vendor/apply-patch/apply_patch`).
 - **MCP audit logging can disclose values:** bounded `tools/call` inputs are stored in the gitignored repository-local `agent-commands.yaml`, including shell commands, prompt prefixes, URLs, and other tool arguments. Ordinary arguments are capped at 600 characters and shell commands at 2,000 characters. `apply_patch` bodies are intentionally omitted and only cwd plus patch size are logged. Tool output is not persisted; only response byte counts are observed to flag unusually large calls (`src/index.ts`, `src/server/http-server.ts`, `src/server/audit-log.ts`).
 - **No CI enforcement:** tests, type-check, and build exist only as local package scripts (`package.json`).
 - **Port configuration is not composed:** `PORT` can move the HTTP listener, while the included ngrok command and Host rewrite remain fixed at 3333 (`src/index.ts`, `package.json`, `ngrok-traffic-policy.yml`).

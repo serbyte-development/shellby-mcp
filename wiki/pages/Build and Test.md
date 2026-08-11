@@ -1,6 +1,6 @@
 # Build and Test
 
-Verified 2026-08-10.
+Verified 2026-08-11.
 
 ## Build Boundary
 
@@ -42,3 +42,5 @@ Tests use temporary directories and real local child shells; process-group tests
 No CI workflow is present in the repository, so the validation commands are not enforced by checked-in automation (`package.json`, repository tree).
 
 The tests do not exercise the real `src/index.ts` composition path, `/healthz`, GET/DELETE 405 responses, signal-driven shutdown, tunnel configuration, a real browser launch, or the installed Peekaboo/macOS permission path (`test/`, `src/index.ts`, `src/server/http-server.ts`, `src/tools/web/web-open.ts`, `src/tools/computer/peekaboo.ts`).
+
+The `apply_patch` MCP integration tests inject a fake executable, so they cover wrapper behavior, output caps, concurrency, and abort cleanup but not the checked-in Codex parser itself. Direct MCP probes against `vendor/apply-patch/apply_patch` on 2026-08-11 found three semantics not represented by those tests: consecutive `@@` context anchors are rejected, absolute patch file paths are accepted, and `Add File` overwrites an existing path (`src/tools/apply-patch/apply-patch.ts`, `test/mcp-integration.test.ts`, `vendor/apply-patch/apply_patch`).

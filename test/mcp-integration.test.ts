@@ -1026,6 +1026,9 @@ test("applies patches through the native MCP tool", { timeout: 20_000 }, async (
   assert.equal(Buffer.byteLength(failedContent.output, "utf8"), 4 * 1024)
   assert.equal(failedContent.output_truncated, true)
   assert.equal(failedContent.omitted_output_bytes, 1)
+  const failedText = (failed.content?.[0] as { text?: string } | undefined)?.text ?? ""
+  assert.match(failedText, /apply_patch failed, exit=9/)
+  assert.ok(failedText.endsWith(failedContent.output))
   const failedAudit = await readFile(auditPath, "utf8")
   assert.match(failedAudit, /--- # ! \d{2}:\d{2}:\d{2} - apply_patch - \d+ms/)
   assert.match(failedAudit, /patch: \|-\n {2}\*\*\* Begin Patch/)

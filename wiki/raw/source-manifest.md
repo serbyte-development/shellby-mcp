@@ -50,7 +50,7 @@ These are current implementation evidence, not copied raw notes:
 - Shell, transcript, idempotency, and reset behavior: `src/tools/shell/session.ts`, `test/shell-session.test.ts`.
 - Named-shell lifecycle: `src/tools/shell/session-manager.ts`, `test/shell-session-manager.test.ts`.
 - Workspace path resolution: `src/config.ts`, `test/config.test.ts`.
-- First-class `apply_patch` runtime and vendored binary: `src/tools/apply-patch/apply-patch.ts`, `vendor/apply-patch/`, `test/mcp-integration.test.ts`.
+- First-class `apply_patch` runtime and vendored binary: `src/tools/apply-patch/apply-patch.ts`, `vendor/apply-patch/`, `test/mcp-integration.test.ts`. Direct MCP probes on 2026-08-11 confirmed that the real binary rejects consecutive `@@` anchors even though copied Codex prompt guidance describes them, accepts absolute patch file paths, and lets `Add File` overwrite an existing path; the existing MCP integration tests use a fake patch executable and therefore do not establish those parser semantics.
 - Webpage extraction and cached pagination: `src/tools/web/web-open.ts`, `test/web-fetch.test.ts`, `test/mcp-integration.test.ts`.
 - Tunnel helper: `ngrok-traffic-policy.yml`, `package.json`.
 - Change tripwire: current implementation through commit `d00978c` (`Refresh wiki and align subagent polling`).

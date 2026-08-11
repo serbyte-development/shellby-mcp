@@ -50,7 +50,10 @@ export function registerApplyPatchTool(server: McpServer, executable = DEFAULT_A
           content: [
             {
               type: "text" as const,
-              text: `apply_patch ${result.status}, exit=${result.exit_code ?? "n/a"}`,
+              text:
+                result.status === "failed" && result.output
+                  ? `apply_patch failed, exit=${result.exit_code ?? "n/a"}\n\n${result.output}`
+                  : `apply_patch ${result.status}, exit=${result.exit_code ?? "n/a"}`,
             },
           ],
         }

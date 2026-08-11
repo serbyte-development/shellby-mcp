@@ -521,3 +521,14 @@
 - Added `shell_run` batch syntax using `*** Begin Commands`, repeated `*** Run` / `*** Run: relative/path` sections, and `*** End Commands` while leaving normal commands unchanged.
 - Added process-wide four-child scheduling, persistent-shell exported-environment capture, relative batch directories, per-child bounded output and exit state, 10-minute child timeouts, grouped polling, and reset cleanup (`src/tools/shell/parallel-runner.ts`, `src/tools/shell/session.ts`, `src/tools/shell/shell-tools.ts`).
 - Added focused and MCP integration coverage for batching, queueing, cwd/environment inheritance, nonzero exits, timeout, malformed syntax, and reset behavior (`test/shell-session.test.ts`, `test/mcp-integration.test.ts`).
+
+## [2026-08-11] verify | probe vendored apply_patch semantics
+
+- Exercised the first-class MCP `apply_patch` tool against the checked-in Codex binary for add, update, delete, move, multi-file, multi-hunk, context-anchor, end-of-file, and malformed-patch behavior.
+- Confirmed actionable failure diagnostics are returned through bounded `output`, while successful calls remain compact.
+- Recorded three real-binary quirks: consecutive `@@` anchors are rejected, absolute patch file paths can escape `cwd`, and `Add File` overwrites existing paths. Documented that current integration tests use a fake patch executable and do not cover these parser semantics (`pages/Workspace Tooling.md`, `pages/Build and Test.md`, `pages/Open Questions and Risks.md`).
+
+## [2026-08-11] refine | surface apply_patch failure diagnostics in text
+
+- Kept the structured failure contract unchanged while also appending the bounded native stdout/stderr diagnostic to the MCP text response on failed `apply_patch` calls.
+- Added integration coverage that verifies text-only clients receive both the failed exit summary and diagnostic output; successful responses remain compact (`src/tools/apply-patch/apply-patch.ts`, `test/mcp-integration.test.ts`, `pages/Workspace Tooling.md`).
