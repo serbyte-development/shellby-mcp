@@ -27,7 +27,9 @@ export interface WebOpenResult extends Record<string, unknown> {
   format: WebsiteContentFormat
   content: string
   next_cursor?: string
-  source_truncated?: true
+  output_truncated?: true
+  source_dropped?: true
+  dropped_source_bytes?: number
 }
 
 export interface RenderedWebPage {
@@ -51,7 +53,7 @@ interface CachedDocument extends RenderedWebPage {
   requestedUrl: string
   format: WebsiteContentFormat
   expiresAt: number
-  sourceTruncated: boolean
+  droppedSourceBytes: number
 }
 
 interface CursorPayload {
@@ -120,7 +122,7 @@ export class WebPageOpener {
         format,
         content: boundedContent.value,
         expiresAt: this.now() + this.documentTtlMs,
-        sourceTruncated: boundedContent.omittedBytes > 0,
+        droppedSourceBytes: boundedContent.omittedBytes,
       }
       this.storeDocument(document)
     }
@@ -138,8 +140,12 @@ export class WebPageOpener {
         documentId: document.id,
         offset: chunk.nextOffset,
       })
+      result.output_truncated = true
     }
-    if (document.sourceTruncated) result.source_truncated = true
+    if (document.droppedSourceBytes > 0) {
+      result.source_dropped = true
+      result.dropped_source_bytes = document.droppedSourceBytes
+    }
     return result
   }
 

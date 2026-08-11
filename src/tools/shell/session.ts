@@ -18,7 +18,7 @@ import {
 
 const DEFAULT_TRANSCRIPT_LIMIT = 1024 * 1024
 const DEFAULT_COMMAND_TRANSCRIPT_BYTES = 256 * 1024
-const DEFAULT_OUTPUT_BYTES = 2 * 1024
+const DEFAULT_OUTPUT_BYTES = 4 * 1024
 const MAX_OUTPUT_BYTES = 32 * 1024
 const DEFAULT_WAIT_MS = 1_500
 const MAX_WAIT_MS = 10_000
@@ -35,9 +35,9 @@ export interface ShellSnapshot extends Record<string, unknown> {
   cwd: string
   output: string
   next_cursor: number
-  has_more: boolean
-  cursor_expired: boolean
   output_truncated: boolean
+  cursor_expired: boolean
+  output_dropped: boolean
   dropped_output_bytes: number
   commands?: ParallelCommandSnapshot[]
 }
@@ -47,7 +47,7 @@ export interface ParallelCommandSnapshot extends Record<string, unknown> {
   path?: string
   status: ParallelCommandStatus
   exit_code: number | null
-  output_truncated?: true
+  output_dropped?: true
   dropped_output_bytes?: number
 }
 
@@ -608,16 +608,16 @@ export class PersistentShellSession {
       cwd: record.cwd,
       output: read.output,
       next_cursor: read.nextCursor,
-      has_more: read.hasMore,
+      output_truncated: read.hasMore,
       cursor_expired: read.cursorExpired,
-      output_truncated: droppedOutputBytes > 0,
+      output_dropped: droppedOutputBytes > 0,
       dropped_output_bytes: droppedOutputBytes,
       commands: record.runs.map((run) => ({
         run: run.run,
         ...(run.path === undefined ? {} : { path: run.path }),
         status: run.status,
         exit_code: run.exitCode,
-        ...(run.droppedOutputBytes > 0 ? { output_truncated: true as const, dropped_output_bytes: run.droppedOutputBytes } : {}),
+        ...(run.droppedOutputBytes > 0 ? { output_dropped: true as const, dropped_output_bytes: run.droppedOutputBytes } : {}),
       })),
     }
   }
@@ -1090,9 +1090,9 @@ export class PersistentShellSession {
       cwd: record.cwd,
       output: read.output,
       next_cursor: read.nextCursor,
-      has_more: read.hasMore,
+      output_truncated: read.hasMore,
       cursor_expired: read.cursorExpired,
-      output_truncated: record.droppedOutputBytes > 0,
+      output_dropped: record.droppedOutputBytes > 0,
       dropped_output_bytes: record.droppedOutputBytes,
     }
   }

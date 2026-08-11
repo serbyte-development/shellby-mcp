@@ -14,7 +14,7 @@ import { PeekabooClient } from "./tools/computer/peekaboo.js"
 
 const host = process.env.HOST ?? MCP_CONFIG.defaults.host
 const port = parsePositiveInteger(process.env.PORT, MCP_CONFIG.defaults.port)
-const defaultOutputBytes = parsePositiveInteger(process.env.MCP_OUTPUT_BYTES, 2 * 1024)
+const defaultOutputBytes = parsePositiveInteger(process.env.MCP_OUTPUT_BYTES, 4 * 1024)
 const maxOutputBytes = parsePositiveInteger(process.env.MCP_MAX_OUTPUT_BYTES, 32 * 1024)
 const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..")
 const auditLogPath = resolve(repositoryRoot, "agent-commands.yaml")

@@ -23,6 +23,7 @@ test("paginates fetched content without reopening the page", async () => {
   assert.equal(Buffer.byteLength(result.content, "utf8"), 2_048)
   assert.equal(result.url, "https://example.com/final")
   assert.equal(result.format, "markdown")
+  assert.equal(result.output_truncated, true)
 
   while (result.next_cursor) {
     result = await opener.open({
@@ -34,6 +35,7 @@ test("paginates fetched content without reopening the page", async () => {
 
   assert.equal(content, expected)
   assert.equal(renders, 1)
+  assert.equal(result.output_truncated, undefined)
 })
 
 test("forwards the requested format and requires it for cursor continuation", async () => {
@@ -56,6 +58,7 @@ test("forwards the requested format and requires it for cursor continuation", as
   })
   assert.equal(first.format, "clean_html")
   assert.deepEqual(formats, ["clean_html"])
+  assert.equal(first.output_truncated, true)
   assert.ok(first.next_cursor)
 
   const second = await opener.open({
@@ -87,6 +90,7 @@ test("accepts the final redirected URL for cursor reads", async () => {
   })
 
   const first = await opener.open({ url: "https://example.com/start" })
+  assert.equal(first.output_truncated, true)
   assert.ok(first.next_cursor)
   const second = await opener.open({
     url: first.url,
@@ -126,7 +130,7 @@ test("rejects invalid and expired cursors", async () => {
   )
 })
 
-test("bounds cached extracted documents and reports source truncation", async () => {
+test("bounds cached extracted documents and reports dropped source bytes", async () => {
   const opener = new WebPageOpener({
     defaultOutputBytes: 256,
     documentByteLimit: 300,
@@ -139,7 +143,9 @@ test("bounds cached extracted documents and reports source truncation", async ()
 
   const first = await opener.open({ url: "https://example.com" })
   assert.equal(first.content, "x".repeat(256))
-  assert.equal(first.source_truncated, true)
+  assert.equal(first.output_truncated, true)
+  assert.equal(first.source_dropped, true)
+  assert.equal(first.dropped_source_bytes, 200)
   assert.ok(first.next_cursor)
 
   const second = await opener.open({
@@ -147,6 +153,8 @@ test("bounds cached extracted documents and reports source truncation", async ()
     cursor: first.next_cursor,
   })
   assert.equal(second.content, "x".repeat(44))
-  assert.equal(second.source_truncated, true)
+  assert.equal(second.output_truncated, undefined)
+  assert.equal(second.source_dropped, true)
+  assert.equal(second.dropped_source_bytes, 200)
   assert.equal(second.next_cursor, undefined)
 })

@@ -28,7 +28,7 @@ const shellSnapshotSchema = z.object({
   status: z.enum(["running", "completed", "shell_exited", "reset"]),
   exit_code: z.int().nullable(),
   cwd: z.string().describe("The shell working directory for this command, or the root cwd for a parallel batch."),
-  output: z.string().describe("Command output. Parallel batches return completed run output in labeled blocks without interleaving child streams."),
+  output: z.string().describe("Command output. Parallel batches return completed run output in labeled blocks"),
   commands: z
     .array(
       z.object({
@@ -36,20 +36,27 @@ const shellSnapshotSchema = z.object({
         path: z.string().optional().describe("Relative path from the batch cwd. Omitted when the run uses the batch root."),
         status: z.enum(["queued", "running", "completed", "timed_out", "failed", "reset"]),
         exit_code: z.int().nullable(),
-        output_truncated: z.literal(true).optional(),
+        output_dropped: z.literal(true).optional().describe("Present when this child permanently discarded output at its capture ceiling."),
         dropped_output_bytes: z.int().positive().optional(),
       })
     )
     .optional()
     .describe("Present only for a parallel batch, in submission order."),
-  request_id: z.string().optional().describe("Present only when shell_poll may be needed."),
-  next_cursor: z.int().nonnegative().optional().describe("Present only when shell_poll may be needed."),
-  has_more: z.literal(true).optional().describe("Present when retained output remains unread."),
+  request_id: z.string().optional().describe("Present when the command is still running or this response was truncated and can be continued with shell_poll."),
+  next_cursor: z
+    .int()
+    .nonnegative()
+    .optional()
+    .describe("Continuation cursor for shell_poll when the command is still running or this response was truncated."),
   cursor_expired: z.literal(true).optional().describe("Present when output before the requested cursor is no longer retained."),
   output_truncated: z
     .literal(true)
     .optional()
-    .describe("Present when the per-command capture ceiling discarded output. Polling cannot recover discarded bytes."),
+    .describe("Present response stopped at max_output_bytes while additional retained output remains. The omitted output is recoverable with shell_poll."),
+  output_dropped: z
+    .literal(true)
+    .optional()
+    .describe("Present when the per-command capture ceiling permanently discarded output. Polling cannot recover discarded bytes."),
   dropped_output_bytes: z.int().positive().optional().describe("Present when UTF-8 command-output bytes were discarded by the per-command capture ceiling."),
 })
 
@@ -67,7 +74,7 @@ export function registerShellExecutionTools(server: McpServer, shells: ShellSess
     "shell_run",
     {
       title: "Run a local shell command",
-      description: `Execute one command or a parallel command batch in a named persistent shell. Reuse shell_id to retain cwd and exported environment. For independent commands, use *** Begin Commands, one or more *** Run sections, and *** End Commands; *** Run: <relative/path> resolves from the call's cwd/root. Prefer RTK for supported reads. Start long work with wait_ms: 0 and poll. New shells start in ${workspaceDescription}.`,
+      description: `Execute one command or a parallel command batch in a named persistent shell. Reuse shell_id to retain cwd and exported environment. For independent commands, use *** Begin Commands, one or more *** Run sections, and *** End Commands; *** Run:<relative path> resolves from the call's cwd/root. Prefer RTK for supported reads. New shells start in ${workspaceDescription}.`,
       inputSchema: z.object({
         shell_id: shellIdInput,
         request_id: requestIdInput.describe(
@@ -78,14 +85,14 @@ export function registerShellExecutionTools(server: McpServer, shells: ShellSess
           .min(1)
           .optional()
           .describe(
-            "Optional absolute directory switch. It persists for normal commands and becomes the root for a parallel batch; each `*** Run: <path>` is relative to it."
+            "Optional absolute directory switch. It persists for normal commands and becomes the root for a parallel batch; each parallel command `*** Run:<relative path>` is relative to it."
           ),
         command: z
           .string()
           .min(1)
           .max(262_144)
           .describe(
-            "Exact zsh command or multiline script. For parallel work: *** Begin Commands, then repeated *** Run or *** Run: <relative/path> sections, then *** End Commands."
+            "Exact zsh command or multiline script. For parallel work: *** Begin Commands, then repeated *** Run or *** Run:<relative path> sections, then *** End Commands."
           ),
         wait_ms: z.int().min(0).max(10_000).optional().default(1_500).describe("Returns earlier if the output byte cap is reached."),
         max_output_bytes: maxOutputBytesInput,
@@ -122,11 +129,14 @@ export function registerShellExecutionTools(server: McpServer, shells: ShellSess
     {
       title: "Poll local shell output",
       description:
-        "Read more output or updated parallel-run state using the cursor returned by shell_run or shell_poll. Continue while the outer request is running. When completed with has_more, poll only if the omitted output is needed.",
+        "Read additional output or updated state for a previous shell_run. Poll while status is running. If a completed result has output_truncated, only continue when the omitted output is needed to complete the task.",
       inputSchema: z.object({
         shell_id: shellIdInput.describe("The same shell_id used for the original shell_run call."),
         request_id: requestIdInput.describe("The same request_id used for the original shell_run call."),
-        cursor: z.int().nonnegative().describe("The next_cursor returned by the previous result."),
+        cursor: z
+          .int()
+          .nonnegative()
+          .describe("The next_cursor returned by the previous result. Only pass in this cursor when the omitted output is needed to complete the task."),
         wait_ms: z.int().min(0).max(10_000).optional().default(2_000),
         max_output_bytes: maxOutputBytesInput,
       }),
@@ -313,9 +323,9 @@ interface CompactShellSnapshot extends Record<string, unknown> {
   output: string
   request_id?: string
   next_cursor?: number
-  has_more?: true
   cursor_expired?: true
   output_truncated?: true
+  output_dropped?: true
   dropped_output_bytes?: number
   commands?: ParallelCommandSnapshot[]
 }
@@ -328,13 +338,13 @@ function compactShellSnapshot(snapshot: ShellSnapshot, shellId: string): Compact
     output: snapshot.output,
   }
   if (shellId !== DEFAULT_SHELL_ID) compact.shell_id = shellId
-  if (snapshot.status === "running" || snapshot.has_more) {
+  if (snapshot.status === "running" || snapshot.output_truncated) {
     compact.request_id = snapshot.request_id
     compact.next_cursor = snapshot.next_cursor
   }
-  if (snapshot.has_more) compact.has_more = true
   if (snapshot.cursor_expired) compact.cursor_expired = true
   if (snapshot.output_truncated) compact.output_truncated = true
+  if (snapshot.output_dropped) compact.output_dropped = true
   if (snapshot.dropped_output_bytes > 0) compact.dropped_output_bytes = snapshot.dropped_output_bytes
   if (snapshot.commands) compact.commands = snapshot.commands
   return compact
@@ -349,14 +359,14 @@ function shellResultSummary(snapshot: CompactShellSnapshot): string {
     if (snapshot.status === "running") {
       return `shell parallel running; ${finished}/${snapshot.commands.length} finished; poll request=${snapshot.request_id} cursor=${snapshot.next_cursor}`
     }
-    if (snapshot.has_more) {
-      return `shell parallel ${snapshot.status}; ${issues} issue${issues === 1 ? "" : "s"}; more output at request=${snapshot.request_id} cursor=${snapshot.next_cursor}`
+    if (snapshot.output_truncated) {
+      return `shell parallel ${snapshot.status}; ${issues} issue${issues === 1 ? "" : "s"}; response output truncated; cursor=${snapshot.next_cursor}`
     }
     return `shell parallel ${snapshot.status}; ${issues} issue${issues === 1 ? "" : "s"}`
   }
   const exit = snapshot.exit_code ?? "n/a"
   if (snapshot.status === "running") return `shell running; poll request=${snapshot.request_id} cursor=${snapshot.next_cursor}`
-  if (snapshot.has_more) return `shell ${snapshot.status}, exit=${exit}; more output at request=${snapshot.request_id} cursor=${snapshot.next_cursor}`
+  if (snapshot.output_truncated) return `shell ${snapshot.status}, exit=${exit}; response output truncated; cursor=${snapshot.next_cursor}`
   if (snapshot.dropped_output_bytes) return `shell ${snapshot.status}, exit=${exit}; dropped=${snapshot.dropped_output_bytes} bytes`
   return `shell ${snapshot.status}, exit=${exit}`
 }

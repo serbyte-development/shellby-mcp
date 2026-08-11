@@ -140,7 +140,7 @@ test("keeps a completed retry bounded after later commands", { timeout: 10_000 }
   })
   assert.equal(retry.output, "first")
   assert.equal(retry.next_cursor, first.snapshot.next_cursor)
-  assert.equal(retry.has_more, false)
+  assert.equal(retry.output_truncated, false)
 })
 
 test("admits only one concurrent command without corrupting the active record", { timeout: 10_000 }, async (t) => {
@@ -199,7 +199,7 @@ test("caps UTF-8 bytes without splitting characters and allows an override", { t
   })
   assert.equal(first.output, "🙂")
   assert.equal(Buffer.byteLength(first.output, "utf8"), 4)
-  assert.equal(first.has_more, true)
+  assert.equal(first.output_truncated, true)
 
   const rest = await shell.pollCommand({
     requestId: "utf8-byte-cap",
@@ -209,7 +209,7 @@ test("caps UTF-8 bytes without splitting characters and allows an override", { t
   })
   assert.equal(rest.output, "éA")
   assert.equal(Buffer.byteLength(rest.output, "utf8"), 3)
-  assert.equal(rest.has_more, false)
+  assert.equal(rest.output_truncated, false)
 })
 
 test("drops output beyond the per-command transcript ceiling", { timeout: 10_000 }, async (t) => {
@@ -222,12 +222,12 @@ test("drops output beyond the per-command transcript ceiling", { timeout: 10_000
 
   const result = await runToCompletion(shell, "command-transcript-cap", "printf '🙂éAB'")
   assert.equal(result.output, "🙂éA")
-  assert.equal(result.snapshot.output_truncated, true)
+  assert.equal(result.snapshot.output_dropped, true)
   assert.equal(result.snapshot.dropped_output_bytes, 1)
 
   const after = await runToCompletion(shell, "after-command-transcript-cap", "printf healthy")
   assert.equal(after.output, "healthy")
-  assert.equal(after.snapshot.output_truncated, false)
+  assert.equal(after.snapshot.output_dropped, false)
   assert.equal(after.snapshot.dropped_output_bytes, 0)
 })
 
@@ -242,7 +242,7 @@ test("keeps surrogate pairs intact while scanning for a delayed marker", { timeo
   const result = await runToCompletion(shell, "surrogate-marker-boundary", `printf '${"🙂"}${"a".repeat(45)}'; sleep 0.1`)
 
   assert.equal(result.output, "🙂")
-  assert.equal(result.snapshot.output_truncated, true)
+  assert.equal(result.snapshot.output_dropped, true)
   assert.equal(result.snapshot.dropped_output_bytes, 45)
 })
 
@@ -303,7 +303,7 @@ test("keeps completed command polling bounded after later commands", { timeout: 
   })
 
   assert.equal(stalePoll.output, "")
-  assert.equal(stalePoll.has_more, false)
+  assert.equal(stalePoll.output_truncated, false)
 })
 
 test("rejects poll cursors before the requested command", { timeout: 10_000 }, async (t) => {
@@ -692,7 +692,7 @@ async function runToCompletion(
   let snapshot = first
 
   for (let attempt = 0; attempt < 100; attempt += 1) {
-    if (snapshot.status !== "running" && !snapshot.has_more) {
+    if (snapshot.status !== "running" && !snapshot.output_truncated) {
       return { output, snapshot }
     }
     snapshot = await shell.pollCommand({
@@ -711,7 +711,7 @@ async function pollToCompletion(shell: PersistentShellSession, first: ShellSnaps
   let snapshot = first
 
   for (let attempt = 0; attempt < 100; attempt += 1) {
-    if (snapshot.status !== "running" && !snapshot.has_more) {
+    if (snapshot.status !== "running" && !snapshot.output_truncated) {
       return { output, snapshot }
     }
     snapshot = await shell.pollCommand({

@@ -533,6 +533,12 @@
 - Kept the structured failure contract unchanged while also appending the bounded native stdout/stderr diagnostic to the MCP text response on failed `apply_patch` calls.
 - Added integration coverage that verifies text-only clients receive both the failed exit summary and diagnostic output; successful responses remain compact (`src/tools/apply-patch/apply-patch.ts`, `test/mcp-integration.test.ts`, `pages/Workspace Tooling.md`).
 
+## [2026-08-11] refine | make truncation semantics consistent
+
+- Replaced shell `has_more` with `output_truncated` so completed commands no longer look like they require polling; `next_cursor` remains only the continuation token.
+- Renamed permanent output loss to `output_dropped` plus `dropped_output_bytes` for shell and `apply_patch`, including parallel child results.
+- Applied the same convention to `fetch_website`: recoverable response pagination uses `output_truncated`, while cache-ceiling source loss uses `source_dropped` plus `dropped_source_bytes` (`src/tools/shell/`, `src/tools/apply-patch/apply-patch.ts`, `src/tools/web/`, `test/`).
+
 ## [2026-08-11] refine | log apply_patch failure messages
 
 - Added a bounded `message:` field to failed `apply_patch` entries in `agent-commands.yaml`, sourced from the tool's structured native diagnostic.
@@ -542,3 +548,8 @@
 
 - Kept `src/**/*.ts` and `test/**/*.ts` in the shared `tsconfig.json` so `npm run type-check` validates both production and test code.
 - Added `tsconfig.build.json` for `npm run build`, limiting emitted output to `src/**/*.ts` and restoring the expected `dist/index.js` layout without `dist/test` (`package.json`, `tsconfig.json`, `tsconfig.build.json`, `pages/Build and Test.md`).
+
+## [2026-08-11] refine | raise default shell response limit
+
+- Raised the default `shell_run` / `shell_poll` response cap from 2048 to 4096 UTF-8 bytes while retaining the 32768-byte maximum override.
+- Updated the production `MCP_OUTPUT_BYTES` fallback, session fallback, published schema assertion, and configuration wiki (`src/index.ts`, `src/tools/shell/session.ts`, `test/mcp-integration.test.ts`, `pages/Configuration and Startup.md`).

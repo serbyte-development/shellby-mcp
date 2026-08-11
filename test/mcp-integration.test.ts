@@ -63,7 +63,7 @@ test("serves shell tools through Streamable HTTP and retains state across MCP se
   assert.equal(cwdSchema.minLength, 1)
   const maxOutputSchema = (runTool?.inputSchema.properties as Record<string, Record<string, unknown>>).max_output_bytes
   assert.ok(maxOutputSchema)
-  assert.equal(maxOutputSchema.default, 2048)
+  assert.equal(maxOutputSchema.default, 4096)
   assert.equal(maxOutputSchema.maximum, 32768)
   const requestIdSchema = (runTool?.inputSchema.properties as Record<string, Record<string, unknown>>).request_id
   assert.ok(requestIdSchema)
@@ -80,9 +80,9 @@ test("serves shell tools through Streamable HTTP and retains state across MCP se
     "cwd",
     "dropped_output_bytes",
     "exit_code",
-    "has_more",
     "next_cursor",
     "output",
+    "output_dropped",
     "output_truncated",
     "request_id",
     "shell_id",
@@ -102,7 +102,7 @@ test("serves shell tools through Streamable HTTP and retains state across MCP se
     properties?: Record<string, unknown>
     required?: string[]
   }
-  assert.deepEqual(Object.keys(applyPatchOutputSchema.properties ?? {}).sort(), ["exit_code", "omitted_output_bytes", "output", "output_truncated", "status"])
+  assert.deepEqual(Object.keys(applyPatchOutputSchema.properties ?? {}).sort(), ["dropped_output_bytes", "exit_code", "output", "output_dropped", "status"])
   assert.deepEqual(applyPatchOutputSchema.required?.sort(), ["exit_code", "status"])
   const shellListTool = tools.tools.find((tool) => tool.name === "shell_list")
   assert.equal(shellListTool?.annotations?.readOnlyHint, true)
@@ -123,6 +123,20 @@ test("serves shell tools through Streamable HTTP and retains state across MCP se
   const websiteFormatSchema = (fetchWebsiteTool?.inputSchema.properties as Record<string, Record<string, unknown>>).format
   assert.ok(websiteFormatSchema)
   assert.equal(websiteFormatSchema.default, "markdown")
+  const fetchWebsiteOutputSchema = fetchWebsiteTool?.outputSchema as {
+    properties?: Record<string, unknown>
+    required?: string[]
+  }
+  assert.deepEqual(Object.keys(fetchWebsiteOutputSchema.properties ?? {}).sort(), [
+    "content",
+    "dropped_source_bytes",
+    "format",
+    "next_cursor",
+    "output_truncated",
+    "source_dropped",
+    "title",
+    "url",
+  ])
   assert.deepEqual(websiteFormatSchema.enum, ["markdown", "clean_html", "raw_html"])
   const skillListTool = tools.tools.find((tool) => tool.name === "skill_list")
   assert.equal(skillListTool?.annotations?.readOnlyHint, true)
@@ -859,7 +873,7 @@ test("isolates named shell state and allows foreground commands in parallel", { 
   assert.equal(alphaSnapshot.shell_id, "alpha")
   let alphaOutput = alphaSnapshot.output
   for (let attempt = 0; attempt < 20; attempt += 1) {
-    if (alphaSnapshot.status !== "running" && !alphaSnapshot.has_more) break
+    if (alphaSnapshot.status !== "running" && !alphaSnapshot.output_truncated) break
     assert.ok(alphaSnapshot.request_id)
     assert.notEqual(alphaSnapshot.next_cursor, undefined)
     alphaSnapshot = snapshotFromResult(
@@ -1024,14 +1038,14 @@ test("applies patches through the native MCP tool", { timeout: 20_000 }, async (
     status: "failed"
     exit_code: number
     output: string
-    output_truncated?: true
-    omitted_output_bytes?: number
+    output_dropped?: true
+    dropped_output_bytes?: number
   }
   assert.equal(failedContent.status, "failed")
   assert.equal(failedContent.exit_code, 9)
   assert.equal(Buffer.byteLength(failedContent.output, "utf8"), 4 * 1024)
-  assert.equal(failedContent.output_truncated, true)
-  assert.equal(failedContent.omitted_output_bytes, 1)
+  assert.equal(failedContent.output_dropped, true)
+  assert.equal(failedContent.dropped_output_bytes, 1)
   const failedText = (failed.content?.[0] as { text?: string } | undefined)?.text ?? ""
   assert.match(failedText, /apply_patch failed, exit=9/)
   assert.ok(failedText.endsWith(failedContent.output))
@@ -1299,16 +1313,16 @@ interface ToolSnapshot {
   output: string
   request_id?: string
   next_cursor?: number
-  has_more?: true
   cursor_expired?: true
   output_truncated?: true
+  output_dropped?: true
   dropped_output_bytes?: number
   commands?: Array<{
     run: number
     path?: string
     status: "queued" | "running" | "completed" | "timed_out" | "failed" | "reset"
     exit_code: number | null
-    output_truncated?: true
+    output_dropped?: true
     dropped_output_bytes?: number
   }>
 }
@@ -1328,7 +1342,7 @@ async function callUntilComplete(client: Client, requestId: string, command: str
   let output = snapshot.output
 
   for (let attempt = 0; attempt < 100; attempt += 1) {
-    if (snapshot.status !== "running" && snapshot.has_more !== true) {
+    if (snapshot.status !== "running" && snapshot.output_truncated !== true) {
       return { ...snapshot, output }
     }
     assert.ok(snapshot.request_id)

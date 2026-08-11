@@ -30,8 +30,8 @@ export function registerApplyPatchTool(server: McpServer, executable = DEFAULT_A
         status: z.enum(["completed", "failed"]),
         exit_code: z.int().nullable(),
         output: z.string().optional().describe("Present only on failure with bounded apply_patch stdout/stderr diagnostics."),
-        output_truncated: z.literal(true).optional().describe("Present when failure diagnostics exceeded the apply_patch output ceiling."),
-        omitted_output_bytes: z.int().positive().optional().describe("Present when failure diagnostics exceeded the apply_patch output ceiling."),
+        output_dropped: z.literal(true).optional().describe("Present when failure diagnostics exceeded the apply_patch output ceiling and bytes were permanently discarded."),
+        dropped_output_bytes: z.int().positive().optional().describe("Present when failure diagnostics exceeded the apply_patch output ceiling."),
       }),
       annotations: {
         readOnlyHint: false,
@@ -78,16 +78,16 @@ interface ApplyPatchResult extends Record<string, unknown> {
   status: "completed" | "failed"
   exit_code: number | null
   output: string
-  output_truncated: boolean
-  omitted_output_bytes: number
+  output_dropped: boolean
+  dropped_output_bytes: number
 }
 
 interface CompactApplyPatchResult extends Record<string, unknown> {
   status: ApplyPatchResult["status"]
   exit_code: number | null
   output?: string
-  output_truncated?: true
-  omitted_output_bytes?: number
+  output_dropped?: true
+  dropped_output_bytes?: number
 }
 
 function toToolResult(result: ApplyPatchResult): CompactApplyPatchResult {
@@ -97,8 +97,8 @@ function toToolResult(result: ApplyPatchResult): CompactApplyPatchResult {
   }
   if (result.status === "failed") {
     compact.output = result.output
-    if (result.output_truncated) compact.output_truncated = true
-    if (result.omitted_output_bytes > 0) compact.omitted_output_bytes = result.omitted_output_bytes
+    if (result.output_dropped) compact.output_dropped = true
+    if (result.dropped_output_bytes > 0) compact.dropped_output_bytes = result.dropped_output_bytes
   }
   return compact
 }
@@ -116,7 +116,7 @@ async function applyPatch(input: ApplyPatchInput): Promise<ApplyPatchResult> {
     const stderrDecoder = new StringDecoder("utf8")
     let output = ""
     let outputBytes = 0
-    let omittedOutputBytes = 0
+    let droppedOutputBytes = 0
     let stdinError: Error | undefined
     let aborted = false
     let settled = false
@@ -127,7 +127,7 @@ async function applyPatch(input: ApplyPatchInput): Promise<ApplyPatchResult> {
       const bounded = utf8Prefix(value, Math.max(0, FAILURE_OUTPUT_BYTES - outputBytes))
       output += bounded.value
       outputBytes += Buffer.byteLength(bounded.value, "utf8")
-      omittedOutputBytes += bounded.omittedBytes
+      droppedOutputBytes += bounded.omittedBytes
     }
     const cleanup = () => {
       input.signal?.removeEventListener("abort", abort)
@@ -191,8 +191,8 @@ async function applyPatch(input: ApplyPatchInput): Promise<ApplyPatchResult> {
         status: code === 0 ? "completed" : "failed",
         exit_code: code,
         output,
-        output_truncated: omittedOutputBytes > 0,
-        omitted_output_bytes: omittedOutputBytes,
+        output_dropped: droppedOutputBytes > 0,
+        dropped_output_bytes: droppedOutputBytes,
       })
     })
 

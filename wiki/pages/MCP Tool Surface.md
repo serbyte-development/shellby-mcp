@@ -25,6 +25,8 @@ Verified 2026-08-11.
 
 `shell_id` defaults to `default`; stable IDs retain cwd and environment, while different IDs run concurrently. A parallel batch remains one `(shell_id, request_id)` operation. Its call-level `cwd` is the root and persists as the selected shell directory; omitted `cwd` uses the current shell directory. `*** Run: path` accepts only relative paths and resolves them from that root. Nonzero child exits are normal results and do not stop siblings. Parallel children have a 10-minute hard timeout and use a process-wide four-child scheduler; queued work starts as slots free. `request_id` accepts 1–128 characters and is unique within one shell. `wait_ms` is 0–10,000; output caps range from 256 bytes to `MCP_MAX_OUTPUT_BYTES` (`src/tools/shell/shell-tools.ts`, `src/tools/shell/session.ts`, `src/tools/shell/parallel-runner.ts`, `test/shell-session.test.ts`, `test/mcp-integration.test.ts`).
 
+Pagination fields use one convention across shell and web reads: `output_truncated` means the current response hit its byte limit but the rest remains recoverable through `next_cursor`; `output_dropped` means command output was permanently discarded, while `source_dropped` means `fetch_website` permanently discarded extracted source at its document ceiling. Dropped-byte counts accompany permanent loss when available (`src/tools/shell/shell-tools.ts`, `src/tools/apply-patch/apply-patch.ts`, `src/tools/web/web-tool.ts`, `src/tools/web/web-open.ts`).
+
 ## Computer Use Tools
 
 | Tool               | Contract                                                                                                       |
