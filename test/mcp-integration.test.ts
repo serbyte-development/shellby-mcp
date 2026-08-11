@@ -71,6 +71,7 @@ test("serves shell tools through Streamable HTTP and retains state across MCP se
     required?: string[]
   }
   assert.deepEqual(Object.keys(outputSchema.properties ?? {}).sort(), [
+    "commands",
     "cursor_expired",
     "cwd",
     "dropped_output_bytes",
@@ -193,6 +194,22 @@ test("serves shell tools through Streamable HTTP and retains state across MCP se
   )
   assert.equal(pagedResult.output, expectedPagedOutput)
   assert.equal(Buffer.byteLength(pagedResult.output, "utf8"), 6_000)
+
+  const parallelResult = await callUntilComplete(
+    second.client,
+    "parallel-http",
+    ["*** Begin Commands", "*** Run", "printf first", "*** Run", "false", "*** End Commands"].join("\n")
+  )
+  assert.equal(parallelResult.status, "completed")
+  assert.equal(parallelResult.exit_code, null)
+  assert.deepEqual(
+    parallelResult.commands?.map(({ run, status, exit_code }) => ({ run, status, exit_code })),
+    [
+      { run: 1, status: "completed", exit_code: 0 },
+      { run: 2, status: "completed", exit_code: 1 },
+    ]
+  )
+  assert.match(parallelResult.output, /first/)
 })
 
 test("lists and loads dynamic workspace skills through MCP", { timeout: 10_000 }, async (t) => {
@@ -1277,6 +1294,14 @@ interface ToolSnapshot {
   cursor_expired?: true
   output_truncated?: true
   dropped_output_bytes?: number
+  commands?: Array<{
+    run: number
+    path?: string
+    status: "queued" | "running" | "completed" | "timed_out" | "failed" | "reset"
+    exit_code: number | null
+    output_truncated?: true
+    dropped_output_bytes?: number
+  }>
 }
 
 async function callUntilComplete(client: Client, requestId: string, command: string, shellId?: string): Promise<ToolSnapshot> {

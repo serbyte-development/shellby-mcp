@@ -2,7 +2,7 @@ import { McpServer } from "@modelcontextprotocol/server"
 import { z } from "zod"
 
 import { MCP_CONFIG } from "../../config.js"
-import { ShellSessionError, type ShellSnapshot } from "./session.js"
+import { ShellSessionError, type ParallelCommandSnapshot, type ShellSnapshot } from "./session.js"
 import { DEFAULT_SHELL_ID, ShellSessionManager } from "./session-manager.js"
 
 const requestIdInput = z.string().min(1).max(128).describe("Short operation label, unique within this shell. Reuse only to retry the exact same operation.")
@@ -27,8 +27,21 @@ const shellSnapshotSchema = z.object({
   shell_id: z.string().optional().describe("Present only when the command uses a non-default shell."),
   status: z.enum(["running", "completed", "shell_exited", "reset"]),
   exit_code: z.int().nullable(),
-  cwd: z.string().describe("The shell working directory for this command. Completed results report the resulting persistent directory."),
-  output: z.string(),
+  cwd: z.string().describe("The shell working directory for this command, or the root cwd for a parallel batch."),
+  output: z.string().describe("Command output. Parallel batches return completed run output in labeled blocks without interleaving child streams."),
+  commands: z
+    .array(
+      z.object({
+        run: z.int().positive(),
+        path: z.string().optional().describe("Relative path from the batch cwd. Omitted when the run uses the batch root."),
+        status: z.enum(["queued", "running", "completed", "timed_out", "failed", "reset"]),
+        exit_code: z.int().nullable(),
+        output_truncated: z.literal(true).optional(),
+        dropped_output_bytes: z.int().positive().optional(),
+      })
+    )
+    .optional()
+    .describe("Present only for a parallel batch, in submission order."),
   request_id: z.string().optional().describe("Present only when shell_poll may be needed."),
   next_cursor: z.int().nonnegative().optional().describe("Present only when shell_poll may be needed."),
   has_more: z.literal(true).optional().describe("Present when retained output remains unread."),
@@ -54,7 +67,7 @@ export function registerShellExecutionTools(server: McpServer, shells: ShellSess
     "shell_run",
     {
       title: "Run a local shell command",
-      description: `Execute a command in a named persistent shell. Use short contextual IDs: shell_id labels the task or project, and request_id labels the command or step. Reuse shell_id to retain cwd and environment. Change directories once with cd or cwd, then omit cwd until intentionally switching. Prefer RTK whenever available for reads. Use different shell IDs for parallel work; start long commands with wait_ms: 0 and poll. Responses are byte-capped, do not pass in max_output_bytes unless the default is too small. New shells start in ${workspaceDescription}.`,
+      description: `Execute one command or a parallel command batch in a named persistent shell. Reuse shell_id to retain cwd and exported environment. For independent commands, use *** Begin Commands, one or more *** Run sections, and *** End Commands; *** Run: <relative/path> resolves from the call's cwd/root. Prefer RTK for supported reads. Start long work with wait_ms: 0 and poll. New shells start in ${workspaceDescription}.`,
       inputSchema: z.object({
         shell_id: shellIdInput,
         request_id: requestIdInput.describe(
@@ -64,13 +77,15 @@ export function registerShellExecutionTools(server: McpServer, shells: ShellSess
           .string()
           .min(1)
           .optional()
-          .describe("Optional absolute directory switch. Use when starting or intentionally moving a shell; it persists, so omit it from later calls."),
+          .describe(
+            "Optional absolute directory switch. It persists for normal commands and becomes the root for a parallel batch; each `*** Run: <path>` is relative to it."
+          ),
         command: z
           .string()
           .min(1)
           .max(262_144)
           .describe(
-            "Exact zsh command or multiline script. Prefer RTK whenever available for reads, such as rtk read, rtk ls, rtk tree, rtk rg, rtk git diff, and rtk test npm test. Use raw shell for unsupported behavior, exact unfiltered output, or persistent state changes."
+            "Exact zsh command or multiline script. For parallel work: *** Begin Commands, then repeated *** Run or *** Run: <relative/path> sections, then *** End Commands."
           ),
         wait_ms: z.int().min(0).max(10_000).optional().default(1_500).describe("Returns earlier if the output byte cap is reached."),
         max_output_bytes: maxOutputBytesInput,
@@ -107,7 +122,7 @@ export function registerShellExecutionTools(server: McpServer, shells: ShellSess
     {
       title: "Poll local shell output",
       description:
-        "Read more output for a command using the cursor returned by shell_run or a previous shell_poll call. Output is bounded to that command after it completes. Continue while a foreground command is running. When a completed command has_more, request more only if the omitted output is needed.",
+        "Read more output or updated parallel-run state using the cursor returned by shell_run or shell_poll. Continue while the outer request is running. When completed with has_more, poll only if the omitted output is needed.",
       inputSchema: z.object({
         shell_id: shellIdInput.describe("The same shell_id used for the original shell_run call."),
         request_id: requestIdInput.describe("The same request_id used for the original shell_run call."),
@@ -302,6 +317,7 @@ interface CompactShellSnapshot extends Record<string, unknown> {
   cursor_expired?: true
   output_truncated?: true
   dropped_output_bytes?: number
+  commands?: ParallelCommandSnapshot[]
 }
 
 function compactShellSnapshot(snapshot: ShellSnapshot, shellId: string): CompactShellSnapshot {
@@ -320,10 +336,24 @@ function compactShellSnapshot(snapshot: ShellSnapshot, shellId: string): Compact
   if (snapshot.cursor_expired) compact.cursor_expired = true
   if (snapshot.output_truncated) compact.output_truncated = true
   if (snapshot.dropped_output_bytes > 0) compact.dropped_output_bytes = snapshot.dropped_output_bytes
+  if (snapshot.commands) compact.commands = snapshot.commands
   return compact
 }
 
 function shellResultSummary(snapshot: CompactShellSnapshot): string {
+  if (snapshot.commands) {
+    const finished = snapshot.commands.filter((command) => command.status !== "queued" && command.status !== "running").length
+    const issues = snapshot.commands.filter(
+      (command) => command.status === "timed_out" || command.status === "failed" || (command.status === "completed" && command.exit_code !== 0)
+    ).length
+    if (snapshot.status === "running") {
+      return `shell parallel running; ${finished}/${snapshot.commands.length} finished; poll request=${snapshot.request_id} cursor=${snapshot.next_cursor}`
+    }
+    if (snapshot.has_more) {
+      return `shell parallel ${snapshot.status}; ${issues} issue${issues === 1 ? "" : "s"}; more output at request=${snapshot.request_id} cursor=${snapshot.next_cursor}`
+    }
+    return `shell parallel ${snapshot.status}; ${issues} issue${issues === 1 ? "" : "s"}`
+  }
   const exit = snapshot.exit_code ?? "n/a"
   if (snapshot.status === "running") return `shell running; poll request=${snapshot.request_id} cursor=${snapshot.next_cursor}`
   if (snapshot.has_more) return `shell ${snapshot.status}, exit=${exit}; more output at request=${snapshot.request_id} cursor=${snapshot.next_cursor}`

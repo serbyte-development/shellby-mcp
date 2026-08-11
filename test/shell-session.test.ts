@@ -1,9 +1,10 @@
 import assert from "node:assert/strict"
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises"
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import test from "node:test"
 
+import { ParallelCommandScheduler } from "../src/tools/shell/parallel-runner.js"
 import { PersistentShellSession, ShellSessionError, type ShellSnapshot } from "../src/tools/shell/session.js"
 
 test("retains cwd and environment across commands", { timeout: 10_000 }, async (t) => {
@@ -495,6 +496,182 @@ test("reset kills a TERM-resistant background descendant", { timeout: 10_000 }, 
   assert.equal(await waitForProcessExit(-oldProcessGroup), true)
 })
 
+test("runs parallel command batches from one root with relative paths and retained exported environment", { timeout: 10_000 }, async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), "shell-mcp-parallel-root-"))
+  const apiDirectory = join(directory, "packages", "api")
+  await mkdir(apiDirectory, { recursive: true })
+  const shell = new PersistentShellSession({ parallelScheduler: new ParallelCommandScheduler(4) })
+  t.after(async () => {
+    await shell.close()
+    await rm(directory, { recursive: true, force: true })
+  })
+
+  await runToCompletion(shell, "parallel-env", "export MCP_PARALLEL_RETAINED=present")
+  const batch = await runToCompletion(
+    shell,
+    "parallel-root",
+    [
+      "*** Begin Commands",
+      "*** Run",
+      `printf 'root:%s:%s' "$PWD" "$MCP_PARALLEL_RETAINED"`,
+      "*** Run: packages/api",
+      `printf 'api:%s:%s' "$PWD" "$MCP_PARALLEL_RETAINED"`,
+      "*** End Commands",
+    ].join("\n"),
+    { cwd: directory }
+  )
+
+  assert.equal(batch.snapshot.status, "completed")
+  assert.equal(batch.snapshot.exit_code, null)
+  assert.deepEqual(
+    batch.snapshot.commands?.map(({ run, path, status, exit_code }) => ({ run, path, status, exit_code })),
+    [
+      { run: 1, path: undefined, status: "completed", exit_code: 0 },
+      { run: 2, path: "packages/api", status: "completed", exit_code: 0 },
+    ]
+  )
+  assert.match(batch.output, new RegExp(`root:${escapeRegExp(directory)}:present`))
+  assert.match(batch.output, /api:.*\/packages\/api:present/)
+
+  const after = await runToCompletion(shell, "parallel-root-retained", `printf '%s' "$PWD"`)
+  assert.equal(after.output, directory)
+})
+
+test("runs at most four parallel children and queues the rest", { timeout: 10_000 }, async (t) => {
+  const shell = new PersistentShellSession({ parallelScheduler: new ParallelCommandScheduler(4) })
+  t.after(() => shell.close())
+
+  const command = [
+    "*** Begin Commands",
+    ...Array.from({ length: 6 }, (_, index) => ["*** Run", `sleep 0.35; printf ${index + 1}`]).flat(),
+    "*** End Commands",
+  ].join("\n")
+  const first = await shell.runCommand({ requestId: "parallel-limit", command, waitMs: 50 })
+
+  assert.equal(first.status, "running")
+  assert.equal(first.commands?.filter((run) => run.status === "running").length, 4)
+  assert.equal(first.commands?.filter((run) => run.status === "queued").length, 2)
+
+  const completed = await pollToCompletion(shell, first)
+  assert.equal(completed.snapshot.status, "completed")
+  assert.deepEqual(
+    completed.snapshot.commands?.map((run) => run.exit_code),
+    [0, 0, 0, 0, 0, 0]
+  )
+})
+
+test("keeps parallel siblings running when one command exits nonzero", { timeout: 10_000 }, async (t) => {
+  const shell = new PersistentShellSession({ parallelScheduler: new ParallelCommandScheduler(4) })
+  t.after(() => shell.close())
+
+  const batch = await runToCompletion(
+    shell,
+    "parallel-nonzero",
+    ["*** Begin Commands", "*** Run", "false", "*** Run", "sleep 0.05; printf survived", "*** End Commands"].join("\n")
+  )
+
+  assert.equal(batch.snapshot.status, "completed")
+  assert.deepEqual(
+    batch.snapshot.commands?.map(({ status, exit_code }) => ({ status, exit_code })),
+    [
+      { status: "completed", exit_code: 1 },
+      { status: "completed", exit_code: 0 },
+    ]
+  )
+  assert.match(batch.output, /survived/)
+})
+
+test("times out a hung parallel child without blocking its siblings", { timeout: 10_000 }, async (t) => {
+  const shell = new PersistentShellSession({
+    parallelScheduler: new ParallelCommandScheduler(4),
+    parallelCommandTimeoutMs: 100,
+  })
+  t.after(() => shell.close())
+
+  const batch = await runToCompletion(
+    shell,
+    "parallel-timeout",
+    ["*** Begin Commands", "*** Run", "sleep 5", "*** Run", "printf fast", "*** End Commands"].join("\n")
+  )
+
+  assert.equal(batch.snapshot.status, "completed")
+  assert.deepEqual(
+    batch.snapshot.commands?.map(({ status, exit_code }) => ({ status, exit_code })),
+    [
+      { status: "timed_out", exit_code: null },
+      { status: "completed", exit_code: 0 },
+    ]
+  )
+  assert.match(batch.output, /fast/)
+})
+
+test("rejects malformed parallel envelopes and absolute run paths", { timeout: 10_000 }, async (t) => {
+  const shell = new PersistentShellSession({ parallelScheduler: new ParallelCommandScheduler(4) })
+  t.after(() => shell.close())
+
+  await assert.rejects(
+    shell.runCommand({
+      requestId: "parallel-absolute",
+      command: ["*** Begin Commands", "*** Run: /tmp", "pwd", "*** End Commands"].join("\n"),
+    }),
+    (error: unknown) => error instanceof ShellSessionError && error.code === "invalid_command" && /relative to cwd/.test(error.message)
+  )
+  await assert.rejects(
+    shell.runCommand({
+      requestId: "parallel-missing-end",
+      command: ["*** Begin Commands", "*** Run", "pwd"].join("\n"),
+    }),
+    (error: unknown) => error instanceof ShellSessionError && error.code === "invalid_command" && /End Commands/.test(error.message)
+  )
+})
+
+test("reset kills running parallel children and retains the batch as reset", { timeout: 10_000 }, async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), "shell-mcp-parallel-reset-"))
+  const lateFile = join(directory, "late.txt")
+  const shell = new PersistentShellSession({ parallelScheduler: new ParallelCommandScheduler(4) })
+  t.after(async () => {
+    await shell.close()
+    await rm(directory, { recursive: true, force: true })
+  })
+
+  const running = await shell.runCommand({
+    requestId: "parallel-reset",
+    cwd: directory,
+    command: ["*** Begin Commands", "*** Run", `sleep 0.5; printf late > ${quote(lateFile)}`, "*** End Commands"].join("\n"),
+    waitMs: 25,
+  })
+  assert.equal(running.status, "running")
+
+  await shell.reset({ requestId: "reset-parallel", reason: "test parallel reset" })
+  const old = await shell.pollCommand({ requestId: "parallel-reset", cursor: running.next_cursor, waitMs: 0 })
+  assert.equal(old.status, "reset")
+  assert.equal(old.commands?.[0]?.status, "reset")
+
+  await new Promise((resolve) => setTimeout(resolve, 650))
+  await assert.rejects(readFile(lateFile, "utf8"), (error: unknown) => isMissingProcessOrFile(error))
+})
+
+test("does not let background descendants escape a completed parallel run", { timeout: 10_000 }, async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), "shell-mcp-parallel-background-"))
+  const lateFile = join(directory, "late.txt")
+  const shell = new PersistentShellSession({ parallelScheduler: new ParallelCommandScheduler(4) })
+  t.after(async () => {
+    await shell.close()
+    await rm(directory, { recursive: true, force: true })
+  })
+
+  const batch = await runToCompletion(
+    shell,
+    "parallel-background",
+    ["*** Begin Commands", "*** Run", `(sleep 0.2; printf leaked > ${quote(lateFile)}) &`, "*** End Commands"].join("\n"),
+    { cwd: directory }
+  )
+  assert.equal(batch.snapshot.commands?.[0]?.status, "completed")
+
+  await new Promise((resolve) => setTimeout(resolve, 350))
+  await assert.rejects(readFile(lateFile, "utf8"), (error: unknown) => isMissingProcessOrFile(error))
+})
+
 async function runToCompletion(
   shell: PersistentShellSession,
   requestId: string,
@@ -551,6 +728,14 @@ async function runUntilTerminal(shell: PersistentShellSession, requestId: string
 
 function quote(value: string): string {
   return `'${value.replaceAll("'", `'\\''`)}'`
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+}
+
+function isMissingProcessOrFile(error: unknown): boolean {
+  return error instanceof Error && "code" in error && (error as NodeJS.ErrnoException).code === "ENOENT"
 }
 
 function isProcessAlive(pid: number): boolean {

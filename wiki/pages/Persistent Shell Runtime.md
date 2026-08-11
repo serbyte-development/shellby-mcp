@@ -28,39 +28,38 @@ The wrapper clears `errexit` before and after evaluation so a prior `set -e` doe
 
 Each named shell accepts one foreground command. Different shell IDs run independently. Direct `apply_patch` processes bypass shell locks, transcripts, and request records (`src/tools/shell/session.ts`, `src/tools/shell/shell-tools.ts`, `test/mcp-integration.test.ts`).
 
-### Proposed parallel command envelope
+### Parallel command envelope
 
-`shell_run` could support multiple independent commands in one intuitive free-form payload without adding an array schema. Normal single-command input would remain unchanged. Parallel mode would use an `apply_patch`-style envelope:
+`shell_run` supports multiple independent commands in one free-form payload without an array schema. Normal single-command input is unchanged. Parallel mode uses an `apply_patch`-style envelope:
 
 ```text
 *** Begin Commands
-*** Command
+*** Run
 npm run lint
-*** Command
+*** Run
 npm run type-check
-*** Command
+*** Run: packages/api
 npm test
 *** End Commands
 ```
 
-The envelope would mean "run these command blocks independently and concurrently," not "concatenate them into one shell program." The MCP process would parse the blocks and spawn separate short-lived child processes so each command retains its own stdout/stderr, exit code, output ceiling, cancellation state, and result. Shell-level backgrounding such as `command & ...; wait` is deliberately not the implementation because it collapses those commands back into one opaque shell execution.
+The envelope means "run these command blocks independently and concurrently," not "concatenate them into one shell program." `*** Run` uses the batch root; `*** Run: path` resolves a relative directory from that root. Exact marker lines are reserved while inside the envelope. Shell-level backgrounding such as `command & ...; wait` is deliberately not the implementation because it collapses the work back into one opaque shell execution (`src/tools/shell/parallel-runner.ts`).
 
-Proposed execution rules:
+Execution rules:
 
 - Keep the feature entirely inside the existing `shell_run` / `shell_poll` contract. Do not add a `shell_parallel` tool and do not assign child shell IDs. One batch remains one outer `(shell_id, request_id)` operation.
-- Snapshot the selected persistent shell's current cwd and exported environment once when the batch starts. Every child begins from that same snapshot; state changes inside a child do not mutate the persistent shell or sibling commands.
+- Capture the selected persistent shell's current exported environment once when the batch starts. An explicit call-level `cwd` first becomes the persistent shell's selected directory and the batch root; otherwise the current directory is the root. Every child inherits that environment snapshot, while state changes inside a child do not mutate the persistent shell or siblings.
+- Resolve `*** Run: path` only from the batch root and reject absolute run paths. The path is execution metadata, not shell text, so callers do not need repeated `cd ... &&` prefixes.
 - Treat the parent `shell_run` as occupying that named shell until the batch finishes, preserving the existing one-foreground-operation-per-shell mental model.
-- Allow the caller to submit any reasonable number of command blocks in one tool call, but run at most **4 child processes concurrently**. Additional blocks queue inside that request and start as slots become available.
-- Prefer a process-wide four-child semaphore rather than four children per request so multiple agents cannot multiply the intended concurrency ceiling.
-- Preserve submission order in the returned grouped results even if commands finish in a different order. Each child keeps an independent bounded output buffer so concurrent output is never interleaved into one transcript.
-- `shell_run` and later `shell_poll` calls return the state of the same outer request, with per-child states such as queued, running, completed, or timed out. Completed child results remain available while siblings continue running.
-- A nonzero child exit is a normal command result, not an MCP/tool failure, and does not cancel unrelated siblings. The outer response should expose the child's exit code while allowing the batch to continue.
-- Give parallel children a generous hard runtime ceiling (proposed: **10 minutes per child**) so four hung commands cannot permanently occupy the process-wide semaphore. A timed-out child is killed, marked timed out, and frees its slot for queued work. This limit would apply only to parallel children, not ordinary persistent-shell commands.
-- Aborting or resetting the parent operation kills all still-running children and discards queued blocks. Already-completed child results should remain in the retained request record for later inspection.
+- Submit any number of sections in one tool call, but run at most **4 child processes concurrently process-wide**. Additional sections queue inside their owning request and start as slots become available.
+- Keep one bounded output buffer per child. When a child becomes terminal, append one labeled output block to the batch transcript. The `commands` result array remains in submission order even if output blocks arrive in completion order, avoiding interleaved child streams while preserving normal cursor pagination.
+- `shell_run` and `shell_poll` expose child states `queued`, `running`, `completed`, `timed_out`, `failed`, or `reset`. A nonzero child exit is a normal `completed` result and does not cancel siblings.
+- Parallel children have a **10-minute hard runtime ceiling**. A timed-out child receives `SIGTERM`, then `SIGKILL` after the same 500 ms grace used elsewhere, and its global slot is released. Ordinary persistent-shell commands still have no hard runtime ceiling.
+- `shell_reset` marks queued/running batch children reset, aborts queued scheduler entries, terminates running child process groups, and preserves already-completed output/results in the retained batch record.
 - These workers are short-lived child processes, not named persistent shells, and therefore should not consume `ShellSessionManager` shell slots.
 - Keep this deliberately below workflow-engine complexity: no DAGs, dependencies, per-command IDs, retries, or nested orchestration syntax.
 
-The likely implementation boundary is a small parallel runner owned by the shell capability: parse the command envelope, obtain a cwd/environment snapshot from the current `PersistentShellSession`, launch up to four independent shell children through Node process APIs, retain one result record per command, and adapt the existing `shell_run` / `shell_poll` response path to grouped batch results. The exact snapshot mechanism, child process invocation, timeout cleanup, and interaction with the existing command transcript/record model should be validated before implementation (`src/tools/shell/session.ts`, `src/tools/shell/shell-tools.ts`, `src/tools/shell/session-manager.ts`).
+`src/tools/shell/parallel-runner.ts` owns the envelope parser, process-wide scheduler, bounded child execution, timeout, and process-group cleanup. `PersistentShellSession` owns the outer request record, environment capture through the existing persistent shell, relative-directory resolution, polling, retained grouped output, and reset integration (`src/tools/shell/parallel-runner.ts`, `src/tools/shell/session.ts`, `src/tools/shell/shell-tools.ts`).
 
 ## Reset and Recovery
 

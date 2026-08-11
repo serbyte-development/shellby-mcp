@@ -1,8 +1,20 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process"
 import { createHash, randomUUID } from "node:crypto"
 import { statSync } from "node:fs"
-import { isAbsolute } from "node:path"
+import { isAbsolute, resolve } from "node:path"
 import { StringDecoder } from "node:string_decoder"
+
+import {
+  DEFAULT_PARALLEL_COMMAND_TIMEOUT_MS,
+  ParallelCommandAbortedError,
+  type ParallelCommandExecutionResult,
+  type ParallelCommandScheduler,
+  type ParallelCommandSpec,
+  type ParallelCommandStatus,
+  executeParallelCommand,
+  parseParallelCommandEnvelope,
+  processParallelCommandScheduler,
+} from "./parallel-runner.js"
 
 const DEFAULT_TRANSCRIPT_LIMIT = 1024 * 1024
 const DEFAULT_COMMAND_TRANSCRIPT_BYTES = 256 * 1024
@@ -27,6 +39,16 @@ export interface ShellSnapshot extends Record<string, unknown> {
   cursor_expired: boolean
   output_truncated: boolean
   dropped_output_bytes: number
+  commands?: ParallelCommandSnapshot[]
+}
+
+export interface ParallelCommandSnapshot extends Record<string, unknown> {
+  run: number
+  path?: string
+  status: ParallelCommandStatus
+  exit_code: number | null
+  output_truncated?: true
+  dropped_output_bytes?: number
 }
 
 export interface RunCommandInput {
@@ -60,6 +82,8 @@ export interface ShellSessionOptions {
   defaultOutputBytes?: number
   maxOutputBytes?: number
   recordLimit?: number
+  parallelCommandTimeoutMs?: number
+  parallelScheduler?: ParallelCommandScheduler
 }
 
 interface CommandRecord {
@@ -73,6 +97,28 @@ interface CommandRecord {
   markerPrefix: string
   capturedOutputBytes: number
   droppedOutputBytes: number
+}
+
+interface ParallelRunRecord {
+  run: number
+  command: string
+  path?: string
+  cwd: string
+  status: ParallelCommandStatus
+  exitCode: number | null
+  droppedOutputBytes: number
+}
+
+interface ParallelBatchRecord {
+  requestId: string
+  commandHash: string
+  cwd: string
+  transcript: TranscriptBuffer
+  endCursor: number | null
+  status: Extract<CommandStatus, "running" | "completed" | "reset">
+  runs: ParallelRunRecord[]
+  abortController: AbortController
+  tasks: Promise<void>[]
 }
 
 interface ResetRecord {
@@ -94,6 +140,22 @@ interface ReadyState {
   resolve: () => void
   reject: (error: Error) => void
   timer: NodeJS.Timeout
+}
+
+interface ContextCaptureState {
+  child: ChildProcessWithoutNullStreams
+  startMarker: string
+  endMarker: string
+  started: boolean
+  value: string
+  resolve: (context: ShellContext) => void
+  reject: (error: Error) => void
+  timer: NodeJS.Timeout
+}
+
+interface ShellContext {
+  cwd: string
+  env: NodeJS.ProcessEnv
 }
 
 type StopReason = "reset" | "close"
@@ -211,7 +273,10 @@ export class PersistentShellSession {
   private readonly defaultOutputBytes: number
   private readonly maxOutputBytes: number
   private readonly recordLimit: number
+  private readonly parallelCommandTimeoutMs: number
+  private readonly parallelScheduler: ParallelCommandScheduler
   private readonly records = new Map<string, CommandRecord>()
+  private readonly parallelRecords = new Map<string, ParallelBatchRecord>()
   private readonly resetRecords = new Map<string, ResetRecord>()
   private readonly stopReasons = new WeakMap<ChildProcessWithoutNullStreams, StopReason>()
   private readonly handledChildren = new WeakSet<ChildProcessWithoutNullStreams>()
@@ -219,7 +284,9 @@ export class PersistentShellSession {
 
   private child: ChildProcessWithoutNullStreams | null = null
   private active: CommandRecord | null = null
+  private activeParallel: ParallelBatchRecord | null = null
   private readyState: ReadyState | null = null
+  private contextCaptureState: ContextCaptureState | null = null
   private startPromise: Promise<void> | null = null
   private parserBuffer = ""
   private stdoutDecoder = new StringDecoder("utf8")
@@ -245,6 +312,8 @@ export class PersistentShellSession {
       throw new Error("defaultOutputBytes cannot exceed maxOutputBytes.")
     }
     this.recordLimit = positiveInteger(options.recordLimit, DEFAULT_RECORD_LIMIT)
+    this.parallelCommandTimeoutMs = positiveInteger(options.parallelCommandTimeoutMs, DEFAULT_PARALLEL_COMMAND_TIMEOUT_MS)
+    this.parallelScheduler = options.parallelScheduler ?? processParallelCommandScheduler
   }
 
   get initialCwd(): string {
@@ -264,7 +333,9 @@ export class PersistentShellSession {
   }
 
   get hasActiveWork(): boolean {
-    return this.active !== null || this.resetInFlight !== null || this.startPromise !== null
+    return (
+      this.active !== null || this.activeParallel !== null || this.contextCaptureState !== null || this.resetInFlight !== null || this.startPromise !== null
+    )
   }
 
   fork(): PersistentShellSession {
@@ -277,6 +348,8 @@ export class PersistentShellSession {
       defaultOutputBytes: this.defaultOutputBytes,
       maxOutputBytes: this.maxOutputBytes,
       recordLimit: this.recordLimit,
+      parallelCommandTimeoutMs: this.parallelCommandTimeoutMs,
+      parallelScheduler: this.parallelScheduler,
     })
   }
 
@@ -299,6 +372,7 @@ export class PersistentShellSession {
     const waitMs = normalizeWaitMs(input.waitMs)
     const maxOutputBytes = this.normalizeOutputBytes(input.maxOutputBytes)
     const commandHash = hashCommand(input.command, input.cwd)
+    const parallelCommands = parseParallelCommand(input.command)
 
     await this.start()
     const existing = this.records.get(input.requestId)
@@ -312,20 +386,42 @@ export class PersistentShellSession {
       }
       return this.snapshot(existing, existing.startCursor, maxOutputBytes)
     }
+    const existingParallel = this.parallelRecords.get(input.requestId)
+    if (existingParallel) {
+      if (existingParallel.commandHash !== commandHash) {
+        throw new ShellSessionError("request_conflict", `request_id ${JSON.stringify(input.requestId)} was already used for a different command.`)
+      }
+      if (existingParallel.status === "running") {
+        await this.waitForParallelResult(existingParallel, 0, maxOutputBytes, waitMs, input.signal)
+      }
+      return this.parallelSnapshot(existingParallel, 0, maxOutputBytes)
+    }
 
     if (this.resetInFlight) {
       throw new ShellSessionError("busy", `The shell is being reset by request_id ${JSON.stringify(this.resetInFlight.requestId)}.`)
     }
 
-    if (this.active) {
-      throw new ShellSessionError("busy", `The shell is busy with request_id ${JSON.stringify(this.active.requestId)}. Poll that request or reset the shell.`)
+    if (this.active || this.activeParallel || this.contextCaptureState) {
+      const requestId = this.active?.requestId ?? this.activeParallel?.requestId ?? "an internal shell operation"
+      throw new ShellSessionError("busy", `The shell is busy with request_id ${JSON.stringify(requestId)}. Poll that request or reset the shell.`)
     }
 
     if (!this.child || !this.ready) {
       throw new ShellSessionError("shell_unavailable", "The shell process is not ready.")
     }
-    const child = this.child
     validateWorkingDirectory(input.cwd)
+
+    if (parallelCommands) {
+      return this.runParallelCommands({
+        input,
+        commands: parallelCommands,
+        commandHash,
+        waitMs,
+        maxOutputBytes,
+      })
+    }
+
+    const child = this.child
 
     const token = randomUUID().replaceAll("-", "")
     const record: CommandRecord = {
@@ -366,9 +462,21 @@ export class PersistentShellSession {
     }
 
     const record = this.records.get(input.requestId)
-    if (!record) {
+    const parallelRecord = this.parallelRecords.get(input.requestId)
+    if (!record && !parallelRecord) {
       throw new ShellSessionError("request_not_found", `No command exists for request_id ${JSON.stringify(input.requestId)}.`)
     }
+    if (parallelRecord) {
+      const waitMs = normalizeWaitMs(input.waitMs)
+      const maxOutputBytes = this.normalizeOutputBytes(input.maxOutputBytes)
+      const version = this.updateVersion
+      const initialRead = parallelRecord.transcript.read(input.cursor, maxOutputBytes, parallelRecord.endCursor ?? undefined)
+      if (parallelRecord.status === "running" && initialRead.output.length === 0 && !initialRead.cursorExpired) {
+        await this.waitForUpdate(version, waitMs, input.signal)
+      }
+      return this.parallelSnapshot(parallelRecord, input.cursor, maxOutputBytes)
+    }
+    if (!record) throw new ShellSessionError("request_not_found", `No command exists for request_id ${JSON.stringify(input.requestId)}.`)
     if (input.cursor < record.startCursor) {
       throw new ShellSessionError("invalid_cursor", "cursor is before the requested command's output.")
     }
@@ -382,6 +490,206 @@ export class PersistentShellSession {
     }
 
     return this.snapshot(record, input.cursor, maxOutputBytes)
+  }
+
+  private async runParallelCommands(options: {
+    input: RunCommandInput
+    commands: ParallelCommandSpec[]
+    commandHash: string
+    waitMs: number
+    maxOutputBytes: number
+  }): Promise<ShellSnapshot> {
+    const rootCwd = options.input.cwd ?? this.currentCwd
+    validateWorkingDirectory(rootCwd)
+    const runs: ParallelRunRecord[] = options.commands.map((command, index) => {
+      const cwd = command.path === undefined ? rootCwd : resolve(rootCwd, command.path)
+      validateWorkingDirectory(cwd)
+      return {
+        run: index + 1,
+        command: command.command,
+        ...(command.path === undefined ? {} : { path: command.path }),
+        cwd,
+        status: "queued",
+        exitCode: null,
+        droppedOutputBytes: 0,
+      }
+    })
+
+    const record: ParallelBatchRecord = {
+      requestId: options.input.requestId,
+      commandHash: options.commandHash,
+      cwd: rootCwd,
+      transcript: new TranscriptBuffer(this.transcriptLimit),
+      endCursor: null,
+      status: "running",
+      runs,
+      abortController: new AbortController(),
+      tasks: [],
+    }
+
+    this.pruneParallelRecords()
+    this.parallelRecords.set(record.requestId, record)
+    this.activeParallel = record
+
+    let context: ShellContext
+    try {
+      context = await this.captureShellContext(options.input.cwd)
+    } catch (error) {
+      if (record.status === "reset") {
+        return this.parallelSnapshot(record, 0, options.maxOutputBytes)
+      }
+      this.parallelRecords.delete(record.requestId)
+      if (this.activeParallel === record) this.activeParallel = null
+      this.notifyUpdate()
+      throw new ShellSessionError("shell_unavailable", `Could not capture the shell environment: ${errorMessage(error)}`)
+    }
+
+    record.cwd = context.cwd
+    for (const run of record.runs) {
+      run.cwd = run.path === undefined ? context.cwd : resolve(context.cwd, run.path)
+    }
+
+    for (const run of record.runs) {
+      const task = this.parallelScheduler
+        .run(async () => {
+          if (record.status !== "running") throw new ParallelCommandAbortedError()
+          run.status = "running"
+          this.notifyUpdate()
+          return executeParallelCommand({
+            shellPath: this.shellPath,
+            command: run.command,
+            cwd: run.cwd,
+            env: context.env,
+            outputLimitBytes: this.commandTranscriptBytes,
+            timeoutMs: this.parallelCommandTimeoutMs,
+            signal: record.abortController.signal,
+          })
+        }, record.abortController.signal)
+        .then(
+          (result) => this.finishParallelRun(record, run, result),
+          (error) =>
+            this.finishParallelRun(record, run, {
+              status: error instanceof ParallelCommandAbortedError || record.abortController.signal.aborted ? "reset" : "failed",
+              exitCode: null,
+              output: error instanceof ParallelCommandAbortedError ? "" : errorMessage(error),
+              droppedOutputBytes: 0,
+            })
+        )
+      record.tasks.push(task)
+    }
+
+    await this.waitForParallelResult(record, 0, options.maxOutputBytes, options.waitMs, options.input.signal)
+    return this.parallelSnapshot(record, 0, options.maxOutputBytes)
+  }
+
+  private finishParallelRun(record: ParallelBatchRecord, run: ParallelRunRecord, result: ParallelCommandExecutionResult): void {
+    if (record.status === "reset" || run.status === "reset") return
+
+    run.status = result.status
+    run.exitCode = result.exitCode
+    run.droppedOutputBytes = result.droppedOutputBytes
+    record.transcript.append(formatParallelRunOutput(run, result.output))
+
+    if (record.runs.every((candidate) => isParallelTerminal(candidate.status))) {
+      record.status = "completed"
+      record.endCursor = record.transcript.end
+      if (this.activeParallel === record) this.activeParallel = null
+    }
+    this.notifyUpdate()
+  }
+
+  private parallelSnapshot(record: ParallelBatchRecord, cursor: number, maxOutputBytes: number): ShellSnapshot {
+    const read = record.transcript.read(cursor, maxOutputBytes, record.endCursor ?? undefined)
+    const droppedOutputBytes = record.runs.reduce((total, run) => Math.min(Number.MAX_SAFE_INTEGER, total + run.droppedOutputBytes), 0)
+    return {
+      request_id: record.requestId,
+      status: record.status,
+      exit_code: null,
+      cwd: record.cwd,
+      output: read.output,
+      next_cursor: read.nextCursor,
+      has_more: read.hasMore,
+      cursor_expired: read.cursorExpired,
+      output_truncated: droppedOutputBytes > 0,
+      dropped_output_bytes: droppedOutputBytes,
+      commands: record.runs.map((run) => ({
+        run: run.run,
+        ...(run.path === undefined ? {} : { path: run.path }),
+        status: run.status,
+        exit_code: run.exitCode,
+        ...(run.droppedOutputBytes > 0 ? { output_truncated: true as const, dropped_output_bytes: run.droppedOutputBytes } : {}),
+      })),
+    }
+  }
+
+  private async waitForParallelResult(
+    record: ParallelBatchRecord,
+    cursor: number,
+    maxOutputBytes: number,
+    waitMs: number,
+    signal?: AbortSignal
+  ): Promise<void> {
+    const deadline = Date.now() + waitMs
+    while (record.status === "running" && !signal?.aborted) {
+      const read = record.transcript.read(cursor, maxOutputBytes, record.endCursor ?? undefined)
+      if (read.cursorExpired || read.hasMore || Buffer.byteLength(read.output, "utf8") >= maxOutputBytes) return
+      const remainingMs = deadline - Date.now()
+      if (remainingMs <= 0) return
+      const version = this.updateVersion
+      await this.waitForUpdate(version, remainingMs, signal)
+    }
+  }
+
+  private async captureShellContext(cwd?: string): Promise<ShellContext> {
+    if (!this.child || !this.ready) throw new Error("The shell process is not ready.")
+    if (this.contextCaptureState) throw new Error("A shell context capture is already running.")
+    const child = this.child
+    const token = randomUUID().replaceAll("-", "")
+    const startMarker = `\u001e__MCP_CONTEXT_${token}__\u001f`
+    const endMarker = `\u001e__MCP_CONTEXT_END_${token}__\u001f`
+
+    return new Promise<ShellContext>((resolveContext, rejectContext) => {
+      const timer = setTimeout(() => {
+        if (this.contextCaptureState?.child === child) this.contextCaptureState = null
+        this.killProcessGroup(child, "SIGKILL")
+        rejectContext(new Error(`Shell context capture did not complete within ${READY_TIMEOUT_MS}ms.`))
+      }, READY_TIMEOUT_MS)
+      this.contextCaptureState = {
+        child,
+        startMarker,
+        endMarker,
+        started: false,
+        value: "",
+        resolve: (context) => {
+          this.currentCwd = context.cwd
+          resolveContext(context)
+        },
+        reject: rejectContext,
+        timer,
+      }
+      void writeToStdin(child, buildContextCaptureScript(token, cwd)).catch((error) => {
+        clearTimeout(timer)
+        if (this.contextCaptureState?.child === child) this.contextCaptureState = null
+        rejectContext(error instanceof Error ? error : new Error(String(error)))
+      })
+    })
+  }
+
+  private async cancelActiveParallelBatch(): Promise<void> {
+    const record = this.activeParallel
+    if (!record || record.status !== "running") return
+    record.status = "reset"
+    record.endCursor = record.transcript.end
+    for (const run of record.runs) {
+      if (!isParallelTerminal(run.status)) {
+        run.status = "reset"
+        run.exitCode = null
+      }
+    }
+    record.abortController.abort()
+    if (this.activeParallel === record) this.activeParallel = null
+    this.notifyUpdate()
+    await Promise.allSettled(record.tasks)
   }
 
   async reset(input: ResetShellInput): Promise<ResetResult> {
@@ -431,6 +739,7 @@ export class PersistentShellSession {
     state_lost: true
     status: "ready"
   }> {
+    await this.cancelActiveParallelBatch()
     const child = this.child
     if (child) {
       this.stopReasons.set(child, "reset")
@@ -459,6 +768,8 @@ export class PersistentShellSession {
   async close(): Promise<void> {
     if (this.closed) return
     this.closed = true
+
+    await this.cancelActiveParallelBatch()
 
     const child = this.child
     if (child) {
@@ -562,6 +873,38 @@ export class PersistentShellSession {
         continue
       }
 
+      const contextState = this.contextCaptureState
+      if (contextState) {
+        if (!contextState.started) {
+          const markerIndex = this.parserBuffer.indexOf(contextState.startMarker)
+          if (markerIndex < 0) {
+            this.flushSafePrefix(contextState.startMarker)
+            return
+          }
+          this.appendTranscript(this.parserBuffer.slice(0, markerIndex))
+          this.parserBuffer = this.parserBuffer.slice(markerIndex + contextState.startMarker.length)
+          contextState.started = true
+        }
+
+        const markerIndex = this.parserBuffer.indexOf(contextState.endMarker)
+        if (markerIndex < 0) {
+          this.flushContextCapturePrefix(contextState)
+          return
+        }
+
+        contextState.value += this.parserBuffer.slice(0, markerIndex)
+        this.parserBuffer = this.parserBuffer.slice(markerIndex + contextState.endMarker.length)
+        clearTimeout(contextState.timer)
+        this.contextCaptureState = null
+        try {
+          contextState.resolve(parseShellContext(contextState.value))
+        } catch (error) {
+          contextState.reject(error instanceof Error ? error : new Error(String(error)))
+        }
+        this.notifyUpdate()
+        continue
+      }
+
       const active = this.active
       if (!active) {
         this.appendTranscript(this.parserBuffer)
@@ -623,6 +966,21 @@ export class PersistentShellSession {
     this.parserBuffer = this.parserBuffer.slice(safeLength)
   }
 
+  private flushContextCapturePrefix(state: ContextCaptureState): void {
+    let safeLength = Math.max(0, this.parserBuffer.length - state.endMarker.length + 1)
+    if (
+      safeLength > 0 &&
+      safeLength < this.parserBuffer.length &&
+      isHighSurrogate(this.parserBuffer.charCodeAt(safeLength - 1)) &&
+      isLowSurrogate(this.parserBuffer.charCodeAt(safeLength))
+    ) {
+      safeLength -= 1
+    }
+    if (safeLength === 0) return
+    state.value += this.parserBuffer.slice(0, safeLength)
+    this.parserBuffer = this.parserBuffer.slice(safeLength)
+  }
+
   private finalizeChild(child: ChildProcessWithoutNullStreams, description: string): void {
     if (this.handledChildren.has(child)) return
     this.handledChildren.add(child)
@@ -648,6 +1006,12 @@ export class PersistentShellSession {
         clearTimeout(this.readyState.timer)
         this.readyState.reject(new Error(`Shell exited before becoming ready (${description}).`))
         this.readyState = null
+      }
+
+      if (this.contextCaptureState?.child === child) {
+        clearTimeout(this.contextCaptureState.timer)
+        this.contextCaptureState.reject(new Error(`Shell exited during context capture (${description}).`))
+        this.contextCaptureState = null
       }
 
       if (this.active) {
@@ -765,6 +1129,14 @@ export class PersistentShellSession {
     }
   }
 
+  private pruneParallelRecords(): void {
+    while (this.parallelRecords.size >= this.recordLimit) {
+      const oldestCompleted = [...this.parallelRecords.values()].find((record) => record.status !== "running")
+      if (!oldestCompleted) return
+      this.parallelRecords.delete(oldestCompleted.requestId)
+    }
+  }
+
   private pruneResetRecords(): void {
     while (this.resetRecords.size >= this.recordLimit) {
       const oldestCompleted = [...this.resetRecords.values()].find((record) => record !== this.resetInFlight)
@@ -842,6 +1214,58 @@ function buildCommandScript(command: string, token: string, cwd?: string): strin
     "set +e",
     "",
   ].join("\n")
+}
+
+function buildContextCaptureScript(token: string, cwd?: string): string {
+  const functionName = `__mcp_capture_context_${token}`
+  return [
+    `function ${functionName} {`,
+    '  if (( $# > 0 )); then builtin cd -- "$1" || return $?; fi',
+    `  builtin printf '\\036__MCP_CONTEXT_${token}__\\037%s\\000' "$PWD"`,
+    "  /usr/bin/env -0",
+    `  builtin printf '\\036__MCP_CONTEXT_END_${token}__\\037'`,
+    "}",
+    "set +e",
+    `${functionName}${cwd === undefined ? "" : ` ${singleQuote(cwd)}`}`,
+    `unfunction ${functionName} 2>/dev/null`,
+    "set +e",
+    "",
+  ].join("\n")
+}
+
+function parseShellContext(value: string): ShellContext {
+  const cwdEnd = value.indexOf("\0")
+  if (cwdEnd < 1) throw new Error("Shell context did not include a working directory.")
+  const cwd = value.slice(0, cwdEnd)
+  if (!isAbsolute(cwd)) throw new Error(`Shell context returned a non-absolute cwd: ${JSON.stringify(cwd)}.`)
+
+  const env: NodeJS.ProcessEnv = {}
+  for (const entry of value.slice(cwdEnd + 1).split("\0")) {
+    if (entry.length === 0) continue
+    const separator = entry.indexOf("=")
+    if (separator < 1) continue
+    env[entry.slice(0, separator)] = entry.slice(separator + 1)
+  }
+  env.PWD = cwd
+  return { cwd, env }
+}
+
+function parseParallelCommand(command: string): ParallelCommandSpec[] | null {
+  try {
+    return parseParallelCommandEnvelope(command)
+  } catch (error) {
+    throw new ShellSessionError("invalid_command", errorMessage(error))
+  }
+}
+
+function isParallelTerminal(status: ParallelCommandStatus): boolean {
+  return status !== "queued" && status !== "running"
+}
+
+function formatParallelRunOutput(run: ParallelRunRecord, output: string): string {
+  const result = run.status === "completed" ? `exit=${run.exitCode ?? "n/a"}` : run.status
+  const body = output.length === 0 ? "" : `${output}${output.endsWith("\n") ? "" : "\n"}`
+  return `[run ${run.run} ${result}]\n${body}`
 }
 
 function singleQuote(value: string): string {

@@ -515,3 +515,9 @@
 
 - Expanded the proposed parallel `shell_run` envelope design to stay entirely within the existing `shell_run` / `shell_poll` identity model, with one outer `shell_id` and `request_id` and no child shell IDs.
 - Defined grouped per-child states/results, nonzero exits as normal command outcomes, independent output buffers, a proposed 10-minute child timeout, process-wide concurrency of four, and reset/abort behavior that preserves completed child results while killing running and queued work (`pages/Persistent Shell Runtime.md`).
+
+## [2026-08-11] implement | add parallel shell command batches
+
+- Added `shell_run` batch syntax using `*** Begin Commands`, repeated `*** Run` / `*** Run: relative/path` sections, and `*** End Commands` while leaving normal commands unchanged.
+- Added process-wide four-child scheduling, persistent-shell exported-environment capture, relative batch directories, per-child bounded output and exit state, 10-minute child timeouts, grouped polling, and reset cleanup (`src/tools/shell/parallel-runner.ts`, `src/tools/shell/session.ts`, `src/tools/shell/shell-tools.ts`).
+- Added focused and MCP integration coverage for batching, queueing, cwd/environment inheritance, nonzero exits, timeout, malformed syntax, and reset behavior (`test/shell-session.test.ts`, `test/mcp-integration.test.ts`).

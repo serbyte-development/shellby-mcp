@@ -238,6 +238,21 @@ For exact schemas, lifecycle behavior, output limits, and model-facing descripti
 
 Each new `shell_run` command requires a `request_id`. Retrying the same request ID with the same command returns the retained result rather than executing it twice. Reusing the ID with different command text returns a conflict.
 
+Independent commands can share one `shell_run` call:
+
+```text
+*** Begin Commands
+*** Run
+npm run lint
+*** Run
+npm run type-check
+*** Run: packages/api
+npm test
+*** End Commands
+```
+
+The call's `cwd` is the batch root; `*** Run: path` is relative to that root. If `cwd` is omitted, the current persistent-shell directory is the root. The MCP runs at most four batch children concurrently across the process and queues extras. Each child keeps separate bounded output and exit status; nonzero exits do not cancel siblings. Parallel children time out after 10 minutes, while ordinary persistent-shell commands keep the existing no-hard-timeout behavior. `shell_poll` continues the same outer `shell_id` and `request_id` and reports each run as queued, running, completed, timed out, failed, or reset.
+
 Defaults:
 
 - 8 live shells including `default`
@@ -246,6 +261,8 @@ Defaults:
 - 32 KiB maximum response override
 - 256 KiB retained output per command
 - 1 MiB rolling shell transcript
+- 4 concurrent parallel child commands process-wide
+- 10-minute timeout per parallel child
 
 The workspace defaults to:
 

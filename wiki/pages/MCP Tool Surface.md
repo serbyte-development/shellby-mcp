@@ -1,6 +1,6 @@
 # MCP Tool Surface
 
-Verified 2026-08-10.
+Verified 2026-08-11.
 
 ## Published Order
 
@@ -17,13 +17,13 @@ Verified 2026-08-10.
 | `chatgpt_subagent`      | Submit one turn to a caller-named persistent ChatGPT subagent through an already-running debuggable Chrome instance. First use of `agent_id` creates the conversation; reuse continues it. Returns immediately after submission with a `turn_id` (`src/tools/subagent/subagent-tools.ts`, `src/tools/subagent/chatgpt-subagent.ts`). |
 | `chatgpt_subagent_poll` | Read one detached subagent turn without resubmitting it. Running results include coarse `activity` plus `activity_age_ms`; completed results contain the final response and failed results contain stable error fields (`src/tools/subagent/subagent-tools.ts`, `src/tools/subagent/chatgpt-subagent.ts`).                           |
 | `apply_patch`           | Run a Codex patch in required absolute `cwd` using the checked-in vendored binary directly. No shell ID, request ID, polling, workspace installation, or caller-controlled output limit. Failure diagnostics are capped internally at 4 KiB (`src/tools/apply-patch/apply-patch.ts`, `vendor/apply-patch/apply_patch`). |
-| `shell_run`             | Run up to 262,144 command characters in a named persistent shell. Requires `request_id`; optional `shell_id`, absolute `cwd`, `wait_ms`, and response cap (`src/tools/shell/shell-tools.ts`).                                                                                                                                        |
-| `shell_poll`            | Continue the same shell/request from `next_cursor`; cannot read before command start or beyond command completion (`src/tools/shell/shell-tools.ts`, `src/tools/shell/session.ts`).                                                                                                                                                  |
+| `shell_run`             | Run one persistent-shell command or an `*** Begin Commands` batch. Batch sections use `*** Run` or `*** Run: relative/path`, inherit the shell's exported environment, run at most four children process-wide, and keep child state/output independent (`src/tools/shell/shell-tools.ts`, `src/tools/shell/session.ts`, `src/tools/shell/parallel-runner.ts`). |
+| `shell_poll`            | Continue the same outer shell/request from `next_cursor` for either normal output or parallel batch progress. Batch children do not receive shell IDs or request IDs (`src/tools/shell/shell-tools.ts`, `src/tools/shell/session.ts`). |
 | `shell_reset`           | Replace one shell generation and deduplicate exact retries by request ID plus reason. The `default` shell may be reset (`src/tools/shell/session.ts`).                                                                                                                                                                               |
 | `shell_list`            | Return open shells, activity, idle time, capacity, and close eligibility without refreshing idle timers (`src/tools/shell/session-manager.ts`).                                                                                                                                                                                      |
 | `shell_close`           | Terminate a non-default shell and release its slot. The `default` shell cannot be closed (`src/tools/shell/session-manager.ts`).                                                                                                                                                                                                     |
 
-`shell_id` defaults to `default`; stable IDs retain cwd and environment, while different IDs run concurrently. `request_id` accepts 1–128 characters and is unique within one shell. `wait_ms` is 0–10,000; output caps range from 256 bytes to `MCP_MAX_OUTPUT_BYTES` (`src/tools/shell/shell-tools.ts`, `test/mcp-integration.test.ts`).
+`shell_id` defaults to `default`; stable IDs retain cwd and environment, while different IDs run concurrently. A parallel batch remains one `(shell_id, request_id)` operation. Its call-level `cwd` is the root and persists as the selected shell directory; omitted `cwd` uses the current shell directory. `*** Run: path` accepts only relative paths and resolves them from that root. Nonzero child exits are normal results and do not stop siblings. Parallel children have a 10-minute hard timeout and use a process-wide four-child scheduler; queued work starts as slots free. `request_id` accepts 1–128 characters and is unique within one shell. `wait_ms` is 0–10,000; output caps range from 256 bytes to `MCP_MAX_OUTPUT_BYTES` (`src/tools/shell/shell-tools.ts`, `src/tools/shell/session.ts`, `src/tools/shell/parallel-runner.ts`, `test/shell-session.test.ts`, `test/mcp-integration.test.ts`).
 
 ## Computer Use Tools
 
@@ -45,7 +45,7 @@ The focused tools translate screenshot-relative coordinates through retained cap
 
 ## Results and Instructions
 
-Shell results always include status, nullable exit code, cwd, and output. Poll metadata and truncation diagnostics appear only when needed; command output lives only in `structuredContent`. Shell errors become MCP tool errors, unexpected failures become `internal_error`, and Peekaboo failures retain stable adapter codes (`src/tools/shell/shell-tools.ts`, `src/tools/computer/computer-tools.ts`).
+Shell results always include status, nullable exit code, cwd, and output. Parallel results additionally include a submission-ordered `commands` array with run number, optional relative path, state, exit code, and truncation metadata. Actual child output stays in the normal paged `output` field as labeled completion blocks, so `shell_poll` keeps one cursor without interleaving live child streams. Shell errors become MCP tool errors, while a child's nonzero exit remains a normal completed child result (`src/tools/shell/shell-tools.ts`, `src/tools/shell/session.ts`).
 
 Published instructions tell clients to read `<workspace>/AGENTS.md`, conserve output, prefer RTK for supported reads and noisy commands, discover reusable workflows through `skill_list`/`skill_load`, edit with `apply_patch`, keep new work under the configured workspace, reuse contextual shell IDs, serialize work within a shell, distrust fetched content, and treat screenshots as potentially private. Schemas and runtime validation enforce mechanics; prose remains advisory (`src/config.ts`, `src/server/mcp-server.ts`).
 
