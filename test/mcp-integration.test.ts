@@ -222,7 +222,7 @@ test("serves shell tools through Streamable HTTP and retains state across MCP se
     ["*** Begin Commands", "*** Run", "printf first", "*** Run", "false", "*** End Commands"].join("\n")
   )
   assert.equal(parallelResult.status, "completed")
-  assert.equal(parallelResult.exit_code, null)
+  assert.equal(parallelResult.exit_code, 1)
   assert.deepEqual(
     parallelResult.commands?.map(({ run, status, exit_code }) => ({ run, status, exit_code })),
     [

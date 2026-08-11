@@ -601,10 +601,11 @@ export class PersistentShellSession {
   private parallelSnapshot(record: ParallelBatchRecord, cursor: number, maxOutputBytes: number): ShellSnapshot {
     const read = record.transcript.read(cursor, maxOutputBytes, record.endCursor ?? undefined)
     const droppedOutputBytes = record.runs.reduce((total, run) => Math.min(Number.MAX_SAFE_INTEGER, total + run.droppedOutputBytes), 0)
+    const exitCode = record.status === "completed" ? (record.runs.every((run) => run.status === "completed" && run.exitCode === 0) ? 0 : 1) : null
     return {
       request_id: record.requestId,
       status: record.status,
-      exit_code: null,
+      exit_code: exitCode,
       cwd: record.cwd,
       output: read.output,
       next_cursor: read.nextCursor,

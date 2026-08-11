@@ -26,7 +26,7 @@ const closableShellIdInput = z
 const shellSnapshotSchema = z.object({
   shell_id: z.string().optional().describe("Present only when the command uses a non-default shell."),
   status: z.enum(["running", "completed", "shell_exited", "reset"]),
-  exit_code: z.int().nullable(),
+  exit_code: z.int().nullable().describe("Command exit code. Completed parallel batches return 0 only when every child succeeded, otherwise 1."),
   cwd: z.string().describe("The shell working directory for this command, or the root cwd for a parallel batch."),
   output: z.string().describe("Command output. Parallel batches return completed run output in labeled blocks"),
   commands: z
@@ -74,7 +74,7 @@ export function registerShellExecutionTools(server: McpServer, shells: ShellSess
     "shell_run",
     {
       title: "Run a local shell command",
-      description: `Execute one command or a parallel command batch in a named persistent shell. Reuse shell_id to retain cwd and exported environment. For independent commands, use *** Begin Commands, one or more *** Run sections, and *** End Commands; *** Run:<relative path> resolves from the call's cwd/root. Prefer RTK for supported reads. New shells start in ${workspaceDescription}.`,
+      description: `Execute one command or a parallel command batch in a named persistent shell. Reuse shell_id to retain cwd and exported environment. For independent commands, use *** Begin Commands, one or more *** Run sections, and *** End Commands; *** Run: relative/path resolves from the call's cwd/root. Prefer RTK for supported reads. New shells start in ${workspaceDescription}.`,
       inputSchema: z.object({
         shell_id: shellIdInput,
         request_id: requestIdInput.describe(
@@ -85,14 +85,14 @@ export function registerShellExecutionTools(server: McpServer, shells: ShellSess
           .min(1)
           .optional()
           .describe(
-            "Optional absolute directory switch. It persists for normal commands and becomes the root for a parallel batch; each parallel command `*** Run:<relative path>` is relative to it."
+            "Optional absolute directory switch. It persists for normal commands and becomes the root for a parallel batch; each parallel command `*** Run: relative/path` is relative to it."
           ),
         command: z
           .string()
           .min(1)
           .max(262_144)
           .describe(
-            "Exact zsh command or multiline script. For parallel work: *** Begin Commands, then repeated *** Run or *** Run:<relative path> sections, then *** End Commands."
+            "Exact zsh command or multiline script. For parallel work: *** Begin Commands, then repeated *** Run or *** Run: relative/path sections, then *** End Commands."
           ),
         wait_ms: z.int().min(0).max(10_000).optional().default(1_500).describe("Returns earlier if the output byte cap is reached."),
         max_output_bytes: maxOutputBytesInput,

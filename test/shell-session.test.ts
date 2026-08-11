@@ -526,7 +526,7 @@ test("runs parallel command batches from one root with relative paths and retain
   )
 
   assert.equal(batch.snapshot.status, "completed")
-  assert.equal(batch.snapshot.exit_code, null)
+  assert.equal(batch.snapshot.exit_code, 0)
   assert.deepEqual(
     batch.snapshot.commands?.map(({ run, path, status, exit_code }) => ({ run, path, status, exit_code })),
     [
@@ -575,6 +575,7 @@ test("keeps parallel siblings running when one command exits nonzero", { timeout
   )
 
   assert.equal(batch.snapshot.status, "completed")
+  assert.equal(batch.snapshot.exit_code, 1)
   assert.deepEqual(
     batch.snapshot.commands?.map(({ status, exit_code }) => ({ status, exit_code })),
     [
@@ -599,6 +600,7 @@ test("times out a hung parallel child without blocking its siblings", { timeout:
   )
 
   assert.equal(batch.snapshot.status, "completed")
+  assert.equal(batch.snapshot.exit_code, 1)
   assert.deepEqual(
     batch.snapshot.commands?.map(({ status, exit_code }) => ({ status, exit_code })),
     [
@@ -627,6 +629,33 @@ test("rejects malformed parallel envelopes and absolute run paths", { timeout: 1
     }),
     (error: unknown) => error instanceof ShellSessionError && error.code === "invalid_command" && /End Commands/.test(error.message)
   )
+  await assert.rejects(
+    shell.runCommand({
+      requestId: "parallel-malformed-begin",
+      command: ["*** Begin Commands extra", "*** Run", "printf should-not-run", "*** End Commands"].join("\n"),
+    }),
+    (error: unknown) => error instanceof ShellSessionError && error.code === "invalid_command" && /first line/.test(error.message)
+  )
+})
+
+test("accepts leading whitespace before a parallel envelope", { timeout: 10_000 }, async (t) => {
+  const shell = new PersistentShellSession({ parallelScheduler: new ParallelCommandScheduler(4) })
+  t.after(() => shell.close())
+
+  const batch = await runToCompletion(
+    shell,
+    "parallel-leading-whitespace",
+    ["", "  *** Begin Commands", "*** Run", "printf first", "*** Run", "printf second", "*** End Commands"].join("\n")
+  )
+
+  assert.equal(batch.snapshot.status, "completed")
+  assert.equal(batch.snapshot.exit_code, 0)
+  assert.deepEqual(
+    batch.snapshot.commands?.map((run) => run.exit_code),
+    [0, 0]
+  )
+  assert.match(batch.output, /first/)
+  assert.match(batch.output, /second/)
 })
 
 test("reset kills running parallel children and retains the batch as reset", { timeout: 10_000 }, async (t) => {

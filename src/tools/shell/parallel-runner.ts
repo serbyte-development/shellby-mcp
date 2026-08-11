@@ -104,9 +104,12 @@ export class ParallelCommandAbortedError extends Error {
 }
 
 export function parseParallelCommandEnvelope(value: string): ParallelCommandSpec[] | null {
-  const normalized = value.replaceAll("\r\n", "\n")
+  const normalized = value.replaceAll("\r\n", "\n").trimStart()
+  if (!normalized.startsWith("*** Begin Commands")) return null
   const lines = normalized.split("\n")
-  if (lines[0] !== "*** Begin Commands") return null
+  if (lines[0] !== "*** Begin Commands") {
+    throw new Error("The first line of a parallel command batch must be '*** Begin Commands'.")
+  }
 
   let endIndex = lines.length - 1
   while (endIndex > 0 && lines[endIndex] === "") endIndex -= 1
