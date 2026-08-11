@@ -8,6 +8,7 @@ const CAVEMAN_PROMPT =
 
 export interface ChatGptSubagentOptions {
   cdpEndpoint: string
+  onPageCreated?: () => void | Promise<void>
   connectTimeoutMs?: number
   chatGptUrl?: string
   maxConcurrentAgents?: number
@@ -452,6 +453,7 @@ export class ChatGptSubagentModule {
   private async createAgent(agentId: string, signal?: AbortSignal): Promise<BrowserAgentState> {
     const context = this.requireContext()
     const page = await context.newPage()
+    await this.afterPageCreated()
     const tracker = new ChatGptConversationTracker(page)
     const state: BrowserAgentState = {
       agentId,
@@ -499,6 +501,7 @@ export class ChatGptSubagentModule {
 
     const context = this.requireContext()
     const page = await context.newPage()
+    await this.afterPageCreated()
     const tracker = new ChatGptConversationTracker(page)
     try {
       await waitForPromise(page.goto(state.conversationUrl, { waitUntil: "domcontentloaded" }), signal)
@@ -691,6 +694,14 @@ export class ChatGptSubagentModule {
     state.tracker.dispose()
     if (this.agents.get(state.agentId) === state) {
       this.agents.delete(state.agentId)
+    }
+  }
+
+  private async afterPageCreated(): Promise<void> {
+    try {
+      await this.options.onPageCreated?.()
+    } catch {
+      // Browser visibility is best effort and must never break subagent work.
     }
   }
 

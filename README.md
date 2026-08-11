@@ -166,7 +166,9 @@ PM2 is a repository dependency and implementation detail; users do not need to i
 
 ## Browser ChatGPT subagents
 
-`npm run setup:chatgpt` creates a dedicated Chrome profile and launches it with the Chrome DevTools Protocol on `127.0.0.1:9222`. After you sign into ChatGPT once, `npm start` launches that profile automatically when needed. `npm run chatgpt` launches it manually without restarting the MCP.
+`npm run setup:chatgpt` creates a dedicated Chrome profile and launches it with the Chrome DevTools Protocol on `127.0.0.1:9222`. After you sign into ChatGPT once, `npm start` launches that profile automatically when needed. `npm run chatgpt` launches it manually or brings the hidden managed browser to the foreground without restarting the MCP.
+
+Setup keeps the dedicated Chrome visible so you can sign in. Normal `npm start` runs keep that same headed Chrome process hidden in the background. Creating a subagent tab can make Chrome visible on macOS, so the MCP immediately re-hides only the dedicated profile's Chrome process after page creation. Hiding is best effort: if macOS refuses it, Chrome simply stays visible and subagent behavior is unchanged.
 
 Returned turn IDs are readable and sequential per local agent, for example `seo-audit_turn_1` and `seo-audit_turn_2`. Idle subagent state expires after 30 minutes: the managed browser tab and local turn records are removed, while the ChatGPT conversation remains in the user's ChatGPT history.
 

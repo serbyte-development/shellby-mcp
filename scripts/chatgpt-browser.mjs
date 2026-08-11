@@ -2,11 +2,12 @@ import { access, mkdir, writeFile } from "node:fs/promises"
 import { constants } from "node:fs"
 import { homedir } from "node:os"
 import { join } from "node:path"
-import { spawn } from "node:child_process"
+import { spawn, spawnSync } from "node:child_process"
 
 const setup = process.argv.includes("--setup")
 const auto = process.argv.includes("--auto")
 const optional = process.argv.includes("--optional")
+const hide = process.argv.includes("--hide")
 const endpoint = new URL(process.env.MCP_CHATGPT_CDP_ENDPOINT?.trim() || "http://127.0.0.1:9222")
 const profileDir = join(homedir(), ".shelly", "chatgpt-chrome")
 const markerPath = join(profileDir, ".configured")
@@ -15,6 +16,11 @@ const cdpReady = await isCdpReady(endpoint)
 
 if (!isLocalEndpoint(endpoint)) {
   console.log(`ChatGPT browser: using configured CDP endpoint ${endpoint.href}`)
+  process.exit(0)
+}
+
+if (hide) {
+  if (configured) hideManagedChrome()
   process.exit(0)
 }
 
@@ -35,6 +41,8 @@ if (cdpReady) {
       `${endpoint.host} is already serving a Chrome DevTools session. Close that debug Chrome or configure a different MCP_CHATGPT_CDP_ENDPOINT before setup.`
     )
   }
+  if (auto) hideManagedChrome()
+  else showManagedChrome()
   console.log("ChatGPT browser: already running")
   if (setup) console.log("Sign into ChatGPT in that dedicated Chrome window if needed.")
   process.exit(0)
@@ -78,6 +86,7 @@ if (!(await waitForCdp(endpoint))) {
 }
 
 await writeFile(markerPath, "configured\n", "utf8")
+if (auto) hideManagedChrome()
 console.log("ChatGPT browser: running")
 if (setup) {
   console.log("Sign into ChatGPT in the dedicated Chrome window. Future `npm start` runs will launch this profile automatically.")
@@ -123,6 +132,48 @@ async function isCdpReady(url) {
 
 function isLocalEndpoint(url) {
   return url.protocol === "http:" && (url.hostname === "127.0.0.1" || url.hostname === "localhost")
+}
+
+function hideManagedChrome() {
+  const pid = findManagedChromePid()
+  if (!pid) return false
+
+  // JXA exposes no-argument Objective-C selectors as properties. Reading
+  // `.hide` invokes NSRunningApplication.hide() for this exact Chrome PID.
+  const script = `ObjC.import("AppKit"); $.NSRunningApplication.runningApplicationWithProcessIdentifier(${pid}).hide`
+  const result = spawnSync("/usr/bin/osascript", ["-l", "JavaScript", "-e", script], {
+    stdio: "ignore",
+    timeout: 1_000,
+  })
+  return !result.error && result.status === 0
+}
+
+function showManagedChrome() {
+  const pid = findManagedChromePid()
+  if (!pid) return false
+
+  const script = `ObjC.import("AppKit"); $.NSRunningApplication.runningApplicationWithProcessIdentifier(${pid}).activateWithOptions($.NSApplicationActivateIgnoringOtherApps)`
+  const result = spawnSync("/usr/bin/osascript", ["-l", "JavaScript", "-e", script], {
+    stdio: "ignore",
+    timeout: 1_000,
+  })
+  return !result.error && result.status === 0
+}
+
+function findManagedChromePid() {
+  const result = spawnSync("/bin/ps", ["-axo", "pid=,command="], {
+    encoding: "utf8",
+    maxBuffer: 4 * 1024 * 1024,
+  })
+  if (result.error || result.status !== 0 || !result.stdout) return undefined
+
+  const profileArg = `--user-data-dir=${profileDir}`
+  for (const line of result.stdout.split("\n")) {
+    if (!line.includes("Google Chrome.app/Contents/MacOS/Google Chrome") || !line.includes(profileArg)) continue
+    const match = line.trim().match(/^(\d+)\s/)
+    if (match) return Number(match[1])
+  }
+  return undefined
 }
 
 function fail(message) {

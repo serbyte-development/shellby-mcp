@@ -18,6 +18,23 @@ test("module fails clearly when the expected Chrome CDP endpoint is unavailable"
   await assert.rejects(module.connect(), /already-running debuggable Chrome instance.*attach-only.*will not launch Chrome/i)
 })
 
+test("browser visibility hook is best effort", async () => {
+  let calls = 0
+  const module = new ChatGptSubagentModule({
+    cdpEndpoint: "http://127.0.0.1:1",
+    onPageCreated: () => {
+      calls += 1
+      throw new Error("hide failed")
+    },
+  })
+  const internals = module as unknown as { afterPageCreated(): Promise<void> }
+
+  await internals.afterPageCreated()
+
+  assert.equal(calls, 1)
+  await module.dispose()
+})
+
 test("forgets an agent whose page is lost before a conversation can be recovered", async () => {
   const module = new ChatGptSubagentModule({
     cdpEndpoint: "http://127.0.0.1:1",

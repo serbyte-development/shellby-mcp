@@ -505,3 +505,13 @@
 ## [2026-08-11] design | Document proposed parallel shell command envelope
 
 - Documented a possible `shell_run` extension that mirrors `apply_patch`'s free-form envelope style: agents may submit multiple `*** Command` blocks in one call, the MCP runs independent child processes with a process-wide maximum concurrency of four, preserves per-command output/exit status, inherits a snapshot of the persistent shell context, and avoids array schemas or workflow-engine semantics (`pages/Persistent Shell Runtime.md`).
+
+## [2026-08-11] refine | keep managed ChatGPT Chrome hidden during normal use
+
+- Normal startup now hides the dedicated headed Chrome process while setup remains visible for sign-in.
+- Subagent page creation triggers a best-effort re-hide because Chromium can reveal the app when CDP opens a new tab; hide failures never affect subagent execution.
+
+## [2026-08-11] refine | define parallel shell polling and failure semantics
+
+- Expanded the proposed parallel `shell_run` envelope design to stay entirely within the existing `shell_run` / `shell_poll` identity model, with one outer `shell_id` and `request_id` and no child shell IDs.
+- Defined grouped per-child states/results, nonzero exits as normal command outcomes, independent output buffers, a proposed 10-minute child timeout, process-wide concurrency of four, and reset/abort behavior that preserves completed child results while killing running and queued work (`pages/Persistent Shell Runtime.md`).

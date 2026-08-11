@@ -1,3 +1,4 @@
+import { spawn } from "node:child_process"
 import { mkdir } from "node:fs/promises"
 import { dirname, resolve } from "node:path"
 import { fileURLToPath } from "node:url"
@@ -28,6 +29,13 @@ const peekaboo = new PeekabooClient({
 const chatGptCdpEndpoint = process.env.MCP_CHATGPT_CDP_ENDPOINT ?? DEFAULT_CHATGPT_CDP_ENDPOINT
 const chatGptSubagents = new ChatGptSubagentModule({
   cdpEndpoint: chatGptCdpEndpoint,
+  onPageCreated: () => {
+    const child = spawn(process.execPath, [resolve(repositoryRoot, "scripts", "chatgpt-browser.mjs"), "--hide"], {
+      stdio: "ignore",
+    })
+    child.on("error", () => undefined)
+    child.unref()
+  },
 })
 
 const shellOptions: ShellSessionOptions = {
