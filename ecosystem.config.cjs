@@ -1,3 +1,6 @@
+const { execFileSync } = require("node:child_process")
+
+const ngrokExecutable = process.env.NGROK_BIN || execFileSync("/usr/bin/which", ["ngrok"], { encoding: "utf8" }).trim()
 const ngrokArgs = ["http", "3333"]
 if (process.env.NGROK_URL) ngrokArgs.push(`--url=${process.env.NGROK_URL}`)
 ngrokArgs.push("--traffic-policy-file=./ngrok-traffic-policy.yml", "--inspect=false")
@@ -14,7 +17,7 @@ module.exports = {
     },
     {
       name: "unhinged-terminal-ngrok",
-      script: "/opt/homebrew/bin/ngrok",
+      script: ngrokExecutable,
       args: ngrokArgs,
       cwd: __dirname,
       interpreter: "none",

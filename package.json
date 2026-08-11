@@ -1,21 +1,28 @@
 {
   "name": "chatgpt-local-shell-mcp",
   "version": "0.1.0",
+  "description": "Apple Silicon macOS MCP agent harness for ChatGPT with local shells, patching, browser subagents, web fetching, and Computer Use.",
   "private": true,
   "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Austin1serb/unhinged-terminal-mcp.git"
+  },
   "engines": {
     "node": ">=22"
   },
   "scripts": {
     "build": "rm -rf dist && tsc -p tsconfig.json",
     "dev": "tsx watch src/index.ts",
-    "start": "npm run print-url -- --optional && node dist/index.js",
+    "setup": "node scripts/setup.mjs",
+    "setup:chatgpt": "node scripts/chatgpt-browser.mjs --setup",
+    "chatgpt": "node scripts/chatgpt-browser.mjs",
+    "start": "node scripts/start.mjs",
+    "restart": "node scripts/start.mjs --restart",
+    "stop": "pm2 stop ecosystem.config.cjs",
+    "status": "pm2 status",
+    "logs": "pm2 logs",
     "print-url": "node scripts/print-url.mjs",
-    "pm2:start": "npm run build && pm2 start ecosystem.config.cjs && npm run print-url",
-    "pm2:restart": "rm -f agent-commands.yaml && npm run build && pm2 reload ecosystem.config.cjs --update-env && npm run print-url",
-    "pm2:status": "pm2 status",
-    "pm2:logs": "pm2 logs",
-    "pm2:stop": "pm2 stop ecosystem.config.cjs",
     "inspect": "npx @modelcontextprotocol/inspector",
     "tunnel": "ngrok http 3333 ${NGROK_URL:+--url=\"$NGROK_URL\"} --traffic-policy-file ./ngrok-traffic-policy.yml --inspect=false",
     "auth:reset": "tsx src/auth/reset.ts",
@@ -24,7 +31,7 @@
     "vendor:apply-patch": "scripts/build-apply-patch.sh",
     "lint": "eslint src test",
     "lint:fix": "eslint src test --fix",
-    "format": "prettier --write src test package.json tsconfig.json eslint.config.js ecosystem.config.cjs"
+    "format": "prettier --write src test scripts package.json tsconfig.json eslint.config.js ecosystem.config.cjs"
   },
   "dependencies": {
     "@modelcontextprotocol/client": "2.0.0",
@@ -36,6 +43,7 @@
     "express": "^5.2.1",
     "linkedom": "^0.18.13",
     "playwright-core": "^1.62.1",
+    "pm2": "7.0.3",
     "sharp": "^0.35.3",
     "zod": "4.4.3"
   },
@@ -49,5 +57,16 @@
     "tsx": "^4.23.12",
     "typescript": "6.0.3",
     "typescript-eslint": "^8.67.0"
-  }
+  },
+  "overrides": {
+    "pm2": {
+      "js-yaml": "5.2.3"
+    }
+  },
+  "os": [
+    "darwin"
+  ],
+  "cpu": [
+    "arm64"
+  ]
 }

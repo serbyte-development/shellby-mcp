@@ -1,6 +1,6 @@
 # Persistent Shell Runtime
 
-Verified 2026-08-06.
+Verified 2026-08-11.
 
 ## Process Model
 
@@ -27,6 +27,36 @@ The wrapper clears `errexit` before and after evaluation so a prior `set -e` doe
 ## Concurrency
 
 Each named shell accepts one foreground command. Different shell IDs run independently. Direct `apply_patch` processes bypass shell locks, transcripts, and request records (`src/tools/shell/session.ts`, `src/tools/shell/shell-tools.ts`, `test/mcp-integration.test.ts`).
+
+### Proposed parallel command envelope
+
+`shell_run` could support multiple independent commands in one intuitive free-form payload without adding an array schema. Normal single-command input would remain unchanged. Parallel mode would use an `apply_patch`-style envelope:
+
+```text
+*** Begin Commands
+*** Command
+npm run lint
+*** Command
+npm run type-check
+*** Command
+npm test
+*** End Commands
+```
+
+The envelope would mean "run these command blocks independently and concurrently," not "concatenate them into one shell program." The MCP process would parse the blocks and spawn separate short-lived child processes so each command retains its own stdout/stderr, exit code, output ceiling, cancellation state, and result. Shell-level backgrounding such as `command & ...; wait` is deliberately not the implementation because it collapses those commands back into one opaque shell execution.
+
+Proposed execution rules:
+
+- Snapshot the selected persistent shell's current cwd and exported environment once when the batch starts. Every child begins from that same snapshot; state changes inside a child do not mutate the persistent shell or sibling commands.
+- Treat the parent `shell_run` as occupying that named shell until the batch finishes, preserving the existing one-foreground-operation-per-shell mental model.
+- Allow the caller to submit any reasonable number of command blocks in one tool call, but run at most **4 child processes concurrently**. Additional blocks queue inside that request and start as slots become available.
+- Prefer a process-wide four-child semaphore rather than four children per request so multiple agents cannot multiply the intended concurrency ceiling.
+- Preserve submission order in the returned grouped results even if commands finish in a different order. Each result should expose its own status, exit code, and bounded output.
+- A nonzero exit from one child does not cancel unrelated siblings. Aborting/resetting the parent operation kills running children and discards queued blocks.
+- These workers are short-lived child processes, not named persistent shells, and therefore should not consume `ShellSessionManager` shell slots.
+- Keep this deliberately below workflow-engine complexity: no DAGs, dependencies, per-command IDs, retries, or nested orchestration syntax.
+
+The likely implementation boundary is a small parallel runner owned by the shell capability: parse the command envelope, obtain a cwd/environment snapshot from the current `PersistentShellSession`, launch up to four independent shell children through Node process APIs, collect bounded results, then return one grouped MCP result. The exact snapshot mechanism and child process invocation should be validated against the existing login-shell/environment semantics before implementation (`src/tools/shell/session.ts`, `src/tools/shell/shell-tools.ts`, `src/tools/shell/session-manager.ts`).
 
 ## Reset and Recovery
 

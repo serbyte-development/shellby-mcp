@@ -472,6 +472,14 @@
 - Made `pm2:start` and `pm2:restart` print the URL automatically and made `npm start` perform a non-fatal lookup before starting the local server.
 - Updated `pm2:restart` to clear the current `agent-commands.yaml` audit file instead of the obsolete `.log` path.
 
+## [2026-08-10] release | simplify public Mac onboarding
+
+- Added a Mac-first preflight and `npm run setup`, made PM2 a repository dependency, and removed the maintainer-specific ngrok executable path by resolving ngrok from the user's `PATH`.
+- Made `npm start` own the production flow: build, start/reload MCP + ngrok, optionally launch the configured ChatGPT browser, wait for local health, and print the public `/mcp` URL.
+- Added `npm run setup:chatgpt` and `npm run chatgpt` for a dedicated `~/.shelly/chatgpt-chrome` profile with loopback CDP, while keeping the MCP subagent module itself attach-only.
+- Folded best-effort ChatGPT browser initialization into `npm run setup`, leaving `setup:chatgpt` as the strict retry path so first-time onboarding can be two npm commands.
+- Replaced the public PM2-prefixed command surface with `start`, `restart`, `status`, `logs`, and `stop`, and rewrote README onboarding around one-time ngrok/ChatGPT sign-in followed by normal `npm start` usage.
+
 ## [2026-08-10] simplify | shorten subagent turn ids and expire idle agents
 
 - Replaced random UUID turn IDs with per-agent IDs such as `agent_id_turn_1` and `agent_id_turn_2`.
@@ -481,3 +489,19 @@
 
 - Reordered `tools/list` around the primary coding workflow: `shell_run`, `shell_poll`, `apply_patch`, shell management, subagents, web, skills, Computer Use, then feedback.
 - Split shell registration into execution and management groups only so `apply_patch` can sit between polling and shell reset without changing tool behavior.
+
+## [2026-08-10] research | compare real-work coding evals
+
+- Added `pages/Possible Evals.md` comparing SWE-Lancer IC and SWE-Together for a ChatGPT Web + Shelly versus Codex benchmark.
+- Recommended SWE-Lancer IC for the first single-turn comparison while retaining SWE-Together as the stronger future multi-turn candidate.
+- Recorded SWE-Lancer's canonical Linux/offline runtime constraint and SWE-Together's state-conditional user-simulator dependency so benchmark adaptations are not mistaken for official runs.
+
+## [2026-08-10] research | investigate bare-macOS SWE-Lancer
+
+- Inspected all 198 current IC tasks and confirmed every grader uses Playwright plus a recorded mitmproxy flow; there is no unit-test-only subset suitable for simple native copying.
+- Traced the shared grader through the Expensify dev server, flow replay, Pusher-Fake/nginx, certificate and host setup, and Linux-specific runtime paths.
+- Recorded that repository snapshots are portable but the official grader runtime is not; a native macOS port is possible but conflicts with the goal of a simple no-container head-to-head benchmark.
+
+## [2026-08-11] design | Document proposed parallel shell command envelope
+
+- Documented a possible `shell_run` extension that mirrors `apply_patch`'s free-form envelope style: agents may submit multiple `*** Command` blocks in one call, the MCP runs independent child processes with a process-wide maximum concurrency of four, preserves per-command output/exit status, inherits a snapshot of the persistent shell context, and avoids array schemas or workflow-engine semantics (`pages/Persistent Shell Runtime.md`).

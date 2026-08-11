@@ -14,6 +14,7 @@ This wiki is the concise source of truth for maintaining the server; start with 
 - [[pages/Build and Test]] — validation commands, coverage, and gaps.
 - [[pages/Open Questions and Risks]] — unresolved operational and architectural risks.
 - [[pages/Browser ChatGPT Subagents]] — implemented CDP-backed ChatGPT delegation, caller-named agents, tab continuity, response tracking, and MCP contract.
+- [[pages/Possible Evals]] — candidate real-work benchmarks for comparing ChatGPT Web + Shelly against Codex.
 
 ## Supporting Files
 

@@ -55,13 +55,16 @@ npm run auth:reset
 
 ## Requirements
 
-- macOS
+- Apple Silicon macOS
 - Node.js 22+
 - npm
-- ngrok CLI for remote ChatGPT access
-- ChatGPT Developer mode for remote use
+- An [ngrok](https://ngrok.com/) account and CLI
+- A ChatGPT account/workspace that can create a custom MCP app with the actions you want to use. See OpenAI's [Developer mode and MCP apps](https://help.openai.com/en/articles/12584461-developer-mode-and-full-mcp-connectors-in-chatgpt).
+
+Optional capabilities:
+
+- Google Chrome for `chatgpt_subagent` and `chatgpt_subagent_poll`
 - [Peekaboo](https://peekaboo.sh/) for `computer_*` tools
-- An authenticated Chrome instance with CDP enabled for `chatgpt_subagent`
 
 Install Peekaboo if you want Computer Use:
 
@@ -70,9 +73,17 @@ brew install steipete/tap/peekaboo
 peekaboo permissions grant
 ```
 
-The server still starts when Peekaboo or Chrome are unavailable. Only the dependent tools fail.
+The server still starts when Peekaboo or the dedicated ChatGPT browser are unavailable. Only the dependent tools fail.
 
-## Install
+## First-time setup
+
+Install ngrok if needed:
+
+```bash
+brew install --cask ngrok
+```
+
+Clone and install dependencies:
 
 ```bash
 git clone https://github.com/Austin1serb/unhinged-terminal-mcp.git
@@ -80,94 +91,82 @@ cd unhinged-terminal-mcp
 npm ci
 ```
 
-## Run locally
-
-Start the MCP server:
+Authenticate ngrok once using the token from your ngrok account:
 
 ```bash
-npm run dev
+ngrok config add-authtoken <your-token>
 ```
 
-The local endpoint is:
+Verify the supported Mac, Node, local dependencies, and ngrok configuration:
+
+```bash
+npm run setup
+```
+
+If Google Chrome is installed, `setup` also creates a separate profile under `~/.shelly/chatgpt-chrome` and opens ChatGPT. Sign into ChatGPT in that window once. The repository never copies or modifies your normal Chrome profile.
+
+If browser setup was skipped because Chrome was unavailable or port `9222` was already in use, retry it later with:
+
+```bash
+npm run setup:chatgpt
+```
+
+## Start
+
+After first-time setup, normal use is one command:
+
+```bash
+npm start
+```
+
+`npm start` validates the runtime, builds the MCP, starts or reloads the MCP and ngrok using the repository's local PM2 dependency, launches the dedicated ChatGPT Chrome profile when configured, waits for the local health check, and prints the exact public `/mcp` URL.
+
+Example:
 
 ```text
-http://127.0.0.1:3333/mcp
+ChatGPT browser: running
+MCP server: running
+ngrok: running
+MCP URL: https://example.ngrok-free.app/mcp
 ```
 
-You can inspect it with:
+ngrok assigns a public domain by default. If your ngrok account has a fixed/custom domain, pass it when starting:
 
 ```bash
-npm run inspect
+NGROK_URL="your-domain.example" npm start
 ```
 
-## Connect ChatGPT through ngrok
+`NGROK_URL` is optional and is never repository-specific. `npm run print-url` prints the currently active ChatGPT-ready endpoint at any time.
 
-Authenticate your ngrok CLI first using your own ngrok account.
+## Add it to ChatGPT
 
-Then start the tunnel:
+Enable Developer Mode in ChatGPT, create a custom app, and use the URL printed by `npm start` as the MCP endpoint. This server uses no MCP OAuth, so choose the no-authentication option, scan the tools, and create the app. OpenAI's current UI and plan requirements are documented in [Developer mode and MCP apps in ChatGPT](https://help.openai.com/en/articles/12584461-developer-mode-and-full-mcp-connectors-in-chatgpt).
+
+The first trusted remote `tools/call` binds this installation to the calling ChatGPT subject. Later remote tool calls must carry the same subject. Discovery does not bind ownership.
+
+Reset the bound ChatGPT owner with:
 
 ```bash
-npm run tunnel
+npm run auth:reset
 ```
 
-By default ngrok assigns the public URL. Use the HTTPS URL it gives you and append `/mcp`:
-
-```text
-https://<your-ngrok-domain>/mcp
-```
-
-If you have a fixed ngrok domain, set it before starting the tunnel:
+## Runtime commands
 
 ```bash
-export NGROK_URL="<your-ngrok-domain>"
-npm run tunnel
-```
-
-`NGROK_URL` is optional. The repository contains no maintainer-specific public MCP URL.
-
-Print the MCP URL at any time with:
-
-```bash
+npm start
+npm run restart
+npm run status
+npm run logs
+npm run stop
 npm run print-url
+npm run chatgpt
 ```
 
-When `NGROK_URL` is unset, this reads the active HTTPS tunnel from ngrok's local API and appends `/mcp`.
-
-Configure ChatGPT to use the resulting HTTPS `/mcp` endpoint as a no-auth MCP endpoint. This server does not use MCP OAuth; remote authorization is enforced by the ngrok ChatGPT source check plus the bound OpenAI subject.
-
-The first trusted remote `tools/call` binds that Shelly installation to the calling ChatGPT subject. Later remote tool calls must carry the same subject. Discovery does not bind ownership.
-
-## Run with PM2
-
-Build and start both the MCP server and ngrok:
-
-```bash
-npm run pm2:start
-```
-
-`pm2:start` and `pm2:restart` print the resulting MCP URL after ngrok is available. `npm start` also prints it when a tunnel is already running or `NGROK_URL` is set.
-
-For a fixed ngrok domain:
-
-```bash
-export NGROK_URL="<your-ngrok-domain>"
-npm run pm2:start
-```
-
-Management commands:
-
-```bash
-npm run pm2:restart
-npm run pm2:status
-npm run pm2:logs
-npm run pm2:stop
-```
-
-`pm2:restart` rebuilds the server and reloads the PM2 configuration with the current environment.
+PM2 is a repository dependency and implementation detail; users do not need to install it globally. `restart` also clears the current `agent-commands.yaml` audit log before reloading the runtime.
 
 ## Browser ChatGPT subagents
 
-`chatgpt_subagent` and `chatgpt_subagent_poll` use an already-running authenticated Chrome instance exposed through the Chrome DevTools Protocol.
+`npm run setup:chatgpt` creates a dedicated Chrome profile and launches it with the Chrome DevTools Protocol on `127.0.0.1:9222`. After you sign into ChatGPT once, `npm start` launches that profile automatically when needed. `npm run chatgpt` launches it manually without restarting the MCP.
 
 Returned turn IDs are readable and sequential per local agent, for example `seo-audit_turn_1` and `seo-audit_turn_2`. Idle subagent state expires after 30 minutes: the managed browser tab and local turn records are removed, while the ChatGPT conversation remains in the user's ChatGPT history.
 
@@ -183,7 +182,17 @@ Override it with:
 export MCP_CHATGPT_CDP_ENDPOINT="http://127.0.0.1:9222"
 ```
 
-The server does not launch Chrome or choose a browser profile. Chrome lifecycle and authentication remain outside the MCP process.
+When a non-local CDP endpoint is configured, the startup helper leaves Chrome lifecycle to that external endpoint.
+
+## Local development
+
+For direct development without the managed production runtime:
+
+```bash
+npm run dev
+```
+
+The local endpoint is `http://127.0.0.1:3333/mcp`. `npm run inspect` opens the MCP inspector.
 
 ## Tools
 
@@ -267,10 +276,12 @@ Each call requires an absolute `cwd` and a normal Codex-style patch. It runs ind
 | `HOST`                         | `127.0.0.1`                   | MCP HTTP bind address                              |
 | `PORT`                         | `3333`                        | MCP HTTP port                                      |
 | `NGROK_URL`                    | unset                         | Optional fixed ngrok domain used by tunnel helpers |
+| `NGROK_BIN`                    | `ngrok` from `PATH`           | Optional ngrok executable override                 |
 | `MCP_SHELL`                    | `/bin/zsh`                    | Persistent shell executable                        |
 | `MCP_CWD`                      | `~/Desktop/chatgpt-workspace` | Initial/default workspace                          |
 | `MCP_PEEKABOO_BIN`             | `peekaboo`                    | Peekaboo executable                                |
 | `MCP_CHATGPT_CDP_ENDPOINT`     | `http://127.0.0.1:9222`       | Chrome CDP endpoint for browser subagents          |
+| `CHROME_BIN`                   | normal macOS Chrome path      | Optional dedicated Chrome executable override      |
 | `MCP_TRANSCRIPT_CHARS`         | `1048576`                     | Rolling transcript size                            |
 | `MCP_COMMAND_TRANSCRIPT_BYTES` | `262144`                      | Per-command retained output ceiling                |
 | `MCP_OUTPUT_BYTES`             | `2048`                        | Default response bytes                             |
@@ -279,7 +290,7 @@ Each call requires an absolute `cwd` and a normal Codex-style patch. It runs ind
 | `MCP_MAX_SHELLS`               | `8`                           | Maximum live shells                                |
 | `MCP_SHELL_IDLE_TTL_MS`        | `1800000`                     | Named-shell idle timeout; `0` disables cleanup     |
 
-The included ngrok helper and traffic policy assume local port `3333`. If you change `PORT`, update the ngrok command and Host rewrite as well.
+The included ngrok helper, managed startup flow, and traffic policy assume local port `3333`. If you change `PORT`, update the ngrok command, startup health check, and Host rewrite as well.
 
 ## Development
 
