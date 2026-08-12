@@ -17,6 +17,7 @@ import { PeekabooClient } from "../src/tools/computer/peekaboo.js"
 import { PersistentShellSession } from "../src/tools/shell/session.js"
 import { ShellSessionManager } from "../src/tools/shell/session-manager.js"
 import { DEFAULT_WEB_OUTPUT_TOKENS, MAX_WEB_OUTPUT_TOKENS, WebPageOpener } from "../src/tools/web/web-open.js"
+import { canonicalizeJsonSchema } from "../src/server/tool-schema-order.js"
 
 test("serves shell tools through Streamable HTTP and retains state across MCP sessions", { timeout: 20_000 }, async (t) => {
   const running = await startMcpHttpServer({ port: 0 })
@@ -53,26 +54,35 @@ test("serves shell tools through Streamable HTTP and retains state across MCP se
       "feedback_submit",
     ]
   )
+  for (const tool of tools.tools) {
+    assert.equal(JSON.stringify(tool.inputSchema), JSON.stringify(canonicalizeJsonSchema(tool.inputSchema)), `${tool.name} input schema order`)
+    if (tool.outputSchema) {
+      assert.equal(JSON.stringify(tool.outputSchema), JSON.stringify(canonicalizeJsonSchema(tool.outputSchema)), `${tool.name} output schema order`)
+    }
+  }
   const runTool = tools.tools.find((tool) => tool.name === "shell_run")
   assert.equal(runTool?.annotations?.readOnlyHint, false)
   assert.equal(runTool?.annotations?.destructiveHint, true)
   assert.equal(runTool?.annotations?.openWorldHint, true)
   const shellIdSchema = (runTool?.inputSchema.properties as Record<string, Record<string, unknown>>).shell_id
   assert.ok(shellIdSchema)
+  assert.deepEqual(Object.keys(shellIdSchema), ["type", "description", "default", "minLength", "maxLength"])
   assert.equal(shellIdSchema.default, "default")
+  assert.equal(shellIdSchema.minLength, 3)
   assert.equal(shellIdSchema.maxLength, 64)
   const cwdSchema = (runTool?.inputSchema.properties as Record<string, Record<string, unknown>>).cwd
   assert.ok(cwdSchema)
   assert.equal(cwdSchema.minLength, 1)
   const maxOutputSchema = (runTool?.inputSchema.properties as Record<string, Record<string, unknown>>).max_output_tokens
   assert.ok(maxOutputSchema)
+  assert.deepEqual(Object.keys(maxOutputSchema), ["type", "description", "default", "minimum", "maximum"])
   assert.equal(maxOutputSchema.minimum, 1)
   assert.equal(maxOutputSchema.default, MCP_CONFIG.shell.outputTokens)
   assert.equal(maxOutputSchema.maximum, MCP_CONFIG.shell.maxOutputTokens)
   const requestIdSchema = (runTool?.inputSchema.properties as Record<string, Record<string, unknown>>).request_id
   assert.ok(requestIdSchema)
   assert.equal(requestIdSchema.pattern, undefined)
-  assert.equal(requestIdSchema.minLength, 1)
+  assert.equal(requestIdSchema.minLength, 3)
   assert.equal(requestIdSchema.maxLength, 128)
   const outputSchema = runTool?.outputSchema as {
     properties?: Record<string, unknown>
@@ -122,6 +132,7 @@ test("serves shell tools through Streamable HTTP and retains state across MCP se
   assert.equal(fetchWebsiteTool?.annotations?.openWorldHint, true)
   const webMaxOutputSchema = (fetchWebsiteTool?.inputSchema.properties as Record<string, Record<string, unknown>>).max_output_tokens
   assert.ok(webMaxOutputSchema)
+  assert.deepEqual(Object.keys(webMaxOutputSchema), ["type", "description", "default", "minimum", "maximum"])
   assert.equal(webMaxOutputSchema.minimum, 1)
   assert.equal(webMaxOutputSchema.default, DEFAULT_WEB_OUTPUT_TOKENS)
   assert.equal(webMaxOutputSchema.maximum, MAX_WEB_OUTPUT_TOKENS)

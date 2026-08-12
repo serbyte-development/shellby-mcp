@@ -6,11 +6,11 @@ import { OUTPUT_TOKEN_ENCODING } from "../../tokenizer.js"
 import { ShellSessionError, type ParallelCommandSnapshot, type ShellSnapshot } from "./session.js"
 import { DEFAULT_SHELL_ID, ShellSessionManager } from "./session-manager.js"
 
-const requestIdInput = z.string().min(1).max(128).describe("Short operation label, unique within this shell. Reuse only to retry the exact same operation.")
+const requestIdInput = z.string().min(3).max(128).describe("Short operation label, unique within this shell. Reuse only to retry the exact same operation.")
 
 const shellIdInput = z
   .string()
-  .min(1)
+  .min(3)
   .max(64)
   .default(DEFAULT_SHELL_ID)
   .describe(
@@ -19,9 +19,9 @@ const shellIdInput = z
 
 const closableShellIdInput = z
   .string()
-  .min(1)
+  .min(3)
   .max(64)
-  .describe(`Named non-default shell to close. The ${DEFAULT_SHELL_ID} shell is protected and can only be reset.`)
+  .describe(`Named shell to close. \`${DEFAULT_SHELL_ID}\` shell is protected and cannot be closed; use shell_reset instead.`)
 
 const shellSnapshotSchema = z.object({
   shell_id: z.string().optional().describe("Present only when the command uses a non-default shell."),

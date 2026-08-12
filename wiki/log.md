@@ -617,6 +617,10 @@
 
 - Removed the arbitrary 64-token floor; shell and webpage response limits now accept any positive integer from 1 through their configured maximum.
 
+## [2026-08-12] schema | canonicalize advertised JSON Schema order
+
+- Added one registration-boundary transform that recursively orders JSON Schema keywords before `tools/list` while preserving tool parameter order and validation semantics (`src/server/tool-schema-order.ts`, `src/server/mcp-server.ts`).
+
 ## [2026-08-12] simplify | reduce configuration and composition plumbing
 
 - Made public Node entry scripts load optional `.env` configuration before preflight or runtime imports, and fixed the production HTTP/tunnel port at 3333 instead of exposing a partial `PORT` override.

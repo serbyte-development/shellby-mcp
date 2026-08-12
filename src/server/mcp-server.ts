@@ -13,6 +13,7 @@ import { type ChatGptSubagentService } from "../tools/subagent/chatgpt-subagent.
 import { registerSubagentTools } from "../tools/subagent/subagent-tools.js"
 import { WebPageOpener } from "../tools/web/web-open.js"
 import { registerWebTool } from "../tools/web/web-tool.js"
+import { installCanonicalToolSchemaOrder } from "./tool-schema-order.js"
 
 export interface CreateMcpServerOptions {
   chatGptSubagents: ChatGptSubagentService
@@ -27,6 +28,7 @@ export function createMcpServer(shells: ShellSessionManager, options: CreateMcpS
   const server = new McpServer(MCP_CONFIG.server, {
     instructions: buildMcpInstructions(workspace),
   })
+  installCanonicalToolSchemaOrder(server)
 
   registerShellExecutionTools(server, shells, workspace)
   // iOS shell is experimental and intentionally disabled until the bridge is revisited.
