@@ -22,7 +22,7 @@ Verified 2026-08-11.
 | `MCP_TRANSCRIPT_CHARS`         | `1048576`                     | Rolling JavaScript-string length                       |
 | `MCP_COMMAND_TRANSCRIPT_BYTES` | `262144`                      | Per-command retained UTF-8 output ceiling              |
 | `MCP_OUTPUT_BYTES`             | `4096`                        | Default response byte cap                              |
-| `MCP_MAX_OUTPUT_BYTES`         | `32768`                       | Maximum response byte cap                              |
+| `MCP_MAX_OUTPUT_BYTES`         | `65536`                       | Maximum response byte cap                              |
 | `MCP_RECORD_LIMIT`             | `1024`                        | Per-map recent record limit                            |
 | `MCP_MAX_SHELLS`               | `8`                           | Maximum named shells including `default`               |
 | `MCP_SHELL_IDLE_TTL_MS`        | `1800000`                     | Idle lifetime for named shells; `0` disables cleanup   |

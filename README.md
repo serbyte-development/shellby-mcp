@@ -308,7 +308,7 @@ Each call requires an absolute `cwd` and a normal Codex-style patch. It runs ind
 | `MCP_TRANSCRIPT_CHARS`         | `1048576`                     | Rolling transcript size                            |
 | `MCP_COMMAND_TRANSCRIPT_BYTES` | `262144`                      | Per-command retained output ceiling                |
 | `MCP_OUTPUT_BYTES`             | `4096`                        | Default response bytes                             |
-| `MCP_MAX_OUTPUT_BYTES`         | `32768`                       | Maximum response bytes                             |
+| `MCP_MAX_OUTPUT_BYTES`         | `65536`                       | Maximum response bytes                             |
 | `MCP_RECORD_LIMIT`             | `1024`                        | Recent command/reset records                       |
 | `MCP_MAX_SHELLS`               | `8`                           | Maximum live shells                                |
 | `MCP_SHELL_IDLE_TTL_MS`        | `1800000`                     | Named-shell idle timeout; `0` disables cleanup     |

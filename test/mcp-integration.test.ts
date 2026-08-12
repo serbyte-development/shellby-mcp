@@ -64,7 +64,7 @@ test("serves shell tools through Streamable HTTP and retains state across MCP se
   const maxOutputSchema = (runTool?.inputSchema.properties as Record<string, Record<string, unknown>>).max_output_bytes
   assert.ok(maxOutputSchema)
   assert.equal(maxOutputSchema.default, 4096)
-  assert.equal(maxOutputSchema.maximum, 32768)
+  assert.equal(maxOutputSchema.maximum, 65536)
   const requestIdSchema = (runTool?.inputSchema.properties as Record<string, Record<string, unknown>>).request_id
   assert.ok(requestIdSchema)
   assert.equal(requestIdSchema.pattern, undefined)
@@ -119,7 +119,7 @@ test("serves shell tools through Streamable HTTP and retains state across MCP se
   const webMaxOutputSchema = (fetchWebsiteTool?.inputSchema.properties as Record<string, Record<string, unknown>>).max_output_bytes
   assert.ok(webMaxOutputSchema)
   assert.equal(webMaxOutputSchema.default, 8192)
-  assert.equal(webMaxOutputSchema.maximum, 32768)
+  assert.equal(webMaxOutputSchema.maximum, 65536)
   const websiteFormatSchema = (fetchWebsiteTool?.inputSchema.properties as Record<string, Record<string, unknown>>).format
   assert.ok(websiteFormatSchema)
   assert.equal(websiteFormatSchema.default, "markdown")

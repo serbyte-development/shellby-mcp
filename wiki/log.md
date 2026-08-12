@@ -155,7 +155,7 @@
 
 ## [2026-07-22] optimize | compact model-facing shell responses
 
-- Lowered the default per-response output cap from 4096 to 2048 UTF-8 bytes while retaining the 32768-byte override and 262144-byte per-command transcript ceiling.
+- Lowered the default per-response output cap from 4096 to 2048 UTF-8 bytes while retaining the 65536-byte override and 262144-byte per-command transcript ceiling.
 - Made pagination and diagnostic metadata conditional so normal completed commands return only status, exit code, and output.
 - Removed duplicated `apply_patch` output from the human-readable content block; structured content remains authoritative.
 - Shortened published instructions and added concrete RTK examples: `rtk test npm test` and `rtk git diff`.
@@ -551,7 +551,7 @@
 
 ## [2026-08-11] refine | raise default shell response limit
 
-- Raised the default `shell_run` / `shell_poll` response cap from 2048 to 4096 UTF-8 bytes while retaining the 32768-byte maximum override.
+- Raised the default `shell_run` / `shell_poll` response cap from 2048 to 4096 UTF-8 bytes while retaining the 65536-byte maximum override.
 - Updated the production `MCP_OUTPUT_BYTES` fallback, session fallback, published schema assertion, and configuration wiki (`src/index.ts`, `src/tools/shell/session.ts`, `test/mcp-integration.test.ts`, `pages/Configuration and Startup.md`).
 
 ## [2026-08-11] refine | simplify parallel shell batch syntax
