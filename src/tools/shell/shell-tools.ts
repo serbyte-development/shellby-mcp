@@ -88,7 +88,6 @@ export function registerShellExecutionTools(server: McpServer, shells: ShellSess
         command: z
           .string()
           .min(1)
-          .max(262_144)
           .describe(
             "Exact zsh command or multiline script. For parallel work, repeat `*** Run: <directory-or-relative-path>` followed by the zsh for that run."
           ),

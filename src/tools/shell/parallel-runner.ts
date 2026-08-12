@@ -3,7 +3,7 @@ import { StringDecoder } from "node:string_decoder"
 
 import { utf8Chunk } from "../../utils.js"
 
-export const DEFAULT_PARALLEL_COMMAND_LIMIT = 4
+const DEFAULT_PARALLEL_COMMAND_LIMIT = 4
 export const DEFAULT_PARALLEL_COMMAND_TIMEOUT_MS = 10 * 60 * 1000
 
 const STOP_GRACE_MS = 500

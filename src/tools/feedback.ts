@@ -19,7 +19,7 @@ export interface FeedbackStoreOptions {
   createId?: () => string
 }
 
-export const DEFAULT_FEEDBACK_PATH = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..", "feedback", "agent-feedback.jsonl")
+const DEFAULT_FEEDBACK_PATH = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..", "feedback", "agent-feedback.jsonl")
 
 export class FeedbackStore {
   readonly path: string

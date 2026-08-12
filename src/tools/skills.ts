@@ -101,7 +101,7 @@ export class SkillCatalog {
   }
 }
 
-export function isValidSkillName(name: string): boolean {
+function isValidSkillName(name: string): boolean {
   return SKILL_NAME_PATTERN.test(name)
 }
 

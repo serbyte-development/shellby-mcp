@@ -9,12 +9,12 @@ import { positiveInteger, utf8Prefix } from "../../utils.js"
 
 export const DEFAULT_WEB_OUTPUT_TOKENS = 8_192
 export const MAX_WEB_OUTPUT_TOKENS = 32_768
-export const MAX_CACHED_WEB_DOCUMENT_BYTES = 2 * 1024 * 1024 // 2 MiB
+const MAX_CACHED_WEB_DOCUMENT_BYTES = 2 * 1024 * 1024 // 2 MiB
 
 const DEFAULT_DOCUMENT_TTL_MS = 10 * 60 * 1_000
 const DEFAULT_DOCUMENT_LIMIT = 20
 
-export type WebsiteContentFormat = "markdown" | "clean_html" | "raw_html"
+type WebsiteContentFormat = "markdown" | "clean_html" | "raw_html"
 
 export interface WebOpenInput {
   url: string
@@ -35,7 +35,7 @@ export interface WebOpenResult extends Record<string, unknown> {
   dropped_source_bytes?: number
 }
 
-export interface RenderedWebPage {
+interface RenderedWebPage {
   url: string
   title: string
   content: string

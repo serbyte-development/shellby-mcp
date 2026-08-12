@@ -10,7 +10,7 @@ import { tokenPrefix } from "../../tokenizer.js"
 
 const FAILURE_OUTPUT_TOKENS = 1_024
 const STOP_GRACE_MS = 500
-export const DEFAULT_APPLY_PATCH_BINARY = fileURLToPath(new URL("../../../vendor/apply-patch/apply_patch", import.meta.url))
+const DEFAULT_APPLY_PATCH_BINARY = fileURLToPath(new URL("../../../vendor/apply-patch/apply_patch", import.meta.url))
 
 export function registerApplyPatchTool(server: McpServer, executable = DEFAULT_APPLY_PATCH_BINARY): void {
   server.registerTool(
@@ -23,7 +23,6 @@ export function registerApplyPatchTool(server: McpServer, executable = DEFAULT_A
         patch: z
           .string()
           .min(1)
-          .max(262_144)
           .describe("The complete patch text, beginning with *** Begin Patch and ending with *** End Patch. File references must be relative to cwd."),
         cwd: z.string().min(1).refine(isAbsolute, "cwd must be an absolute path.").describe("Required absolute directory used as the patch root."),
       }),

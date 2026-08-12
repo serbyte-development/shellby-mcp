@@ -2,9 +2,9 @@ import { mkdir, writeFile } from "node:fs/promises"
 import { homedir } from "node:os"
 import { join, resolve } from "node:path"
 
-export const DEFAULT_WORKSPACE = "~/Desktop/chatgpt-workspace"
+const DEFAULT_WORKSPACE = "~/Desktop/chatgpt-workspace"
 
-export const STARTER_AGENTS_MD = `# Workspace Instructions
+const STARTER_AGENTS_MD = `# Workspace Instructions
 
 This file contains persistent instructions for coding work in this workspace. Customize it for your preferences.
 
@@ -14,7 +14,7 @@ This file contains persistent instructions for coding work in this workspace. Cu
 - Prefer more-specific project instructions when they conflict with this file.
 `
 
-export function resolveWorkspacePath(configured) {
+function resolveWorkspacePath(configured) {
   if (configured === "~") return homedir()
   if (configured.startsWith("~/")) return join(homedir(), configured.slice(2))
   return resolve(configured)

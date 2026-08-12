@@ -19,7 +19,7 @@ import {
   processParallelCommandScheduler,
 } from "./parallel-runner.js"
 
-export type CommandStatus = "running" | "completed" | "shell_exited" | "reset"
+type CommandStatus = "running" | "completed" | "shell_exited" | "reset"
 
 export interface ShellSnapshot extends Record<string, unknown> {
   request_id: string

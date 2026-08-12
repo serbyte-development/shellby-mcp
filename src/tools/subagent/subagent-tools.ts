@@ -18,7 +18,7 @@ export function registerSubagentTools(server: McpServer, chatGptSubagents: ChatG
           .max(64)
           .refine((value) => value.trim().length > 0, "agent_id cannot be only whitespace.")
           .describe("Stable caller-chosen ID that identifies one persistent subagent conversation."),
-        prompt: z.string().min(1).max(262_144).describe("Task or next message to send to the subagent."),
+        prompt: z.string().min(1).describe("Task or next message to send to the subagent."),
         oververbosity: z
           .int()
           .min(1)

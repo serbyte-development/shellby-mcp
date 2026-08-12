@@ -2,8 +2,8 @@ import { chmod, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises"
 import { homedir } from "node:os"
 import { dirname, join } from "node:path"
 
-export const AUTH_STATE_VERSION = 1
-export const DEFAULT_AUTH_STATE_PATH = join(homedir(), ".shelly", "auth.json")
+const AUTH_STATE_VERSION = 1
+const DEFAULT_AUTH_STATE_PATH = join(homedir(), ".shelly", "auth.json")
 
 export interface ShellyAuthState {
   version: typeof AUTH_STATE_VERSION

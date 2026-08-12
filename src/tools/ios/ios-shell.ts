@@ -61,7 +61,7 @@ export function registerIosShellTool(server: McpServer, client = new IosShellCli
       description:
         "Execute a command on the user's iPhone through the configured a-Shell bridge and return stdout, stderr, and exit code. Use for iPhone work when a-Shell is reachable; the app may need to be open or recently active.",
       inputSchema: z.object({
-        command: z.string().min(1).max(262_144).describe("Command to execute in a-Shell on the iPhone."),
+        command: z.string().min(1).describe("Command to execute in a-Shell on the iPhone."),
       }),
       outputSchema: iosShellResultSchema,
       annotations: {
