@@ -553,3 +553,18 @@
 
 - Raised the default `shell_run` / `shell_poll` response cap from 2048 to 4096 UTF-8 bytes while retaining the 32768-byte maximum override.
 - Updated the production `MCP_OUTPUT_BYTES` fallback, session fallback, published schema assertion, and configuration wiki (`src/index.ts`, `src/tools/shell/session.ts`, `test/mcp-integration.test.ts`, `pages/Configuration and Startup.md`).
+
+## [2026-08-11] refine | simplify parallel shell batch syntax
+
+- Removed the `*** Begin Commands` / `*** End Commands` wrapper; a command beginning with repeated `*** Run` or `*** Run: relative/path` sections now selects batch mode directly.
+- Kept `cwd` as the batch anchor rather than a sandbox: normal relative paths including `../` and `../../` are supported, while absolute run paths remain rejected.
+
+## [2026-08-11] refine | require explicit parallel run directories
+
+- Simplified parallel batch grammar to one marker only: every section begins `*** Run: <directory-or-relative-path>` followed by its zsh body; root runs use `.` or `./`.
+- Allowed absolute run directories such as `/tmp` in addition to relative paths. Relative values still resolve from the batch `cwd` anchor, while absolute values are passed directly as the child process working directory (`src/tools/shell/parallel-runner.ts`, `src/tools/shell/session.ts`, `src/tools/shell/shell-tools.ts`).
+
+## [2026-08-11] refine | clarify parallel polling and audit failures
+
+- Clarified that a parallel batch is polled only through its outer `(shell_id, request_id, next_cursor)`; child runs remain status entries in `commands` and are never polled independently (`src/tools/shell/shell-tools.ts`, `pages/MCP Tool Surface.md`).
+- Audit logging now captures `shell_run` and `shell_poll` MCP error responses, parses JSON or Streamable HTTP SSE frames, records their bounded returned failure reason, and keeps child nonzero exits as normal tool results. `apply_patch` audit failures also fall back to returned text errors when no structured native diagnostic exists (`src/server/audit-log.ts`, `test/mcp-audit-log.test.ts`, `pages/Workspace Tooling.md`).

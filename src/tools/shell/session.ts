@@ -12,7 +12,7 @@ import {
   type ParallelCommandSpec,
   type ParallelCommandStatus,
   executeParallelCommand,
-  parseParallelCommandEnvelope,
+  parseParallelCommandBatch,
   processParallelCommandScheduler,
 } from "./parallel-runner.js"
 
@@ -44,7 +44,7 @@ export interface ShellSnapshot extends Record<string, unknown> {
 
 export interface ParallelCommandSnapshot extends Record<string, unknown> {
   run: number
-  path?: string
+  path: string
   status: ParallelCommandStatus
   exit_code: number | null
   output_dropped?: true
@@ -102,7 +102,7 @@ interface CommandRecord {
 interface ParallelRunRecord {
   run: number
   command: string
-  path?: string
+  path: string
   cwd: string
   status: ParallelCommandStatus
   exitCode: number | null
@@ -502,12 +502,12 @@ export class PersistentShellSession {
     const rootCwd = options.input.cwd ?? this.currentCwd
     validateWorkingDirectory(rootCwd)
     const runs: ParallelRunRecord[] = options.commands.map((command, index) => {
-      const cwd = command.path === undefined ? rootCwd : resolve(rootCwd, command.path)
+      const cwd = resolve(rootCwd, command.path)
       validateWorkingDirectory(cwd)
       return {
         run: index + 1,
         command: command.command,
-        ...(command.path === undefined ? {} : { path: command.path }),
+        path: command.path,
         cwd,
         status: "queued",
         exitCode: null,
@@ -546,7 +546,7 @@ export class PersistentShellSession {
 
     record.cwd = context.cwd
     for (const run of record.runs) {
-      run.cwd = run.path === undefined ? context.cwd : resolve(context.cwd, run.path)
+      run.cwd = resolve(context.cwd, run.path)
     }
 
     for (const run of record.runs) {
@@ -615,7 +615,7 @@ export class PersistentShellSession {
       dropped_output_bytes: droppedOutputBytes,
       commands: record.runs.map((run) => ({
         run: run.run,
-        ...(run.path === undefined ? {} : { path: run.path }),
+        path: run.path,
         status: run.status,
         exit_code: run.exitCode,
         ...(run.droppedOutputBytes > 0 ? { output_dropped: true as const, dropped_output_bytes: run.droppedOutputBytes } : {}),
@@ -1253,7 +1253,7 @@ function parseShellContext(value: string): ShellContext {
 
 function parseParallelCommand(command: string): ParallelCommandSpec[] | null {
   try {
-    return parseParallelCommandEnvelope(command)
+    return parseParallelCommandBatch(command)
   } catch (error) {
     throw new ShellSessionError("invalid_command", errorMessage(error))
   }

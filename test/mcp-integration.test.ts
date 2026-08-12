@@ -219,7 +219,7 @@ test("serves shell tools through Streamable HTTP and retains state across MCP se
   const parallelResult = await callUntilComplete(
     second.client,
     "parallel-http",
-    ["*** Begin Commands", "*** Run", "printf first", "*** Run", "false", "*** End Commands"].join("\n")
+    ["*** Run: .", "printf first", "*** Run: /tmp", "false"].join("\n")
   )
   assert.equal(parallelResult.status, "completed")
   assert.equal(parallelResult.exit_code, 1)

@@ -1,5 +1,4 @@
 import { spawn, type ChildProcess } from "node:child_process"
-import { isAbsolute } from "node:path"
 import { StringDecoder } from "node:string_decoder"
 
 export const DEFAULT_PARALLEL_COMMAND_LIMIT = 4
@@ -9,7 +8,7 @@ const STOP_GRACE_MS = 500
 
 export interface ParallelCommandSpec {
   command: string
-  path?: string
+  path: string
 }
 
 export type ParallelCommandStatus = "queued" | "running" | "completed" | "timed_out" | "failed" | "reset"
@@ -103,41 +102,29 @@ export class ParallelCommandAbortedError extends Error {
   }
 }
 
-export function parseParallelCommandEnvelope(value: string): ParallelCommandSpec[] | null {
+export function parseParallelCommandBatch(value: string): ParallelCommandSpec[] | null {
   const normalized = value.replaceAll("\r\n", "\n").trimStart()
-  if (!normalized.startsWith("*** Begin Commands")) return null
+  if (!normalized.startsWith("*** Run")) return null
   const lines = normalized.split("\n")
-  if (lines[0] !== "*** Begin Commands") {
-    throw new Error("The first line of a parallel command batch must be '*** Begin Commands'.")
-  }
-
-  let endIndex = lines.length - 1
-  while (endIndex > 0 && lines[endIndex] === "") endIndex -= 1
-  if (lines[endIndex] !== "*** End Commands") {
-    throw new Error("The last line of a parallel command batch must be '*** End Commands'.")
-  }
 
   const commands: ParallelCommandSpec[] = []
-  let index = 1
-  while (index < endIndex) {
+  let index = 0
+  while (index < lines.length) {
     const marker = parseRunMarker(lines[index]!)
     if (!marker) {
-      throw new Error(`Expected '*** Run' or '*** Run: relative/path' on line ${index + 1}.`)
+      throw new Error(`Expected '*** Run: <directory-or-relative-path>' on line ${index + 1}.`)
     }
     index += 1
 
     const bodyStart = index
-    while (index < endIndex && !isRunMarker(lines[index]!)) index += 1
+    while (index < lines.length && !isRunMarker(lines[index]!)) index += 1
     const command = lines.slice(bodyStart, index).join("\n")
     if (command.trim().length === 0) {
       throw new Error(`Run ${commands.length + 1} has no command.`)
     }
-    commands.push({ command, ...(marker.path === undefined ? {} : { path: marker.path }) })
+    commands.push({ command, path: marker.path })
   }
 
-  if (commands.length === 0) {
-    throw new Error("A parallel command batch must contain at least one '*** Run' section.")
-  }
   return commands
 }
 
@@ -228,17 +215,15 @@ export function executeParallelCommand(input: ExecuteParallelCommandInput): Prom
   })
 }
 
-function parseRunMarker(line: string): { path?: string } | null {
-  if (line === "*** Run") return {}
+function parseRunMarker(line: string): { path: string } | null {
   if (!line.startsWith("*** Run: ")) return null
   const path = line.slice("*** Run: ".length).trim()
   if (path.length === 0) throw new Error("A '*** Run:' path cannot be empty.")
-  if (isAbsolute(path)) throw new Error(`Parallel run paths must be relative to cwd: ${JSON.stringify(path)}.`)
   return { path }
 }
 
 function isRunMarker(line: string): boolean {
-  return line === "*** Run" || line.startsWith("*** Run: ")
+  return line.startsWith("*** Run: ")
 }
 
 class BoundedOutput {

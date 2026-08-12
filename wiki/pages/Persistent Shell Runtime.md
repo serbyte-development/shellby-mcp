@@ -30,26 +30,28 @@ Each named shell accepts one foreground command. Different shell IDs run indepen
 
 ### Parallel command envelope
 
-`shell_run` supports multiple independent commands in one free-form payload without an array schema. Normal single-command input is unchanged. Parallel mode uses an `apply_patch`-style envelope:
+`shell_run` supports multiple independent commands in one free-form payload without an array schema. Normal single-command input is unchanged. Parallel mode uses repeated directory-qualified run markers:
 
 ```text
-*** Begin Commands
-*** Run
+*** Run: .
 npm run lint
-*** Run
+*** Run: ./
 npm run type-check
-*** Run: packages/api
+*** Run: ./packages/api
 npm test
-*** End Commands
+*** Run: ../../shared
+npm run check
+*** Run: /tmp
+pwd
 ```
 
-The envelope means "run these command blocks independently and concurrently," not "concatenate them into one shell program." `*** Run` uses the batch root; `*** Run: path` resolves a relative directory from that root. Exact marker lines are reserved while inside the envelope. Shell-level backgrounding such as `command & ...; wait` is deliberately not the implementation because it collapses the work back into one opaque shell execution (`src/tools/shell/parallel-runner.ts`).
+Starting the command with `*** Run: <directory-or-relative-path>` means "run these command blocks independently and concurrently," not "concatenate them into one shell program." Every run declares its working directory. Relative values resolve from the batch `cwd` anchor, including `.`, `./`, `../`, and `../../`; absolute values such as `/tmp` are used directly. Exact `*** Run: ` marker lines are reserved while inside a batch. Shell-level backgrounding such as `command & ...; wait` is deliberately not the implementation because it collapses the work back into one opaque shell execution (`src/tools/shell/parallel-runner.ts`).
 
 Execution rules:
 
 - Keep the feature entirely inside the existing `shell_run` / `shell_poll` contract. Do not add a `shell_parallel` tool and do not assign child shell IDs. One batch remains one outer `(shell_id, request_id)` operation.
 - Capture the selected persistent shell's current exported environment once when the batch starts. An explicit call-level `cwd` first becomes the persistent shell's selected directory and the batch root; otherwise the current directory is the root. Every child inherits that environment snapshot, while state changes inside a child do not mutate the persistent shell or siblings.
-- Resolve `*** Run: path` only from the batch root and reject absolute run paths. The path is execution metadata, not shell text, so callers do not need repeated `cd ... &&` prefixes.
+- Require a directory on every `*** Run:` marker. Resolve relative paths from the batch `cwd` using normal path semantics, including `.`, `./`, `../`, and `../../`; pass absolute paths directly as the child process `cwd`. The batch `cwd` is an anchor, not a sandbox. The directory is execution metadata, not shell text, so callers do not need repeated `cd ... &&` prefixes.
 - Treat the parent `shell_run` as occupying that named shell until the batch finishes, preserving the existing one-foreground-operation-per-shell mental model.
 - Submit any number of sections in one tool call, but run at most **4 child processes concurrently process-wide**. Additional sections queue inside their owning request and start as slots become available.
 - Keep one bounded output buffer per child. When a child becomes terminal, append one labeled output block to the batch transcript. The `commands` result array remains in submission order even if output blocks arrive in completion order, avoiding interleaved child streams while preserving normal cursor pagination.
@@ -59,7 +61,7 @@ Execution rules:
 - These workers are short-lived child processes, not named persistent shells, and therefore should not consume `ShellSessionManager` shell slots.
 - Keep this deliberately below workflow-engine complexity: no DAGs, dependencies, per-command IDs, retries, or nested orchestration syntax.
 
-`src/tools/shell/parallel-runner.ts` owns the envelope parser, process-wide scheduler, bounded child execution, timeout, and process-group cleanup. `PersistentShellSession` owns the outer request record, environment capture through the existing persistent shell, relative-directory resolution, polling, retained grouped output, and reset integration (`src/tools/shell/parallel-runner.ts`, `src/tools/shell/session.ts`, `src/tools/shell/shell-tools.ts`).
+`src/tools/shell/parallel-runner.ts` owns the batch parser, process-wide scheduler, bounded child execution, timeout, and process-group cleanup. `PersistentShellSession` owns the outer request record, environment capture through the existing persistent shell, relative-directory resolution, polling, retained grouped output, and reset integration (`src/tools/shell/parallel-runner.ts`, `src/tools/shell/session.ts`, `src/tools/shell/shell-tools.ts`).
 
 ## Reset and Recovery
 

@@ -241,17 +241,19 @@ Each new `shell_run` command requires a `request_id`. Retrying the same request 
 Independent commands can share one `shell_run` call:
 
 ```text
-*** Begin Commands
-*** Run
+*** Run: .
 npm run lint
-*** Run
+*** Run: ./
 npm run type-check
-*** Run: packages/api
+*** Run: ./packages/api
 npm test
-*** End Commands
+*** Run: ../../shared
+npm run check
+*** Run: /tmp
+pwd
 ```
 
-The call's `cwd` is the batch root; `*** Run: path` is relative to that root. If `cwd` is omitted, the current persistent-shell directory is the root. The MCP runs at most four batch children concurrently across the process and queues extras. Each child keeps separate bounded output and exit status; nonzero exits do not cancel siblings. Parallel children time out after 10 minutes, while ordinary persistent-shell commands keep the existing no-hard-timeout behavior. `shell_poll` continues the same outer `shell_id` and `request_id` and reports each run as queued, running, completed, timed out, failed, or reset.
+Starting `command` with `*** Run: <directory-or-relative-path>` selects batch mode; every run must declare its working directory and no outer begin/end envelope is needed. Relative paths resolve from the call's `cwd` anchor, so `.`, `./`, `../`, and `../../` work normally. Absolute paths such as `/tmp` are used directly. If `cwd` is omitted, the current persistent-shell directory is the anchor. The MCP runs at most four batch children concurrently across the process and queues extras. Each child keeps separate bounded output and exit status; nonzero exits do not cancel siblings. Parallel children time out after 10 minutes, while ordinary persistent-shell commands keep the existing no-hard-timeout behavior. `shell_poll` continues the same outer `shell_id` and `request_id` and reports each run as queued, running, completed, timed out, failed, or reset.
 
 Defaults:
 

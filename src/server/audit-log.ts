@@ -39,7 +39,7 @@ export class McpAuditLogger {
 
       return [
         {
-          needsResponseBody: parsed.name === "apply_patch",
+          needsResponseBody: parsed.name === "apply_patch" || parsed.name === "shell_run" || parsed.name === "shell_poll",
           finish: ({ httpStatus, state, responseBytes, responseBody }) => {
             if (finished) return
             finished = true
@@ -131,7 +131,16 @@ function formatArguments(toolName: string, value: unknown, toolFailed: boolean, 
     const requestId = typeof argumentsRecord.request_id === "string" ? argumentsRecord.request_id : ""
     const commandText = truncate(command, MAX_SHELL_COMMAND_CHARS)
     const cwd = typeof argumentsRecord.cwd === "string" ? `\ncwd: ${yamlString(argumentsRecord.cwd)}` : ""
-    return `shell: ${yamlString(`${shellId}/${requestId}`)}${cwd}\ncommand: |-\n${indentBlock(commandText)}`
+    const message = toolFailed && failureMessage ? `\nmessage: ${yamlString(truncate(failureMessage, MAX_FAILED_MESSAGE_CHARS))}` : ""
+    return `shell: ${yamlString(`${shellId}/${requestId}`)}${cwd}${message}\ncommand: |-\n${indentBlock(commandText)}`
+  }
+
+  if (toolName === "shell_poll" && argumentsRecord) {
+    const shellId = typeof argumentsRecord.shell_id === "string" ? argumentsRecord.shell_id : "default"
+    const requestId = typeof argumentsRecord.request_id === "string" ? argumentsRecord.request_id : ""
+    const cursor = typeof argumentsRecord.cursor === "number" ? argumentsRecord.cursor : 0
+    const message = toolFailed && failureMessage ? `\nmessage: ${yamlString(truncate(failureMessage, MAX_FAILED_MESSAGE_CHARS))}` : ""
+    return `shell: ${yamlString(`${shellId}/${requestId}`)}\ncursor: ${cursor}${message}`
   }
 
   const serialized = JSON.stringify(value ?? {})
@@ -143,8 +152,8 @@ function formatArguments(toolName: string, value: unknown, toolFailed: boolean, 
 
 function parseToolResponse(responseBody: string | undefined): { failed: boolean; failureMessage?: string } {
   if (!responseBody) return { failed: false }
-  try {
-    const payload = JSON.parse(responseBody) as unknown
+  const payloads = parseResponsePayloads(responseBody)
+  for (const payload of payloads) {
     const responses = Array.isArray(payload) ? payload : [payload]
     for (const response of responses) {
       if (!response || typeof response !== "object" || Array.isArray(response)) continue
@@ -152,11 +161,39 @@ function parseToolResponse(responseBody: string | undefined): { failed: boolean;
       if (!result || typeof result !== "object" || Array.isArray(result) || (result as { isError?: unknown }).isError !== true) continue
       const structuredContent = asRecord((result as { structuredContent?: unknown }).structuredContent)
       const output = structuredContent && typeof structuredContent.output === "string" ? structuredContent.output : undefined
-      return output ? { failed: true, failureMessage: output } : { failed: true }
+      if (output) return { failed: true, failureMessage: output }
+      const content = (result as { content?: unknown }).content
+      if (Array.isArray(content)) {
+        const message = content
+          .map((item) => asRecord(item))
+          .filter((item): item is Record<string, unknown> => item !== undefined)
+          .filter((item) => item.type === "text" && typeof item.text === "string")
+          .map((item) => item.text as string)
+          .join("\n")
+        if (message) return { failed: true, failureMessage: message }
+      }
+      return { failed: true }
     }
-    return { failed: false }
+  }
+  return { failed: responseBody.includes('"isError":true') }
+}
+
+function parseResponsePayloads(responseBody: string): unknown[] {
+  try {
+    return [JSON.parse(responseBody) as unknown]
   } catch {
-    return { failed: responseBody.includes('"isError":true') }
+    const payloads: unknown[] = []
+    for (const line of responseBody.split(/\r?\n/)) {
+      if (!line.startsWith("data:")) continue
+      const data = line.slice("data:".length).trim()
+      if (!data || data === "[DONE]") continue
+      try {
+        payloads.push(JSON.parse(data) as unknown)
+      } catch {
+        // Ignore malformed or non-JSON SSE data and fall back to isError detection.
+      }
+    }
+    return payloads
   }
 }
 

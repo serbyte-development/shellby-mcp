@@ -81,12 +81,12 @@ test("logs apply_patch bodies only when the tool fails", async (t) => {
     httpStatus: 200,
     state: "finished",
     responseBytes: 400,
-    responseBody: JSON.stringify({
+    responseBody: `event: message\ndata: ${JSON.stringify({
       result: {
         isError: true,
         structuredContent: { status: "failed", exit_code: 1, output: "Invalid patch hunk on line 4\nUnexpected @@" },
       },
-    }),
+    })}\n\n`,
   })
 
   log = await readFile(file, "utf8")
@@ -94,6 +94,110 @@ test("logs apply_patch bodies only when the tool fails", async (t) => {
   assert.match(log, /message: "Invalid patch hunk on line 4\\nUnexpected @@"/)
   assert.match(log, /patch: \|-\n {2}\*\*\* Begin Patch/)
   assert.match(log, / {2}\+new/)
+
+  const [thrownFailure] = logger.startToolCalls({
+    method: "tools/call",
+    params: { name: "apply_patch", arguments: { patch, cwd: "/workspace/project" } },
+  })
+  assert.ok(thrownFailure)
+  thrownFailure.finish({
+    httpStatus: 200,
+    state: "finished",
+    responseBytes: 300,
+    responseBody: JSON.stringify({
+      result: {
+        isError: true,
+        content: [{ type: "text", text: "apply_patch_failed: apply_patch request was aborted." }],
+      },
+    }),
+  })
+
+  log = await readFile(file, "utf8")
+  assert.match(log, /message: "apply_patch_failed: apply_patch request was aborted\."/)
+})
+
+test("logs shell tool errors with their MCP failure reason", async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), "mcp-audit-log-"))
+  const file = join(directory, "agent-commands.yaml")
+  t.after(() => rm(directory, { recursive: true, force: true }))
+
+  const logger = new McpAuditLogger(
+    file,
+    () => new Date(2026, 7, 11, 22, 50, 0),
+    () => 100
+  )
+  const [run] = logger.startToolCalls({
+    method: "tools/call",
+    params: {
+      name: "shell_run",
+      arguments: { shell_id: "parallel", request_id: "bad-batch", command: "*** Run\npwd" },
+    },
+  })
+  assert.ok(run)
+  assert.equal(run.needsResponseBody, true)
+  run.finish({
+    httpStatus: 200,
+    state: "finished",
+    responseBytes: 250,
+    responseBody: `event: message\ndata: ${JSON.stringify({
+      result: {
+        isError: true,
+        content: [{ type: "text", text: "invalid_command: Expected '*** Run: <directory-or-relative-path>' on line 1." }],
+      },
+    })}\n\n`,
+  })
+
+  const [poll] = logger.startToolCalls({
+    method: "tools/call",
+    params: { name: "shell_poll", arguments: { shell_id: "parallel", request_id: "missing", cursor: 0 } },
+  })
+  assert.ok(poll)
+  assert.equal(poll.needsResponseBody, true)
+  poll.finish({
+    httpStatus: 200,
+    state: "finished",
+    responseBytes: 180,
+    responseBody: `event: message\ndata: ${JSON.stringify({
+      result: {
+        isError: true,
+        content: [{ type: "text", text: "unknown_request: No retained command for request_id missing." }],
+      },
+    })}\n\n`,
+  })
+
+  const log = await readFile(file, "utf8")
+  assert.match(log, /--- # ! 22:50:00 - shell_run/)
+  assert.match(log, /message: "invalid_command: Expected '\*\*\* Run: <directory-or-relative-path>' on line 1\."/)
+  assert.match(log, /--- # ! 22:50:00 - shell_poll/)
+  assert.match(log, /shell: "parallel\/missing"\ncursor: 0\nmessage: "unknown_request: No retained command for request_id missing\."/)
+
+  const [childNonzero] = logger.startToolCalls({
+    method: "tools/call",
+    params: {
+      name: "shell_run",
+      arguments: { shell_id: "parallel", request_id: "child-nonzero", command: "*** Run: .\nfalse" },
+    },
+  })
+  assert.ok(childNonzero)
+  childNonzero.finish({
+    httpStatus: 200,
+    state: "finished",
+    responseBytes: 220,
+    responseBody: JSON.stringify({
+      result: {
+        isError: false,
+        structuredContent: {
+          status: "completed",
+          exit_code: 1,
+          commands: [{ run: 1, path: ".", status: "completed", exit_code: 1 }],
+        },
+      },
+    }),
+  })
+
+  const finalLog = await readFile(file, "utf8")
+  assert.match(finalLog, /--- # 22:50:00 - shell_run - 0ms\nshell: "parallel\/child-nonzero"/)
+  assert.doesNotMatch(finalLog, /--- # ! 22:50:00 - shell_run - 0ms\nshell: "parallel\/child-nonzero"/)
 })
 
 test("caps large ordinary tool arguments", async (t) => {
