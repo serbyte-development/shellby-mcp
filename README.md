@@ -259,7 +259,7 @@ Defaults:
 
 - 8 live shells including `default`
 - 30-minute idle timeout for named shells
-- 2 KiB response output
+- 4 KiB response output
 - 32 KiB maximum response override
 - 256 KiB retained output per command
 - 1 MiB rolling shell transcript
@@ -305,7 +305,7 @@ Each call requires an absolute `cwd` and a normal Codex-style patch. It runs ind
 | `CHROME_BIN`                   | normal macOS Chrome path      | Optional dedicated Chrome executable override      |
 | `MCP_TRANSCRIPT_CHARS`         | `1048576`                     | Rolling transcript size                            |
 | `MCP_COMMAND_TRANSCRIPT_BYTES` | `262144`                      | Per-command retained output ceiling                |
-| `MCP_OUTPUT_BYTES`             | `2048`                        | Default response bytes                             |
+| `MCP_OUTPUT_BYTES`             | `4096`                        | Default response bytes                             |
 | `MCP_MAX_OUTPUT_BYTES`         | `32768`                       | Maximum response bytes                             |
 | `MCP_RECORD_LIMIT`             | `1024`                        | Recent command/reset records                       |
 | `MCP_MAX_SHELLS`               | `8`                           | Maximum live shells                                |
