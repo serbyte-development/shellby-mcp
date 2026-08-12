@@ -175,6 +175,8 @@ Setup keeps the dedicated Chrome visible so you can sign in. Normal `npm start` 
 
 Returned turn IDs are readable and sequential per local agent, for example `seo-audit_turn_1` and `seo-audit_turn_2`. Idle subagent state expires after 30 minutes: the managed browser tab and local turn records are removed, while the ChatGPT conversation remains in the user's ChatGPT history.
 
+`subagent_start` accepts 1-3 independent agents per call. The first is submitted immediately, the second 5 seconds later, and the third 7 seconds after that; at most three generations may run at once. `subagent_poll` accepts 1-3 turn IDs and polls them concurrently in the same wait window.
+
 Default endpoint:
 
 ```text
@@ -256,7 +258,7 @@ npm run check
 pwd
 ```
 
-Starting `command` with `*** Run: <directory-or-relative-path>` selects batch mode; every run must declare its working directory and no outer begin/end envelope is needed. Relative paths resolve from the call's `cwd` anchor, so `.`, `./`, `../`, and `../../` work normally. Absolute paths such as `/tmp` are used directly. If `cwd` is omitted, the current persistent-shell directory is the anchor. The MCP runs at most four batch children concurrently across the process and queues extras. Each child keeps separate bounded output and exit status; nonzero exits do not cancel siblings. Parallel children time out after 10 minutes, while ordinary persistent-shell commands keep the existing no-hard-timeout behavior. `shell_poll` continues the same outer `shell_id` and `request_id` and reports each run as queued, running, completed, timed out, failed, or reset.
+Starting `command` with `*** Run: <directory-or-relative-path>` selects batch mode; every run must declare its working directory and no outer begin/end envelope is needed. Relative paths resolve from the call's `cwd` anchor, so `.`, `./`, `../`, and `../../` work normally. Absolute paths such as `/tmp` are used directly. If `cwd` is omitted, the current persistent-shell directory is the anchor. The MCP runs at most four batch children concurrently across the process and queues extras. Each child keeps separate bounded output; nonzero exits do not cancel siblings. Parallel children time out after 10 minutes, while ordinary persistent-shell commands keep the existing no-hard-timeout behavior. `shell_poll` continues the same outer `shell_id` and `request_id`; finished children appear in the shared paged output as blocks labeled with run number, path, status or exit code, and any permanently dropped bytes.
 
 Defaults:
 

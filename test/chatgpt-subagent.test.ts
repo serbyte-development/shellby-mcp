@@ -18,6 +18,30 @@ test("module fails clearly when the expected Chrome CDP endpoint is unavailable"
   await assert.rejects(module.connect(), /already-running debuggable Chrome instance.*attach-only.*will not launch Chrome/i)
 })
 
+test("hard caps concurrent generations at three", async () => {
+  const module = new ChatGptSubagentModule({
+    cdpEndpoint: "http://127.0.0.1:1",
+    maxConcurrentAgents: 99,
+  })
+  const internals = module as unknown as {
+    beginAgentOperation(agentId: string, generation: boolean): void
+    endAgentOperation(agentId: string, generation: boolean): void
+  }
+
+  internals.beginAgentOperation("agent-a", true)
+  internals.beginAgentOperation("agent-b", true)
+  internals.beginAgentOperation("agent-c", true)
+  assert.throws(
+    () => internals.beginAgentOperation("agent-d", true),
+    (error: unknown) => error instanceof ChatGptSubagentError && error.code === "SUBAGENT_CAPACITY_REACHED" && /capacity is 3/.test(error.message)
+  )
+
+  internals.endAgentOperation("agent-a", true)
+  internals.endAgentOperation("agent-b", true)
+  internals.endAgentOperation("agent-c", true)
+  await module.dispose()
+})
+
 test("browser visibility hook is best effort", async () => {
   let calls = 0
   const module = new ChatGptSubagentModule({

@@ -89,20 +89,18 @@ test("serves shell tools through Streamable HTTP and retains state across MCP se
     required?: string[]
   }
   assert.deepEqual(Object.keys(outputSchema.properties ?? {}).sort(), [
-    "commands",
     "cursor_expired",
     "cwd",
     "dropped_output_bytes",
     "exit_code",
     "next_cursor",
     "output",
-    "output_dropped",
     "output_truncated",
     "request_id",
     "shell_id",
     "status",
   ])
-  assert.deepEqual(outputSchema.required?.sort(), ["cwd", "exit_code", "output", "status"])
+  assert.deepEqual(outputSchema.required?.sort(), ["cwd", "output", "status"])
   const applyPatchTool = tools.tools.find((tool) => tool.name === "apply_patch")
   assert.equal(applyPatchTool?.annotations?.destructiveHint, true)
   assert.equal(applyPatchTool?.annotations?.idempotentHint, false)
@@ -132,7 +130,7 @@ test("serves shell tools through Streamable HTTP and retains state across MCP se
   assert.equal(fetchWebsiteTool?.annotations?.openWorldHint, true)
   const webMaxOutputSchema = (fetchWebsiteTool?.inputSchema.properties as Record<string, Record<string, unknown>>).max_output_tokens
   assert.ok(webMaxOutputSchema)
-  assert.deepEqual(Object.keys(webMaxOutputSchema), ["description", "type", "default", "minimum", "maximum"])
+  assert.deepEqual(Object.keys(webMaxOutputSchema), ["type", "default", "minimum", "maximum"])
   assert.equal(webMaxOutputSchema.minimum, 1)
   assert.equal(webMaxOutputSchema.default, DEFAULT_WEB_OUTPUT_TOKENS)
   assert.equal(webMaxOutputSchema.maximum, MAX_WEB_OUTPUT_TOKENS)
@@ -185,12 +183,21 @@ test("serves shell tools through Streamable HTTP and retains state across MCP se
     properties?: Record<string, Record<string, unknown>>
     required?: string[]
   }
-  assert.deepEqual(Object.keys(subagentInputSchema.properties ?? {}).sort(), ["agent_id", "oververbosity", "prompt"])
-  assert.deepEqual(subagentInputSchema.required?.sort(), ["agent_id", "prompt"])
-  assert.equal(subagentInputSchema.properties?.agent_id?.maxLength, 64)
-  assert.equal(subagentInputSchema.properties?.oververbosity?.default, 2)
-  assert.equal(subagentInputSchema.properties?.oververbosity?.minimum, 1)
-  assert.equal(subagentInputSchema.properties?.oververbosity?.maximum, 5)
+  assert.deepEqual(Object.keys(subagentInputSchema.properties ?? {}), ["agents"])
+  assert.deepEqual(subagentInputSchema.required, ["agents"])
+  const subagentAgentsSchema = subagentInputSchema.properties?.agents as {
+    minItems?: number
+    maxItems?: number
+    items?: { properties?: Record<string, Record<string, unknown>>; required?: string[] }
+  }
+  assert.equal(subagentAgentsSchema.minItems, 1)
+  assert.equal(subagentAgentsSchema.maxItems, 3)
+  assert.deepEqual(Object.keys(subagentAgentsSchema.items?.properties ?? {}).sort(), ["agent_id", "oververbosity", "prompt"])
+  assert.deepEqual(subagentAgentsSchema.items?.required?.sort(), ["agent_id", "prompt"])
+  assert.equal(subagentAgentsSchema.items?.properties?.agent_id?.maxLength, 64)
+  assert.equal(subagentAgentsSchema.items?.properties?.oververbosity?.default, 2)
+  assert.equal(subagentAgentsSchema.items?.properties?.oververbosity?.minimum, 1)
+  assert.equal(subagentAgentsSchema.items?.properties?.oververbosity?.maximum, 5)
   const subagentPollTool = tools.tools.find((tool) => tool.name === "subagent_poll")
   assert.equal(subagentPollTool?.annotations?.readOnlyHint, true)
   assert.equal(subagentPollTool?.annotations?.idempotentHint, true)
@@ -201,10 +208,16 @@ test("serves shell tools through Streamable HTTP and retains state across MCP se
   const subagentPollOutputSchema = subagentPollTool?.outputSchema as {
     properties?: Record<string, Record<string, unknown>>
   }
-  assert.deepEqual(subagentPollOutputSchema.properties?.activity?.enum, ["Working", "Searching the web", "Using tools", "Generating response"])
-  assert.equal(subagentPollOutputSchema.properties?.activity_age_ms?.type, "integer")
-  assert.deepEqual(Object.keys(subagentPollInputSchema.properties ?? {}).sort(), ["turn_id", "wait_ms"])
-  assert.deepEqual(subagentPollInputSchema.required?.sort(), ["turn_id"])
+  const subagentPollTurnsSchema = subagentPollOutputSchema.properties?.turns as {
+    items?: { properties?: Record<string, Record<string, unknown>>; required?: string[] }
+  }
+  assert.deepEqual(subagentPollTurnsSchema.items?.properties?.activity?.enum, ["Working", "Searching the web", "Using tools", "Generating response"])
+  assert.equal(subagentPollTurnsSchema.items?.properties?.activity_age_ms?.type, "integer")
+  assert.deepEqual(subagentPollTurnsSchema.items?.required?.sort(), ["status", "turn_id"])
+  assert.deepEqual(Object.keys(subagentPollInputSchema.properties ?? {}).sort(), ["turn_ids", "wait_ms"])
+  assert.deepEqual(subagentPollInputSchema.required?.sort(), ["turn_ids"])
+  assert.equal(subagentPollInputSchema.properties?.turn_ids?.minItems, 1)
+  assert.equal(subagentPollInputSchema.properties?.turn_ids?.maxItems, 3)
   assert.equal(subagentPollInputSchema.properties?.wait_ms?.default, 0)
   assert.equal(subagentPollInputSchema.properties?.wait_ms?.maximum, 60_000)
 
@@ -235,14 +248,9 @@ test("serves shell tools through Streamable HTTP and retains state across MCP se
   const parallelResult = await callUntilComplete(second.client, "parallel-http", ["*** Run: .", "printf first", "*** Run: /tmp", "false"].join("\n"))
   assert.equal(parallelResult.status, "completed")
   assert.equal(parallelResult.exit_code, 1)
-  assert.deepEqual(
-    parallelResult.commands?.map(({ run, status, exit_code }) => ({ run, status, exit_code })),
-    [
-      { run: 1, status: "completed", exit_code: 0 },
-      { run: 2, status: "completed", exit_code: 1 },
-    ]
-  )
-  assert.match(parallelResult.output, /first/)
+  assert.equal("commands" in parallelResult, false)
+  assert.match(parallelResult.output, /\[run 1 path="\." exit=0\]\nfirst/)
+  assert.match(parallelResult.output, /\[run 2 path="\/tmp" exit=1\]/)
 })
 
 test("lists and loads dynamic workspace skills through MCP", { timeout: 10_000 }, async (t) => {
@@ -322,11 +330,15 @@ test("records agent feedback through MCP", { timeout: 10_000 }, async (t) => {
   })
 })
 
-test("shares async ChatGPT subagent turns across stateless MCP requests", { timeout: 10_000 }, async (t) => {
+test("starts staggered subagents and polls turns concurrently across stateless MCP requests", { timeout: 25_000 }, async (t) => {
   const turns = new Map<string, string[]>()
   const completed = new Map<string, { agentId: string; response: string }>()
+  const starts: Array<{ agentId: string; at: number }> = []
+  let activePolls = 0
+  let maxActivePolls = 0
   const chatGptSubagents: ChatGptSubagentService = {
     async ask({ agentId, prompt }) {
+      starts.push({ agentId, at: Date.now() })
       const history = turns.get(agentId) ?? []
       history.push(prompt)
       turns.set(agentId, history)
@@ -344,23 +356,30 @@ test("shares async ChatGPT subagent turns across stateless MCP requests", { time
       }
     },
     async poll(turnId) {
-      if (turnId === "heartbeat-fixture") {
-        return {
-          agentId: "heartbeat-agent",
-          turnId,
-          status: "running",
-          activity: "Searching the web",
-          activityAgeMs: 2_750,
+      activePolls += 1
+      maxActivePolls = Math.max(maxActivePolls, activePolls)
+      try {
+        await new Promise((resolve) => setTimeout(resolve, 25))
+        if (turnId === "heartbeat-fixture") {
+          return {
+            agentId: "heartbeat-agent",
+            turnId,
+            status: "running",
+            activity: "Searching the web",
+            activityAgeMs: 2_750,
+          }
         }
-      }
-      const result = completed.get(turnId)
-      if (!result) throw new Error(`unknown turn ${turnId}`)
-      return {
-        agentId: result.agentId,
-        turnId,
-        status: "completed",
-        conversationUrl: `https://chatgpt.com/c/fake-${result.agentId}`,
-        response: result.response,
+        const result = completed.get(turnId)
+        if (!result) throw new Error(`unknown turn ${turnId}`)
+        return {
+          agentId: result.agentId,
+          turnId,
+          status: "completed",
+          conversationUrl: `https://chatgpt.com/c/fake-${result.agentId}`,
+          response: result.response,
+        }
+      } finally {
+        activePolls -= 1
       }
     },
     async dispose() {},
@@ -375,70 +394,158 @@ test("shares async ChatGPT subagent turns across stateless MCP requests", { time
   const firstResult = await first.client.callTool({
     name: "subagent_start",
     arguments: {
-      agent_id: "architecture-reviewer",
-      prompt: "Review the architecture.",
+      agents: [
+        { agent_id: "architecture-reviewer", prompt: "Review the architecture." },
+        { agent_id: "test-reviewer", prompt: "Review the tests." },
+        { agent_id: "simplifier", prompt: "Find the simplest implementation." },
+      ],
     },
   })
   assert.deepEqual(firstResult.structuredContent, {
-    agent_id: "architecture-reviewer",
-    turn_id: "turn-architecture-reviewer-1",
-    status: "running",
-    submitted: true,
-    conversation_url: "https://chatgpt.com/c/fake-architecture-reviewer",
+    turns: [
+      {
+        agent_id: "architecture-reviewer",
+        turn_id: "turn-architecture-reviewer-1",
+        status: "running",
+        submitted: true,
+        conversation_url: "https://chatgpt.com/c/fake-architecture-reviewer",
+      },
+      {
+        agent_id: "test-reviewer",
+        turn_id: "turn-test-reviewer-1",
+        status: "running",
+        submitted: true,
+        conversation_url: "https://chatgpt.com/c/fake-test-reviewer",
+      },
+      {
+        agent_id: "simplifier",
+        turn_id: "turn-simplifier-1",
+        status: "running",
+        submitted: true,
+        conversation_url: "https://chatgpt.com/c/fake-simplifier",
+      },
+    ],
   })
+  assert.equal(starts.length, 3)
+  assert.ok(starts[1]!.at - starts[0]!.at >= 4_500)
+  assert.ok(starts[2]!.at - starts[1]!.at >= 6_500)
   await first.client.close()
 
   const second = await connectClient(running.url, "subagent-client-2")
   t.after(() => second.client.close())
-  const heartbeatPoll = await second.client.callTool({
-    name: "subagent_poll",
-    arguments: { turn_id: "heartbeat-fixture" },
-  })
-  assert.deepEqual(heartbeatPoll.structuredContent, {
-    agent_id: "heartbeat-agent",
-    turn_id: "heartbeat-fixture",
-    status: "running",
-    activity: "Searching the web",
-    activity_age_ms: 2_750,
-  })
-  const firstPoll = await second.client.callTool({
+  const batchPoll = await second.client.callTool({
     name: "subagent_poll",
     arguments: {
-      turn_id: "turn-architecture-reviewer-1",
+      turn_ids: ["turn-architecture-reviewer-1", "turn-test-reviewer-1", "turn-simplifier-1"],
       wait_ms: 0,
     },
   })
-  assert.deepEqual(firstPoll.structuredContent, {
-    agent_id: "architecture-reviewer",
-    turn_id: "turn-architecture-reviewer-1",
-    status: "completed",
-    conversation_url: "https://chatgpt.com/c/fake-architecture-reviewer",
-    response: "architecture-reviewer:1:Review the architecture.",
+  assert.deepEqual(batchPoll.structuredContent, {
+    turns: [
+      {
+        agent_id: "architecture-reviewer",
+        turn_id: "turn-architecture-reviewer-1",
+        status: "completed",
+        conversation_url: "https://chatgpt.com/c/fake-architecture-reviewer",
+        response: "architecture-reviewer:1:Review the architecture.",
+      },
+      {
+        agent_id: "test-reviewer",
+        turn_id: "turn-test-reviewer-1",
+        status: "completed",
+        conversation_url: "https://chatgpt.com/c/fake-test-reviewer",
+        response: "test-reviewer:1:Review the tests.",
+      },
+      {
+        agent_id: "simplifier",
+        turn_id: "turn-simplifier-1",
+        status: "completed",
+        conversation_url: "https://chatgpt.com/c/fake-simplifier",
+        response: "simplifier:1:Find the simplest implementation.",
+      },
+    ],
+  })
+  assert.equal(maxActivePolls, 3)
+
+  const partialFailurePoll = await second.client.callTool({
+    name: "subagent_poll",
+    arguments: {
+      turn_ids: ["turn-architecture-reviewer-1", "missing-turn", "turn-simplifier-1"],
+      wait_ms: 0,
+    },
+  })
+  assert.equal(partialFailurePoll.isError, undefined)
+  assert.deepEqual(partialFailurePoll.structuredContent, {
+    turns: [
+      {
+        agent_id: "architecture-reviewer",
+        turn_id: "turn-architecture-reviewer-1",
+        status: "completed",
+        conversation_url: "https://chatgpt.com/c/fake-architecture-reviewer",
+        response: "architecture-reviewer:1:Review the architecture.",
+      },
+      {
+        turn_id: "missing-turn",
+        status: "failed",
+        error_code: "subagent_failed",
+        error_message: "unknown turn missing-turn",
+      },
+      {
+        agent_id: "simplifier",
+        turn_id: "turn-simplifier-1",
+        status: "completed",
+        conversation_url: "https://chatgpt.com/c/fake-simplifier",
+        response: "simplifier:1:Find the simplest implementation.",
+      },
+    ],
+  })
+
+  const heartbeatPoll = await second.client.callTool({
+    name: "subagent_poll",
+    arguments: { turn_ids: ["heartbeat-fixture"] },
+  })
+  assert.deepEqual(heartbeatPoll.structuredContent, {
+    turns: [
+      {
+        agent_id: "heartbeat-agent",
+        turn_id: "heartbeat-fixture",
+        status: "running",
+        activity: "Searching the web",
+        activity_age_ms: 2_750,
+      },
+    ],
   })
   const secondResult = await second.client.callTool({
     name: "subagent_start",
     arguments: {
-      agent_id: "architecture-reviewer",
-      prompt: "Now critique your answer.",
+      agents: [{ agent_id: "architecture-reviewer", prompt: "Now critique your answer." }],
     },
   })
   assert.deepEqual(secondResult.structuredContent, {
-    agent_id: "architecture-reviewer",
-    turn_id: "turn-architecture-reviewer-2",
-    status: "running",
-    submitted: true,
-    conversation_url: "https://chatgpt.com/c/fake-architecture-reviewer",
+    turns: [
+      {
+        agent_id: "architecture-reviewer",
+        turn_id: "turn-architecture-reviewer-2",
+        status: "running",
+        submitted: true,
+        conversation_url: "https://chatgpt.com/c/fake-architecture-reviewer",
+      },
+    ],
   })
   const secondPoll = await second.client.callTool({
     name: "subagent_poll",
-    arguments: { turn_id: "turn-architecture-reviewer-2" },
+    arguments: { turn_ids: ["turn-architecture-reviewer-2"] },
   })
   assert.deepEqual(secondPoll.structuredContent, {
-    agent_id: "architecture-reviewer",
-    turn_id: "turn-architecture-reviewer-2",
-    status: "completed",
-    conversation_url: "https://chatgpt.com/c/fake-architecture-reviewer",
-    response: "architecture-reviewer:2:Now critique your answer.",
+    turns: [
+      {
+        agent_id: "architecture-reviewer",
+        turn_id: "turn-architecture-reviewer-2",
+        status: "completed",
+        conversation_url: "https://chatgpt.com/c/fake-architecture-reviewer",
+        response: "architecture-reviewer:2:Now critique your answer.",
+      },
+    ],
   })
 })
 
@@ -483,14 +590,13 @@ test("audits tool calls at the HTTP MCP boundary", { timeout: 10_000 }, async (t
   await connected.client.callTool({
     name: "subagent_start",
     arguments: {
-      agent_id: "audit-check",
-      prompt: "Inspect the audit path.",
+      agents: [{ agent_id: "audit-check", prompt: "Inspect the audit path." }],
     },
   })
 
   const log = await readFile(auditPath, "utf8")
   assert.match(log, /--- # \d{2}:\d{2}:\d{2} - shell_list - \d+ms\nargs: \{\}/)
-  assert.match(log, /--- # \d{2}:\d{2}:\d{2} - subagent_start - \d+ms\nargs: \{"agent_id":"audit-check","prompt":"Inspect the audit path\."\}/)
+  assert.match(log, /--- # \d{2}:\d{2}:\d{2} - subagent_start - \d+ms\nargs: \{"agents":\[\{"agent_id":"audit-check","prompt":"Inspect the audit path\."\}\]\}/)
 })
 
 test("exposes a stable Peekaboo Computer Use surface and preserves semantic errors", { timeout: 10_000 }, async (t) => {
@@ -1318,23 +1424,14 @@ async function connectClient(url: string, name: string, openAiSubject?: string, 
 interface ToolSnapshot {
   shell_id?: string
   status: "running" | "completed" | "shell_exited" | "reset"
-  exit_code: number | null
+  exit_code?: number
   cwd: string
   output: string
   request_id?: string
   next_cursor?: number
   cursor_expired?: true
   output_truncated?: true
-  output_dropped?: true
   dropped_output_bytes?: number
-  commands?: Array<{
-    run: number
-    path?: string
-    status: "queued" | "running" | "completed" | "timed_out" | "failed" | "reset"
-    exit_code: number | null
-    output_dropped?: true
-    dropped_output_bytes?: number
-  }>
 }
 
 async function callUntilComplete(client: Client, requestId: string, command: string, shellId?: string): Promise<ToolSnapshot> {

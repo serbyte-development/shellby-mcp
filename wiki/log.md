@@ -653,6 +653,11 @@
 
 - Added `npm run preflight` as a read-only prerequisite check and made its version regression test resolve the checked module relative to the test file rather than the caller's working directory.
 
+## [2026-08-12] simplify | compact parallel shell results
+
+- Kept the parallel `*** Run:` input and durable outer polling contract while replacing the duplicated public `commands` array with labeled per-run blocks in the shared paged output.
+- Omitted shell exit codes until available and collapsed permanent-output-loss signaling into `dropped_output_bytes`.
+
 ## [2026-08-12] rename | simplify subagent tool names
 
 - Renamed the published `chatgpt_subagent` / `chatgpt_subagent_poll` tools to `subagent_start` / `subagent_poll` while keeping the ChatGPT-specific browser implementation internal (`src/tools/subagent/subagent-tools.ts`, `src/tools/subagent/chatgpt-subagent.ts`).

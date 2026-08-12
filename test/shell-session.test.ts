@@ -548,6 +548,9 @@ test("runs parallel command batches from one root with relative paths and retain
       { run: 3, path: "../../shared", status: "completed", exit_code: 0 },
     ]
   )
+  assert.match(batch.output, /\[run 1 path="\." exit=0\]/)
+  assert.match(batch.output, /\[run 2 path="\.\/packages\/api" exit=0\]/)
+  assert.match(batch.output, /\[run 3 path="\.\.\/\.\.\/shared" exit=0\]/)
   assert.match(batch.output, new RegExp(`root:${escapeRegExp(repoDirectory)}:present`))
   assert.match(batch.output, /api:.*\/packages\/api:present/)
   assert.match(batch.output, /shared:.*\/shared:present/)
@@ -613,7 +616,24 @@ test("times out a hung parallel child without blocking its siblings", { timeout:
       { status: "completed", exit_code: 0 },
     ]
   )
+  assert.match(batch.output, /\[run 1 path="\." status=timed_out\]/)
+  assert.match(batch.output, /\[run 2 path="\.\/" exit=0\]\nfast/)
   assert.match(batch.output, /fast/)
+})
+
+test("labels permanently dropped parallel output", { timeout: 10_000 }, async (t) => {
+  const shell = new PersistentShellSession({
+    parallelScheduler: new ParallelCommandScheduler(4),
+    commandTranscriptBytes: 7,
+    defaultOutputTokens: 64,
+    maxOutputTokens: 64,
+  })
+  t.after(() => shell.close())
+
+  const batch = await runToCompletion(shell, "parallel-output-cap", ["*** Run: .", "printf '🙂éAB'"].join("\n"))
+
+  assert.equal(batch.snapshot.dropped_output_bytes, 1)
+  assert.match(batch.output, /\[run 1 path="\." exit=0 dropped_bytes=1\]\n🙂éA/)
 })
 
 test("requires a run directory and accepts absolute paths", { timeout: 10_000 }, async (t) => {
@@ -691,6 +711,7 @@ test("reset kills running parallel children and retains the batch as reset", { t
   const old = await shell.pollCommand({ requestId: "parallel-reset", cursor: running.next_cursor, waitMs: 0 })
   assert.equal(old.status, "reset")
   assert.equal(old.commands?.[0]?.status, "reset")
+  assert.match(old.output, /\[run 1 path="\." status=reset\]/)
 
   await new Promise((resolve) => setTimeout(resolve, 650))
   await assert.rejects(readFile(lateFile, "utf8"), (error: unknown) => isMissingProcessOrFile(error))

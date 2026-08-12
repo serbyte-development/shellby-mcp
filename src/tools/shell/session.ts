@@ -646,13 +646,14 @@ export class PersistentShellSession {
     const record = this.activeParallel
     if (!record || record.status !== "running") return
     record.status = "reset"
-    record.endCursor = record.transcript.end
     for (const run of record.runs) {
       if (!isParallelTerminal(run.status)) {
         run.status = "reset"
         run.exitCode = null
+        record.transcript.append(formatParallelRunOutput(run, ""))
       }
     }
+    record.endCursor = record.transcript.end
     record.abortController.abort()
     if (this.activeParallel === record) this.activeParallel = null
     this.notifyUpdate()
@@ -1230,9 +1231,10 @@ function isParallelTerminal(status: ParallelCommandStatus): boolean {
 }
 
 function formatParallelRunOutput(run: ParallelRunRecord, output: string): string {
-  const result = run.status === "completed" ? `exit=${run.exitCode ?? "n/a"}` : run.status
+  const result = run.status === "completed" ? `exit=${run.exitCode ?? "n/a"}` : `status=${run.status}`
+  const dropped = run.droppedOutputBytes > 0 ? ` dropped_bytes=${run.droppedOutputBytes}` : ""
   const body = output.length === 0 ? "" : `${output}${output.endsWith("\n") ? "" : "\n"}`
-  return `[run ${run.run} ${result}]\n${body}`
+  return `[run ${run.run} path=${JSON.stringify(run.path)} ${result}${dropped}]\n${body}`
 }
 
 function singleQuote(value: string): string {

@@ -4,6 +4,7 @@ import { MCP_CONFIG } from "../../config.js"
 import { asRecord, booleanValue, finiteNumber as numberValue, nonNegativeInteger, positiveInteger } from "../../utils.js"
 
 const DEFAULT_AGENT_IDLE_TTL_MS = 30 * 60_000
+const MAX_CONCURRENT_AGENTS = 3
 
 const CAVEMAN_PROMPT =
   "Respond terse like smart caveman — drop articles, filler, pleasantries. Fragments OK. Technical terms exact. Code unchanged. Pattern: [thing] [action] [reason]. [next step]."
@@ -234,7 +235,7 @@ export class ChatGptSubagentModule {
     this.cdpEndpoint = options.cdpEndpoint ?? MCP_CONFIG.chatGpt.cdpEndpoint
     this.connectTimeoutMs = options.connectTimeoutMs ?? 3_000
     this.chatGptUrl = options.chatGptUrl ?? "https://chatgpt.com/"
-    this.maxConcurrentAgents = positiveInteger(options.maxConcurrentAgents, 2)
+    this.maxConcurrentAgents = Math.min(positiveInteger(options.maxConcurrentAgents, MAX_CONCURRENT_AGENTS), MAX_CONCURRENT_AGENTS)
     this.minInterTurnDelayMs = nonNegativeInteger(options.minInterTurnDelayMs, 1_500)
     this.interactionDelayMs = nonNegativeInteger(options.interactionDelayMs, 300)
     this.timeoutMs = options.timeoutMs ?? 120_000
