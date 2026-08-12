@@ -133,9 +133,9 @@ export function registerComputerUseTools(server: McpServer, peekaboo: PeekabooCl
         "Return a bounded accessibility-tree text view for an existing observation snapshot. Use only when its screenshot is insufficient; prefer small limits and inspect again after the UI changes.",
       inputSchema: z.object({
         snapshot_id: snapshotInput,
-        max_depth: z.number().int().min(1).max(20).optional().default(8),
-        max_elements: z.number().int().min(1).max(500).optional().default(100),
-        max_children: z.number().int().min(1).max(100).optional().default(25),
+        max_depth: z.number().int().min(1).max(20).default(8),
+        max_elements: z.number().int().min(1).max(500).default(100),
+        max_children: z.number().int().min(1).max(100).default(25),
       }),
       annotations: {
         readOnlyHint: true,

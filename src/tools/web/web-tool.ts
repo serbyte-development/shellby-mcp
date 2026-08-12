@@ -25,7 +25,6 @@ export function registerWebTool(server: McpServer, webPageOpener: WebPageOpener)
           .int()
           .min(1)
           .max(webPageOpener.maximumOutputTokens)
-          .optional()
           .default(webPageOpener.defaultOutputTokens)
           .describe(`Maximum ${OUTPUT_TOKEN_ENCODING} content tokens returned.`),
       }),

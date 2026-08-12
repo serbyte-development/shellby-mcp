@@ -12,7 +12,6 @@ const shellIdInput = z
   .string()
   .min(1)
   .max(64)
-  .optional()
   .default(DEFAULT_SHELL_ID)
   .describe(
     "Short task or project label for a persistent shell, such as api-audit. Use to retain cwd and environment, or use a different ID for concurrent work."
@@ -67,7 +66,6 @@ export function registerShellExecutionTools(server: McpServer, shells: ShellSess
     .int()
     .min(1)
     .max(shells.maximumReadTokens)
-    .optional()
     .default(shells.defaultReadTokens)
     .describe(`Maximum ${OUTPUT_TOKEN_ENCODING} tokens returned in this response. DO NOT pass in max_output_tokens unless the default is too small.`)
 
@@ -97,7 +95,6 @@ export function registerShellExecutionTools(server: McpServer, shells: ShellSess
           .int()
           .min(0)
           .max(MCP_CONFIG.shell.maxWaitMs)
-          .optional()
           .default(MCP_CONFIG.shell.defaultWaitMs)
           .describe("Returns earlier if the output token cap is reached."),
         max_output_tokens: maxOutputTokensInput,

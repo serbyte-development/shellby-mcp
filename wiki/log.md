@@ -624,3 +624,8 @@
 - Kept process lifecycle, HTTP transport, and MCP tool registration separate while removing redundant default pass-through, request-scoped adapter fallbacks, unused runtime return fields, and unused transcript-limit accessors.
 - Consolidated common JSON guards and remaining UTF-8 byte-boundary helpers in `src/utils.ts`; model-facing response pagination remains token-based in `src/tokenizer.ts`.
 - Retained the deferred iOS implementation and corrected the wiki index to describe its disabled status.
+
+## [2026-08-12] simplify | clarify HTTP dependency ownership
+
+- Let the HTTP boundary construct and close the default Peekaboo client instead of creating it in `src/index.ts` only to pass it through.
+- Removed the ambiguous single-shell startup option; callers now inject a `ShellSessionManager` when they need a custom shell workspace.
