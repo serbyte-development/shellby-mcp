@@ -332,4 +332,11 @@ Format code with:
 npm run format
 ```
 
+Print the exact MCP tool schemas advertised by the server:
+
+```bash
+npm run schemas
+npm run schemas -- shell_run fetch_website
+```
+
 The wiki under [`wiki/`](wiki/) is the concise source of truth for maintainers. Current code and tests outrank historical raw notes and README text when they disagree.

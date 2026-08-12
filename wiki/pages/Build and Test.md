@@ -21,8 +21,11 @@ Verified 2026-08-11.
 | `npm run lint`       | Lint `src/` and `test/` with ESLint                    |
 | `npm run format`     | Format source, tests, and project config with Prettier |
 | `npm run build`      | Emit production JavaScript to `dist/`                  |
+| `npm run schemas`    | Print the actual registered MCP tool schemas           |
 
 Run the cheapest focused test first, then the broader commands when the change warrants them (`package.json`).
+
+`npm run schemas` starts the MCP on an ephemeral localhost port, connects with the real MCP client, calls `tools/list`, and prints the returned tool definitions as formatted JSON. Pass tool names after `--` to filter the output, for example `npm run schemas -- shell_run fetch_website` (`scripts/tool-schemas.ts`, `src/server/http-server.ts`).
 
 ## Test Architecture
 

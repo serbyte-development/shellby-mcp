@@ -625,6 +625,10 @@
 - Consolidated common JSON guards and remaining UTF-8 byte-boundary helpers in `src/utils.ts`; model-facing response pagination remains token-based in `src/tokenizer.ts`.
 - Retained the deferred iOS implementation and corrected the wiki index to describe its disabled status.
 
+## [2026-08-12] tooling | expose generated MCP schemas
+
+- Added `npm run schemas` to print the actual `tools/list` definitions returned by the MCP, with optional tool-name filtering (`scripts/tool-schemas.ts`, `package.json`).
+
 ## [2026-08-12] simplify | clarify HTTP dependency ownership
 
 - Let the HTTP boundary construct and close the default Peekaboo client instead of creating it in `src/index.ts` only to pass it through.

@@ -23,6 +23,7 @@
     "status": "pm2 status",
     "logs": "pm2 logs",
     "print-url": "node --env-file-if-exists=.env scripts/print-url.mjs",
+    "schemas": "node --env-file-if-exists=.env --import tsx scripts/tool-schemas.ts",
     "inspect": "npx @modelcontextprotocol/inspector",
     "tunnel": "ngrok http 3333 ${NGROK_URL:+--url=\"$NGROK_URL\"} --traffic-policy-file ./ngrok-traffic-policy.yml --inspect=false",
     "auth:reset": "node --env-file-if-exists=.env --import tsx src/auth/reset.ts",
