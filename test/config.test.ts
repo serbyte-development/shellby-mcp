@@ -18,11 +18,12 @@ test("loads runtime configuration from one environment boundary", () => {
   assert.equal(defaults.port, 3333)
   assert.equal(defaults.shell.transcriptChars, 1024 * 1024)
   assert.equal(defaults.shell.commandTranscriptBytes, 256 * 1024)
-  assert.equal(defaults.shell.outputTokens, 1_024)
+  assert.equal(defaults.shell.defaultOutputTokens, 1_024)
   assert.equal(defaults.shell.maxOutputTokens, 16_384)
   assert.equal(defaults.shell.recordLimit, 1024)
 
   const configured = loadMcpConfig({
+    HOST: "0.0.0.0",
     PORT: "9999",
     MCP_DEFAULT_OUTPUT_TOKENS: "2048",
     MCP_MAX_OUTPUT_TOKENS: "4096",
@@ -33,10 +34,11 @@ test("loads runtime configuration from one environment boundary", () => {
   })
   assert.equal(configured.shell.transcriptChars, defaults.shell.transcriptChars)
   assert.equal(configured.shell.commandTranscriptBytes, defaults.shell.commandTranscriptBytes)
-  assert.equal(configured.shell.outputTokens, 2_048)
+  assert.equal(configured.shell.defaultOutputTokens, 2_048)
   assert.equal(configured.shell.maxOutputTokens, 4_096)
   assert.equal(configured.shell.recordLimit, defaults.shell.recordLimit)
   assert.equal(configured.shell.maxShells, 12)
+  assert.equal(configured.host, defaults.host)
   assert.equal(configured.port, defaults.port)
 })
 

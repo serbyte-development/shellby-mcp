@@ -8,23 +8,22 @@ Verified 2026-08-12.
 
 ## Environment Inputs
 
-| Name                       | Default                       | Consumer                                               |
-| -------------------------- | ----------------------------- | ------------------------------------------------------ |
-| `HOST`                     | `127.0.0.1`                   | HTTP bind address                                      |
-| `NGROK_URL`                | unset                         | Optional fixed domain for the npm/PM2 ngrok helpers    |
-| `NGROK_BIN`                | `ngrok` from `PATH`           | Optional ngrok executable override                     |
-| `NGROK_AUTHTOKEN`          | unset                         | Optional ngrok auth token                              |
-| `MCP_SHELL`                | `/bin/zsh`                    | Login shell executable                                 |
-| `MCP_CWD`                  | `~/Desktop/chatgpt-workspace` | Absolute-resolved workspace and initial cwd            |
-| `MCP_PEEKABOO_BIN`         | `peekaboo`                    | Peekaboo executable name or absolute path              |
-| `MCP_CHATGPT_CDP_ENDPOINT` | `http://127.0.0.1:9222`       | Already-running Chrome DevTools endpoint for subagents |
-| `CHROME_BIN`               | normal macOS Chrome path      | Optional dedicated-browser executable override         |
-| `MCP_DEFAULT_OUTPUT_TOKENS` | `1024`                       | Default `max_output_tokens` when omitted               |
-| `MCP_MAX_OUTPUT_TOKENS`     | `16384`                      | Largest allowed `max_output_tokens` override           |
-| `MCP_MAX_SHELLS`           | `8`                           | Maximum named shells including `default`               |
-| `MCP_SHELL_IDLE_TTL_MS`    | `1800000`                     | Idle lifetime for named shells; `0` disables cleanup   |
+| Name                        | Default                       | Consumer                                               |
+| --------------------------- | ----------------------------- | ------------------------------------------------------ |
+| `NGROK_URL`                 | unset                         | Optional fixed domain for the npm/PM2 ngrok helpers    |
+| `NGROK_BIN`                 | `ngrok` from `PATH`           | Optional ngrok executable override                     |
+| `NGROK_AUTHTOKEN`           | unset                         | Optional ngrok auth token                              |
+| `MCP_SHELL`                 | `/bin/zsh`                    | Login shell executable                                 |
+| `MCP_CWD`                   | `~/Desktop/chatgpt-workspace` | Absolute-resolved workspace and initial cwd            |
+| `MCP_PEEKABOO_BIN`          | `peekaboo`                    | Peekaboo executable name or absolute path              |
+| `MCP_CHATGPT_CDP_ENDPOINT`  | `http://127.0.0.1:9222`       | Already-running Chrome DevTools endpoint for subagents |
+| `CHROME_BIN`                | normal macOS Chrome path      | Optional dedicated-browser executable override         |
+| `MCP_DEFAULT_OUTPUT_TOKENS` | `1024`                        | Default `max_output_tokens` when omitted               |
+| `MCP_MAX_OUTPUT_TOKENS`     | `16384`                       | Largest allowed `max_output_tokens` override           |
+| `MCP_MAX_SHELLS`            | `8`                           | Maximum named shells including `default`               |
+| `MCP_SHELL_IDLE_TTL_MS`     | `1800000`                     | Idle lifetime for named shells; `0` disables cleanup   |
 
-`MCP_CWD` expands `~`, resolves relative values from startup cwd, and becomes the shell/workspace/instruction root. Its `AGENTS.md` is the coding-instructions path advertised to MCP clients. Numeric values are range-checked. Production startup writes completed MCP `tools/call` activity to the gitignored repository-local `agent-commands.yaml`. Each call is one compact YAML document. Normal calls have no Better Comments tag; noteworthy calls use `?` for responses at least 8 KiB, `~` for calls at least 5 seconds, and `!` for MCP tool/HTTP/connection failures, in that priority order. Large response size is shown in the header without retaining normal response bodies. `shell_run` uses a block scalar capped at 2,000 characters, ordinary arguments are capped at 600 characters, and successful `apply_patch` calls record only cwd and patch size. Failed `apply_patch` calls also retain the patch body, capped at 32,000 characters, to make debugging failed edits practical (`src/config.ts`, `src/index.ts`, `src/server/audit-log.ts`, `src/server/http-server.ts`).
+Production HTTP always binds to `127.0.0.1:3333`; host and port are not environment-configurable. `MCP_CWD` expands `~`, resolves relative values from startup cwd, and becomes the shell/workspace/instruction root. Its `AGENTS.md` is the coding-instructions path advertised to MCP clients. Numeric values are range-checked. Production startup writes completed MCP `tools/call` activity to the gitignored repository-local `agent-commands.yaml`, creating or repairing it with owner-only `0600` permissions. Each call is one compact YAML document. Normal calls have no Better Comments tag; noteworthy calls use `?` for responses at least 8 KiB, `~` for calls at least 5 seconds, and `!` for MCP tool/HTTP/connection failures, in that priority order. Large response size is shown in the header without retaining normal response bodies. `shell_run` uses a block scalar capped at 2,000 characters, ordinary arguments are capped at 600 characters, and successful `apply_patch` calls record only cwd and patch size. Failed `apply_patch` calls also retain the patch body, capped at 32,000 characters, to make debugging failed edits practical (`src/config.ts`, `src/index.ts`, `src/server/audit-log.ts`, `src/server/http-server.ts`).
 
 ## Startup and Shutdown
 
@@ -46,8 +45,8 @@ Screen Recording enables capture; Accessibility and Event Synthesizing enable ac
 
 ## Package Scripts
 
-- First-time setup: `setup` validates Apple Silicon macOS, Node 22+, local dependencies, ngrok installation, and ngrok authentication, then best-effort creates and launches `~/.shelly/chatgpt-chrome` for a one-time ChatGPT sign-in. Browser setup failures do not block the core MCP; `setup:chatgpt` retries that browser step strictly (`scripts/preflight.mjs`, `scripts/setup.mjs`, `scripts/chatgpt-browser.mjs`).
-- Production runtime: `start` builds and starts/reloads MCP + ngrok and auto-launches the configured ChatGPT browser; `restart` does the same after clearing the current audit log; `status`, `logs`, and `stop` expose the small PM2 management surface. PM2 is a package dependency rather than a global prerequisite (`package.json`, `scripts/start.mjs`).
+- Runtime check: `preflight` validates Apple Silicon macOS, Node 22.13.0+, local dependencies, ngrok installation, and ngrok authentication without changing runtime state. `setup` runs the same checks before creating the workspace and best-effort launching `~/.shelly/chatgpt-chrome` for a one-time ChatGPT sign-in. Browser setup failures do not block the core MCP; `setup:chatgpt` retries that browser step strictly (`scripts/preflight.mjs`, `scripts/setup.mjs`, `scripts/chatgpt-browser.mjs`).
+- Production runtime: `start` builds and starts/reloads MCP + ngrok and auto-launches the configured ChatGPT browser; `restart` does the same after clearing the current audit log; `status`, `logs`, and `stop` expose the small PM2 management surface. PM2 gives the MCP process 10 seconds to complete its signal-driven cleanup before forcing termination. PM2 is a package dependency rather than a global prerequisite (`package.json`, `scripts/start.mjs`, `ecosystem.config.cjs`).
 - Development: `dev`, `build`, and `inspect` keep direct local development separate from the managed production runtime.
 - Tunnel: `tunnel` remains a low-level helper that exposes port 3333 through the checked-in ngrok policy with the ngrok agent's local HTTP inspector disabled. ngrok assigns the public URL unless `NGROK_URL` supplies the caller's own fixed domain (`package.json`, `ecosystem.config.cjs`).
 - URL discovery: `print-url` prints `https://<domain>/mcp`, using `NGROK_URL` when configured or ngrok's local tunnel API otherwise. `start` and `restart` call it after the managed runtime is healthy (`package.json`, `scripts/print-url.mjs`, `scripts/start.mjs`).

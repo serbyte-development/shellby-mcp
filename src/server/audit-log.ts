@@ -1,4 +1,4 @@
-import { appendFileSync } from "node:fs"
+import { appendFileSync, chmodSync, existsSync } from "node:fs"
 
 import { asRecord } from "../utils.js"
 
@@ -27,7 +27,13 @@ export class McpAuditLogger {
     private readonly filePath: string,
     private readonly now: () => Date = () => new Date(),
     private readonly clock: () => number = () => Date.now()
-  ) {}
+  ) {
+    try {
+      if (existsSync(this.filePath)) chmodSync(this.filePath, 0o600)
+    } catch (error) {
+      console.warn(`Could not secure MCP audit log: ${errorMessage(error)}`)
+    }
+  }
 
   startToolCalls(payload: unknown): McpAuditCall[] {
     const requests = Array.isArray(payload) ? payload : [payload]
@@ -67,9 +73,10 @@ export class McpAuditLogger {
 
   private append(entry: string): void {
     try {
-      appendFileSync(this.filePath, entry, "utf8")
+      appendFileSync(this.filePath, entry, { encoding: "utf8", mode: 0o600 })
+      chmodSync(this.filePath, 0o600)
     } catch (error) {
-      console.warn(`Could not append MCP audit log: ${errorMessage(error)}`)
+      console.warn(`Could not update MCP audit log: ${errorMessage(error)}`)
     }
   }
 }

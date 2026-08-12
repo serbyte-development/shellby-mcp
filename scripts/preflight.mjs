@@ -17,9 +17,8 @@ export async function checkPublicRuntime() {
     errors.push("This release supports Apple Silicon Macs only because the vendored apply_patch binary is arm64.")
   }
 
-  const nodeMajor = Number.parseInt(process.versions.node.split(".")[0] ?? "0", 10)
-  if (nodeMajor < 22) {
-    errors.push(`Node.js 22+ is required. Current version: ${process.versions.node}.`)
+  if (!isSupportedNodeVersion(process.versions.node)) {
+    errors.push(`Node.js 22.13.0+ is required. Current version: ${process.versions.node}.`)
   }
 
   const pm2Path = join(repoRoot, "node_modules", ".bin", "pm2")
@@ -42,6 +41,11 @@ export async function checkPublicRuntime() {
   return { errors, pm2Path }
 }
 
+export function isSupportedNodeVersion(version) {
+  const [major = 0, minor = 0] = version.split(".").map(Number)
+  return major > 22 || (major === 22 && minor >= 13)
+}
+
 export function printPreflightErrors(errors) {
   console.error("Setup cannot continue:\n")
   for (const error of errors) console.error(`- ${error}`)
@@ -62,6 +66,16 @@ async function hasNgrokAuth(ngrokExecutable) {
     return /^\s*authtoken\s*:\s*\S+/m.test(config)
   } catch {
     return false
+  }
+}
+
+if (process.argv[1] === fileURLToPath(import.meta.url)) {
+  const { errors } = await checkPublicRuntime()
+  if (errors.length > 0) {
+    printPreflightErrors(errors)
+    process.exitCode = 1
+  } else {
+    console.log("Preflight passed.")
   }
 }
 

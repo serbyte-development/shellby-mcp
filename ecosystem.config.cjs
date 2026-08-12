@@ -19,6 +19,7 @@ module.exports = {
       instances: 1,
       exec_mode: "fork",
       autorestart: true,
+      kill_timeout: 10_000,
     },
     {
       name: "unhinged-terminal-ngrok",

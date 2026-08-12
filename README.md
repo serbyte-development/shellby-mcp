@@ -56,7 +56,7 @@ npm run auth:reset
 ## Requirements
 
 - Apple Silicon macOS
-- Node.js 22+
+- Node.js 22.13.0+
 - npm
 - An [ngrok](https://ngrok.com/) account and CLI
 - A ChatGPT account/workspace that can create a custom MCP app with the actions you want to use. See OpenAI's [Developer mode and MCP apps](https://help.openai.com/en/articles/12584461-developer-mode-and-full-mcp-connectors-in-chatgpt).
@@ -100,10 +100,11 @@ ngrok config add-authtoken <your-token>
 Verify the supported Mac, Node, local dependencies, and ngrok configuration:
 
 ```bash
+npm run preflight
 npm run setup
 ```
 
-Setup also creates the configured workspace and a starter `AGENTS.md` if one does not already exist. Existing workspace instructions are never overwritten. Set `MCP_CWD` before setup to initialize a different workspace.
+`preflight` only reports whether the runtime is ready. Setup then creates the configured workspace and a starter `AGENTS.md` if one does not already exist. Existing workspace instructions are never overwritten. Set `MCP_CWD` before setup to initialize a different workspace.
 
 If Google Chrome is installed, `setup` also creates a separate profile under `~/.shelly/chatgpt-chrome` and opens ChatGPT. Sign into ChatGPT in that window once. The repository never copies or modifies your normal Chrome profile.
 
@@ -298,7 +299,6 @@ Copy `.env.example` to `.env` to override the defaults below. Internal safety li
 
 | Variable                    | Default                       | Purpose                                            |
 | --------------------------- | ----------------------------- | -------------------------------------------------- |
-| `HOST`                      | `127.0.0.1`                   | MCP HTTP bind address                              |
 | `NGROK_URL`                 | unset                         | Optional fixed ngrok domain used by tunnel helpers |
 | `NGROK_BIN`                 | `ngrok` from `PATH`           | Optional ngrok executable override                 |
 | `NGROK_AUTHTOKEN`           | unset                         | Optional ngrok auth token                          |
@@ -312,7 +312,7 @@ Copy `.env.example` to `.env` to override the defaults below. Internal safety li
 | `MCP_MAX_SHELLS`            | `8`                           | Maximum live shells                                |
 | `MCP_SHELL_IDLE_TTL_MS`     | `1800000`                     | Named-shell idle timeout; `0` disables cleanup     |
 
-The production listener, managed startup flow, ngrok helper, and traffic policy use fixed local port `3333`. Tests may still request an ephemeral port directly through the HTTP server API.
+The production listener always binds to `127.0.0.1:3333`; host and port are not environment-configurable. Tests may still inject a different host or request an ephemeral port directly through the HTTP server API.
 
 ## Development
 

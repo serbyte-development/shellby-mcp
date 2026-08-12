@@ -23,6 +23,12 @@ const closableShellIdInput = z
   .describe(`Named shell to close. \`${DEFAULT_SHELL_ID}\` shell is protected and cannot be closed; use shell_reset instead.`)
 
 const exitCodeSchema = z.int().min(0).max(255).nullable()
+const maxOutputTokensInput = z
+  .int()
+  .min(1)
+  .max(MCP_CONFIG.shell.maxOutputTokens)
+  .default(MCP_CONFIG.shell.defaultOutputTokens)
+  .describe("Maximum tokens returned in this response. DO NOT pass in max_output_tokens unless the default is too small.")
 
 const shellSnapshotSchema = z.object({
   shell_id: z.string().optional().describe("Present only when the command uses a non-default shell."),
@@ -63,12 +69,6 @@ const shellSnapshotSchema = z.object({
 
 export function registerShellExecutionTools(server: McpServer, shells: ShellSessionManager, workspace: string): void {
   const workspaceDescription = JSON.stringify(workspace)
-  const maxOutputTokensInput = z
-    .int()
-    .min(1)
-    .max(shells.maximumReadTokens)
-    .default(shells.defaultReadTokens)
-    .describe(`Maximum tokens returned in this response. DO NOT pass in max_output_tokens unless the default is too small.`)
 
   server.registerTool(
     "shell_run",

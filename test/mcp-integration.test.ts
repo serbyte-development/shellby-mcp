@@ -77,7 +77,7 @@ test("serves shell tools through Streamable HTTP and retains state across MCP se
   assert.ok(maxOutputSchema)
   assert.deepEqual(Object.keys(maxOutputSchema), ["description", "type", "default", "minimum", "maximum"])
   assert.equal(maxOutputSchema.minimum, 1)
-  assert.equal(maxOutputSchema.default, MCP_CONFIG.shell.outputTokens)
+  assert.equal(maxOutputSchema.default, MCP_CONFIG.shell.defaultOutputTokens)
   assert.equal(maxOutputSchema.maximum, MCP_CONFIG.shell.maxOutputTokens)
   const requestIdSchema = (runTool?.inputSchema.properties as Record<string, Record<string, unknown>>).request_id
   assert.ok(requestIdSchema)

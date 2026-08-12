@@ -46,7 +46,6 @@ const SCHEMA_KEY_ORDER = [
   "definitions",
   "examples",
   "title",
-  "$schema",
 ] as const
 
 const SCHEMA_KEY_RANK = new Map<string, number>(SCHEMA_KEY_ORDER.map((key, index) => [key, index]))
@@ -96,6 +95,7 @@ export function installCanonicalToolSchemaOrder(server: McpServer): void {
 export function canonicalizeJsonSchema(value: unknown): unknown {
   if (!isRecord(value)) return value
 
+  const isIntegerSchema = value.type === "integer"
   const keys = Object.keys(value).sort((left, right) => {
     const leftRank = SCHEMA_KEY_RANK.get(left) ?? Number.MAX_SAFE_INTEGER
     const rightRank = SCHEMA_KEY_RANK.get(right) ?? Number.MAX_SAFE_INTEGER
@@ -105,6 +105,10 @@ export function canonicalizeJsonSchema(value: unknown): unknown {
 
   for (const key of keys) {
     const child = value[key]
+    if (key === "$schema") continue
+    if (isIntegerSchema && key === "minimum" && child === Number.MIN_SAFE_INTEGER) continue
+    if (isIntegerSchema && key === "maximum" && child === Number.MAX_SAFE_INTEGER) continue
+
     if (SCHEMA_MAP_KEYS.has(key) && isRecord(child)) {
       result[key] = Object.fromEntries(Object.entries(child).map(([name, schema]) => [name, canonicalizeJsonSchema(schema)]))
     } else if (SCHEMA_VALUE_KEYS.has(key)) {

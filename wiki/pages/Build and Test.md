@@ -1,10 +1,10 @@
 # Build and Test
 
-Verified 2026-08-11.
+Verified 2026-08-12.
 
 ## Build Boundary
 
-- Node.js 22 or newer is required (`package.json`).
+- Node.js 22.13.0 or newer is required. Public Node entry scripts depend on `--env-file-if-exists`, and the pinned ESLint release has the same minimum on the Node 22 line (`package.json`, `scripts/preflight.mjs`).
 - MCP uses the modular TypeScript SDK v2 packages: `@modelcontextprotocol/server`, `@modelcontextprotocol/node`, `@modelcontextprotocol/express`, and the integration-test-only client surface from `@modelcontextprotocol/client` (`package.json`).
 - TypeScript is pinned to `6.0.3` because the current `typescript-eslint` release supports TypeScript `<6.1`; ESLint uses the recommended JavaScript and TypeScript rule sets (`package.json`, `eslint.config.js`).
 - Prettier `3.9.6` owns formatting; `eslint-config-prettier` disables ESLint rules that would conflict with formatting. `.prettierrc` uses no semicolons, double quotes, ES5 trailing commas, two-space indentation, and a 160-column print width (`package.json`, `eslint.config.js`, `.prettierrc`).

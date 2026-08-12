@@ -58,14 +58,6 @@ export class ShellSessionManager {
     return this.defaultShell.initialCwd
   }
 
-  get defaultReadTokens(): number {
-    return this.defaultShell.defaultReadTokens
-  }
-
-  get maximumReadTokens(): number {
-    return this.defaultShell.maximumReadTokens
-  }
-
   get shellCount(): number {
     return this.sessions.size
   }

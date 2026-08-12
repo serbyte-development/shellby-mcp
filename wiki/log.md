@@ -621,6 +621,7 @@
 
 - Added one registration-boundary transform that recursively orders JSON Schema keywords before `tools/list` while preserving tool parameter order and validation semantics (`src/server/tool-schema-order.ts`, `src/server/mcp-server.ts`).
 - Prioritized the advertised order for LLM use: `description` first, then type/reference, default before exact choices, structure, and validation constraints.
+- Removed redundant `$schema` metadata and Zod's artificial JavaScript safe-integer bounds from advertised integer schemas while preserving meaningful domain constraints and runtime validation.
 
 ## [2026-08-12] simplify | reduce configuration and composition plumbing
 
@@ -638,3 +639,16 @@
 
 - Let the HTTP boundary construct and close the default Peekaboo client instead of creating it in `src/index.ts` only to pass it through.
 - Removed the ambiguous single-shell startup option; callers now inject a `ShellSessionManager` when they need a custom shell workspace.
+
+## [2026-08-12] harden | prepare production launch
+
+- Fixed production HTTP binding to loopback, raised the supported Node minimum to 22.13.0, and gave PM2 ten seconds for MCP shutdown cleanup.
+- Created and repaired the repository audit log with owner-only `0600` permissions.
+
+## [2026-08-12] simplify | flatten shell output-token configuration
+
+- Renamed the shell default to `defaultOutputTokens`, removed `defaultReadTokens` / `maximumReadTokens` pass-through getters from shell sessions and the manager, and made `shell_run` / `shell_poll` advertise limits directly from `MCP_CONFIG.shell.defaultOutputTokens` and `maxOutputTokens`.
+
+## [2026-08-12] tooling | expose runtime preflight
+
+- Added `npm run preflight` as a read-only prerequisite check and made its version regression test resolve the checked module relative to the test file rather than the caller's working directory.

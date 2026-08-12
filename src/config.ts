@@ -28,9 +28,9 @@ const DEFAULTS = {
   chatGptCdpEndpoint: "http://127.0.0.1:9222",
   shell: {
     path: "/bin/zsh",
-    transcriptChars: 1024 * 1024,
-    commandTranscriptBytes: 256 * 1024,
-    outputTokens: 1_024,
+    transcriptChars: 1024 * 1024, // 1MB
+    commandTranscriptBytes: 256 * 1024, // 256KB
+    defaultOutputTokens: 1_024,
     maxOutputTokens: 16_384,
     defaultWaitMs: 1_500,
     maxWaitMs: 10_000,
@@ -47,16 +47,16 @@ const DEFAULTS = {
 }
 
 export function loadMcpConfig(env: NodeJS.ProcessEnv = process.env) {
-  const outputTokens = parsePositiveInteger(env.MCP_DEFAULT_OUTPUT_TOKENS, DEFAULTS.shell.outputTokens)
+  const defaultOutputTokens = parsePositiveInteger(env.MCP_DEFAULT_OUTPUT_TOKENS, DEFAULTS.shell.defaultOutputTokens)
   const maxOutputTokens = parsePositiveInteger(env.MCP_MAX_OUTPUT_TOKENS, DEFAULTS.shell.maxOutputTokens)
-  if (outputTokens > maxOutputTokens) {
+  if (defaultOutputTokens > maxOutputTokens) {
     throw new Error("MCP_DEFAULT_OUTPUT_TOKENS cannot exceed MCP_MAX_OUTPUT_TOKENS.")
   }
 
   return {
     server: SERVER_CONFIG,
     toolMeta: TOOL_META,
-    host: env.HOST ?? DEFAULTS.host,
+    host: DEFAULTS.host,
     port: DEFAULTS.port,
     workspace: resolveWorkspacePath(env.MCP_CWD ?? DEFAULTS.workspace),
     peekaboo: {
@@ -69,7 +69,7 @@ export function loadMcpConfig(env: NodeJS.ProcessEnv = process.env) {
       path: env.MCP_SHELL ?? DEFAULTS.shell.path,
       transcriptChars: DEFAULTS.shell.transcriptChars,
       commandTranscriptBytes: DEFAULTS.shell.commandTranscriptBytes,
-      outputTokens,
+      defaultOutputTokens,
       maxOutputTokens,
       defaultWaitMs: DEFAULTS.shell.defaultWaitMs,
       maxWaitMs: DEFAULTS.shell.maxWaitMs,

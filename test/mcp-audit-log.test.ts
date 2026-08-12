@@ -1,5 +1,5 @@
 import assert from "node:assert/strict"
-import { mkdtemp, readFile, rm } from "node:fs/promises"
+import { chmod, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import test from "node:test"
@@ -42,6 +42,25 @@ test("writes one compact YAML document for a shell command", async (t) => {
     await readFile(file, "utf8"),
     ["--- # 20:58:30 - shell_run - 275ms", 'shell: "api-audit/scan-1"', "command: |-", "  rg -n foo src", "", ""].join("\n")
   )
+})
+
+test("creates and repairs audit logs with owner-only permissions", async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), "mcp-audit-log-permissions-"))
+  const newFile = join(directory, "new.yaml")
+  const existingFile = join(directory, "existing.yaml")
+  t.after(() => rm(directory, { recursive: true, force: true }))
+
+  const newLogger = new McpAuditLogger(newFile)
+  const [call] = newLogger.startToolCalls({ method: "tools/call", params: { name: "shell_list", arguments: {} } })
+  assert.ok(call)
+  call.finish({ httpStatus: 200, state: "finished", responseBytes: 100 })
+  assert.equal((await stat(newFile)).mode & 0o777, 0o600)
+
+  await writeFile(existingFile, "existing\n")
+  await chmod(existingFile, 0o644)
+  new McpAuditLogger(existingFile)
+  assert.equal((await stat(existingFile)).mode & 0o777, 0o600)
+  assert.equal(await readFile(existingFile, "utf8"), "existing\n")
 })
 
 test("logs apply_patch bodies only when the tool fails", async (t) => {

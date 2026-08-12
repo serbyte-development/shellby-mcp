@@ -285,7 +285,7 @@ export class PersistentShellSession {
     this.transcript = new TranscriptBuffer(this.transcriptLimit)
     this.commandTranscriptBytes = positiveInteger(options.commandTranscriptBytes, MCP_CONFIG.shell.commandTranscriptBytes)
     this.maxOutputTokens = positiveInteger(options.maxOutputTokens, MCP_CONFIG.shell.maxOutputTokens)
-    this.defaultOutputTokens = positiveInteger(options.defaultOutputTokens, MCP_CONFIG.shell.outputTokens)
+    this.defaultOutputTokens = positiveInteger(options.defaultOutputTokens, MCP_CONFIG.shell.defaultOutputTokens)
     if (this.defaultOutputTokens > this.maxOutputTokens) {
       throw new Error("defaultOutputTokens cannot exceed maxOutputTokens.")
     }
@@ -296,14 +296,6 @@ export class PersistentShellSession {
 
   get initialCwd(): string {
     return this.cwd
-  }
-
-  get defaultReadTokens(): number {
-    return this.defaultOutputTokens
-  }
-
-  get maximumReadTokens(): number {
-    return this.maxOutputTokens
   }
 
   get hasActiveWork(): boolean {
