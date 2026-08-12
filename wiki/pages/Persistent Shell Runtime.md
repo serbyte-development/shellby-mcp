@@ -1,6 +1,6 @@
 # Persistent Shell Runtime
 
-Verified 2026-08-11.
+Verified 2026-08-12.
 
 ## Process Model
 
@@ -20,7 +20,7 @@ The wrapper clears `errexit` before and after evaluation so a prior `set -e` doe
 ## Output, Polling, and Retries
 
 - `TranscriptBuffer` uses absolute JavaScript-string cursors and drops whole surrogate pairs at the rolling boundary. A cursor older than retained output is clamped and returns `cursor_expired` (`src/tools/shell/session.ts`, `test/shell-session.test.ts`).
-- Response and per-command ceilings are UTF-8 byte limits. `output_truncated` means only the current response hit its read limit; the omitted retained output is recoverable through `next_cursor`. Permanent per-command capture loss is reported separately as `output_dropped` plus `dropped_output_bytes` (`src/index.ts`, `src/tools/shell/session.ts`, `src/tools/shell/shell-tools.ts`).
+- Response ceilings use `o200k_base` token counts. `output_truncated` means only the current response hit `max_output_tokens`; the omitted retained output is recoverable through `next_cursor`. The separate per-command capture ceiling remains byte-based because it protects retained memory; permanent capture loss is reported as `output_dropped` plus `dropped_output_bytes` (`src/tokenizer.ts`, `src/index.ts`, `src/tools/shell/session.ts`, `src/tools/shell/shell-tools.ts`).
 - Run waits for completion, abort, timeout, cursor expiry, or a full response. Poll waits on a versioned update when a running command has no new output (`src/tools/shell/session.ts`).
 - Request IDs are scoped to a shell. Exact command retries return the retained record; changed text returns `request_conflict`. Command and reset maps are bounded by the config-only `MCP_CONFIG.shell.recordLimit` (`src/config.ts`, `src/tools/shell/session.ts`, `src/tools/shell/session-manager.ts`).
 

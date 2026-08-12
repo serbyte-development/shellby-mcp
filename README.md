@@ -261,8 +261,8 @@ Defaults:
 
 - 8 live shells including `default`
 - 30-minute idle timeout for named shells
-- 4 KiB response output
-- 32 KiB maximum response override
+- 1,024-token response output (`o200k_base`)
+- 16,384-token maximum response override
 - 256 KiB retained output per command
 - 1 MiB rolling shell transcript
 - 4 concurrent parallel child commands process-wide
@@ -290,7 +290,7 @@ peekaboo permissions status --all-sources --json
 
 The repository includes a pinned macOS arm64 standalone `apply_patch` executable at `vendor/apply-patch/apply_patch`. The MCP executes that vendored binary directly as a first-class tool; it is not installed into or exposed through the workspace shell.
 
-Each call requires an absolute `cwd` and a normal Codex-style patch. It runs independently of shell state and has abort escalation. Failure diagnostics are capped internally at 4 KiB so callers cannot expand patch errors into large context-consuming responses.
+Each call requires an absolute `cwd` and a normal Codex-style patch. It runs independently of shell state and has abort escalation. Failure diagnostics are capped internally at 1,024 `o200k_base` tokens so patch errors cannot consume unbounded model context.
 
 ## Configuration
 
@@ -308,8 +308,8 @@ Copy `.env.example` to `.env` to override the defaults below. Internal safety li
 | `MCP_PEEKABOO_BIN`         | `peekaboo`                    | Peekaboo executable                                |
 | `MCP_CHATGPT_CDP_ENDPOINT` | `http://127.0.0.1:9222`       | Chrome CDP endpoint for browser subagents          |
 | `CHROME_BIN`               | normal macOS Chrome path      | Optional dedicated Chrome executable override      |
-| `MCP_DEFAULT_OUTPUT_BYTES` | `4096`                        | Default `max_output_bytes` when omitted            |
-| `MCP_MAX_OUTPUT_BYTES`     | `65536`                       | Largest allowed `max_output_bytes` override        |
+| `MCP_DEFAULT_OUTPUT_TOKENS` | `1024`                       | Default `max_output_tokens` when omitted           |
+| `MCP_MAX_OUTPUT_TOKENS`     | `16384`                      | Largest allowed `max_output_tokens` override       |
 | `MCP_MAX_SHELLS`           | `8`                           | Maximum live shells                                |
 | `MCP_SHELL_IDLE_TTL_MS`    | `1800000`                     | Named-shell idle timeout; `0` disables cleanup     |
 

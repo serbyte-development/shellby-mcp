@@ -608,3 +608,7 @@
 ## [2026-08-12] configuration | centralize environment parsing
 
 - Made `src/config.ts` the single environment-variable parsing boundary, removed scattered runtime config reads from startup and the disabled iOS shell, and changed schema tests to assert shared config/constants instead of duplicated numeric literals.
+
+## [2026-08-12] output | use token-based response limits
+
+- Switched shell, webpage, and `apply_patch` model-facing text caps from UTF-8 bytes to `o200k_base` tokens while leaving transcript, cache, and process-safety limits byte-based. Renamed public output settings and schema inputs to `*_TOKENS` / `max_output_tokens` and added shared tokenizer coverage (`src/tokenizer.ts`, `src/config.ts`, `src/tools/shell/`, `src/tools/web/`, `src/tools/apply-patch/apply-patch.ts`, `test/`).

@@ -4,7 +4,7 @@ Verified 2026-08-12.
 
 ## Static MCP Configuration
 
-`src/config.ts` is the single runtime configuration boundary. It owns static defaults, parses the small supported environment surface once into `MCP_CONFIG`, validates cross-field constraints such as `MCP_DEFAULT_OUTPUT_BYTES <= MCP_MAX_OUTPUT_BYTES`, and exposes resolved host, workspace, adapter, shell, shell-manager, and iOS settings. Internal safety/runtime limits such as transcript retention, per-command capture, record count, wait bounds, and shutdown grace periods stay config-only rather than becoming user-facing environment knobs. Other modules consume typed config rather than reading individual environment variables. The only remaining `process.env` uses outside this boundary pass the full environment through to spawned shell or Peekaboo child processes. `.env.example` is the committed, commented configuration template; local `.env*` files are ignored. `MCP_CONFIG.server` and `MCP_CONFIG.toolMeta` own shared MCP metadata, while `buildMcpInstructions(workspace)` owns the global model-facing instructions and resolves `<workspace>/AGENTS.md`.
+`src/config.ts` is the single runtime configuration boundary. It owns static defaults, parses the small supported environment surface once into `MCP_CONFIG`, validates cross-field constraints such as `MCP_DEFAULT_OUTPUT_TOKENS <= MCP_MAX_OUTPUT_TOKENS`, and exposes resolved host, workspace, adapter, shell, shell-manager, and iOS settings. Model-facing text response limits use `o200k_base` tokens; internal safety/runtime limits such as transcript retention, per-command capture, cache size, record count, wait bounds, and shutdown grace periods remain byte/count based where appropriate and stay config-only. Other modules consume typed config rather than reading individual environment variables. The only remaining `process.env` uses outside this boundary pass the full environment through to spawned shell or Peekaboo child processes. `.env.example` is the committed, commented configuration template; local `.env*` files are ignored. `MCP_CONFIG.server` and `MCP_CONFIG.toolMeta` own shared MCP metadata, while `buildMcpInstructions(workspace)` owns the global model-facing instructions and resolves `<workspace>/AGENTS.md`.
 
 ## Environment Inputs
 
@@ -20,8 +20,8 @@ Verified 2026-08-12.
 | `MCP_PEEKABOO_BIN`         | `peekaboo`                    | Peekaboo executable name or absolute path              |
 | `MCP_CHATGPT_CDP_ENDPOINT` | `http://127.0.0.1:9222`       | Already-running Chrome DevTools endpoint for subagents |
 | `CHROME_BIN`               | normal macOS Chrome path      | Optional dedicated-browser executable override         |
-| `MCP_DEFAULT_OUTPUT_BYTES` | `4096`                        | Default `max_output_bytes` when omitted                |
-| `MCP_MAX_OUTPUT_BYTES`     | `65536`                       | Largest allowed `max_output_bytes` override            |
+| `MCP_DEFAULT_OUTPUT_TOKENS` | `1024`                       | Default `max_output_tokens` when omitted               |
+| `MCP_MAX_OUTPUT_TOKENS`     | `16384`                      | Largest allowed `max_output_tokens` override           |
 | `MCP_MAX_SHELLS`           | `8`                           | Maximum named shells including `default`               |
 | `MCP_SHELL_IDLE_TTL_MS`    | `1800000`                     | Idle lifetime for named shells; `0` disables cleanup   |
 
