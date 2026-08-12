@@ -15,6 +15,7 @@ import { startMcpHttpServer } from "../src/server/http-server.js"
 import { McpAuditLogger } from "../src/server/audit-log.js"
 import { PeekabooClient } from "../src/tools/computer/peekaboo.js"
 import { PersistentShellSession } from "../src/tools/shell/session.js"
+import { ShellSessionManager } from "../src/tools/shell/session-manager.js"
 import { DEFAULT_WEB_OUTPUT_TOKENS, MAX_WEB_OUTPUT_TOKENS, WebPageOpener } from "../src/tools/web/web-open.js"
 
 test("serves shell tools through Streamable HTTP and retains state across MCP sessions", { timeout: 20_000 }, async (t) => {
@@ -65,6 +66,7 @@ test("serves shell tools through Streamable HTTP and retains state across MCP se
   assert.equal(cwdSchema.minLength, 1)
   const maxOutputSchema = (runTool?.inputSchema.properties as Record<string, Record<string, unknown>>).max_output_tokens
   assert.ok(maxOutputSchema)
+  assert.equal(maxOutputSchema.minimum, 1)
   assert.equal(maxOutputSchema.default, MCP_CONFIG.shell.outputTokens)
   assert.equal(maxOutputSchema.maximum, MCP_CONFIG.shell.maxOutputTokens)
   const requestIdSchema = (runTool?.inputSchema.properties as Record<string, Record<string, unknown>>).request_id
@@ -120,6 +122,7 @@ test("serves shell tools through Streamable HTTP and retains state across MCP se
   assert.equal(fetchWebsiteTool?.annotations?.openWorldHint, true)
   const webMaxOutputSchema = (fetchWebsiteTool?.inputSchema.properties as Record<string, Record<string, unknown>>).max_output_tokens
   assert.ok(webMaxOutputSchema)
+  assert.equal(webMaxOutputSchema.minimum, 1)
   assert.equal(webMaxOutputSchema.default, DEFAULT_WEB_OUTPUT_TOKENS)
   assert.equal(webMaxOutputSchema.maximum, MAX_WEB_OUTPUT_TOKENS)
   const websiteFormatSchema = (fetchWebsiteTool?.inputSchema.properties as Record<string, Record<string, unknown>>).format
@@ -241,7 +244,7 @@ test("lists and loads dynamic workspace skills through MCP", { timeout: 10_000 }
 
   const running = await startMcpHttpServer({
     port: 0,
-    shell: new PersistentShellSession({ cwd: workspace }),
+    shellManager: new ShellSessionManager({ defaultShell: new PersistentShellSession({ cwd: workspace }) }),
   })
   t.after(() => running.close())
   const connected = await connectClient(running.url, "skill-integration-client")
@@ -283,7 +286,7 @@ test("records agent feedback through MCP", { timeout: 10_000 }, async (t) => {
 
   const running = await startMcpHttpServer({
     port: 0,
-    shell: new PersistentShellSession({ cwd: workspace }),
+    shellManager: new ShellSessionManager({ defaultShell: new PersistentShellSession({ cwd: workspace }) }),
     feedbackStore,
   })
   t.after(() => running.close())
@@ -990,7 +993,7 @@ test("applies patches through the native MCP tool", { timeout: 20_000 }, async (
   const shell = new PersistentShellSession({ cwd: directory })
   const running = await startMcpHttpServer({
     port: 0,
-    shell,
+    shellManager: new ShellSessionManager({ defaultShell: shell }),
     applyPatchExecutable: executable,
     auditLogger: new McpAuditLogger(auditPath),
   })
@@ -1087,7 +1090,7 @@ test("force-kills a SIGTERM-resistant apply_patch after request abort", { skip: 
   const shell = new PersistentShellSession({ cwd: directory })
   const running = await startMcpHttpServer({
     port: 0,
-    shell,
+    shellManager: new ShellSessionManager({ defaultShell: shell }),
     applyPatchExecutable: executable,
   })
   let patchPid: number | undefined

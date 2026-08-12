@@ -1,7 +1,6 @@
 import { get_encoding, type Tiktoken } from "tiktoken"
 
 export const OUTPUT_TOKEN_ENCODING = "o200k_base"
-export const MIN_OUTPUT_TOKENS = 64
 
 let encoder: Tiktoken | undefined
 const utf8Decoder = new TextDecoder("utf-8", { fatal: true })

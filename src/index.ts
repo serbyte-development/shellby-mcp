@@ -10,7 +10,6 @@ import { McpAuditLogger } from "./server/audit-log.js"
 import { PersistentShellSession } from "./tools/shell/session.js"
 import { ShellSessionManager } from "./tools/shell/session-manager.js"
 import { startMcpHttpServer } from "./server/http-server.js"
-import { PeekabooClient } from "./tools/computer/peekaboo.js"
 
 const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..")
 const auditLogPath = resolve(repositoryRoot, "agent-commands.yaml")
@@ -19,7 +18,6 @@ const authStore = new ShellyAuthStore()
 await authStore.ensureState()
 const cwd = MCP_CONFIG.workspace
 await mkdir(cwd, { recursive: true })
-const peekaboo = new PeekabooClient()
 const chatGptSubagents = new ChatGptSubagentModule({
   onPageCreated: () => {
     const child = spawn(process.execPath, [resolve(repositoryRoot, "scripts", "chatgpt-browser.mjs"), "--hide"], {
@@ -36,7 +34,6 @@ const shells = new ShellSessionManager({
 
 const running = await startMcpHttpServer({
   shellManager: shells,
-  peekaboo,
   chatGptSubagents,
   auditLogger,
   authStore,
@@ -47,7 +44,7 @@ console.log(`Shell: ${MCP_CONFIG.shell.path}`)
 console.log(`Default workspace: ${cwd}`)
 console.log(`Maximum named shells: ${shells.maximumShells}`)
 console.log(`Agent MCP audit log: ${auditLogPath}`)
-console.log(`Computer Use: Peekaboo CLI (${peekaboo.executable})`)
+console.log(`Computer Use: Peekaboo CLI (${MCP_CONFIG.peekaboo.executable})`)
 console.log(`ChatGPT Subagents: attach-only CDP ${MCP_CONFIG.chatGpt.cdpEndpoint}`)
 
 let shuttingDown = false

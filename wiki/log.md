@@ -613,6 +613,10 @@
 
 - Switched shell, webpage, and `apply_patch` model-facing text caps from UTF-8 bytes to `o200k_base` tokens while leaving transcript, cache, and process-safety limits byte-based. Renamed public output settings and schema inputs to `*_TOKENS` / `max_output_tokens` and added shared tokenizer coverage (`src/tokenizer.ts`, `src/config.ts`, `src/tools/shell/`, `src/tools/web/`, `src/tools/apply-patch/apply-patch.ts`, `test/`).
 
+## [2026-08-12] output | remove arbitrary token minimum
+
+- Removed the arbitrary 64-token floor; shell and webpage response limits now accept any positive integer from 1 through their configured maximum.
+
 ## [2026-08-12] simplify | reduce configuration and composition plumbing
 
 - Made public Node entry scripts load optional `.env` configuration before preflight or runtime imports, and fixed the production HTTP/tunnel port at 3333 instead of exposing a partial `PORT` override.

@@ -2,7 +2,7 @@ import { McpServer } from "@modelcontextprotocol/server"
 import { z } from "zod"
 
 import { MCP_CONFIG } from "../../config.js"
-import { MIN_OUTPUT_TOKENS, OUTPUT_TOKEN_ENCODING } from "../../tokenizer.js"
+import { OUTPUT_TOKEN_ENCODING } from "../../tokenizer.js"
 import { WebOpenError, WebPageOpener } from "./web-open.js"
 
 export function registerWebTool(server: McpServer, webPageOpener: WebPageOpener): void {
@@ -23,7 +23,7 @@ export function registerWebTool(server: McpServer, webPageOpener: WebPageOpener)
         cursor: z.string().min(1).optional().describe("Opaque next_cursor from an earlier fetch_website response."),
         max_output_tokens: z
           .int()
-          .min(MIN_OUTPUT_TOKENS)
+          .min(1)
           .max(webPageOpener.maximumOutputTokens)
           .optional()
           .default(webPageOpener.defaultOutputTokens)

@@ -4,12 +4,12 @@ import { launch } from "cloakbrowser"
 import { Defuddle } from "defuddle/node"
 import { parseHTML } from "linkedom"
 
-import { MIN_OUTPUT_TOKENS, tokenPrefix } from "../../tokenizer.js"
+import { tokenPrefix } from "../../tokenizer.js"
 import { positiveInteger, utf8Prefix } from "../../utils.js"
 
-export const DEFAULT_WEB_OUTPUT_TOKENS = 2_048
-export const MAX_WEB_OUTPUT_TOKENS = 8_192
-export const DEFAULT_WEB_DOCUMENT_BYTES = 2 * 1024 * 1024
+export const DEFAULT_WEB_OUTPUT_TOKENS = 8_192
+export const MAX_WEB_OUTPUT_TOKENS = 32_768
+export const MAX_CACHED_WEB_DOCUMENT_BYTES = 2 * 1024 * 1024 // 2 MiB
 
 const DEFAULT_DOCUMENT_TTL_MS = 10 * 60 * 1_000
 const DEFAULT_DOCUMENT_LIMIT = 20
@@ -79,14 +79,11 @@ export class WebPageOpener {
   constructor(options: WebPageOpenerOptions = {}) {
     this.defaultOutputTokens = positiveInteger(options.defaultOutputTokens, DEFAULT_WEB_OUTPUT_TOKENS)
     this.maximumOutputTokens = positiveInteger(options.maxOutputTokens, MAX_WEB_OUTPUT_TOKENS)
-    if (this.defaultOutputTokens < MIN_OUTPUT_TOKENS || this.maximumOutputTokens < MIN_OUTPUT_TOKENS) {
-      throw new Error(`Output token limits must be at least ${MIN_OUTPUT_TOKENS}.`)
-    }
     if (this.defaultOutputTokens > this.maximumOutputTokens) {
       throw new Error("defaultOutputTokens cannot exceed maxOutputTokens.")
     }
 
-    this.documentByteLimit = positiveInteger(options.documentByteLimit, DEFAULT_WEB_DOCUMENT_BYTES)
+    this.documentByteLimit = positiveInteger(options.documentByteLimit, MAX_CACHED_WEB_DOCUMENT_BYTES)
 
     this.documentTtlMs = positiveInteger(options.documentTtlMs, DEFAULT_DOCUMENT_TTL_MS)
     this.documentLimit = positiveInteger(options.documentLimit, DEFAULT_DOCUMENT_LIMIT)
@@ -157,8 +154,8 @@ export class WebPageOpener {
 
   private resolveOutputTokens(value: number | undefined): number {
     const resolved = value ?? this.defaultOutputTokens
-    if (!Number.isSafeInteger(resolved) || resolved < MIN_OUTPUT_TOKENS || resolved > this.maximumOutputTokens) {
-      throw new WebOpenError("invalid_output_limit", `max_output_tokens must be an integer from ${MIN_OUTPUT_TOKENS} to ${this.maximumOutputTokens}.`)
+    if (!Number.isSafeInteger(resolved) || resolved < 1 || resolved > this.maximumOutputTokens) {
+      throw new WebOpenError("invalid_output_limit", `max_output_tokens must be an integer from 1 to ${this.maximumOutputTokens}.`)
     }
     return resolved
   }

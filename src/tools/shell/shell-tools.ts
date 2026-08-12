@@ -2,7 +2,7 @@ import { McpServer } from "@modelcontextprotocol/server"
 import { z } from "zod"
 
 import { MCP_CONFIG } from "../../config.js"
-import { MIN_OUTPUT_TOKENS, OUTPUT_TOKEN_ENCODING } from "../../tokenizer.js"
+import { OUTPUT_TOKEN_ENCODING } from "../../tokenizer.js"
 import { ShellSessionError, type ParallelCommandSnapshot, type ShellSnapshot } from "./session.js"
 import { DEFAULT_SHELL_ID, ShellSessionManager } from "./session-manager.js"
 
@@ -65,7 +65,7 @@ export function registerShellExecutionTools(server: McpServer, shells: ShellSess
   const workspaceDescription = JSON.stringify(workspace)
   const maxOutputTokensInput = z
     .int()
-    .min(MIN_OUTPUT_TOKENS)
+    .min(1)
     .max(shells.maximumReadTokens)
     .optional()
     .default(shells.defaultReadTokens)

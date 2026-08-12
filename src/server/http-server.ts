@@ -10,7 +10,6 @@ import { createMcpServer } from "./mcp-server.js"
 import { McpAuditLogger } from "./audit-log.js"
 import { FeedbackStore } from "../tools/feedback.js"
 import { PeekabooClient } from "../tools/computer/peekaboo.js"
-import { PersistentShellSession } from "../tools/shell/session.js"
 import { ShellSessionManager } from "../tools/shell/session-manager.js"
 import { WebPageOpener } from "../tools/web/web-open.js"
 
@@ -32,7 +31,6 @@ export interface RunningMcpServer {
 export interface StartMcpServerOptions {
   host?: string
   port?: number
-  shell?: PersistentShellSession
   shellManager?: ShellSessionManager
   peekaboo?: PeekabooClient
   chatGptSubagents?: ChatGptSubagentService
@@ -46,7 +44,7 @@ export interface StartMcpServerOptions {
 export async function startMcpHttpServer(options: StartMcpServerOptions = {}): Promise<RunningMcpServer> {
   const host = options.host ?? MCP_CONFIG.host
   const port = options.port ?? MCP_CONFIG.port
-  const shells = options.shellManager ?? new ShellSessionManager({ defaultShell: options.shell })
+  const shells = options.shellManager ?? new ShellSessionManager()
   const peekaboo = options.peekaboo ?? new PeekabooClient()
   const chatGptSubagents = options.chatGptSubagents ?? new ChatGptSubagentModule()
   const auditLogger = options.auditLogger

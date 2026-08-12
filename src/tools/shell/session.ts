@@ -5,7 +5,7 @@ import { isAbsolute, resolve } from "node:path"
 import { StringDecoder } from "node:string_decoder"
 
 import { MCP_CONFIG } from "../../config.js"
-import { MIN_OUTPUT_TOKENS, tokenPrefix } from "../../tokenizer.js"
+import { tokenPrefix } from "../../tokenizer.js"
 import { positiveInteger, utf8Chunk } from "../../utils.js"
 import {
   DEFAULT_PARALLEL_COMMAND_TIMEOUT_MS,
@@ -286,9 +286,6 @@ export class PersistentShellSession {
     this.commandTranscriptBytes = positiveInteger(options.commandTranscriptBytes, MCP_CONFIG.shell.commandTranscriptBytes)
     this.maxOutputTokens = positiveInteger(options.maxOutputTokens, MCP_CONFIG.shell.maxOutputTokens)
     this.defaultOutputTokens = positiveInteger(options.defaultOutputTokens, MCP_CONFIG.shell.outputTokens)
-    if (this.defaultOutputTokens < MIN_OUTPUT_TOKENS || this.maxOutputTokens < MIN_OUTPUT_TOKENS) {
-      throw new Error(`Output token limits must be at least ${MIN_OUTPUT_TOKENS}.`)
-    }
     if (this.defaultOutputTokens > this.maxOutputTokens) {
       throw new Error("defaultOutputTokens cannot exceed maxOutputTokens.")
     }
@@ -1096,7 +1093,7 @@ export class PersistentShellSession {
     if (value === undefined || !Number.isFinite(value)) {
       return this.defaultOutputTokens
     }
-    return Math.min(Math.max(Math.trunc(value), MIN_OUTPUT_TOKENS), this.maxOutputTokens)
+    return Math.min(Math.max(Math.trunc(value), 1), this.maxOutputTokens)
   }
 
   private pruneCommandRecords(): void {
