@@ -1,6 +1,7 @@
 node_modules/
 dist/
-.env
+.env*
+!.env.example
 /agent-commands.md
 /agent-commands.yaml
 *.log

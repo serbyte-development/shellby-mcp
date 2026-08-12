@@ -5,7 +5,7 @@ import type { Request, Response } from "express"
 
 import { ShellyAuthError, type ShellyAuthStore } from "../auth/auth.js"
 import { MCP_CONFIG } from "../config.js"
-import { ChatGptSubagentModule, DEFAULT_CHATGPT_CDP_ENDPOINT, type ChatGptSubagentService } from "../tools/subagent/chatgpt-subagent.js"
+import { ChatGptSubagentModule, type ChatGptSubagentService } from "../tools/subagent/chatgpt-subagent.js"
 import { createMcpServer } from "./mcp-server.js"
 import { McpAuditLogger } from "./audit-log.js"
 import { FeedbackStore } from "../tools/feedback.js"
@@ -48,12 +48,12 @@ export interface StartMcpServerOptions {
 }
 
 export async function startMcpHttpServer(options: StartMcpServerOptions = {}): Promise<RunningMcpServer> {
-  const host = options.host ?? MCP_CONFIG.defaults.host
-  const port = options.port ?? MCP_CONFIG.defaults.port
+  const host = options.host ?? MCP_CONFIG.host
+  const port = options.port ?? MCP_CONFIG.port
   const shells = options.shellManager ?? new ShellSessionManager({ defaultShell: options.shell })
   const shell = shells.defaultShell
   const peekaboo = options.peekaboo ?? new PeekabooClient()
-  const chatGptSubagents = options.chatGptSubagents ?? new ChatGptSubagentModule({ cdpEndpoint: DEFAULT_CHATGPT_CDP_ENDPOINT })
+  const chatGptSubagents = options.chatGptSubagents ?? new ChatGptSubagentModule({ cdpEndpoint: MCP_CONFIG.chatGpt.cdpEndpoint })
   const auditLogger = options.auditLogger
   const authStore = options.authStore
   const feedbackStore = options.feedbackStore ?? new FeedbackStore()

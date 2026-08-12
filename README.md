@@ -294,24 +294,24 @@ Each call requires an absolute `cwd` and a normal Codex-style patch. It runs ind
 
 ## Configuration
 
-| Variable                       | Default                       | Purpose                                            |
-| ------------------------------ | ----------------------------- | -------------------------------------------------- |
-| `HOST`                         | `127.0.0.1`                   | MCP HTTP bind address                              |
-| `PORT`                         | `3333`                        | MCP HTTP port                                      |
-| `NGROK_URL`                    | unset                         | Optional fixed ngrok domain used by tunnel helpers |
-| `NGROK_BIN`                    | `ngrok` from `PATH`           | Optional ngrok executable override                 |
-| `MCP_SHELL`                    | `/bin/zsh`                    | Persistent shell executable                        |
-| `MCP_CWD`                      | `~/Desktop/chatgpt-workspace` | Initial/default workspace                          |
-| `MCP_PEEKABOO_BIN`             | `peekaboo`                    | Peekaboo executable                                |
-| `MCP_CHATGPT_CDP_ENDPOINT`     | `http://127.0.0.1:9222`       | Chrome CDP endpoint for browser subagents          |
-| `CHROME_BIN`                   | normal macOS Chrome path      | Optional dedicated Chrome executable override      |
-| `MCP_TRANSCRIPT_CHARS`         | `1048576`                     | Rolling transcript size                            |
-| `MCP_COMMAND_TRANSCRIPT_BYTES` | `262144`                      | Per-command retained output ceiling                |
-| `MCP_OUTPUT_BYTES`             | `4096`                        | Default response bytes                             |
-| `MCP_MAX_OUTPUT_BYTES`         | `65536`                       | Maximum response bytes                             |
-| `MCP_RECORD_LIMIT`             | `1024`                        | Recent command/reset records                       |
-| `MCP_MAX_SHELLS`               | `8`                           | Maximum live shells                                |
-| `MCP_SHELL_IDLE_TTL_MS`        | `1800000`                     | Named-shell idle timeout; `0` disables cleanup     |
+Copy `.env.example` to `.env` to override the defaults below. Internal safety limits stay in `src/config.ts` and are intentionally not exposed as environment variables.
+
+| Variable                   | Default                       | Purpose                                            |
+| -------------------------- | ----------------------------- | -------------------------------------------------- |
+| `HOST`                     | `127.0.0.1`                   | MCP HTTP bind address                              |
+| `PORT`                     | `3333`                        | MCP HTTP port                                      |
+| `NGROK_URL`                | unset                         | Optional fixed ngrok domain used by tunnel helpers |
+| `NGROK_BIN`                | `ngrok` from `PATH`           | Optional ngrok executable override                 |
+| `NGROK_AUTHTOKEN`          | unset                         | Optional ngrok auth token                          |
+| `MCP_SHELL`                | `/bin/zsh`                    | Persistent shell executable                        |
+| `MCP_CWD`                  | `~/Desktop/chatgpt-workspace` | Initial/default workspace                          |
+| `MCP_PEEKABOO_BIN`         | `peekaboo`                    | Peekaboo executable                                |
+| `MCP_CHATGPT_CDP_ENDPOINT` | `http://127.0.0.1:9222`       | Chrome CDP endpoint for browser subagents          |
+| `CHROME_BIN`               | normal macOS Chrome path      | Optional dedicated Chrome executable override      |
+| `MCP_DEFAULT_OUTPUT_BYTES` | `4096`                        | Default `max_output_bytes` when omitted            |
+| `MCP_MAX_OUTPUT_BYTES`     | `65536`                       | Largest allowed `max_output_bytes` override        |
+| `MCP_MAX_SHELLS`           | `8`                           | Maximum live shells                                |
+| `MCP_SHELL_IDLE_TTL_MS`    | `1800000`                     | Named-shell idle timeout; `0` disables cleanup     |
 
 The included ngrok helper, managed startup flow, and traffic policy assume local port `3333`. If you change `PORT`, update the ngrok command, startup health check, and Host rewrite as well.
 

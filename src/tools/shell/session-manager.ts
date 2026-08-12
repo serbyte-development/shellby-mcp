@@ -1,9 +1,9 @@
+import { MCP_CONFIG } from "../../config.js"
+import { nonNegativeInteger, positiveInteger } from "../../utils.js"
 import { PersistentShellSession, ShellSessionError } from "./session.js"
 
 export const DEFAULT_SHELL_ID = "default"
 
-const DEFAULT_MAX_SHELLS = 8
-const DEFAULT_IDLE_TIMEOUT_MS = 30 * 60 * 1000 // 30 minutes
 const DEFAULT_CLEANUP_INTERVAL_MS = 60 * 1000
 const MAX_SHELL_ID_LENGTH = 64
 
@@ -38,8 +38,8 @@ export class ShellSessionManager {
   constructor(options: ShellSessionManagerOptions = {}) {
     const defaultShell = options.defaultShell
     this.createShell = options.createShell ?? (defaultShell ? () => defaultShell.fork() : () => new PersistentShellSession())
-    this.maxShells = positiveInteger(options.maxShells, DEFAULT_MAX_SHELLS)
-    this.idleTimeoutMs = nonNegativeInteger(options.idleTimeoutMs, DEFAULT_IDLE_TIMEOUT_MS)
+    this.maxShells = positiveInteger(options.maxShells, MCP_CONFIG.shell.maxShells)
+    this.idleTimeoutMs = nonNegativeInteger(options.idleTimeoutMs, MCP_CONFIG.shell.idleTimeoutMs)
     this.now = options.now ?? Date.now
     this.sessions.set(DEFAULT_SHELL_ID, defaultShell ?? this.createShell())
     this.lastUsedAt.set(DEFAULT_SHELL_ID, this.now())
@@ -241,14 +241,6 @@ function validateShellId(shellId: string): void {
   if (shellId.length === 0 || shellId.length > MAX_SHELL_ID_LENGTH) {
     throw new ShellSessionError("invalid_command", `shell_id must contain between 1 and ${MAX_SHELL_ID_LENGTH} characters.`)
   }
-}
-
-function positiveInteger(value: number | undefined, fallback: number): number {
-  return value && Number.isSafeInteger(value) && value > 0 ? value : fallback
-}
-
-function nonNegativeInteger(value: number | undefined, fallback: number): number {
-  return value !== undefined && Number.isSafeInteger(value) && value >= 0 ? value : fallback
 }
 
 function cleanupInterval(idleTimeoutMs: number): number {

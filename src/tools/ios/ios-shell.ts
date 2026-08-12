@@ -5,8 +5,6 @@ import { z } from "zod"
 
 import { MCP_CONFIG } from "../../config.js"
 
-const DEFAULT_PORT = 8765
-const DEFAULT_TIMEOUT_MS = 5_000
 const MAX_RESPONSE_BYTES = 1024 * 1024
 
 const iosShellResultSchema = z.object({
@@ -31,19 +29,10 @@ export class IosShellClient {
   readonly timeoutMs: number
 
   constructor(options: IosShellClientOptions = {}) {
-    this.host = options.host
-    this.port = options.port ?? DEFAULT_PORT
-    this.tokenFile = options.tokenFile
-    this.timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS
-  }
-
-  static fromEnvironment(): IosShellClient {
-    return new IosShellClient({
-      host: process.env.MCP_IOS_HOST,
-      port: parsePositiveInteger(process.env.MCP_IOS_PORT, DEFAULT_PORT),
-      tokenFile: process.env.MCP_IOS_TOKEN_FILE,
-      timeoutMs: parsePositiveInteger(process.env.MCP_IOS_TIMEOUT_MS, DEFAULT_TIMEOUT_MS),
-    })
+    this.host = options.host ?? MCP_CONFIG.ios.host
+    this.port = options.port ?? MCP_CONFIG.ios.port
+    this.tokenFile = options.tokenFile ?? MCP_CONFIG.ios.tokenFile
+    this.timeoutMs = options.timeoutMs ?? MCP_CONFIG.ios.timeoutMs
   }
 
   async execute(command: string, signal?: AbortSignal): Promise<IosShellResult> {
@@ -64,7 +53,7 @@ export class IosShellClient {
   }
 }
 
-export function registerIosShellTool(server: McpServer, client = IosShellClient.fromEnvironment()): void {
+export function registerIosShellTool(server: McpServer, client = new IosShellClient()): void {
   server.registerTool(
     "shell_iOS",
     {
@@ -164,11 +153,4 @@ function summarizeResult(result: IosShellResult): string {
   if (result.stderr) sections.push(`stderr:\n${result.stderr}`)
   sections.push(`exit_code: ${result.exit_code ?? "unknown"}`)
   return sections.join("\n")
-}
-
-function parsePositiveInteger(value: string | undefined, fallback: number): number {
-  if (value === undefined) return fallback
-  const parsed = Number.parseInt(value, 10)
-  if (!Number.isSafeInteger(parsed) || parsed <= 0) throw new Error(`Expected a positive integer, received ${JSON.stringify(value)}.`)
-  return parsed
 }

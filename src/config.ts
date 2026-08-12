@@ -2,32 +2,114 @@ import { readFileSync } from "node:fs"
 import { homedir } from "node:os"
 import { join, resolve } from "node:path"
 
-export const MCP_CONFIG = {
-  server: {
-    name: "chatgpt-local-shell",
-    version: "0.1.0",
-    icons: [
-      {
-        src: `data:image/png;base64,${readFileSync(new URL("../icon-256_square.png", import.meta.url)).toString("base64")}`,
-        mimeType: "image/png",
-        sizes: ["256x256"],
-      },
-    ],
+const SERVER_CONFIG = {
+  name: "chatgpt-local-shell",
+  version: "0.1.0",
+  icons: [
+    {
+      src: `data:image/png;base64,${readFileSync(new URL("../icon-256_square.png", import.meta.url)).toString("base64")}`,
+      mimeType: "image/png",
+      sizes: ["256x256"],
+    },
+  ],
+}
+
+const TOOL_META = {
+  securitySchemes: [{ type: "noauth" }],
+}
+
+const DEFAULTS = {
+  host: "127.0.0.1",
+  port: 3333,
+  workspace: "~/Desktop/chatgpt-workspace",
+  peekabooExecutable: "peekaboo",
+  chatGptCdpEndpoint: "http://127.0.0.1:9222",
+  shell: {
+    path: "/bin/zsh",
+    transcriptChars: 1024 * 1024,
+    commandTranscriptBytes: 256 * 1024,
+    outputBytes: 4 * 1024,
+    maxOutputBytes: 64 * 1024,
+    defaultWaitMs: 1_500,
+    maxWaitMs: 10_000,
+    readyTimeoutMs: 10_000,
+    stopGraceMs: 500,
+    recordLimit: 1_024,
+    maxShells: 8,
+    idleTimeoutMs: 30 * 60 * 1000,
   },
-  toolMeta: {
-    securitySchemes: [{ type: "noauth" }],
-  },
-  defaults: {
-    host: "127.0.0.1",
-    port: 3333,
-    workspace: "~/Desktop/chatgpt-workspace",
+  ios: {
+    port: 8765,
+    timeoutMs: 5_000,
   },
 }
+
+export function loadMcpConfig(env: NodeJS.ProcessEnv = process.env) {
+  const outputBytes = parsePositiveInteger(env.MCP_DEFAULT_OUTPUT_BYTES, DEFAULTS.shell.outputBytes)
+  const maxOutputBytes = parsePositiveInteger(env.MCP_MAX_OUTPUT_BYTES, DEFAULTS.shell.maxOutputBytes)
+  if (outputBytes > maxOutputBytes) {
+    throw new Error("MCP_DEFAULT_OUTPUT_BYTES cannot exceed MCP_MAX_OUTPUT_BYTES.")
+  }
+
+  return {
+    server: SERVER_CONFIG,
+    toolMeta: TOOL_META,
+    host: env.HOST ?? DEFAULTS.host,
+    port: parsePositiveInteger(env.PORT, DEFAULTS.port),
+    workspace: resolveWorkspacePath(env.MCP_CWD ?? DEFAULTS.workspace),
+    peekaboo: {
+      executable: env.MCP_PEEKABOO_BIN ?? DEFAULTS.peekabooExecutable,
+    },
+    chatGpt: {
+      cdpEndpoint: env.MCP_CHATGPT_CDP_ENDPOINT ?? DEFAULTS.chatGptCdpEndpoint,
+    },
+    shell: {
+      path: env.MCP_SHELL ?? DEFAULTS.shell.path,
+      transcriptChars: DEFAULTS.shell.transcriptChars,
+      commandTranscriptBytes: DEFAULTS.shell.commandTranscriptBytes,
+      outputBytes,
+      maxOutputBytes,
+      defaultWaitMs: DEFAULTS.shell.defaultWaitMs,
+      maxWaitMs: DEFAULTS.shell.maxWaitMs,
+      readyTimeoutMs: DEFAULTS.shell.readyTimeoutMs,
+      stopGraceMs: DEFAULTS.shell.stopGraceMs,
+      recordLimit: DEFAULTS.shell.recordLimit,
+      maxShells: parsePositiveInteger(env.MCP_MAX_SHELLS, DEFAULTS.shell.maxShells),
+      idleTimeoutMs: parseNonNegativeInteger(env.MCP_SHELL_IDLE_TTL_MS, DEFAULTS.shell.idleTimeoutMs),
+    },
+    ios: {
+      host: env.MCP_IOS_HOST,
+      port: parsePositiveInteger(env.MCP_IOS_PORT, DEFAULTS.ios.port),
+      tokenFile: env.MCP_IOS_TOKEN_FILE,
+      timeoutMs: parsePositiveInteger(env.MCP_IOS_TIMEOUT_MS, DEFAULTS.ios.timeoutMs),
+    },
+  }
+}
+
+export const MCP_CONFIG = loadMcpConfig()
 
 export function resolveWorkspacePath(configured: string): string {
   if (configured === "~") return homedir()
   if (configured.startsWith("~/")) return join(homedir(), configured.slice(2))
   return resolve(configured)
+}
+
+function parsePositiveInteger(value: string | undefined, fallback: number): number {
+  if (value === undefined) return fallback
+  const parsed = Number.parseInt(value, 10)
+  if (!Number.isSafeInteger(parsed) || parsed <= 0) {
+    throw new Error(`Expected a positive integer, received ${JSON.stringify(value)}.`)
+  }
+  return parsed
+}
+
+function parseNonNegativeInteger(value: string | undefined, fallback: number): number {
+  if (value === undefined) return fallback
+  const parsed = Number.parseInt(value, 10)
+  if (!Number.isSafeInteger(parsed) || parsed < 0) {
+    throw new Error(`Expected a non-negative integer, received ${JSON.stringify(value)}.`)
+  }
+  return parsed
 }
 
 export function buildMcpInstructions(workspacePath: string): string {

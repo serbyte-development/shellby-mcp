@@ -4,6 +4,8 @@ import { statSync } from "node:fs"
 import { isAbsolute, resolve } from "node:path"
 import { StringDecoder } from "node:string_decoder"
 
+import { MCP_CONFIG } from "../../config.js"
+import { positiveInteger } from "../../utils.js"
 import {
   DEFAULT_PARALLEL_COMMAND_TIMEOUT_MS,
   ParallelCommandAbortedError,
@@ -15,16 +17,6 @@ import {
   parseParallelCommandBatch,
   processParallelCommandScheduler,
 } from "./parallel-runner.js"
-
-const DEFAULT_TRANSCRIPT_LIMIT = 1024 * 1024
-const DEFAULT_COMMAND_TRANSCRIPT_BYTES = 256 * 1024
-const DEFAULT_OUTPUT_BYTES = 4 * 1024
-const MAX_OUTPUT_BYTES = 32 * 1024
-const DEFAULT_WAIT_MS = 1_500
-const MAX_WAIT_MS = 10_000
-const READY_TIMEOUT_MS = 10_000
-const STOP_GRACE_MS = 500
-const DEFAULT_RECORD_LIMIT = 1_024
 
 export type CommandStatus = "running" | "completed" | "shell_exited" | "reset"
 
@@ -299,19 +291,19 @@ export class PersistentShellSession {
   private resetInFlight: ResetRecord | null = null
 
   constructor(options: ShellSessionOptions = {}) {
-    this.shellPath = options.shellPath ?? "/bin/zsh"
+    this.shellPath = options.shellPath ?? MCP_CONFIG.shell.path
     this.cwd = options.cwd ?? process.cwd()
     this.currentCwd = this.cwd
     this.env = options.env ?? process.env
-    this.transcriptLimit = positiveInteger(options.transcriptLimit, DEFAULT_TRANSCRIPT_LIMIT)
+    this.transcriptLimit = positiveInteger(options.transcriptLimit, MCP_CONFIG.shell.transcriptChars)
     this.transcript = new TranscriptBuffer(this.transcriptLimit)
-    this.commandTranscriptBytes = positiveInteger(options.commandTranscriptBytes, DEFAULT_COMMAND_TRANSCRIPT_BYTES)
-    this.maxOutputBytes = positiveInteger(options.maxOutputBytes, MAX_OUTPUT_BYTES)
-    this.defaultOutputBytes = positiveInteger(options.defaultOutputBytes, DEFAULT_OUTPUT_BYTES)
+    this.commandTranscriptBytes = positiveInteger(options.commandTranscriptBytes, MCP_CONFIG.shell.commandTranscriptBytes)
+    this.maxOutputBytes = positiveInteger(options.maxOutputBytes, MCP_CONFIG.shell.maxOutputBytes)
+    this.defaultOutputBytes = positiveInteger(options.defaultOutputBytes, MCP_CONFIG.shell.outputBytes)
     if (this.defaultOutputBytes > this.maxOutputBytes) {
       throw new Error("defaultOutputBytes cannot exceed maxOutputBytes.")
     }
-    this.recordLimit = positiveInteger(options.recordLimit, DEFAULT_RECORD_LIMIT)
+    this.recordLimit = positiveInteger(options.recordLimit, MCP_CONFIG.shell.recordLimit)
     this.parallelCommandTimeoutMs = positiveInteger(options.parallelCommandTimeoutMs, DEFAULT_PARALLEL_COMMAND_TIMEOUT_MS)
     this.parallelScheduler = options.parallelScheduler ?? processParallelCommandScheduler
   }
@@ -653,8 +645,8 @@ export class PersistentShellSession {
       const timer = setTimeout(() => {
         if (this.contextCaptureState?.child === child) this.contextCaptureState = null
         this.killProcessGroup(child, "SIGKILL")
-        rejectContext(new Error(`Shell context capture did not complete within ${READY_TIMEOUT_MS}ms.`))
-      }, READY_TIMEOUT_MS)
+        rejectContext(new Error(`Shell context capture did not complete within ${MCP_CONFIG.shell.readyTimeoutMs}ms.`))
+      }, MCP_CONFIG.shell.readyTimeoutMs)
       this.contextCaptureState = {
         child,
         startMarker,
@@ -813,7 +805,7 @@ export class PersistentShellSession {
       if (finalizeTimer) return
       finalizeTimer = setTimeout(() => {
         this.finalizeChild(child, terminationDescription)
-      }, STOP_GRACE_MS)
+      }, MCP_CONFIG.shell.stopGraceMs)
     }
 
     child.once("error", (error) => {
@@ -837,9 +829,9 @@ export class PersistentShellSession {
 
     await new Promise<void>((resolve, reject) => {
       const timer = setTimeout(() => {
-        reject(new Error(`Shell did not become ready within ${READY_TIMEOUT_MS}ms.`))
+        reject(new Error(`Shell did not become ready within ${MCP_CONFIG.shell.readyTimeoutMs}ms.`))
         this.killProcessGroup(child, "SIGKILL")
-      }, READY_TIMEOUT_MS)
+      }, MCP_CONFIG.shell.readyTimeoutMs)
 
       this.readyState = { child, marker, resolve, reject, timer }
       writeToStdin(child, [`builtin printf '\\036__MCP_READY_${token}__\\037'`, ""].join("\n")).catch((error) => {
@@ -1047,9 +1039,9 @@ export class PersistentShellSession {
 
   private async stopChild(child: ChildProcessWithoutNullStreams): Promise<void> {
     this.killProcessGroup(child, "SIGTERM")
-    await waitForExit(child, STOP_GRACE_MS)
+    await waitForExit(child, MCP_CONFIG.shell.stopGraceMs)
     this.killProcessGroup(child, "SIGKILL")
-    if (!(await this.waitForChildClose(child, STOP_GRACE_MS))) {
+    if (!(await this.waitForChildClose(child, MCP_CONFIG.shell.stopGraceMs))) {
       this.finalizeChild(child, "forced shutdown timeout")
     }
   }
@@ -1312,13 +1304,9 @@ function validateCommand(command: string): void {
 }
 
 function normalizeWaitMs(waitMs: number | undefined): number {
-  const value = waitMs ?? DEFAULT_WAIT_MS
-  if (!Number.isFinite(value)) return DEFAULT_WAIT_MS
-  return Math.min(Math.max(Math.trunc(value), 0), MAX_WAIT_MS)
-}
-
-function positiveInteger(value: number | undefined, fallback: number): number {
-  return value && Number.isSafeInteger(value) && value > 0 ? value : fallback
+  const value = waitMs ?? MCP_CONFIG.shell.defaultWaitMs
+  if (!Number.isFinite(value)) return MCP_CONFIG.shell.defaultWaitMs
+  return Math.min(Math.max(Math.trunc(value), 0), MCP_CONFIG.shell.maxWaitMs)
 }
 
 function writeToStdin(child: ChildProcessWithoutNullStreams, value: string): Promise<void> {

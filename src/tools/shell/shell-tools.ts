@@ -92,7 +92,13 @@ export function registerShellExecutionTools(server: McpServer, shells: ShellSess
           .describe(
             "Exact zsh command or multiline script. For parallel work, repeat `*** Run: <directory-or-relative-path>` followed by the zsh for that run."
           ),
-        wait_ms: z.int().min(0).max(10_000).optional().default(1_500).describe("Returns earlier if the output byte cap is reached."),
+        wait_ms: z
+          .int()
+          .min(0)
+          .max(MCP_CONFIG.shell.maxWaitMs)
+          .optional()
+          .default(MCP_CONFIG.shell.defaultWaitMs)
+          .describe("Returns earlier if the output byte cap is reached."),
         max_output_bytes: maxOutputBytesInput,
       }),
       outputSchema: shellSnapshotSchema,
@@ -135,7 +141,7 @@ export function registerShellExecutionTools(server: McpServer, shells: ShellSess
           .int()
           .nonnegative()
           .describe("The next_cursor returned by the previous result. Only pass in this cursor when the omitted output is needed to complete the task."),
-        wait_ms: z.int().min(0).max(10_000).optional().default(2_000),
+        wait_ms: z.int().min(0).max(MCP_CONFIG.shell.maxWaitMs).optional().default(2_000),
         max_output_bytes: maxOutputBytesInput,
       }),
       outputSchema: shellSnapshotSchema,

@@ -4,6 +4,8 @@ import { launch } from "cloakbrowser"
 import { Defuddle } from "defuddle/node"
 import { parseHTML } from "linkedom"
 
+import { positiveInteger } from "../../utils.js"
+
 export const DEFAULT_WEB_OUTPUT_BYTES = 8 * 1024
 export const MAX_WEB_OUTPUT_BYTES = 32 * 1024
 export const DEFAULT_WEB_DOCUMENT_BYTES = 2 * 1024 * 1024
@@ -306,12 +308,4 @@ function utf8Prefix(value: string, maxBytes: number): { value: string; omittedBy
     value: chunk.value,
     omittedBytes: Buffer.byteLength(value.slice(chunk.nextOffset), "utf8"),
   }
-}
-
-function positiveInteger(value: number | undefined, fallback: number): number {
-  if (value === undefined) return fallback
-  if (!Number.isSafeInteger(value) || value <= 0) {
-    throw new Error("Expected a positive integer.")
-  }
-  return value
 }

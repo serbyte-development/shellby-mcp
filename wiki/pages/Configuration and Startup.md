@@ -1,31 +1,29 @@
 # Configuration and Startup
 
-Verified 2026-08-11.
+Verified 2026-08-12.
 
 ## Static MCP Configuration
 
-`src/config.ts` is the central static configuration surface. `MCP_CONFIG.server` defines the MCP name, version, and icon; `MCP_CONFIG.toolMeta` defines the shared security metadata applied to every published tool; and `MCP_CONFIG.defaults` defines the host, port, and workspace defaults used when their environment variables are absent. `buildMcpInstructions(workspace)` owns the global model-facing instructions and resolves the coding-instructions file as `<workspace>/AGENTS.md`. Runtime environment parsing remains in `src/index.ts`.
+`src/config.ts` is the single runtime configuration boundary. It owns static defaults, parses the small supported environment surface once into `MCP_CONFIG`, validates cross-field constraints such as `MCP_DEFAULT_OUTPUT_BYTES <= MCP_MAX_OUTPUT_BYTES`, and exposes resolved host, workspace, adapter, shell, shell-manager, and iOS settings. Internal safety/runtime limits such as transcript retention, per-command capture, record count, wait bounds, and shutdown grace periods stay config-only rather than becoming user-facing environment knobs. Other modules consume typed config rather than reading individual environment variables. The only remaining `process.env` uses outside this boundary pass the full environment through to spawned shell or Peekaboo child processes. `.env.example` is the committed, commented configuration template; local `.env*` files are ignored. `MCP_CONFIG.server` and `MCP_CONFIG.toolMeta` own shared MCP metadata, while `buildMcpInstructions(workspace)` owns the global model-facing instructions and resolves `<workspace>/AGENTS.md`.
 
 ## Environment Inputs
 
-| Name                           | Default                       | Consumer                                               |
-| ------------------------------ | ----------------------------- | ------------------------------------------------------ |
-| `HOST`                         | `127.0.0.1`                   | HTTP bind address                                      |
-| `PORT`                         | `3333`                        | HTTP port                                              |
-| `NGROK_URL`                    | unset                         | Optional fixed domain for the npm/PM2 ngrok helpers    |
-| `NGROK_BIN`                    | `ngrok` from `PATH`           | Optional ngrok executable override                     |
-| `MCP_SHELL`                    | `/bin/zsh`                    | Login shell executable                                 |
-| `MCP_CWD`                      | `~/Desktop/chatgpt-workspace` | Absolute-resolved workspace and initial cwd            |
-| `MCP_PEEKABOO_BIN`             | `peekaboo`                    | Peekaboo executable name or absolute path              |
-| `MCP_CHATGPT_CDP_ENDPOINT`     | `http://127.0.0.1:9222`       | Already-running Chrome DevTools endpoint for subagents |
-| `CHROME_BIN`                   | normal macOS Chrome path      | Optional dedicated-browser executable override         |
-| `MCP_TRANSCRIPT_CHARS`         | `1048576`                     | Rolling JavaScript-string length                       |
-| `MCP_COMMAND_TRANSCRIPT_BYTES` | `262144`                      | Per-command retained UTF-8 output ceiling              |
-| `MCP_OUTPUT_BYTES`             | `4096`                        | Default response byte cap                              |
-| `MCP_MAX_OUTPUT_BYTES`         | `65536`                       | Maximum response byte cap                              |
-| `MCP_RECORD_LIMIT`             | `1024`                        | Per-map recent record limit                            |
-| `MCP_MAX_SHELLS`               | `8`                           | Maximum named shells including `default`               |
-| `MCP_SHELL_IDLE_TTL_MS`        | `1800000`                     | Idle lifetime for named shells; `0` disables cleanup   |
+| Name                       | Default                       | Consumer                                               |
+| -------------------------- | ----------------------------- | ------------------------------------------------------ |
+| `HOST`                     | `127.0.0.1`                   | HTTP bind address                                      |
+| `PORT`                     | `3333`                        | HTTP port                                              |
+| `NGROK_URL`                | unset                         | Optional fixed domain for the npm/PM2 ngrok helpers    |
+| `NGROK_BIN`                | `ngrok` from `PATH`           | Optional ngrok executable override                     |
+| `NGROK_AUTHTOKEN`          | unset                         | Optional ngrok auth token                              |
+| `MCP_SHELL`                | `/bin/zsh`                    | Login shell executable                                 |
+| `MCP_CWD`                  | `~/Desktop/chatgpt-workspace` | Absolute-resolved workspace and initial cwd            |
+| `MCP_PEEKABOO_BIN`         | `peekaboo`                    | Peekaboo executable name or absolute path              |
+| `MCP_CHATGPT_CDP_ENDPOINT` | `http://127.0.0.1:9222`       | Already-running Chrome DevTools endpoint for subagents |
+| `CHROME_BIN`               | normal macOS Chrome path      | Optional dedicated-browser executable override         |
+| `MCP_DEFAULT_OUTPUT_BYTES` | `4096`                        | Default `max_output_bytes` when omitted                |
+| `MCP_MAX_OUTPUT_BYTES`     | `65536`                       | Largest allowed `max_output_bytes` override            |
+| `MCP_MAX_SHELLS`           | `8`                           | Maximum named shells including `default`               |
+| `MCP_SHELL_IDLE_TTL_MS`    | `1800000`                     | Idle lifetime for named shells; `0` disables cleanup   |
 
 `MCP_CWD` expands `~`, resolves relative values from startup cwd, and becomes the shell/workspace/instruction root. Its `AGENTS.md` is the coding-instructions path advertised to MCP clients. Numeric values are range-checked. Production startup writes completed MCP `tools/call` activity to the gitignored repository-local `agent-commands.yaml`. Each call is one compact YAML document. Normal calls have no Better Comments tag; noteworthy calls use `?` for responses at least 8 KiB, `~` for calls at least 5 seconds, and `!` for MCP tool/HTTP/connection failures, in that priority order. Large response size is shown in the header without retaining normal response bodies. `shell_run` uses a block scalar capped at 2,000 characters, ordinary arguments are capped at 600 characters, and successful `apply_patch` calls record only cwd and patch size. Failed `apply_patch` calls also retain the patch body, capped at 32,000 characters, to make debugging failed edits practical (`src/config.ts`, `src/index.ts`, `src/server/audit-log.ts`, `src/server/http-server.ts`).
 

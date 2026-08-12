@@ -552,7 +552,7 @@
 ## [2026-08-11] refine | raise default shell response limit
 
 - Raised the default `shell_run` / `shell_poll` response cap from 2048 to 4096 UTF-8 bytes while retaining the 65536-byte maximum override.
-- Updated the production `MCP_OUTPUT_BYTES` fallback, session fallback, published schema assertion, and configuration wiki (`src/index.ts`, `src/tools/shell/session.ts`, `test/mcp-integration.test.ts`, `pages/Configuration and Startup.md`).
+- Updated the production `MCP_DEFAULT_OUTPUT_BYTES` fallback, session fallback, published schema assertion, and configuration wiki (`src/index.ts`, `src/tools/shell/session.ts`, `test/mcp-integration.test.ts`, `pages/Configuration and Startup.md`).
 
 ## [2026-08-11] refine | simplify parallel shell batch syntax
 
@@ -588,3 +588,23 @@
 ## [2026-08-12] defer | disable experimental iOS shell
 
 - Commented out `shell_iOS` MCP registration while retaining its implementation, and recorded the `ios_system`, native-command, and Shortcut handoff findings (`src/server/mcp-server.ts`, `pages/iOS Shell.md`).
+
+## [2026-08-12] configuration | centralize shell defaults
+
+- Moved shared shell defaults and limits into `src/config.ts`; startup, direct shell sessions, and shell schemas now share one source of truth. Corrected the documented default maximum response cap to the implemented 32 KiB.
+
+## [2026-08-12] configuration | raise shell response ceiling
+
+- Raised the default `MCP_MAX_OUTPUT_BYTES` ceiling from 32 KiB to 64 KiB while keeping the default response size at 4 KiB.
+
+## [2026-08-12] configuration | narrow public env surface
+
+- Kept transcript retention, per-command capture, and record limits config-only; documented the smaller supported override surface in a commented `.env.example`.
+
+## [2026-08-12] configuration | add environment template
+
+- Added committed `.env.example` covering runtime and optional integration settings, and ignored local `.env*` files while preserving the template.
+
+## [2026-08-12] configuration | centralize environment parsing
+
+- Made `src/config.ts` the single environment-variable parsing boundary, removed scattered runtime config reads from startup and the disabled iOS shell, and changed schema tests to assert shared config/constants instead of duplicated numeric literals.

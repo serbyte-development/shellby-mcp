@@ -1,6 +1,7 @@
 import { chromium, type Browser, type BrowserContext, type Locator, type Page, type Response } from "playwright-core"
 
-export const DEFAULT_CHATGPT_CDP_ENDPOINT = "http://127.0.0.1:9222"
+import { nonNegativeInteger, positiveInteger } from "../../utils.js"
+
 const DEFAULT_AGENT_IDLE_TTL_MS = 30 * 60_000
 
 const CAVEMAN_PROMPT =
@@ -1214,22 +1215,6 @@ function booleanOrNull(value: unknown): boolean | null | undefined {
 
 function stringArray(value: unknown): string[] {
   return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : []
-}
-
-function positiveInteger(value: number | undefined, fallback: number): number {
-  if (value === undefined) return fallback
-  if (!Number.isSafeInteger(value) || value <= 0) {
-    throw new Error(`Expected a positive integer, received ${value}.`)
-  }
-  return value
-}
-
-function nonNegativeInteger(value: number | undefined, fallback: number): number {
-  if (value === undefined) return fallback
-  if (!Number.isSafeInteger(value) || value < 0) {
-    throw new Error(`Expected a non-negative integer, received ${value}.`)
-  }
-  return value
 }
 
 function throwIfAborted(signal?: AbortSignal): void {

@@ -7,13 +7,14 @@ import test from "node:test"
 import { fileURLToPath } from "node:url"
 import { Client, StreamableHTTPClientTransport, LATEST_PROTOCOL_VERSION } from "@modelcontextprotocol/client"
 import { ShellyAuthStore } from "../src/auth/auth.js"
+import { MCP_CONFIG } from "../src/config.js"
 import type { ChatGptSubagentService } from "../src/tools/subagent/chatgpt-subagent.js"
 import { FeedbackStore } from "../src/tools/feedback.js"
 import { startMcpHttpServer } from "../src/server/http-server.js"
 import { McpAuditLogger } from "../src/server/audit-log.js"
 import { PeekabooClient } from "../src/tools/computer/peekaboo.js"
 import { PersistentShellSession } from "../src/tools/shell/session.js"
-import { WebPageOpener } from "../src/tools/web/web-open.js"
+import { DEFAULT_WEB_OUTPUT_BYTES, MAX_WEB_OUTPUT_BYTES, WebPageOpener } from "../src/tools/web/web-open.js"
 
 test("serves shell tools through Streamable HTTP and retains state across MCP sessions", { timeout: 20_000 }, async (t) => {
   const running = await startMcpHttpServer({ port: 0 })
@@ -63,8 +64,8 @@ test("serves shell tools through Streamable HTTP and retains state across MCP se
   assert.equal(cwdSchema.minLength, 1)
   const maxOutputSchema = (runTool?.inputSchema.properties as Record<string, Record<string, unknown>>).max_output_bytes
   assert.ok(maxOutputSchema)
-  assert.equal(maxOutputSchema.default, 4096)
-  assert.equal(maxOutputSchema.maximum, 65536)
+  assert.equal(maxOutputSchema.default, MCP_CONFIG.shell.outputBytes)
+  assert.equal(maxOutputSchema.maximum, MCP_CONFIG.shell.maxOutputBytes)
   const requestIdSchema = (runTool?.inputSchema.properties as Record<string, Record<string, unknown>>).request_id
   assert.ok(requestIdSchema)
   assert.equal(requestIdSchema.pattern, undefined)
@@ -118,8 +119,8 @@ test("serves shell tools through Streamable HTTP and retains state across MCP se
   assert.equal(fetchWebsiteTool?.annotations?.openWorldHint, true)
   const webMaxOutputSchema = (fetchWebsiteTool?.inputSchema.properties as Record<string, Record<string, unknown>>).max_output_bytes
   assert.ok(webMaxOutputSchema)
-  assert.equal(webMaxOutputSchema.default, 8192)
-  assert.equal(webMaxOutputSchema.maximum, 65536)
+  assert.equal(webMaxOutputSchema.default, DEFAULT_WEB_OUTPUT_BYTES)
+  assert.equal(webMaxOutputSchema.maximum, MAX_WEB_OUTPUT_BYTES)
   const websiteFormatSchema = (fetchWebsiteTool?.inputSchema.properties as Record<string, Record<string, unknown>>).format
   assert.ok(websiteFormatSchema)
   assert.equal(websiteFormatSchema.default, "markdown")
