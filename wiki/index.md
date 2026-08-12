@@ -9,6 +9,7 @@ This wiki is the concise source of truth for maintaining the server; start with 
 - [[pages/MCP Tool Surface]] — core, skills, shell, webpage, patch, and Computer Use contracts.
 - [[pages/Tool Naming and Schema Design]] — ChatGPT-focused standard for tool names, routing descriptions, schemas, parameters, and outputs.
 - [[pages/Persistent Shell Runtime]] — shell protocol, output bounds, retries, concurrency, and recovery.
+- [[pages/iOS Shell]] — iPhone command execution through the first-class `shell_iOS` tool and a-Shell bridge.
 - [[pages/Workspace Tooling]] — workspace conventions, dynamic skills, and vendored `apply_patch`.
 - [[pages/Configuration and Startup]] — environment parsing, startup composition, shutdown, and tunnel helper.
 - [[pages/Build and Test]] — validation commands, coverage, and gaps.

@@ -580,3 +580,11 @@
 
 - Clarified that a parallel batch is polled only through its outer `(shell_id, request_id, next_cursor)`; child runs remain status entries in `commands` and are never polled independently (`src/tools/shell/shell-tools.ts`, `pages/MCP Tool Surface.md`).
 - Audit logging now captures `shell_run` and `shell_poll` MCP error responses, parses JSON or Streamable HTTP SSE frames, records their bounded returned failure reason, and keeps child nonzero exits as normal tool results. `apply_patch` audit failures also fall back to returned text errors when no structured native diagnostic exists (`src/server/audit-log.ts`, `test/mcp-audit-log.test.ts`, `pages/Workspace Tooling.md`).
+
+## [2026-08-12] document | record iOS shell architecture
+
+- Added the concise `shell_iOS` architecture, bridge startup, macOS `nc` transport discovery, proven end-to-end behavior, and current limitations (`pages/iOS Shell.md`).
+
+## [2026-08-12] defer | disable experimental iOS shell
+
+- Commented out `shell_iOS` MCP registration while retaining its implementation, and recorded the `ios_system`, native-command, and Shortcut handoff findings (`src/server/mcp-server.ts`, `pages/iOS Shell.md`).

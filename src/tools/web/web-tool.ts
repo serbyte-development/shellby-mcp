@@ -37,7 +37,9 @@ export function registerWebTool(server: McpServer, webPageOpener: WebPageOpener)
         output_truncated: z
           .literal(true)
           .optional()
-          .describe("Present when this response stopped at max_output_bytes while additional cached content remains. The omitted content is recoverable with next_cursor."),
+          .describe(
+            "Present when this response stopped at max_output_bytes while additional cached content remains. The omitted content is recoverable with next_cursor."
+          ),
         source_dropped: z
           .literal(true)
           .optional()

@@ -30,7 +30,10 @@ export function registerApplyPatchTool(server: McpServer, executable = DEFAULT_A
         status: z.enum(["completed", "failed"]),
         exit_code: z.int().nullable(),
         output: z.string().optional().describe("Present only on failure with bounded apply_patch stdout/stderr diagnostics."),
-        output_dropped: z.literal(true).optional().describe("Present when failure diagnostics exceeded the apply_patch output ceiling and bytes were permanently discarded."),
+        output_dropped: z
+          .literal(true)
+          .optional()
+          .describe("Present when failure diagnostics exceeded the apply_patch output ceiling and bytes were permanently discarded."),
         dropped_output_bytes: z.int().positive().optional().describe("Present when failure diagnostics exceeded the apply_patch output ceiling."),
       }),
       annotations: {

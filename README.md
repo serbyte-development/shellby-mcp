@@ -103,6 +103,8 @@ Verify the supported Mac, Node, local dependencies, and ngrok configuration:
 npm run setup
 ```
 
+Setup also creates the configured workspace and a starter `AGENTS.md` if one does not already exist. Existing workspace instructions are never overwritten. Set `MCP_CWD` before setup to initialize a different workspace.
+
 If Google Chrome is installed, `setup` also creates a separate profile under `~/.shelly/chatgpt-chrome` and opens ChatGPT. Sign into ChatGPT in that window once. The repository never copies or modifies your normal Chrome profile.
 
 If browser setup was skipped because Chrome was unavailable or port `9222` was already in use, retry it later with:

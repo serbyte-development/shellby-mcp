@@ -216,11 +216,7 @@ test("serves shell tools through Streamable HTTP and retains state across MCP se
   assert.equal(pagedResult.output, expectedPagedOutput)
   assert.equal(Buffer.byteLength(pagedResult.output, "utf8"), 6_000)
 
-  const parallelResult = await callUntilComplete(
-    second.client,
-    "parallel-http",
-    ["*** Run: .", "printf first", "*** Run: /tmp", "false"].join("\n")
-  )
+  const parallelResult = await callUntilComplete(second.client, "parallel-http", ["*** Run: .", "printf first", "*** Run: /tmp", "false"].join("\n"))
   assert.equal(parallelResult.status, "completed")
   assert.equal(parallelResult.exit_code, 1)
   assert.deepEqual(

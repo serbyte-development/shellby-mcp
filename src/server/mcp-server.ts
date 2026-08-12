@@ -5,6 +5,7 @@ import { registerApplyPatchTool } from "../tools/apply-patch/apply-patch.js"
 import { registerComputerUseTools } from "../tools/computer/computer-tools.js"
 import { PeekabooClient } from "../tools/computer/peekaboo.js"
 import { FeedbackStore, registerFeedbackTool } from "../tools/feedback.js"
+// import { registerIosShellTool } from "../tools/ios/ios-shell.js"
 import { registerShellExecutionTools, registerShellManagementTools } from "../tools/shell/shell-tools.js"
 import { ShellSessionManager } from "../tools/shell/session-manager.js"
 import { registerSkillTools } from "../tools/skills.js"
@@ -28,6 +29,8 @@ export function createMcpServer(shells: ShellSessionManager, options: CreateMcpS
   })
 
   registerShellExecutionTools(server, shells, workspace)
+  // iOS shell is experimental and intentionally disabled until the bridge is revisited.
+  // registerIosShellTool(server)
   registerApplyPatchTool(server, options.applyPatchExecutable)
   registerShellManagementTools(server, shells)
   registerSubagentTools(server, options.chatGptSubagents)
