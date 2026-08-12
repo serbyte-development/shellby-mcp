@@ -572,6 +572,10 @@
 
 - Replaced the stale MCP-restart guidance for `shell_limit_reached` with instructions to reuse a shell or free an unused named shell through `shell_list` and `shell_close` (`src/tools/shell/session-manager.ts`, `test/shell-session-manager.test.ts`).
 
+## [2026-08-11] docs | note ChatGPT MCP metadata refresh
+
+- Noted that ChatGPT may keep previously imported MCP schemas/descriptions/instructions until the user updates the MCP app on the ChatGPT website; a local rebuild/restart updates runtime behavior but does not guarantee this client has refreshed tool metadata (`wiki/AGENTS.md`).
+
 ## [2026-08-11] refine | clarify parallel polling and audit failures
 
 - Clarified that a parallel batch is polled only through its outer `(shell_id, request_id, next_cursor)`; child runs remain status entries in `commands` and are never polled independently (`src/tools/shell/shell-tools.ts`, `pages/MCP Tool Surface.md`).

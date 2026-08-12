@@ -12,6 +12,7 @@ This committed vault preserves the current architecture and maintenance contract
 - Update an existing page before adding one. Keep pages short, direct, and marked `Verified YYYY-MM-DD`.
 - Do not add page-level purpose sections or related-link footers; `index.md` owns description and navigation.
 - Keep end-user workflows out unless they constrain an implemented server contract.
+- After changing MCP tool schemas, descriptions, or published server instructions, remember that ChatGPT may keep previously imported metadata until the user updates the MCP app on the ChatGPT website. A local rebuild/restart alone does not prove this ChatGPT client has the new schema.
 - Never store secret values anywhere in the vault, including `_private/`.
 - Treat `raw/` as immutable evidence except for maintaining `raw/source-manifest.md`.
 
