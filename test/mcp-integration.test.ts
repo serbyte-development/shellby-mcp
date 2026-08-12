@@ -35,8 +35,8 @@ test("serves shell tools through Streamable HTTP and retains state across MCP se
       "shell_reset",
       "shell_list",
       "shell_close",
-      "chatgpt_subagent",
-      "chatgpt_subagent_poll",
+      "subagent_start",
+      "subagent_poll",
       "fetch_website",
       "skill_list",
       "skill_load",
@@ -176,7 +176,7 @@ test("serves shell tools through Streamable HTTP and retains state across MCP se
   }
   assert.deepEqual(Object.keys(feedbackInputSchema.properties ?? {}), ["feedback"])
   assert.deepEqual(feedbackInputSchema.required, ["feedback"])
-  const subagentTool = tools.tools.find((tool) => tool.name === "chatgpt_subagent")
+  const subagentTool = tools.tools.find((tool) => tool.name === "subagent_start")
   assert.equal(subagentTool?.annotations?.readOnlyHint, false)
   assert.equal(subagentTool?.annotations?.destructiveHint, false)
   assert.equal(subagentTool?.annotations?.idempotentHint, false)
@@ -191,7 +191,7 @@ test("serves shell tools through Streamable HTTP and retains state across MCP se
   assert.equal(subagentInputSchema.properties?.oververbosity?.default, 2)
   assert.equal(subagentInputSchema.properties?.oververbosity?.minimum, 1)
   assert.equal(subagentInputSchema.properties?.oververbosity?.maximum, 5)
-  const subagentPollTool = tools.tools.find((tool) => tool.name === "chatgpt_subagent_poll")
+  const subagentPollTool = tools.tools.find((tool) => tool.name === "subagent_poll")
   assert.equal(subagentPollTool?.annotations?.readOnlyHint, true)
   assert.equal(subagentPollTool?.annotations?.idempotentHint, true)
   const subagentPollInputSchema = subagentPollTool?.inputSchema as {
@@ -307,7 +307,7 @@ test("records agent feedback through MCP", { timeout: 10_000 }, async (t) => {
   const result = await connected.client.callTool({
     name: "feedback_submit",
     arguments: {
-      feedback: "## Polling feedback\n\n`chatgpt_subagent_poll` should make progress easier to distinguish from a stalled turn.",
+      feedback: "## Polling feedback\n\n`subagent_poll` should make progress easier to distinguish from a stalled turn.",
     },
   })
 
@@ -318,7 +318,7 @@ test("records agent feedback through MCP", { timeout: 10_000 }, async (t) => {
   assert.deepEqual(JSON.parse((await readFile(feedbackPath, "utf8")).trim()), {
     id: "fb_test",
     created_at: "2026-08-09T22:00:00.000Z",
-    feedback: "## Polling feedback\n\n`chatgpt_subagent_poll` should make progress easier to distinguish from a stalled turn.",
+    feedback: "## Polling feedback\n\n`subagent_poll` should make progress easier to distinguish from a stalled turn.",
   })
 })
 
@@ -373,7 +373,7 @@ test("shares async ChatGPT subagent turns across stateless MCP requests", { time
 
   const first = await connectClient(running.url, "subagent-client-1")
   const firstResult = await first.client.callTool({
-    name: "chatgpt_subagent",
+    name: "subagent_start",
     arguments: {
       agent_id: "architecture-reviewer",
       prompt: "Review the architecture.",
@@ -391,7 +391,7 @@ test("shares async ChatGPT subagent turns across stateless MCP requests", { time
   const second = await connectClient(running.url, "subagent-client-2")
   t.after(() => second.client.close())
   const heartbeatPoll = await second.client.callTool({
-    name: "chatgpt_subagent_poll",
+    name: "subagent_poll",
     arguments: { turn_id: "heartbeat-fixture" },
   })
   assert.deepEqual(heartbeatPoll.structuredContent, {
@@ -402,7 +402,7 @@ test("shares async ChatGPT subagent turns across stateless MCP requests", { time
     activity_age_ms: 2_750,
   })
   const firstPoll = await second.client.callTool({
-    name: "chatgpt_subagent_poll",
+    name: "subagent_poll",
     arguments: {
       turn_id: "turn-architecture-reviewer-1",
       wait_ms: 0,
@@ -416,7 +416,7 @@ test("shares async ChatGPT subagent turns across stateless MCP requests", { time
     response: "architecture-reviewer:1:Review the architecture.",
   })
   const secondResult = await second.client.callTool({
-    name: "chatgpt_subagent",
+    name: "subagent_start",
     arguments: {
       agent_id: "architecture-reviewer",
       prompt: "Now critique your answer.",
@@ -430,7 +430,7 @@ test("shares async ChatGPT subagent turns across stateless MCP requests", { time
     conversation_url: "https://chatgpt.com/c/fake-architecture-reviewer",
   })
   const secondPoll = await second.client.callTool({
-    name: "chatgpt_subagent_poll",
+    name: "subagent_poll",
     arguments: { turn_id: "turn-architecture-reviewer-2" },
   })
   assert.deepEqual(secondPoll.structuredContent, {
@@ -481,7 +481,7 @@ test("audits tool calls at the HTTP MCP boundary", { timeout: 10_000 }, async (t
     arguments: {},
   })
   await connected.client.callTool({
-    name: "chatgpt_subagent",
+    name: "subagent_start",
     arguments: {
       agent_id: "audit-check",
       prompt: "Inspect the audit path.",
@@ -490,7 +490,7 @@ test("audits tool calls at the HTTP MCP boundary", { timeout: 10_000 }, async (t
 
   const log = await readFile(auditPath, "utf8")
   assert.match(log, /--- # \d{2}:\d{2}:\d{2} - shell_list - \d+ms\nargs: \{\}/)
-  assert.match(log, /--- # \d{2}:\d{2}:\d{2} - chatgpt_subagent - \d+ms\nargs: \{"agent_id":"audit-check","prompt":"Inspect the audit path\."\}/)
+  assert.match(log, /--- # \d{2}:\d{2}:\d{2} - subagent_start - \d+ms\nargs: \{"agent_id":"audit-check","prompt":"Inspect the audit path\."\}/)
 })
 
 test("exposes a stable Peekaboo Computer Use surface and preserves semantic errors", { timeout: 10_000 }, async (t) => {

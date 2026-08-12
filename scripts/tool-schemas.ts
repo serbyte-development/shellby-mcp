@@ -2,6 +2,7 @@ import { Client, StreamableHTTPClientTransport } from "@modelcontextprotocol/cli
 
 import { MCP_CONFIG } from "../src/config.js"
 import { startMcpHttpServer } from "../src/server/http-server.js"
+import { countTokens, OUTPUT_TOKEN_ENCODING } from "../src/tokenizer.js"
 import { PersistentShellSession } from "../src/tools/shell/session.js"
 import { ShellSessionManager } from "../src/tools/shell/session-manager.js"
 
@@ -26,7 +27,8 @@ try {
     }
   }
 
-  process.stdout.write(`${JSON.stringify(selected, null, 2)}\n`)
+  const compactSchema = JSON.stringify(selected)
+  process.stdout.write(`Token count (${OUTPUT_TOKEN_ENCODING}): ${countTokens(compactSchema)}\n\n${JSON.stringify(selected, null, 2)}\n`)
 } finally {
   await client.close().catch(() => undefined)
   await running.close()

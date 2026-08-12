@@ -6,11 +6,11 @@ import { ChatGptSubagentError, type ChatGptSubagentService } from "./chatgpt-sub
 
 export function registerSubagentTools(server: McpServer, chatGptSubagents: ChatGptSubagentService): void {
   server.registerTool(
-    "chatgpt_subagent",
+    "subagent_start",
     {
       title: "Message a ChatGPT subagent",
       description:
-        "Delegate or continue work with a ChatGPT subagent. Choose an agent_id, send a prompt, then poll the returned <agent_id>_turn_N turn_id with chatgpt_subagent_poll. Later calls with the same agent_id continue that conversation until its local state expires after 30 minutes idle.",
+        "Delegate or continue work with a ChatGPT subagent. Choose an agent_id, send a prompt, then poll the returned <agent_id>_turn_N turn_id with subagent_poll. Later calls with the same agent_id continue that conversation until its local state expires after 30 minutes idle.",
       inputSchema: z.object({
         agent_id: z
           .string()
@@ -60,7 +60,7 @@ export function registerSubagentTools(server: McpServer, chatGptSubagents: ChatG
           content: [
             {
               type: "text" as const,
-              text: `Submitted ChatGPT subagent turn ${result.turnId} for ${result.agentId}; use chatgpt_subagent_poll to check it.`,
+              text: `Submitted ChatGPT subagent turn ${result.turnId} for ${result.agentId}; use subagent_poll to check it.`,
             },
           ],
         }
@@ -71,13 +71,13 @@ export function registerSubagentTools(server: McpServer, chatGptSubagents: ChatG
   )
 
   server.registerTool(
-    "chatgpt_subagent_poll",
+    "subagent_poll",
     {
       title: "Check a ChatGPT subagent turn status",
       description:
-        "Check a previously submitted subagent turn. Use the <agent_id>_turn_N turn_id returned by chatgpt_subagent. Local completed-turn state expires with its agent after 30 minutes idle; the ChatGPT conversation itself is not deleted.",
+        "Check a previously submitted subagent turn. Use the <agent_id>_turn_N turn_id returned by subagent_start. Local completed-turn state expires with its agent after 30 minutes idle; the ChatGPT conversation itself is not deleted.",
       inputSchema: z.object({
-        turn_id: z.string().min(1).max(128).describe("Turn to check, returned by chatgpt_subagent."),
+        turn_id: z.string().min(1).max(128).describe("Turn to check, returned by subagent_start."),
         wait_ms: z.int().min(0).max(60_000).default(0).describe("How long this check may wait for completion. Use 0 for an immediate status check."),
       }),
       outputSchema: z.object({

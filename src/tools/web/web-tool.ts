@@ -20,12 +20,7 @@ export function registerWebTool(server: McpServer, webPageOpener: WebPageOpener)
             "Output format. markdown returns cleaned readable content and is the default. clean_html returns cleaned main-content HTML. raw_html returns the complete rendered page source. Reuse the same format when continuing with a `cursor`."
           ),
         cursor: z.string().min(1).optional().describe("Opaque next_cursor from an earlier fetch_website response."),
-        max_output_tokens: z
-          .int()
-          .min(1)
-          .max(webPageOpener.maximumOutputTokens)
-          .default(webPageOpener.defaultOutputTokens)
-          .describe(`Maximum tokens returned.`),
+        max_output_tokens: z.int().min(1).max(webPageOpener.maximumOutputTokens).default(webPageOpener.defaultOutputTokens),
       }),
       outputSchema: z.object({
         url: z.string(),

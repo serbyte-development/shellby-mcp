@@ -1,10 +1,10 @@
 # Browser ChatGPT Subagents
 
-Verified 2026-08-10.
+Verified 2026-08-12.
 
 ## Current State
 
-The reusable browser module and first-class MCP wrapper now exist. `ChatGptSubagentModule` connects to an already-debuggable Chrome instance through Playwright-over-CDP. `chatgpt_subagent` submits a caller-named agent turn and returns immediately with a readable `<agent_id>_turn_N` `turn_id`; `chatgpt_subagent_poll` retrieves running, completed, or failed state without resubmitting the prompt. Running polls include a coarse activity heartbeat so a parent agent can distinguish a long task that is still making progress from one that has gone quiet (`src/tools/subagent/chatgpt-subagent.ts`, `src/tools/subagent/subagent-tools.ts`).
+The reusable browser module and first-class MCP wrapper now exist. `ChatGptSubagentModule` connects to an already-debuggable Chrome instance through Playwright-over-CDP. `subagent_start` submits a caller-named agent turn and returns immediately with a readable `<agent_id>_turn_N` `turn_id`; `subagent_poll` retrieves running, completed, or failed state without resubmitting the prompt. Running polls include a coarse activity heartbeat so a parent agent can distinguish a long task that is still making progress from one that has gone quiet (`src/tools/subagent/chatgpt-subagent.ts`, `src/tools/subagent/subagent-tools.ts`).
 
 The module itself is deliberately attach-only. It does not launch Chrome, select a Chrome profile, copy profile data, or attempt to repair a missing browser process. Public onboarding wraps that boundary with `scripts/chatgpt-browser.mjs`: `npm run setup` best-effort creates `~/.shelly/chatgpt-chrome`, `npm run setup:chatgpt` retries that step strictly, and later `npm start` launches the same dedicated profile automatically when configured. Setup leaves Chrome visible for sign-in; normal startup hides that exact headed Chrome process by PID. Chromium can reveal itself when CDP creates a new page, so the module invokes a best-effort page-created hook that re-hides only the managed profile. Hide failures are ignored and cannot fail a subagent turn. A manually managed CDP session at the configured endpoint is also accepted but is reported as external rather than adopted. The normal Chrome profile is never copied or modified (`src/tools/subagent/chatgpt-subagent.ts`, `src/index.ts`, `scripts/chatgpt-browser.mjs`, `scripts/start.mjs`).
 
@@ -20,10 +20,10 @@ ChatGPT web is exposed as a local subagent primitive. The caller supplies a requ
 
 ```text
 parent model
-  -> chatgpt_subagent(agent_id, prompt)
+  -> subagent_start(agent_id, prompt)
   <- turn_id immediately after submission
   -> do other work
-  -> chatgpt_subagent_poll(turn_id)
+  -> subagent_poll(turn_id)
   -> BrowserSubagentManager
   -> one Chrome page per agent
   -> ChatGPT web conversation
@@ -78,7 +78,7 @@ While a turn is running, changed network nodes refresh a coarse activity heartbe
 The public surface is intentionally small:
 
 ```ts
-chatgpt_subagent({
+subagent_start({
   prompt: string,
   agent_id: string,
   oververbosity?: 1 | 2 | 3 | 4 | 5,
@@ -89,7 +89,7 @@ chatgpt_subagent({
   submitted: true,
 }
 
-chatgpt_subagent_poll({
+subagent_poll({
   turn_id: string,
   wait_ms?: number,
 }) -> {
@@ -106,13 +106,13 @@ chatgpt_subagent_poll({
 
 `agent_id` is required, caller-defined, and limited to 64 characters. First use creates a conversation; later use continues it. The initial call returns after prompt submission. The parent must retain the returned `turn_id` and explicitly poll it to collect the result; there is no server-side callback or notification when a detached turn completes. `wait_ms: 0` polls immediately, and positive waits are bounded to 60 seconds. While status is `running`, `activity_age_ms` reports milliseconds since the last observable progress; a low or resetting value is a liveness signal, not an ETA. The background browser turn has no fixed response-duration timeout (`src/tools/subagent/chatgpt-subagent.ts`, `src/tools/subagent/subagent-tools.ts`).
 
-The module also keeps internal `read`, `listAgents`, and `closeAgent` operations for maintenance/debugging. The published MCP surface exposes `chatgpt_subagent` and `chatgpt_subagent_poll` (`src/tools/subagent/chatgpt-subagent.ts`, `src/tools/subagent/subagent-tools.ts`).
+The module also keeps internal `read`, `listAgents`, and `closeAgent` operations for maintenance/debugging. The published MCP surface exposes `subagent_start` and `subagent_poll` (`src/tools/subagent/chatgpt-subagent.ts`, `src/tools/subagent/subagent-tools.ts`).
 
 ## Implementation Status
 
 - The Playwright-over-CDP module implements page creation, `agentId -> Page` routing, target-ID capture, stale-page recovery, per-agent locking, composer submission, network tracking, duplicate suppression, DOM fallback, visible-history reads, and internal agent close/list operations (`src/tools/subagent/chatgpt-subagent.ts`).
 - Chrome lifecycle and profile selection stay outside the module. The intended authenticated debuggable Chrome instance is a runtime prerequisite; absence of the configured CDP endpoint is an explicit failure (`src/tools/subagent/chatgpt-subagent.ts`).
-- One process-level `ChatGptSubagentModule` is injected through `src/index.ts` and `src/server/http-server.ts`; the MCP exposes asynchronous `chatgpt_subagent` and `chatgpt_subagent_poll` tools (`src/tools/subagent/subagent-tools.ts`).
+- One process-level `ChatGptSubagentModule` is injected through `src/index.ts` and `src/server/http-server.ts`; the MCP exposes asynchronous `subagent_start` and `subagent_poll` tools (`src/tools/subagent/subagent-tools.ts`).
 - Automated coverage validates conversation mapping, final-message duplicate suppression, polling behavior, activity heartbeat semantics, page-loss handling, and continuity across stateless MCP requests using a fake shared service (`test/chatgpt-subagent.test.ts`, `test/mcp-integration.test.ts`).
 
 ## Risks / Open Questions

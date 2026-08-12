@@ -63,7 +63,7 @@ npm run auth:reset
 
 Optional capabilities:
 
-- Google Chrome for `chatgpt_subagent` and `chatgpt_subagent_poll`
+- Google Chrome for `subagent_start` and `subagent_poll`
 - [Peekaboo](https://peekaboo.sh/) for `computer_*` tools
 
 Install Peekaboo if you want Computer Use:
@@ -207,8 +207,8 @@ Core tools:
 - `skill_list`
 - `skill_load`
 - `feedback_submit`
-- `chatgpt_subagent`
-- `chatgpt_subagent_poll`
+- `subagent_start`
+- `subagent_poll`
 - `apply_patch`
 
 Shell tools:

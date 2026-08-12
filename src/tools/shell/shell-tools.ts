@@ -28,7 +28,7 @@ const maxOutputTokensInput = z
   .min(1)
   .max(MCP_CONFIG.shell.maxOutputTokens)
   .default(MCP_CONFIG.shell.defaultOutputTokens)
-  .describe("Maximum tokens returned in this response. DO NOT pass in max_output_tokens unless the default is too small.")
+  .describe("DO NOT pass in max_output_tokens unless the default is too small.")
 
 const shellSnapshotSchema = z.object({
   shell_id: z.string().optional().describe("Present only when the command uses a non-default shell."),

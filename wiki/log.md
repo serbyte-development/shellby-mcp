@@ -652,3 +652,7 @@
 ## [2026-08-12] tooling | expose runtime preflight
 
 - Added `npm run preflight` as a read-only prerequisite check and made its version regression test resolve the checked module relative to the test file rather than the caller's working directory.
+
+## [2026-08-12] rename | simplify subagent tool names
+
+- Renamed the published `chatgpt_subagent` / `chatgpt_subagent_poll` tools to `subagent_start` / `subagent_poll` while keeping the ChatGPT-specific browser implementation internal (`src/tools/subagent/subagent-tools.ts`, `src/tools/subagent/chatgpt-subagent.ts`).
