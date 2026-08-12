@@ -22,26 +22,23 @@ const closableShellIdInput = z
   .max(64)
   .describe(`Named shell to close. \`${DEFAULT_SHELL_ID}\` shell is protected and cannot be closed; use shell_reset instead.`)
 
+const exitCodeSchema = z.int().min(0).max(255).nullable()
+
 const shellSnapshotSchema = z.object({
   shell_id: z.string().optional().describe("Present only when the command uses a non-default shell."),
   status: z.enum(["running", "completed", "shell_exited", "reset"]),
-  exit_code: z
-    .int()
-    .min(0)
-    .max(255)
-    .nullable()
-    .describe("Command exit code. Completed parallel batches return 0 only when every child succeeded, otherwise 1."),
+  exit_code: exitCodeSchema.describe("Command exit code. Completed parallel batches return 0 only when every child succeeded, otherwise 1."),
   cwd: z.string().describe("The shell working directory for this command, or the root cwd for a parallel batch."),
   output: z.string().describe("Command output. Parallel batches return completed run output in labeled blocks"),
   commands: z
     .array(
       z.object({
-        run: z.int().positive(),
+        run: z.int().min(1),
         path: z.string().describe("Declared working directory for this run. Relative paths resolve from the batch cwd; absolute paths are used directly."),
         status: z.enum(["queued", "running", "completed", "timed_out", "failed", "reset"]),
-        exit_code: z.int().nullable(),
+        exit_code: exitCodeSchema,
         output_dropped: z.literal(true).optional().describe("Present when this child permanently discarded output at its capture ceiling."),
-        dropped_output_bytes: z.int().positive().optional(),
+        dropped_output_bytes: z.int().min(1).optional(),
       })
     )
     .optional()
