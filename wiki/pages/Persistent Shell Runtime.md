@@ -45,7 +45,7 @@ npm run check
 pwd
 ```
 
-Starting the command with `*** Run: <directory-or-relative-path>` means "run these command blocks independently and concurrently," not "concatenate them into one shell program." Every run declares its working directory. Relative values resolve from the batch `cwd` anchor, including `.`, `./`, `../`, and `../../`; absolute values such as `/tmp` are used directly. Exact `*** Run: ` marker lines are reserved while inside a batch. Shell-level backgrounding such as `command & ...; wait` is deliberately not the implementation because it collapses the work back into one opaque shell execution (`src/tools/shell/parallel-runner.ts`).
+Starting the command with `*** Run: <directory-or-relative-path>` means "run these command blocks independently and concurrently," not "concatenate them into one shell program." Every run declares its working directory. Relative values resolve from the batch `cwd` anchor, including `.`, `./`, `../`, and `../../`; absolute values such as `/tmp` are used directly. Lines beginning with `*** Run` are reserved as batch directives and malformed forms reject the whole batch instead of becoming shell text. Shell-level backgrounding such as `command & ...; wait` is deliberately not the implementation because it collapses the work back into one opaque shell execution (`src/tools/shell/parallel-runner.ts`).
 
 Execution rules:
 

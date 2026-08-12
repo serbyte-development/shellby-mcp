@@ -564,6 +564,14 @@
 - Simplified parallel batch grammar to one marker only: every section begins `*** Run: <directory-or-relative-path>` followed by its zsh body; root runs use `.` or `./`.
 - Allowed absolute run directories such as `/tmp` in addition to relative paths. Relative values still resolve from the batch `cwd` anchor, while absolute values are passed directly as the child process working directory (`src/tools/shell/parallel-runner.ts`, `src/tools/shell/session.ts`, `src/tools/shell/shell-tools.ts`).
 
+## [2026-08-11] fix | reject malformed later parallel markers
+
+- Reserved any line beginning with `*** Run` as a batch directive so malformed later markers such as `*** Run:./wiki` or `*** Run:` reject the entire batch instead of executing inside the previous child (`src/tools/shell/parallel-runner.ts`, `test/shell-session.test.ts`).
+
+## [2026-08-11] refine | make shell-limit recovery actionable
+
+- Replaced the stale MCP-restart guidance for `shell_limit_reached` with instructions to reuse a shell or free an unused named shell through `shell_list` and `shell_close` (`src/tools/shell/session-manager.ts`, `test/shell-session-manager.test.ts`).
+
 ## [2026-08-11] refine | clarify parallel polling and audit failures
 
 - Clarified that a parallel batch is polled only through its outer `(shell_id, request_id, next_cursor)`; child runs remain status entries in `commands` and are never polled independently (`src/tools/shell/shell-tools.ts`, `pages/MCP Tool Surface.md`).

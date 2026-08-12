@@ -103,7 +103,7 @@ export class ShellSessionManager {
     if (this.sessions.size >= this.maxShells) {
       throw new ShellSessionError(
         "shell_limit_reached",
-        `Cannot create shell ${JSON.stringify(shellId)} because the ${this.maxShells}-shell limit has been reached. Reuse an existing shell_id or restart the MCP server.`
+        `Cannot create shell ${JSON.stringify(shellId)} because the ${this.maxShells}-shell limit has been reached. Reuse an existing shell_id, or use shell_list and shell_close to free an unused named shell.`
       )
     }
 

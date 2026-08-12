@@ -40,7 +40,10 @@ test("enforces the configured named-shell limit", async (t) => {
   manager.getOrCreate("second")
   assert.throws(
     () => manager.getOrCreate("third"),
-    (error: unknown) => error instanceof Error && error.message.includes("2-shell limit has been reached")
+    (error: unknown) =>
+      error instanceof Error &&
+      error.message.includes("2-shell limit has been reached") &&
+      error.message.includes("use shell_list and shell_close to free an unused named shell")
   )
 })
 

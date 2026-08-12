@@ -117,7 +117,7 @@ export function parseParallelCommandBatch(value: string): ParallelCommandSpec[] 
     index += 1
 
     const bodyStart = index
-    while (index < lines.length && !isRunMarker(lines[index]!)) index += 1
+    while (index < lines.length && !isRunDirective(lines[index]!)) index += 1
     const command = lines.slice(bodyStart, index).join("\n")
     if (command.trim().length === 0) {
       throw new Error(`Run ${commands.length + 1} has no command.`)
@@ -222,8 +222,8 @@ function parseRunMarker(line: string): { path: string } | null {
   return { path }
 }
 
-function isRunMarker(line: string): boolean {
-  return line.startsWith("*** Run: ")
+function isRunDirective(line: string): boolean {
+  return line.startsWith("*** Run")
 }
 
 class BoundedOutput {

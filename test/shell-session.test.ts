@@ -628,6 +628,20 @@ test("requires a run directory and accepts absolute paths", { timeout: 10_000 },
     }),
     (error: unknown) => error instanceof ShellSessionError && error.code === "invalid_command" && /path cannot be empty/.test(error.message)
   )
+  await assert.rejects(
+    shell.runCommand({
+      requestId: "parallel-malformed-later-directory",
+      command: ["*** Run: .", "printf first", "*** Run:./wiki", "printf should-not-run"].join("\n"),
+    }),
+    (error: unknown) => error instanceof ShellSessionError && error.code === "invalid_command" && /directory-or-relative-path/.test(error.message)
+  )
+  await assert.rejects(
+    shell.runCommand({
+      requestId: "parallel-empty-later-directory",
+      command: ["*** Run: .", "printf first", "*** Run:", "printf should-not-run"].join("\n"),
+    }),
+    (error: unknown) => error instanceof ShellSessionError && error.code === "invalid_command" && /directory-or-relative-path/.test(error.message)
+  )
 })
 
 test("accepts leading whitespace before a parallel batch", { timeout: 10_000 }, async (t) => {
