@@ -28,15 +28,10 @@ const subagentStartResultSchema = z.object({
   agent_id: z.string(),
   turn_id: z.string().optional(),
   status: z.enum(["running", "failed"]),
-  submitted: z.boolean(),
-  conversation_id: z.string().optional(),
-  conversation_url: z.string().optional(),
-  error_code: z.string().optional(),
-  error_message: z.string().optional(),
+  error: z.string().optional(),
 })
 
 const subagentPollResultSchema = z.object({
-  agent_id: z.string().optional(),
   turn_id: z.string(),
   status: z.enum(["running", "completed", "failed"]),
   activity: z
@@ -44,12 +39,8 @@ const subagentPollResultSchema = z.object({
     .optional()
     .describe("Current coarse activity while status is running."),
   activity_age_ms: z.int().nonnegative().optional().describe("Milliseconds since the last observable subagent progress while status is running."),
-  conversation_id: z.string().optional(),
-  conversation_url: z.string().optional(),
-  message_id: z.string().optional(),
   response: z.string().optional(),
-  error_code: z.string().optional(),
-  error_message: z.string().optional(),
+  error: z.string().optional(),
 })
 
 export function registerSubagentTools(server: McpServer, chatGptSubagents: ChatGptSubagentService): void {
@@ -99,9 +90,6 @@ export function registerSubagentTools(server: McpServer, chatGptSubagents: ChatG
             agent_id: result.agentId,
             turn_id: result.turnId,
             status: result.status,
-            submitted: result.submitted,
-            conversation_id: result.conversationId,
-            conversation_url: result.conversationUrl,
           })
         } catch (error) {
           turns.push(startFailure(agent.agent_id, error))
@@ -110,7 +98,7 @@ export function registerSubagentTools(server: McpServer, chatGptSubagents: ChatG
 
       return {
         structuredContent: { turns },
-        content: [{ type: "text" as const, text: turns.map(startResultText).join("\n") }],
+        content: [{ type: "text" as const, text: `Submitted ${turns.length} ChatGPT subagent turn${turns.length === 1 ? "" : "s"}.` }],
       }
     }
   )
@@ -142,73 +130,44 @@ export function registerSubagentTools(server: McpServer, chatGptSubagents: ChatG
           try {
             const result = await chatGptSubagents.poll(turnId, wait_ms, ctx.mcpReq.signal)
             return {
-              turn: {
-                agent_id: result.agentId,
-                turn_id: result.turnId,
-                status: result.status,
-                activity: result.activity,
-                activity_age_ms: result.activityAgeMs,
-                conversation_id: result.conversationId,
-                conversation_url: result.conversationUrl,
-                message_id: result.messageId,
-                response: result.response,
-                error_code: result.errorCode,
-                error_message: result.errorMessage,
-              },
-              text: pollResultText(result),
+              turn_id: result.turnId,
+              status: result.status,
+              activity: result.activity,
+              activity_age_ms: result.activityAgeMs,
+              response: result.response,
+              error:
+                result.status === "failed" ? `${result.errorCode ?? "subagent_failed"}: ${result.errorMessage ?? "ChatGPT subagent turn failed."}` : undefined,
             }
           } catch (error) {
-            const details = subagentErrorDetails(error)
             return {
-              turn: {
-                turn_id: turnId,
-                status: "failed" as const,
-                error_code: details.code,
-                error_message: details.message,
-              },
-              text: `${turnId}: ${details.code}: ${details.message}`,
+              turn_id: turnId,
+              status: "failed" as const,
+              error: subagentErrorText(error),
             }
           }
         })
       )
 
       return {
-        structuredContent: { turns: results.map((result) => result.turn) },
-        content: [{ type: "text" as const, text: results.map((result) => result.text).join("\n\n") }],
+        structuredContent: { turns: results },
+        content: [{ type: "text" as const, text: `Checked ${results.length} ChatGPT subagent turn${results.length === 1 ? "" : "s"}.` }],
       }
     }
   )
 }
 
 function startFailure(agentId: string, error: unknown): z.infer<typeof subagentStartResultSchema> {
-  const details = subagentErrorDetails(error)
   return {
     agent_id: agentId,
     status: "failed",
-    submitted: false,
-    error_code: details.code,
-    error_message: details.message,
+    error: subagentErrorText(error),
   }
 }
 
-function startResultText(result: z.infer<typeof subagentStartResultSchema>): string {
-  return result.status === "running"
-    ? `Submitted ChatGPT subagent turn ${result.turn_id} for ${result.agent_id}; use subagent_poll to check it.`
-    : `${result.agent_id}: ${result.error_code ?? "subagent_failed"}: ${result.error_message ?? "ChatGPT subagent start failed."}`
-}
-
-function pollResultText(result: Awaited<ReturnType<ChatGptSubagentService["poll"]>>): string {
-  return result.status === "completed"
-    ? (result.response ?? `ChatGPT subagent turn ${result.turnId} completed.`)
-    : result.status === "failed"
-      ? `${result.errorCode ?? "subagent_failed"}: ${result.errorMessage ?? "ChatGPT subagent turn failed."}`
-      : `ChatGPT subagent turn ${result.turnId} is still running: ${result.activity ?? "Working"}; last observable progress ${result.activityAgeMs ?? 0} ms ago.`
-}
-
-function subagentErrorDetails(error: unknown): { code: string; message: string } {
+function subagentErrorText(error: unknown): string {
   return error instanceof ChatGptSubagentError
-    ? { code: error.code, message: error.message }
-    : { code: "subagent_failed", message: error instanceof Error ? error.message : String(error) }
+    ? `${error.code}: ${error.message}`
+    : `subagent_failed: ${error instanceof Error ? error.message : String(error)}`
 }
 
 function delay(ms: number, signal?: AbortSignal): Promise<void> {

@@ -66,9 +66,17 @@ const SCHEMA_ARRAY_KEYS = new Set(["prefixItems", "allOf", "anyOf", "oneOf"])
 const canonicalizedSchemas = new WeakSet<object>()
 
 interface ToolRegistrationConfig {
+  annotations?: unknown
   inputSchema?: unknown
   outputSchema?: unknown
   [key: string]: unknown
+}
+
+const TOOL_ANNOTATION_DEFAULTS: Record<string, unknown> = {
+  readOnlyHint: false,
+  destructiveHint: true,
+  idempotentHint: false,
+  openWorldHint: true,
 }
 
 interface StandardSchemaJsonSource {
@@ -79,17 +87,27 @@ interface StandardSchemaJsonSource {
 }
 
 export function installCanonicalToolSchemaOrder(server: McpServer): void {
-  const registerTool = server.registerTool.bind(server) as unknown as (
-    name: string,
-    config: ToolRegistrationConfig,
-    callback: unknown
-  ) => unknown
+  const registerTool = server.registerTool.bind(server) as unknown as (name: string, config: ToolRegistrationConfig, callback: unknown) => unknown
 
   server.registerTool = ((name: string, config: ToolRegistrationConfig, callback: unknown) => {
     canonicalizeStandardSchema(config.inputSchema)
     canonicalizeStandardSchema(config.outputSchema)
+    const annotations = compactToolAnnotations(config.annotations)
+    if (annotations === undefined) delete config.annotations
+    else config.annotations = annotations
     return registerTool(name, config, callback)
   }) as typeof server.registerTool
+}
+
+export function compactToolAnnotations(value: unknown): unknown {
+  if (!isRecord(value)) return value
+
+  const annotations = Object.fromEntries(Object.entries(value).filter(([key, annotation]) => TOOL_ANNOTATION_DEFAULTS[key] !== annotation))
+  if (annotations.readOnlyHint === true) {
+    delete annotations.destructiveHint
+    delete annotations.idempotentHint
+  }
+  return Object.keys(annotations).length > 0 ? annotations : undefined
 }
 
 export function canonicalizeJsonSchema(value: unknown): unknown {

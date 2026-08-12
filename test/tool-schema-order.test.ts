@@ -1,7 +1,7 @@
 import assert from "node:assert/strict"
 import test from "node:test"
 
-import { canonicalizeJsonSchema } from "../src/server/tool-schema-order.js"
+import { canonicalizeJsonSchema, compactToolAnnotations } from "../src/server/tool-schema-order.js"
 
 test("canonicalizes schema keywords while preserving property order", () => {
   const schema = canonicalizeJsonSchema({
@@ -71,4 +71,30 @@ test("does not reorder objects stored as schema data", () => {
   assert.deepEqual(Object.keys(schema), ["type", "default"])
   assert.equal(schema.default, defaultValue)
   assert.deepEqual(Object.keys(schema.default as Record<string, unknown>), ["type", "z", "a"])
+})
+
+test("omits default and irrelevant read-only annotations while preserving extension values", () => {
+  assert.equal(
+    compactToolAnnotations({
+      readOnlyHint: false,
+      destructiveHint: true,
+      idempotentHint: false,
+      openWorldHint: true,
+    }),
+    undefined
+  )
+  assert.deepEqual(
+    compactToolAnnotations({
+      readOnlyHint: true,
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: false,
+      title: "Read records",
+    }),
+    {
+      readOnlyHint: true,
+      openWorldHint: false,
+      title: "Read records",
+    }
+  )
 })

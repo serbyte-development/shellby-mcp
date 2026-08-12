@@ -35,7 +35,7 @@ export interface ShellSnapshot extends Record<string, unknown> {
   commands?: ParallelCommandSnapshot[]
 }
 
-export interface ParallelCommandSnapshot extends Record<string, unknown> {
+interface ParallelCommandSnapshot extends Record<string, unknown> {
   run: number
   path: string
   status: ParallelCommandStatus

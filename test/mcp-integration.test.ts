@@ -61,9 +61,7 @@ test("serves shell tools through Streamable HTTP and retains state across MCP se
     }
   }
   const runTool = tools.tools.find((tool) => tool.name === "shell_run")
-  assert.equal(runTool?.annotations?.readOnlyHint, false)
-  assert.equal(runTool?.annotations?.destructiveHint, true)
-  assert.equal(runTool?.annotations?.openWorldHint, true)
+  assert.equal(runTool?.annotations, undefined)
   const shellIdSchema = (runTool?.inputSchema.properties as Record<string, Record<string, unknown>>).shell_id
   assert.ok(shellIdSchema)
   assert.deepEqual(Object.keys(shellIdSchema), ["description", "type", "default", "minLength", "maxLength"])
@@ -101,9 +99,15 @@ test("serves shell tools through Streamable HTTP and retains state across MCP se
     "status",
   ])
   assert.deepEqual(outputSchema.required?.sort(), ["cwd", "output", "status"])
+  const pollTool = tools.tools.find((tool) => tool.name === "shell_poll")
+  const pollOutputSchema = pollTool?.outputSchema as {
+    properties?: Record<string, unknown>
+    required?: string[]
+  }
+  assert.deepEqual(Object.keys(pollOutputSchema.properties ?? {}).sort(), ["dropped_output_bytes", "exit_code", "next_cursor", "output", "status"])
+  assert.deepEqual(pollOutputSchema.required?.sort(), ["output", "status"])
   const applyPatchTool = tools.tools.find((tool) => tool.name === "apply_patch")
-  assert.equal(applyPatchTool?.annotations?.destructiveHint, true)
-  assert.equal(applyPatchTool?.annotations?.idempotentHint, false)
+  assert.deepEqual(applyPatchTool?.annotations, { openWorldHint: false })
   const applyPatchInputSchema = applyPatchTool?.inputSchema as {
     properties?: Record<string, unknown>
     required?: string[]
@@ -117,17 +121,14 @@ test("serves shell tools through Streamable HTTP and retains state across MCP se
   assert.deepEqual(Object.keys(applyPatchOutputSchema.properties ?? {}).sort(), ["exit_code", "output", "output_dropped", "status"])
   assert.deepEqual(applyPatchOutputSchema.required?.sort(), ["exit_code", "status"])
   const shellListTool = tools.tools.find((tool) => tool.name === "shell_list")
-  assert.equal(shellListTool?.annotations?.readOnlyHint, true)
-  assert.equal(shellListTool?.annotations?.idempotentHint, true)
+  assert.deepEqual(shellListTool?.annotations, { readOnlyHint: true, openWorldHint: false })
   const shellCloseTool = tools.tools.find((tool) => tool.name === "shell_close")
-  assert.equal(shellCloseTool?.annotations?.destructiveHint, true)
-  assert.equal(shellCloseTool?.annotations?.idempotentHint, false)
+  assert.deepEqual(shellCloseTool?.annotations, { openWorldHint: false })
   const closeShellIdSchema = (shellCloseTool?.inputSchema.properties as Record<string, Record<string, unknown>>).shell_id
   assert.ok(closeShellIdSchema)
   assert.equal(closeShellIdSchema.default, undefined)
   const fetchWebsiteTool = tools.tools.find((tool) => tool.name === "fetch_website")
-  assert.equal(fetchWebsiteTool?.annotations?.readOnlyHint, true)
-  assert.equal(fetchWebsiteTool?.annotations?.openWorldHint, true)
+  assert.deepEqual(fetchWebsiteTool?.annotations, { readOnlyHint: true })
   const webMaxOutputSchema = (fetchWebsiteTool?.inputSchema.properties as Record<string, Record<string, unknown>>).max_output_tokens
   assert.ok(webMaxOutputSchema)
   assert.deepEqual(Object.keys(webMaxOutputSchema), ["type", "default", "minimum", "maximum"])
@@ -141,33 +142,26 @@ test("serves shell tools through Streamable HTTP and retains state across MCP se
     properties?: Record<string, unknown>
     required?: string[]
   }
-  assert.deepEqual(Object.keys(fetchWebsiteOutputSchema.properties ?? {}).sort(), [
-    "content",
-    "dropped_source_bytes",
-    "format",
-    "next_cursor",
-    "output_truncated",
-    "source_dropped",
-    "title",
-    "url",
-  ])
+  assert.deepEqual(Object.keys(fetchWebsiteOutputSchema.properties ?? {}).sort(), ["content", "dropped_source_bytes", "next_cursor", "title", "url"])
   assert.deepEqual(websiteFormatSchema.enum, ["markdown", "clean_html", "raw_html"])
   const skillListTool = tools.tools.find((tool) => tool.name === "skill_list")
-  assert.equal(skillListTool?.annotations?.readOnlyHint, true)
-  assert.equal(skillListTool?.annotations?.idempotentHint, true)
+  assert.deepEqual(skillListTool?.annotations, { readOnlyHint: true, openWorldHint: false })
   const skillLoadTool = tools.tools.find((tool) => tool.name === "skill_load")
-  assert.equal(skillLoadTool?.annotations?.readOnlyHint, true)
+  assert.deepEqual(skillLoadTool?.annotations, { readOnlyHint: true, openWorldHint: false })
   const skillLoadInputSchema = skillLoadTool?.inputSchema as {
     properties?: Record<string, Record<string, unknown>>
     required?: string[]
   }
   assert.deepEqual(Object.keys(skillLoadInputSchema.properties ?? {}), ["name"])
   assert.deepEqual(skillLoadInputSchema.required, ["name"])
+  const skillLoadOutputSchema = skillLoadTool?.outputSchema as {
+    properties?: Record<string, Record<string, unknown>>
+    required?: string[]
+  }
+  assert.deepEqual(Object.keys(skillLoadOutputSchema.properties ?? {}), ["path", "instructions"])
+  assert.deepEqual(skillLoadOutputSchema.required, ["path", "instructions"])
   const feedbackTool = tools.tools.find((tool) => tool.name === "feedback_submit")
-  assert.equal(feedbackTool?.annotations?.readOnlyHint, false)
-  assert.equal(feedbackTool?.annotations?.destructiveHint, false)
-  assert.equal(feedbackTool?.annotations?.idempotentHint, false)
-  assert.equal(feedbackTool?.annotations?.openWorldHint, false)
+  assert.deepEqual(feedbackTool?.annotations, { destructiveHint: false, openWorldHint: false })
   const feedbackInputSchema = feedbackTool?.inputSchema as {
     properties?: Record<string, Record<string, unknown>>
     required?: string[]
@@ -175,10 +169,7 @@ test("serves shell tools through Streamable HTTP and retains state across MCP se
   assert.deepEqual(Object.keys(feedbackInputSchema.properties ?? {}), ["feedback"])
   assert.deepEqual(feedbackInputSchema.required, ["feedback"])
   const subagentTool = tools.tools.find((tool) => tool.name === "subagent_start")
-  assert.equal(subagentTool?.annotations?.readOnlyHint, false)
-  assert.equal(subagentTool?.annotations?.destructiveHint, false)
-  assert.equal(subagentTool?.annotations?.idempotentHint, false)
-  assert.equal(subagentTool?.annotations?.openWorldHint, true)
+  assert.deepEqual(subagentTool?.annotations, { destructiveHint: false })
   const subagentInputSchema = subagentTool?.inputSchema as {
     properties?: Record<string, Record<string, unknown>>
     required?: string[]
@@ -198,9 +189,16 @@ test("serves shell tools through Streamable HTTP and retains state across MCP se
   assert.equal(subagentAgentsSchema.items?.properties?.oververbosity?.default, 2)
   assert.equal(subagentAgentsSchema.items?.properties?.oververbosity?.minimum, 1)
   assert.equal(subagentAgentsSchema.items?.properties?.oververbosity?.maximum, 5)
+  const subagentOutputSchema = subagentTool?.outputSchema as {
+    properties?: Record<string, Record<string, unknown>>
+  }
+  const subagentTurnsSchema = subagentOutputSchema.properties?.turns as {
+    items?: { properties?: Record<string, Record<string, unknown>>; required?: string[] }
+  }
+  assert.deepEqual(Object.keys(subagentTurnsSchema.items?.properties ?? {}).sort(), ["agent_id", "error", "status", "turn_id"])
+  assert.deepEqual(subagentTurnsSchema.items?.required?.sort(), ["agent_id", "status"])
   const subagentPollTool = tools.tools.find((tool) => tool.name === "subagent_poll")
-  assert.equal(subagentPollTool?.annotations?.readOnlyHint, true)
-  assert.equal(subagentPollTool?.annotations?.idempotentHint, true)
+  assert.deepEqual(subagentPollTool?.annotations, { readOnlyHint: true })
   const subagentPollInputSchema = subagentPollTool?.inputSchema as {
     properties?: Record<string, Record<string, unknown>>
     required?: string[]
@@ -213,6 +211,14 @@ test("serves shell tools through Streamable HTTP and retains state across MCP se
   }
   assert.deepEqual(subagentPollTurnsSchema.items?.properties?.activity?.enum, ["Working", "Searching the web", "Using tools", "Generating response"])
   assert.equal(subagentPollTurnsSchema.items?.properties?.activity_age_ms?.type, "integer")
+  assert.deepEqual(Object.keys(subagentPollTurnsSchema.items?.properties ?? {}).sort(), [
+    "activity",
+    "activity_age_ms",
+    "error",
+    "response",
+    "status",
+    "turn_id",
+  ])
   assert.deepEqual(subagentPollTurnsSchema.items?.required?.sort(), ["status", "turn_id"])
   assert.deepEqual(Object.keys(subagentPollInputSchema.properties ?? {}).sort(), ["turn_ids", "wait_ms"])
   assert.deepEqual(subagentPollInputSchema.required?.sort(), ["turn_ids"])
@@ -287,7 +293,6 @@ test("lists and loads dynamic workspace skills through MCP", { timeout: 10_000 }
     arguments: { name: "create-wiki" },
   })
   assert.deepEqual(loaded.structuredContent, {
-    name: "create-wiki",
     path: join(skillDirectory, "SKILL.md"),
     instructions: content,
   })
@@ -338,6 +343,7 @@ test("starts staggered subagents and polls turns concurrently across stateless M
   let maxActivePolls = 0
   const chatGptSubagents: ChatGptSubagentService = {
     async ask({ agentId, prompt }) {
+      if (agentId === "unavailable-agent") throw new Error("browser unavailable")
       starts.push({ agentId, at: Date.now() })
       const history = turns.get(agentId) ?? []
       history.push(prompt)
@@ -407,28 +413,32 @@ test("starts staggered subagents and polls turns concurrently across stateless M
         agent_id: "architecture-reviewer",
         turn_id: "turn-architecture-reviewer-1",
         status: "running",
-        submitted: true,
-        conversation_url: "https://chatgpt.com/c/fake-architecture-reviewer",
       },
       {
         agent_id: "test-reviewer",
         turn_id: "turn-test-reviewer-1",
         status: "running",
-        submitted: true,
-        conversation_url: "https://chatgpt.com/c/fake-test-reviewer",
       },
       {
         agent_id: "simplifier",
         turn_id: "turn-simplifier-1",
         status: "running",
-        submitted: true,
-        conversation_url: "https://chatgpt.com/c/fake-simplifier",
       },
     ],
   })
+  assert.deepEqual(firstResult.content, [{ type: "text", text: "Submitted 3 ChatGPT subagent turns." }])
   assert.equal(starts.length, 3)
   assert.ok(starts[1]!.at - starts[0]!.at >= 4_500)
   assert.ok(starts[2]!.at - starts[1]!.at >= 6_500)
+
+  const failedStart = await first.client.callTool({
+    name: "subagent_start",
+    arguments: { agents: [{ agent_id: "unavailable-agent", prompt: "Try to start." }] },
+  })
+  assert.deepEqual(failedStart.content, [{ type: "text", text: "Submitted 1 ChatGPT subagent turn." }])
+  assert.deepEqual(failedStart.structuredContent, {
+    turns: [{ agent_id: "unavailable-agent", status: "failed", error: "subagent_failed: browser unavailable" }],
+  })
   await first.client.close()
 
   const second = await connectClient(running.url, "subagent-client-2")
@@ -443,28 +453,23 @@ test("starts staggered subagents and polls turns concurrently across stateless M
   assert.deepEqual(batchPoll.structuredContent, {
     turns: [
       {
-        agent_id: "architecture-reviewer",
         turn_id: "turn-architecture-reviewer-1",
         status: "completed",
-        conversation_url: "https://chatgpt.com/c/fake-architecture-reviewer",
         response: "architecture-reviewer:1:Review the architecture.",
       },
       {
-        agent_id: "test-reviewer",
         turn_id: "turn-test-reviewer-1",
         status: "completed",
-        conversation_url: "https://chatgpt.com/c/fake-test-reviewer",
         response: "test-reviewer:1:Review the tests.",
       },
       {
-        agent_id: "simplifier",
         turn_id: "turn-simplifier-1",
         status: "completed",
-        conversation_url: "https://chatgpt.com/c/fake-simplifier",
         response: "simplifier:1:Find the simplest implementation.",
       },
     ],
   })
+  assert.deepEqual(batchPoll.content, [{ type: "text", text: "Checked 3 ChatGPT subagent turns." }])
   assert.equal(maxActivePolls, 3)
 
   const partialFailurePoll = await second.client.callTool({
@@ -478,23 +483,18 @@ test("starts staggered subagents and polls turns concurrently across stateless M
   assert.deepEqual(partialFailurePoll.structuredContent, {
     turns: [
       {
-        agent_id: "architecture-reviewer",
         turn_id: "turn-architecture-reviewer-1",
         status: "completed",
-        conversation_url: "https://chatgpt.com/c/fake-architecture-reviewer",
         response: "architecture-reviewer:1:Review the architecture.",
       },
       {
         turn_id: "missing-turn",
         status: "failed",
-        error_code: "subagent_failed",
-        error_message: "unknown turn missing-turn",
+        error: "subagent_failed: unknown turn missing-turn",
       },
       {
-        agent_id: "simplifier",
         turn_id: "turn-simplifier-1",
         status: "completed",
-        conversation_url: "https://chatgpt.com/c/fake-simplifier",
         response: "simplifier:1:Find the simplest implementation.",
       },
     ],
@@ -507,7 +507,6 @@ test("starts staggered subagents and polls turns concurrently across stateless M
   assert.deepEqual(heartbeatPoll.structuredContent, {
     turns: [
       {
-        agent_id: "heartbeat-agent",
         turn_id: "heartbeat-fixture",
         status: "running",
         activity: "Searching the web",
@@ -527,8 +526,6 @@ test("starts staggered subagents and polls turns concurrently across stateless M
         agent_id: "architecture-reviewer",
         turn_id: "turn-architecture-reviewer-2",
         status: "running",
-        submitted: true,
-        conversation_url: "https://chatgpt.com/c/fake-architecture-reviewer",
       },
     ],
   })
@@ -539,10 +536,8 @@ test("starts staggered subagents and polls turns concurrently across stateless M
   assert.deepEqual(secondPoll.structuredContent, {
     turns: [
       {
-        agent_id: "architecture-reviewer",
         turn_id: "turn-architecture-reviewer-2",
         status: "completed",
-        conversation_url: "https://chatgpt.com/c/fake-architecture-reviewer",
         response: "architecture-reviewer:2:Now critique your answer.",
       },
     ],
@@ -856,6 +851,46 @@ test("continues serving an existing client after a stateless HTTP server restart
   assert.equal(afterRestart.exit_code, 0)
 })
 
+test("reports an expired shell_poll cursor as a tool error", { timeout: 10_000 }, async (t) => {
+  const workspace = await mkdtemp(join(tmpdir(), "mcp-expired-poll-"))
+  t.after(() => rm(workspace, { recursive: true, force: true }))
+  const running = await startMcpHttpServer({
+    port: 0,
+    shellManager: new ShellSessionManager({
+      defaultShell: new PersistentShellSession({ cwd: workspace, transcriptLimit: 1 }),
+    }),
+  })
+  t.after(() => running.close())
+  const connected = await connectClient(running.url, "expired-poll-client")
+  t.after(() => connected.client.close())
+
+  const started = snapshotFromResult(
+    await connected.client.callTool({
+      name: "shell_run",
+      arguments: {
+        request_id: "expires",
+        command: "sleep 0.1; printf AB",
+        wait_ms: 0,
+      },
+    })
+  )
+  assert.equal(started.status, "running")
+  assert.notEqual(started.next_cursor, undefined)
+
+  await new Promise((resolve) => setTimeout(resolve, 200))
+  const expired = await connected.client.callTool({
+    name: "shell_poll",
+    arguments: {
+      request_id: "expires",
+      cursor: started.next_cursor,
+      wait_ms: 0,
+    },
+  })
+  assert.equal(expired.isError, true)
+  assert.equal(expired.structuredContent, undefined)
+  assert.match(JSON.stringify(expired.content), /cursor_expired/)
+})
+
 test("fetches and paginates one cached website across MCP sessions", { timeout: 20_000 }, async (t) => {
   const expected = "🙂".repeat(200)
   let renders = 0
@@ -888,13 +923,12 @@ test("fetches and paginates one cached website across MCP sessions", { timeout: 
   const firstContent = firstResult.structuredContent as {
     url: string
     title: string
-    format: string
     content: string
     next_cursor?: string
   }
   assert.equal(firstContent.url, "https://example.com/final")
   assert.equal(firstContent.title, "Example page")
-  assert.equal(firstContent.format, "clean_html")
+  assert.deepEqual(Object.keys(firstContent).sort(), ["content", "next_cursor", "title", "url"])
   assert.ok(countTokens(firstContent.content) <= 64)
   assert.ok(firstContent.next_cursor)
   await first.client.close()
@@ -991,21 +1025,19 @@ test("isolates named shell state and allows foreground commands in parallel", { 
   assert.equal(alphaSnapshot.shell_id, "alpha")
   let alphaOutput = alphaSnapshot.output
   for (let attempt = 0; attempt < 20; attempt += 1) {
-    if (alphaSnapshot.status !== "running" && !alphaSnapshot.output_truncated) break
-    assert.ok(alphaSnapshot.request_id)
+    if (alphaSnapshot.status !== "running" && alphaSnapshot.next_cursor === undefined) break
     assert.notEqual(alphaSnapshot.next_cursor, undefined)
     alphaSnapshot = snapshotFromResult(
       await connected.client.callTool({
         name: "shell_poll",
         arguments: {
           shell_id: "alpha",
-          request_id: alphaSnapshot.request_id,
+          request_id: "slow01",
           cursor: alphaSnapshot.next_cursor,
           wait_ms: 100,
         },
       })
     )
-    assert.equal(alphaSnapshot.shell_id, "alpha")
     alphaOutput += alphaSnapshot.output
   }
   assert.equal(alphaSnapshot.status, "completed")
@@ -1446,20 +1478,20 @@ async function callUntilComplete(client: Client, requestId: string, command: str
       },
     })
   )
+  const cwd = snapshot.cwd
   let output = snapshot.output
 
   for (let attempt = 0; attempt < 100; attempt += 1) {
-    if (snapshot.status !== "running" && snapshot.output_truncated !== true) {
-      return { ...snapshot, output }
+    if (snapshot.status !== "running" && snapshot.next_cursor === undefined) {
+      return { ...snapshot, ...(shellId ? { shell_id: shellId } : {}), cwd, output }
     }
-    assert.ok(snapshot.request_id)
     assert.notEqual(snapshot.next_cursor, undefined)
     snapshot = snapshotFromResult(
       await client.callTool({
         name: "shell_poll",
         arguments: {
           ...(shellId ? { shell_id: shellId } : {}),
-          request_id: snapshot.request_id,
+          request_id: requestId,
           cursor: snapshot.next_cursor,
           wait_ms: 100,
         },

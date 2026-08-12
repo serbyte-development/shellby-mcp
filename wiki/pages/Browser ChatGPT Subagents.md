@@ -79,32 +79,36 @@ The public surface is intentionally small:
 
 ```ts
 subagent_start({
-  prompt: string,
-  agent_id: string,
-  oververbosity?: 1 | 2 | 3 | 4 | 5,
+  agents: Array<{
+    prompt: string,
+    agent_id: string,
+    oververbosity?: 1 | 2 | 3 | 4 | 5,
+  }>,
 }) -> {
-  agent_id: string,
-  turn_id: string,
-  status: "running",
-  submitted: true,
+  turns: Array<{
+    agent_id: string,
+    turn_id?: string,
+    status: "running" | "failed",
+    error?: string,
+  }>,
 }
 
 subagent_poll({
-  turn_id: string,
+  turn_ids: string[],
   wait_ms?: number,
 }) -> {
-  agent_id: string,
-  turn_id: string,
-  status: "running" | "completed" | "failed",
-  activity?: "Working" | "Searching the web" | "Using tools" | "Generating response",
-  activity_age_ms?: number,
-  response?: string,
-  error_code?: string,
-  error_message?: string,
+  turns: Array<{
+    turn_id: string,
+    status: "running" | "completed" | "failed",
+    activity?: "Working" | "Searching the web" | "Using tools" | "Generating response",
+    activity_age_ms?: number,
+    response?: string,
+    error?: string,
+  }>,
 }
 ```
 
-`agent_id` is required, caller-defined, and limited to 64 characters. First use creates a conversation; later use continues it. The initial call returns after prompt submission. The parent must retain the returned `turn_id` and explicitly poll it to collect the result; there is no server-side callback or notification when a detached turn completes. `wait_ms: 0` polls immediately, and positive waits are bounded to 60 seconds. While status is `running`, `activity_age_ms` reports milliseconds since the last observable progress; a low or resetting value is a liveness signal, not an ETA. The background browser turn has no fixed response-duration timeout (`src/tools/subagent/chatgpt-subagent.ts`, `src/tools/subagent/subagent-tools.ts`).
+`agent_id` is required, caller-defined, and limited to 64 characters. First use creates a conversation; later use continues it. One start call accepts 1-3 distinct agents and returns after staggered prompt submission; polling accepts 1-3 turn IDs concurrently. The parent must retain successful `turn_id` values and explicitly poll them to collect each structured `response`; there is no server-side callback or notification when a detached turn completes. Both tools leave unstructured `content` empty so answers are not duplicated. `wait_ms: 0` polls immediately, and positive waits are bounded to 60 seconds. While status is `running`, `activity_age_ms` reports milliseconds since the last observable progress; a low or resetting value is a liveness signal, not an ETA. The background browser turn has no fixed response-duration timeout (`src/tools/subagent/chatgpt-subagent.ts`, `src/tools/subagent/subagent-tools.ts`).
 
 The module also keeps internal `read`, `listAgents`, and `closeAgent` operations for maintenance/debugging. The published MCP surface exposes `subagent_start` and `subagent_poll` (`src/tools/subagent/chatgpt-subagent.ts`, `src/tools/subagent/subagent-tools.ts`).
 

@@ -128,7 +128,7 @@ export function buildMcpInstructions(workspacePath: string): string {
 
     "## Edit files safely\n\nUse `apply_patch` for local file edits. Do not create or edit files with `cat` or other shell write tricks. Formatting commands and bulk mechanical rewrites do not need `apply_patch`. Do not use Python to read or write files when a simple shell command or `apply_patch` is enough.",
 
-    "## Sub-agents\n\nUse sub-agents for concrete, independent work that can run in parallel. Keep blocking or tightly coupled work in the main agent. Give each sub-agent a clear bounded task, avoid duplicate or overlapping work, and continue useful work while it runs.",
+    "## Sub-agents\n\nUse sub-agents for concrete, independent work that can run in parallel. Keep blocking or tightly coupled work in the main agent. Give each sub-agent a clear bounded task and avoid duplicate or overlapping work.",
 
     `## Workspace conventions\n\nDefault permanent workspace: ${workspace}. Keep existing projects in their current locations. Unless the user specifies otherwise, create or clone new projects only under the default workspace, never inside this MCP server or /tmp.`,
     "## Feedback\n\n- Help us improve the MCP server for you by providing feedback or bug reports.",

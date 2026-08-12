@@ -661,3 +661,16 @@
 ## [2026-08-12] rename | simplify subagent tool names
 
 - Renamed the published `chatgpt_subagent` / `chatgpt_subagent_poll` tools to `subagent_start` / `subagent_poll` while keeping the ChatGPT-specific browser implementation internal (`src/tools/subagent/subagent-tools.ts`, `src/tools/subagent/chatgpt-subagent.ts`).
+
+## [2026-08-12] simplify | compact subagent results
+
+- Made structured content the sole subagent result channel, keeping completed answers only in `turns[].response` instead of duplicating them in text content.
+- Removed conversation and message identifiers, collapsed failure code/message pairs into one `error` string, and retained only the identities and lifecycle fields needed for batched starts and polls.
+
+## [2026-08-12] optimize | reduce derivable tool metadata
+
+- Removed echoed format and boolean pagination/loss flags from `fetch_website`, removed the echoed skill name from `skill_load`, and omitted MCP annotation values that match protocol defaults or do not apply to read-only tools. Kept the `shell_list` result unchanged.
+
+## [2026-08-12] optimize | compact shell polling results
+
+- Split `shell_poll` from the catch-all `shell_run` result schema. Polling now returns only status, output, optional exit code, continuation cursor, and permanent dropped-byte count; expired cursors are tool errors instead of success flags.

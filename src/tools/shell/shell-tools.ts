@@ -42,7 +42,7 @@ const shellSnapshotSchema = z.object({
     .nonnegative()
     .optional()
     .describe("Continuation cursor for shell_poll when the command is still running or this response was truncated."),
-  cursor_expired: z.literal(true).optional().describe("Present when output before the requested cursor is no longer retained."),
+  cursor_expired: z.literal(true).optional(),
   output_truncated: z
     .literal(true)
     .optional()
@@ -52,6 +52,14 @@ const shellSnapshotSchema = z.object({
     .positive()
     .optional()
     .describe("Present when command-output bytes were permanently discarded. A parallel run's label identifies its dropped-byte count."),
+})
+
+const shellPollSnapshotSchema = z.object({
+  status: z.enum(["running", "completed", "shell_exited", "reset"]),
+  exit_code: exitCodeSchema.optional().describe("Present when complete. Parallel batches return 0 only when every child succeeded, otherwise 1."),
+  output: z.string().describe("Command output. Parallel runs are returned as labeled blocks."),
+  next_cursor: z.int().nonnegative().optional().describe("Present while the command is running or additional retained output remains."),
+  dropped_output_bytes: z.int().positive().optional().describe("Present when command-output bytes were permanently discarded."),
 })
 
 export function registerShellExecutionTools(server: McpServer, shells: ShellSessionManager, workspace: string): void {
@@ -118,7 +126,7 @@ export function registerShellExecutionTools(server: McpServer, shells: ShellSess
     {
       title: "Poll local shell output",
       description:
-        "Read additional output or updated state for a previous shell_run. For a parallel batch, poll only the same outer shell_id and request_id using next_cursor; labeled child results share that one output stream. Poll while status is running. If a completed result has output_truncated, only continue when the omitted output is needed to complete the task.",
+        "Read additional output or updated state for a previous shell_run. For a parallel batch, poll only the same outer shell_id and request_id using next_cursor; labeled child results share that one output stream. Continue while status is running, or while next_cursor is present when omitted output is still needed.",
       inputSchema: z.object({
         shell_id: shellIdInput.describe("The same shell_id used for the original shell_run call."),
         request_id: requestIdInput.describe("The same request_id used for the original shell_run call."),
@@ -129,7 +137,7 @@ export function registerShellExecutionTools(server: McpServer, shells: ShellSess
         wait_ms: z.int().min(0).max(MCP_CONFIG.shell.maxWaitMs).optional().default(2_000),
         max_output_tokens: maxOutputTokensInput,
       }),
-      outputSchema: shellSnapshotSchema,
+      outputSchema: shellPollSnapshotSchema,
       annotations: {
         readOnlyHint: true,
         destructiveHint: false,
@@ -148,7 +156,7 @@ export function registerShellExecutionTools(server: McpServer, shells: ShellSess
           maxOutputTokens: max_output_tokens,
           signal: ctx.mcpReq.signal,
         })
-        return snapshotResult(snapshot, shell_id)
+        return pollSnapshotResult(snapshot)
       } catch (error) {
         return toolError(error)
       }
@@ -304,6 +312,33 @@ function snapshotResult(snapshot: ShellSnapshot, shellId: string) {
   }
 }
 
+function pollSnapshotResult(snapshot: ShellSnapshot) {
+  if (snapshot.cursor_expired) {
+    return {
+      isError: true,
+      content: [
+        {
+          type: "text" as const,
+          text: "cursor_expired: Output before the requested cursor is no longer retained. Rerun the command if complete output is required.",
+        },
+      ],
+    }
+  }
+
+  const structuredContent: CompactShellPollSnapshot = {
+    status: snapshot.status,
+    output: snapshot.output,
+  }
+  if (snapshot.exit_code !== null) structuredContent.exit_code = snapshot.exit_code
+  if (snapshot.status === "running" || snapshot.output_truncated) structuredContent.next_cursor = snapshot.next_cursor
+  if (snapshot.dropped_output_bytes > 0) structuredContent.dropped_output_bytes = snapshot.dropped_output_bytes
+
+  return {
+    structuredContent,
+    content: [{ type: "text" as const, text: shellResultSummary(snapshot) }],
+  }
+}
+
 interface CompactShellSnapshot extends Record<string, unknown> {
   shell_id?: string
   status: ShellSnapshot["status"]
@@ -314,6 +349,14 @@ interface CompactShellSnapshot extends Record<string, unknown> {
   next_cursor?: number
   cursor_expired?: true
   output_truncated?: true
+  dropped_output_bytes?: number
+}
+
+interface CompactShellPollSnapshot extends Record<string, unknown> {
+  status: ShellSnapshot["status"]
+  exit_code?: number
+  output: string
+  next_cursor?: number
   dropped_output_bytes?: number
 }
 

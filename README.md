@@ -175,7 +175,7 @@ Setup keeps the dedicated Chrome visible so you can sign in. Normal `npm start` 
 
 Returned turn IDs are readable and sequential per local agent, for example `seo-audit_turn_1` and `seo-audit_turn_2`. Idle subagent state expires after 30 minutes: the managed browser tab and local turn records are removed, while the ChatGPT conversation remains in the user's ChatGPT history.
 
-`subagent_start` accepts 1-3 independent agents per call. The first is submitted immediately, the second 5 seconds later, and the third 7 seconds after that; at most three generations may run at once. `subagent_poll` accepts 1-3 turn IDs and polls them concurrently in the same wait window.
+`subagent_start` accepts 1-3 independent agents per call. The first is submitted immediately, the second 5 seconds later, and the third 7 seconds after that; at most three generations may run at once. `subagent_poll` accepts 1-3 turn IDs and polls them concurrently in the same wait window. Both tools return only structured results; completed responses appear once in `turns[].response`, and failures use one `error` string.
 
 Default endpoint:
 

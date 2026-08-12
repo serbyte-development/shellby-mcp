@@ -157,12 +157,11 @@ export function registerSkillTools(server: McpServer, workspace: string): void {
       title: "Load reusable skill",
       description: "Load the instructions for a reusable skill. Use when a listed skill matches the current task.",
       inputSchema: z.object({
-        name: z.string().min(1).max(128).refine(isValidSkillName, "Invalid skill name.").describe("Skill name returned by skill_list."),
+        name: z.string().min(1).refine(isValidSkillName, "Invalid skill name."),
       }),
       outputSchema: z.object({
-        name: z.string(),
-        path: z.string().describe("Local SKILL.md path for resolving referenced assets and files."),
-        instructions: z.string().describe("Complete skill instructions."),
+        path: z.string(),
+        instructions: z.string(),
       }),
       annotations: {
         readOnlyHint: true,
@@ -177,7 +176,6 @@ export function registerSkillTools(server: McpServer, workspace: string): void {
         const loaded = await skills.read(name, ctx.mcpReq.signal)
         return {
           structuredContent: {
-            name: loaded.name,
             path: loaded.path,
             instructions: loaded.content,
           },
