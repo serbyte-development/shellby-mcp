@@ -38,8 +38,8 @@ const shellOptions: ShellSessionOptions = {
   cwd,
   transcriptLimit: MCP_CONFIG.shell.transcriptChars,
   commandTranscriptBytes: MCP_CONFIG.shell.commandTranscriptBytes,
-  defaultOutputBytes: MCP_CONFIG.shell.outputBytes,
-  maxOutputBytes: MCP_CONFIG.shell.maxOutputBytes,
+  defaultOutputTokens: MCP_CONFIG.shell.outputTokens,
+  maxOutputTokens: MCP_CONFIG.shell.maxOutputTokens,
   recordLimit: MCP_CONFIG.shell.recordLimit,
 }
 const shells = new ShellSessionManager({

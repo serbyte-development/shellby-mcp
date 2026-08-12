@@ -58,12 +58,12 @@ export class ShellSessionManager {
     return this.defaultShell.initialCwd
   }
 
-  get defaultReadBytes(): number {
-    return this.defaultShell.defaultReadBytes
+  get defaultReadTokens(): number {
+    return this.defaultShell.defaultReadTokens
   }
 
-  get maximumReadBytes(): number {
-    return this.defaultShell.maximumReadBytes
+  get maximumReadTokens(): number {
+    return this.defaultShell.maximumReadTokens
   }
 
   get commandTranscriptByteLimit(): number {

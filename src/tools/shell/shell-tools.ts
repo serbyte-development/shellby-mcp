@@ -2,6 +2,7 @@ import { McpServer } from "@modelcontextprotocol/server"
 import { z } from "zod"
 
 import { MCP_CONFIG } from "../../config.js"
+import { MIN_OUTPUT_TOKENS, OUTPUT_TOKEN_ENCODING } from "../../tokenizer.js"
 import { ShellSessionError, type ParallelCommandSnapshot, type ShellSnapshot } from "./session.js"
 import { DEFAULT_SHELL_ID, ShellSessionManager } from "./session-manager.js"
 
@@ -52,7 +53,7 @@ const shellSnapshotSchema = z.object({
   output_truncated: z
     .literal(true)
     .optional()
-    .describe("Present response stopped at max_output_bytes while additional retained output remains. The omitted output is recoverable with shell_poll."),
+    .describe("Present response stopped at max_output_tokens while additional retained output remains. The omitted output is recoverable with shell_poll."),
   output_dropped: z
     .literal(true)
     .optional()
@@ -62,13 +63,13 @@ const shellSnapshotSchema = z.object({
 
 export function registerShellExecutionTools(server: McpServer, shells: ShellSessionManager, workspace: string): void {
   const workspaceDescription = JSON.stringify(workspace)
-  const maxOutputBytesInput = z
+  const maxOutputTokensInput = z
     .int()
-    .min(256)
-    .max(shells.maximumReadBytes)
+    .min(MIN_OUTPUT_TOKENS)
+    .max(shells.maximumReadTokens)
     .optional()
-    .default(shells.defaultReadBytes)
-    .describe("Maximum UTF-8 bytes returned in this response. DO NOT pass in max_output_bytes unless the default is too small.")
+    .default(shells.defaultReadTokens)
+    .describe(`Maximum ${OUTPUT_TOKEN_ENCODING} tokens returned in this response. DO NOT pass in max_output_tokens unless the default is too small.`)
 
   server.registerTool(
     "shell_run",
@@ -98,8 +99,8 @@ export function registerShellExecutionTools(server: McpServer, shells: ShellSess
           .max(MCP_CONFIG.shell.maxWaitMs)
           .optional()
           .default(MCP_CONFIG.shell.defaultWaitMs)
-          .describe("Returns earlier if the output byte cap is reached."),
-        max_output_bytes: maxOutputBytesInput,
+          .describe("Returns earlier if the output token cap is reached."),
+        max_output_tokens: maxOutputTokensInput,
       }),
       outputSchema: shellSnapshotSchema,
       annotations: {
@@ -110,7 +111,7 @@ export function registerShellExecutionTools(server: McpServer, shells: ShellSess
       },
       _meta: MCP_CONFIG.toolMeta,
     },
-    async ({ shell_id, request_id, cwd, command, wait_ms, max_output_bytes }, ctx) => {
+    async ({ shell_id, request_id, cwd, command, wait_ms, max_output_tokens }, ctx) => {
       try {
         const shell = shells.getOrCreate(shell_id)
         const snapshot = await shell.runCommand({
@@ -118,7 +119,7 @@ export function registerShellExecutionTools(server: McpServer, shells: ShellSess
           command,
           cwd,
           waitMs: wait_ms,
-          maxOutputBytes: max_output_bytes,
+          maxOutputTokens: max_output_tokens,
           signal: ctx.mcpReq.signal,
         })
         return snapshotResult(snapshot, shell_id)
@@ -142,7 +143,7 @@ export function registerShellExecutionTools(server: McpServer, shells: ShellSess
           .nonnegative()
           .describe("The next_cursor returned by the previous result. Only pass in this cursor when the omitted output is needed to complete the task."),
         wait_ms: z.int().min(0).max(MCP_CONFIG.shell.maxWaitMs).optional().default(2_000),
-        max_output_bytes: maxOutputBytesInput,
+        max_output_tokens: maxOutputTokensInput,
       }),
       outputSchema: shellSnapshotSchema,
       annotations: {
@@ -153,14 +154,14 @@ export function registerShellExecutionTools(server: McpServer, shells: ShellSess
       },
       _meta: MCP_CONFIG.toolMeta,
     },
-    async ({ shell_id, request_id, cursor, wait_ms, max_output_bytes }, ctx) => {
+    async ({ shell_id, request_id, cursor, wait_ms, max_output_tokens }, ctx) => {
       try {
         const shell = shells.getExisting(shell_id)
         const snapshot = await shell.pollCommand({
           requestId: request_id,
           cursor,
           waitMs: wait_ms,
-          maxOutputBytes: max_output_bytes,
+          maxOutputTokens: max_output_tokens,
           signal: ctx.mcpReq.signal,
         })
         return snapshotResult(snapshot, shell_id)

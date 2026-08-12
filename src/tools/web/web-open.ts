@@ -4,10 +4,11 @@ import { launch } from "cloakbrowser"
 import { Defuddle } from "defuddle/node"
 import { parseHTML } from "linkedom"
 
+import { MIN_OUTPUT_TOKENS, tokenPrefix } from "../../tokenizer.js"
 import { positiveInteger } from "../../utils.js"
 
-export const DEFAULT_WEB_OUTPUT_BYTES = 8 * 1024
-export const MAX_WEB_OUTPUT_BYTES = 32 * 1024
+export const DEFAULT_WEB_OUTPUT_TOKENS = 2_048
+export const MAX_WEB_OUTPUT_TOKENS = 8_192
 export const DEFAULT_WEB_DOCUMENT_BYTES = 2 * 1024 * 1024
 
 const DEFAULT_DOCUMENT_TTL_MS = 10 * 60 * 1_000
@@ -19,7 +20,7 @@ export interface WebOpenInput {
   url: string
   format?: WebsiteContentFormat
   cursor?: string
-  maxOutputBytes?: number
+  maxOutputTokens?: number
   signal?: AbortSignal
 }
 
@@ -42,8 +43,8 @@ export interface RenderedWebPage {
 
 export interface WebPageOpenerOptions {
   renderPage?: (url: string, format: WebsiteContentFormat, signal?: AbortSignal) => Promise<RenderedWebPage>
-  defaultOutputBytes?: number
-  maxOutputBytes?: number
+  defaultOutputTokens?: number
+  maxOutputTokens?: number
   documentByteLimit?: number
   documentTtlMs?: number
   documentLimit?: number
@@ -65,8 +66,8 @@ interface CursorPayload {
 }
 
 export class WebPageOpener {
-  readonly defaultOutputBytes: number
-  readonly maximumOutputBytes: number
+  readonly defaultOutputTokens: number
+  readonly maximumOutputTokens: number
 
   private readonly renderPage: NonNullable<WebPageOpenerOptions["renderPage"]>
   private readonly documentByteLimit: number
@@ -76,10 +77,13 @@ export class WebPageOpener {
   private readonly documents = new Map<string, CachedDocument>()
 
   constructor(options: WebPageOpenerOptions = {}) {
-    this.defaultOutputBytes = positiveInteger(options.defaultOutputBytes, DEFAULT_WEB_OUTPUT_BYTES)
-    this.maximumOutputBytes = positiveInteger(options.maxOutputBytes, MAX_WEB_OUTPUT_BYTES)
-    if (this.defaultOutputBytes > this.maximumOutputBytes) {
-      throw new Error("defaultOutputBytes cannot exceed maxOutputBytes.")
+    this.defaultOutputTokens = positiveInteger(options.defaultOutputTokens, DEFAULT_WEB_OUTPUT_TOKENS)
+    this.maximumOutputTokens = positiveInteger(options.maxOutputTokens, MAX_WEB_OUTPUT_TOKENS)
+    if (this.defaultOutputTokens < MIN_OUTPUT_TOKENS || this.maximumOutputTokens < MIN_OUTPUT_TOKENS) {
+      throw new Error(`Output token limits must be at least ${MIN_OUTPUT_TOKENS}.`)
+    }
+    if (this.defaultOutputTokens > this.maximumOutputTokens) {
+      throw new Error("defaultOutputTokens cannot exceed maxOutputTokens.")
     }
 
     this.documentByteLimit = positiveInteger(options.documentByteLimit, DEFAULT_WEB_DOCUMENT_BYTES)
@@ -93,7 +97,7 @@ export class WebPageOpener {
   async open(input: WebOpenInput): Promise<WebOpenResult> {
     const requestedUrl = normalizeWebUrl(input.url)
     const format = input.format ?? "markdown"
-    const maxOutputBytes = this.resolveOutputBytes(input.maxOutputBytes)
+    const maxOutputTokens = this.resolveOutputTokens(input.maxOutputTokens)
     this.removeExpiredDocuments()
 
     let document: CachedDocument
@@ -129,7 +133,7 @@ export class WebPageOpener {
       this.storeDocument(document)
     }
 
-    const chunk = utf8Chunk(document.content, offset, maxOutputBytes)
+    const chunk = tokenChunk(document.content, offset, maxOutputTokens)
     const result: WebOpenResult = {
       url: document.url,
       title: document.title,
@@ -151,10 +155,10 @@ export class WebPageOpener {
     return result
   }
 
-  private resolveOutputBytes(value: number | undefined): number {
-    const resolved = value ?? this.defaultOutputBytes
-    if (!Number.isSafeInteger(resolved) || resolved < 256 || resolved > this.maximumOutputBytes) {
-      throw new WebOpenError("invalid_output_limit", `max_output_bytes must be an integer from 256 to ${this.maximumOutputBytes}.`)
+  private resolveOutputTokens(value: number | undefined): number {
+    const resolved = value ?? this.defaultOutputTokens
+    if (!Number.isSafeInteger(resolved) || resolved < MIN_OUTPUT_TOKENS || resolved > this.maximumOutputTokens) {
+      throw new WebOpenError("invalid_output_limit", `max_output_tokens must be an integer from ${MIN_OUTPUT_TOKENS} to ${this.maximumOutputTokens}.`)
     }
     return resolved
   }
@@ -299,6 +303,14 @@ function utf8Chunk(value: string, start: number, maxBytes: number): { value: str
   return {
     value: value.slice(start, offset),
     nextOffset: offset,
+  }
+}
+
+function tokenChunk(value: string, start: number, maxTokens: number): { value: string; nextOffset: number } {
+  const bounded = tokenPrefix(value.slice(start), maxTokens)
+  return {
+    value: bounded.value,
+    nextOffset: start + bounded.value.length,
   }
 }
 

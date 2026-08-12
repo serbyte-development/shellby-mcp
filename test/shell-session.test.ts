@@ -4,6 +4,7 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import test from "node:test"
 
+import { countTokens } from "../src/tokenizer.js"
 import { ParallelCommandScheduler } from "../src/tools/shell/parallel-runner.js"
 import { PersistentShellSession, ShellSessionError, type ShellSnapshot } from "../src/tools/shell/session.js"
 
@@ -174,49 +175,58 @@ test("admits only one concurrent command without corrupting the active record", 
 
 test("polls bounded output without duplicates", { timeout: 10_000 }, async (t) => {
   const shell = new PersistentShellSession({
-    defaultOutputBytes: 7,
-    maxOutputBytes: 7,
+    defaultOutputTokens: 64,
+    maxOutputTokens: 64,
   })
   t.after(() => shell.close())
 
-  const result = await runToCompletion(shell, "chunks", "printf abcdefghijklmnopqrstuvwxyz")
-  assert.equal(result.output, "abcdefghijklmnopqrstuvwxyz")
+  const expected = "0".repeat(2_000)
+  const result = await runToCompletion(shell, "chunks", "printf '%02000d' 0")
+  assert.equal(result.output, expected)
   assert.equal(result.snapshot.status, "completed")
   assert.equal(result.snapshot.exit_code, 0)
 })
 
-test("caps UTF-8 bytes without splitting characters and allows an override", { timeout: 10_000 }, async (t) => {
+test("caps o200k tokens without splitting characters and allows an override", { timeout: 10_000 }, async (t) => {
   const shell = new PersistentShellSession({
-    defaultOutputBytes: 4,
-    maxOutputBytes: 16,
+    defaultOutputTokens: 64,
+    maxOutputTokens: 512,
   })
   t.after(() => shell.close())
 
+  const expected = "🙂éA".repeat(100)
   const first = await shell.runCommand({
-    requestId: "utf8-byte-cap",
-    command: "printf '🙂éA'",
+    requestId: "token-cap",
+    command: `printf '${expected}'`,
     waitMs: 1_000,
   })
-  assert.equal(first.output, "🙂")
-  assert.equal(Buffer.byteLength(first.output, "utf8"), 4)
+  assert.equal(expected.startsWith(first.output), true)
+  assert.ok(first.output.length > 0)
+  assert.ok(countTokens(first.output) <= 64)
   assert.equal(first.output_truncated, true)
 
-  const rest = await shell.pollCommand({
-    requestId: "utf8-byte-cap",
-    cursor: first.next_cursor,
-    waitMs: 0,
-    maxOutputBytes: 16,
-  })
-  assert.equal(rest.output, "éA")
-  assert.equal(Buffer.byteLength(rest.output, "utf8"), 3)
-  assert.equal(rest.output_truncated, false)
+  let output = first.output
+  let snapshot = first
+  for (let attempt = 0; attempt < 10 && (snapshot.status === "running" || snapshot.output_truncated); attempt += 1) {
+    snapshot = await shell.pollCommand({
+      requestId: "token-cap",
+      cursor: snapshot.next_cursor,
+      waitMs: 100,
+      maxOutputTokens: 512,
+    })
+    assert.ok(countTokens(snapshot.output) <= 512)
+    output += snapshot.output
+  }
+  assert.equal(output, expected)
+  assert.equal(snapshot.status, "completed")
+  assert.equal(snapshot.output_truncated, false)
 })
 
 test("drops output beyond the per-command transcript ceiling", { timeout: 10_000 }, async (t) => {
   const shell = new PersistentShellSession({
     commandTranscriptBytes: 7,
-    defaultOutputBytes: 16,
-    maxOutputBytes: 16,
+    defaultOutputTokens: 64,
+    maxOutputTokens: 64,
   })
   t.after(() => shell.close())
 
@@ -234,8 +244,8 @@ test("drops output beyond the per-command transcript ceiling", { timeout: 10_000
 test("keeps surrogate pairs intact while scanning for a delayed marker", { timeout: 10_000 }, async (t) => {
   const shell = new PersistentShellSession({
     commandTranscriptBytes: 4,
-    defaultOutputBytes: 16,
-    maxOutputBytes: 16,
+    defaultOutputTokens: 64,
+    maxOutputTokens: 64,
   })
   t.after(() => shell.close())
 
@@ -249,8 +259,8 @@ test("keeps surrogate pairs intact while scanning for a delayed marker", { timeo
 test("drops a whole surrogate pair at the rolling transcript boundary", { timeout: 10_000 }, async (t) => {
   const shell = new PersistentShellSession({
     transcriptLimit: 1,
-    defaultOutputBytes: 16,
-    maxOutputBytes: 16,
+    defaultOutputTokens: 64,
+    maxOutputTokens: 64,
   })
   t.after(() => shell.close())
 

@@ -6,8 +6,9 @@ import { McpServer } from "@modelcontextprotocol/server"
 import { z } from "zod"
 
 import { MCP_CONFIG } from "../../config.js"
+import { tokenPrefix } from "../../tokenizer.js"
 
-const FAILURE_OUTPUT_BYTES = 4 * 1024
+const FAILURE_OUTPUT_TOKENS = 1_024
 const STOP_GRACE_MS = 500
 export const DEFAULT_APPLY_PATCH_BINARY = fileURLToPath(new URL("../../../vendor/apply-patch/apply_patch", import.meta.url))
 
@@ -33,8 +34,7 @@ export function registerApplyPatchTool(server: McpServer, executable = DEFAULT_A
         output_dropped: z
           .literal(true)
           .optional()
-          .describe("Present when failure diagnostics exceeded the apply_patch output ceiling and bytes were permanently discarded."),
-        dropped_output_bytes: z.int().positive().optional().describe("Present when failure diagnostics exceeded the apply_patch output ceiling."),
+          .describe("Present when failure diagnostics exceeded the apply_patch token ceiling and output was permanently discarded."),
       }),
       annotations: {
         readOnlyHint: false,
@@ -82,7 +82,6 @@ interface ApplyPatchResult extends Record<string, unknown> {
   exit_code: number | null
   output: string
   output_dropped: boolean
-  dropped_output_bytes: number
 }
 
 interface CompactApplyPatchResult extends Record<string, unknown> {
@@ -90,7 +89,6 @@ interface CompactApplyPatchResult extends Record<string, unknown> {
   exit_code: number | null
   output?: string
   output_dropped?: true
-  dropped_output_bytes?: number
 }
 
 function toToolResult(result: ApplyPatchResult): CompactApplyPatchResult {
@@ -101,7 +99,6 @@ function toToolResult(result: ApplyPatchResult): CompactApplyPatchResult {
   if (result.status === "failed") {
     compact.output = result.output
     if (result.output_dropped) compact.output_dropped = true
-    if (result.dropped_output_bytes > 0) compact.dropped_output_bytes = result.dropped_output_bytes
   }
   return compact
 }
@@ -118,8 +115,7 @@ async function applyPatch(input: ApplyPatchInput): Promise<ApplyPatchResult> {
     const stdoutDecoder = new StringDecoder("utf8")
     const stderrDecoder = new StringDecoder("utf8")
     let output = ""
-    let outputBytes = 0
-    let droppedOutputBytes = 0
+    let outputDropped = false
     let stdinError: Error | undefined
     let aborted = false
     let settled = false
@@ -127,10 +123,10 @@ async function applyPatch(input: ApplyPatchInput): Promise<ApplyPatchResult> {
     let forceSettleTimer: NodeJS.Timeout | null = null
 
     const appendOutput = (value: string) => {
-      const bounded = utf8Prefix(value, Math.max(0, FAILURE_OUTPUT_BYTES - outputBytes))
-      output += bounded.value
-      outputBytes += Buffer.byteLength(bounded.value, "utf8")
-      droppedOutputBytes += bounded.omittedBytes
+      if (outputDropped || value.length === 0) return
+      const bounded = tokenPrefix(output + value, FAILURE_OUTPUT_TOKENS)
+      output = bounded.value
+      outputDropped = bounded.truncated
     }
     const cleanup = () => {
       input.signal?.removeEventListener("abort", abort)
@@ -194,8 +190,7 @@ async function applyPatch(input: ApplyPatchInput): Promise<ApplyPatchResult> {
         status: code === 0 ? "completed" : "failed",
         exit_code: code,
         output,
-        output_dropped: droppedOutputBytes > 0,
-        dropped_output_bytes: droppedOutputBytes,
+        output_dropped: outputDropped,
       })
     })
 
@@ -203,19 +198,4 @@ async function applyPatch(input: ApplyPatchInput): Promise<ApplyPatchResult> {
     if (input.signal?.aborted) abort()
     child.stdin.end(input.patch)
   })
-}
-
-function utf8Prefix(value: string, maxBytes: number): { value: string; omittedBytes: number } {
-  let end = 0
-  let bytes = 0
-  for (const character of value) {
-    const characterBytes = Buffer.byteLength(character, "utf8")
-    if (bytes + characterBytes > maxBytes) break
-    bytes += characterBytes
-    end += character.length
-  }
-  return {
-    value: value.slice(0, end),
-    omittedBytes: Buffer.byteLength(value.slice(end), "utf8"),
-  }
 }

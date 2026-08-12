@@ -17,13 +17,13 @@ test("loads runtime configuration from one environment boundary", () => {
   assert.equal(defaults.workspace, join(homedir(), "Desktop", "chatgpt-workspace"))
   assert.equal(defaults.shell.transcriptChars, 1024 * 1024)
   assert.equal(defaults.shell.commandTranscriptBytes, 256 * 1024)
-  assert.equal(defaults.shell.outputBytes, 4 * 1024)
-  assert.equal(defaults.shell.maxOutputBytes, 64 * 1024)
+  assert.equal(defaults.shell.outputTokens, 1_024)
+  assert.equal(defaults.shell.maxOutputTokens, 16_384)
   assert.equal(defaults.shell.recordLimit, 1024)
 
   const configured = loadMcpConfig({
-    MCP_DEFAULT_OUTPUT_BYTES: "8192",
-    MCP_MAX_OUTPUT_BYTES: "16384",
+    MCP_DEFAULT_OUTPUT_TOKENS: "2048",
+    MCP_MAX_OUTPUT_TOKENS: "4096",
     MCP_MAX_SHELLS: "12",
     MCP_TRANSCRIPT_CHARS: "1",
     MCP_COMMAND_TRANSCRIPT_BYTES: "1",
@@ -31,15 +31,15 @@ test("loads runtime configuration from one environment boundary", () => {
   })
   assert.equal(configured.shell.transcriptChars, defaults.shell.transcriptChars)
   assert.equal(configured.shell.commandTranscriptBytes, defaults.shell.commandTranscriptBytes)
-  assert.equal(configured.shell.outputBytes, 8 * 1024)
-  assert.equal(configured.shell.maxOutputBytes, 16 * 1024)
+  assert.equal(configured.shell.outputTokens, 2_048)
+  assert.equal(configured.shell.maxOutputTokens, 4_096)
   assert.equal(configured.shell.recordLimit, defaults.shell.recordLimit)
   assert.equal(configured.shell.maxShells, 12)
 })
 
 test("rejects a default shell output cap above the maximum", () => {
   assert.throws(
-    () => loadMcpConfig({ MCP_DEFAULT_OUTPUT_BYTES: "32768", MCP_MAX_OUTPUT_BYTES: "4096" }),
-    /MCP_DEFAULT_OUTPUT_BYTES cannot exceed MCP_MAX_OUTPUT_BYTES/
+    () => loadMcpConfig({ MCP_DEFAULT_OUTPUT_TOKENS: "4096", MCP_MAX_OUTPUT_TOKENS: "1024" }),
+    /MCP_DEFAULT_OUTPUT_TOKENS cannot exceed MCP_MAX_OUTPUT_TOKENS/
   )
 })

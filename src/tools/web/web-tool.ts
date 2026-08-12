@@ -2,6 +2,7 @@ import { McpServer } from "@modelcontextprotocol/server"
 import { z } from "zod"
 
 import { MCP_CONFIG } from "../../config.js"
+import { MIN_OUTPUT_TOKENS, OUTPUT_TOKEN_ENCODING } from "../../tokenizer.js"
 import { WebOpenError, WebPageOpener } from "./web-open.js"
 
 export function registerWebTool(server: McpServer, webPageOpener: WebPageOpener): void {
@@ -20,13 +21,13 @@ export function registerWebTool(server: McpServer, webPageOpener: WebPageOpener)
             "Output format. markdown returns cleaned readable content and is the default. clean_html returns cleaned main-content HTML. raw_html returns the complete rendered page source. Reuse the same format when continuing with a `cursor`."
           ),
         cursor: z.string().min(1).optional().describe("Opaque next_cursor from an earlier fetch_website response."),
-        max_output_bytes: z
+        max_output_tokens: z
           .int()
-          .min(256)
-          .max(webPageOpener.maximumOutputBytes)
+          .min(MIN_OUTPUT_TOKENS)
+          .max(webPageOpener.maximumOutputTokens)
           .optional()
-          .default(webPageOpener.defaultOutputBytes)
-          .describe("Maximum UTF-8 content bytes returned."),
+          .default(webPageOpener.defaultOutputTokens)
+          .describe(`Maximum ${OUTPUT_TOKEN_ENCODING} content tokens returned.`),
       }),
       outputSchema: z.object({
         url: z.string(),
@@ -38,7 +39,7 @@ export function registerWebTool(server: McpServer, webPageOpener: WebPageOpener)
           .literal(true)
           .optional()
           .describe(
-            "Present when this response stopped at max_output_bytes while additional cached content remains. The omitted content is recoverable with next_cursor."
+            "Present when this response stopped at max_output_tokens while additional cached content remains. The omitted content is recoverable with next_cursor."
           ),
         source_dropped: z
           .literal(true)
@@ -54,13 +55,13 @@ export function registerWebTool(server: McpServer, webPageOpener: WebPageOpener)
       },
       _meta: MCP_CONFIG.toolMeta,
     },
-    async ({ url, format, cursor, max_output_bytes }, ctx) => {
+    async ({ url, format, cursor, max_output_tokens }, ctx) => {
       try {
         const result = await webPageOpener.open({
           url,
           format,
           cursor,
-          maxOutputBytes: max_output_bytes,
+          maxOutputTokens: max_output_tokens,
           signal: ctx.mcpReq.signal,
         })
         return {

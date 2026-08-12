@@ -8,13 +8,14 @@ import { fileURLToPath } from "node:url"
 import { Client, StreamableHTTPClientTransport, LATEST_PROTOCOL_VERSION } from "@modelcontextprotocol/client"
 import { ShellyAuthStore } from "../src/auth/auth.js"
 import { MCP_CONFIG } from "../src/config.js"
+import { countTokens } from "../src/tokenizer.js"
 import type { ChatGptSubagentService } from "../src/tools/subagent/chatgpt-subagent.js"
 import { FeedbackStore } from "../src/tools/feedback.js"
 import { startMcpHttpServer } from "../src/server/http-server.js"
 import { McpAuditLogger } from "../src/server/audit-log.js"
 import { PeekabooClient } from "../src/tools/computer/peekaboo.js"
 import { PersistentShellSession } from "../src/tools/shell/session.js"
-import { DEFAULT_WEB_OUTPUT_BYTES, MAX_WEB_OUTPUT_BYTES, WebPageOpener } from "../src/tools/web/web-open.js"
+import { DEFAULT_WEB_OUTPUT_TOKENS, MAX_WEB_OUTPUT_TOKENS, WebPageOpener } from "../src/tools/web/web-open.js"
 
 test("serves shell tools through Streamable HTTP and retains state across MCP sessions", { timeout: 20_000 }, async (t) => {
   const running = await startMcpHttpServer({ port: 0 })
@@ -62,10 +63,10 @@ test("serves shell tools through Streamable HTTP and retains state across MCP se
   const cwdSchema = (runTool?.inputSchema.properties as Record<string, Record<string, unknown>>).cwd
   assert.ok(cwdSchema)
   assert.equal(cwdSchema.minLength, 1)
-  const maxOutputSchema = (runTool?.inputSchema.properties as Record<string, Record<string, unknown>>).max_output_bytes
+  const maxOutputSchema = (runTool?.inputSchema.properties as Record<string, Record<string, unknown>>).max_output_tokens
   assert.ok(maxOutputSchema)
-  assert.equal(maxOutputSchema.default, MCP_CONFIG.shell.outputBytes)
-  assert.equal(maxOutputSchema.maximum, MCP_CONFIG.shell.maxOutputBytes)
+  assert.equal(maxOutputSchema.default, MCP_CONFIG.shell.outputTokens)
+  assert.equal(maxOutputSchema.maximum, MCP_CONFIG.shell.maxOutputTokens)
   const requestIdSchema = (runTool?.inputSchema.properties as Record<string, Record<string, unknown>>).request_id
   assert.ok(requestIdSchema)
   assert.equal(requestIdSchema.pattern, undefined)
@@ -103,7 +104,7 @@ test("serves shell tools through Streamable HTTP and retains state across MCP se
     properties?: Record<string, unknown>
     required?: string[]
   }
-  assert.deepEqual(Object.keys(applyPatchOutputSchema.properties ?? {}).sort(), ["dropped_output_bytes", "exit_code", "output", "output_dropped", "status"])
+  assert.deepEqual(Object.keys(applyPatchOutputSchema.properties ?? {}).sort(), ["exit_code", "output", "output_dropped", "status"])
   assert.deepEqual(applyPatchOutputSchema.required?.sort(), ["exit_code", "status"])
   const shellListTool = tools.tools.find((tool) => tool.name === "shell_list")
   assert.equal(shellListTool?.annotations?.readOnlyHint, true)
@@ -117,10 +118,10 @@ test("serves shell tools through Streamable HTTP and retains state across MCP se
   const fetchWebsiteTool = tools.tools.find((tool) => tool.name === "fetch_website")
   assert.equal(fetchWebsiteTool?.annotations?.readOnlyHint, true)
   assert.equal(fetchWebsiteTool?.annotations?.openWorldHint, true)
-  const webMaxOutputSchema = (fetchWebsiteTool?.inputSchema.properties as Record<string, Record<string, unknown>>).max_output_bytes
+  const webMaxOutputSchema = (fetchWebsiteTool?.inputSchema.properties as Record<string, Record<string, unknown>>).max_output_tokens
   assert.ok(webMaxOutputSchema)
-  assert.equal(webMaxOutputSchema.default, DEFAULT_WEB_OUTPUT_BYTES)
-  assert.equal(webMaxOutputSchema.maximum, MAX_WEB_OUTPUT_BYTES)
+  assert.equal(webMaxOutputSchema.default, DEFAULT_WEB_OUTPUT_TOKENS)
+  assert.equal(webMaxOutputSchema.maximum, MAX_WEB_OUTPUT_TOKENS)
   const websiteFormatSchema = (fetchWebsiteTool?.inputSchema.properties as Record<string, Record<string, unknown>>).format
   assert.ok(websiteFormatSchema)
   assert.equal(websiteFormatSchema.default, "markdown")
@@ -760,7 +761,7 @@ test("fetches and paginates one cached website across MCP sessions", { timeout: 
     arguments: {
       url: "https://example.com/start",
       format: "clean_html",
-      max_output_bytes: 256,
+      max_output_tokens: 64,
     },
   })
   assert.equal(firstResult.isError, undefined)
@@ -774,7 +775,7 @@ test("fetches and paginates one cached website across MCP sessions", { timeout: 
   assert.equal(firstContent.url, "https://example.com/final")
   assert.equal(firstContent.title, "Example page")
   assert.equal(firstContent.format, "clean_html")
-  assert.equal(Buffer.byteLength(firstContent.content, "utf8"), 256)
+  assert.ok(countTokens(firstContent.content) <= 64)
   assert.ok(firstContent.next_cursor)
   await first.client.close()
 
@@ -786,7 +787,7 @@ test("fetches and paginates one cached website across MCP sessions", { timeout: 
       url: "https://example.com/start",
       format: "clean_html",
       cursor: firstContent.next_cursor,
-      max_output_bytes: 1024,
+      max_output_tokens: 256,
     },
   })
   assert.equal(secondResult.isError, undefined)
@@ -982,7 +983,7 @@ test("applies patches through the native MCP tool", { timeout: 20_000 }, async (
   const executable = join(bin, "apply_patch")
   await writeFile(
     executable,
-    '#!/bin/sh\npatch=$(cat)\ncase "$patch" in *SLOW_PATCH*) sleep 0.2 ;; *FAIL_PATCH*) printf \'%4097s\' x >&2; exit 9 ;; esac\nprintf \'cwd=%s\\n%s\' "$PWD" "$patch"\n'
+    '#!/bin/sh\npatch=$(cat)\ncase "$patch" in *SLOW_PATCH*) sleep 0.2 ;; *FAIL_PATCH*) printf \'%020000d\' 0 >&2; exit 9 ;; esac\nprintf \'cwd=%s\\n%s\' "$PWD" "$patch"\n'
   )
   await chmod(executable, 0o755)
 
@@ -1036,13 +1037,11 @@ test("applies patches through the native MCP tool", { timeout: 20_000 }, async (
     exit_code: number
     output: string
     output_dropped?: true
-    dropped_output_bytes?: number
   }
   assert.equal(failedContent.status, "failed")
   assert.equal(failedContent.exit_code, 9)
-  assert.equal(Buffer.byteLength(failedContent.output, "utf8"), 4 * 1024)
+  assert.equal(countTokens(failedContent.output), 1_024)
   assert.equal(failedContent.output_dropped, true)
-  assert.equal(failedContent.dropped_output_bytes, 1)
   const failedText = (failed.content?.[0] as { text?: string } | undefined)?.text ?? ""
   assert.match(failedText, /apply_patch failed, exit=9/)
   assert.ok(failedText.endsWith(failedContent.output))

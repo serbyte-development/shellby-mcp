@@ -5,6 +5,7 @@ import { isAbsolute, resolve } from "node:path"
 import { StringDecoder } from "node:string_decoder"
 
 import { MCP_CONFIG } from "../../config.js"
+import { MIN_OUTPUT_TOKENS, tokenPrefix } from "../../tokenizer.js"
 import { positiveInteger } from "../../utils.js"
 import {
   DEFAULT_PARALLEL_COMMAND_TIMEOUT_MS,
@@ -48,7 +49,7 @@ export interface RunCommandInput {
   command: string
   cwd?: string
   waitMs?: number
-  maxOutputBytes?: number
+  maxOutputTokens?: number
   signal?: AbortSignal
 }
 
@@ -56,7 +57,7 @@ export interface PollCommandInput {
   requestId: string
   cursor: number
   waitMs?: number
-  maxOutputBytes?: number
+  maxOutputTokens?: number
   signal?: AbortSignal
 }
 
@@ -71,8 +72,8 @@ export interface ShellSessionOptions {
   env?: NodeJS.ProcessEnv
   transcriptLimit?: number
   commandTranscriptBytes?: number
-  defaultOutputBytes?: number
-  maxOutputBytes?: number
+  defaultOutputTokens?: number
+  maxOutputTokens?: number
   recordLimit?: number
   parallelCommandTimeoutMs?: number
   parallelScheduler?: ParallelCommandScheduler
@@ -201,10 +202,11 @@ class TranscriptBuffer {
 
   read(
     cursor: number,
-    maxBytes: number,
+    maxTokens: number,
     upperBound?: number
   ): {
     output: string
+    tokenCount: number
     nextCursor: number
     hasMore: boolean
     cursorExpired: boolean
@@ -215,6 +217,7 @@ class TranscriptBuffer {
     if (availableEnd <= this.start) {
       return {
         output: "",
+        tokenCount: 0,
         nextCursor: availableEnd,
         hasMore: false,
         cursorExpired,
@@ -224,12 +227,13 @@ class TranscriptBuffer {
     const effectiveCursor = Math.min(Math.max(cursor, this.start), availableEnd)
     const localStart = effectiveCursor - this.start
     const localEnd = availableEnd - this.start
-    const outputEnd = utf8BoundedEnd(this.value, localStart, localEnd, maxBytes)
-    const output = this.value.slice(localStart, outputEnd)
+    const bounded = tokenPrefix(this.value.slice(localStart, localEnd), maxTokens)
+    const output = bounded.value
     const nextCursor = effectiveCursor + output.length
 
     return {
       output,
+      tokenCount: bounded.tokenCount,
       nextCursor,
       hasMore: nextCursor < availableEnd,
       cursorExpired,
@@ -262,8 +266,8 @@ export class PersistentShellSession {
   private readonly transcriptLimit: number
   private readonly transcript: TranscriptBuffer
   private readonly commandTranscriptBytes: number
-  private readonly defaultOutputBytes: number
-  private readonly maxOutputBytes: number
+  private readonly defaultOutputTokens: number
+  private readonly maxOutputTokens: number
   private readonly recordLimit: number
   private readonly parallelCommandTimeoutMs: number
   private readonly parallelScheduler: ParallelCommandScheduler
@@ -298,10 +302,13 @@ export class PersistentShellSession {
     this.transcriptLimit = positiveInteger(options.transcriptLimit, MCP_CONFIG.shell.transcriptChars)
     this.transcript = new TranscriptBuffer(this.transcriptLimit)
     this.commandTranscriptBytes = positiveInteger(options.commandTranscriptBytes, MCP_CONFIG.shell.commandTranscriptBytes)
-    this.maxOutputBytes = positiveInteger(options.maxOutputBytes, MCP_CONFIG.shell.maxOutputBytes)
-    this.defaultOutputBytes = positiveInteger(options.defaultOutputBytes, MCP_CONFIG.shell.outputBytes)
-    if (this.defaultOutputBytes > this.maxOutputBytes) {
-      throw new Error("defaultOutputBytes cannot exceed maxOutputBytes.")
+    this.maxOutputTokens = positiveInteger(options.maxOutputTokens, MCP_CONFIG.shell.maxOutputTokens)
+    this.defaultOutputTokens = positiveInteger(options.defaultOutputTokens, MCP_CONFIG.shell.outputTokens)
+    if (this.defaultOutputTokens < MIN_OUTPUT_TOKENS || this.maxOutputTokens < MIN_OUTPUT_TOKENS) {
+      throw new Error(`Output token limits must be at least ${MIN_OUTPUT_TOKENS}.`)
+    }
+    if (this.defaultOutputTokens > this.maxOutputTokens) {
+      throw new Error("defaultOutputTokens cannot exceed maxOutputTokens.")
     }
     this.recordLimit = positiveInteger(options.recordLimit, MCP_CONFIG.shell.recordLimit)
     this.parallelCommandTimeoutMs = positiveInteger(options.parallelCommandTimeoutMs, DEFAULT_PARALLEL_COMMAND_TIMEOUT_MS)
@@ -312,12 +319,12 @@ export class PersistentShellSession {
     return this.cwd
   }
 
-  get defaultReadBytes(): number {
-    return this.defaultOutputBytes
+  get defaultReadTokens(): number {
+    return this.defaultOutputTokens
   }
 
-  get maximumReadBytes(): number {
-    return this.maxOutputBytes
+  get maximumReadTokens(): number {
+    return this.maxOutputTokens
   }
 
   get commandTranscriptByteLimit(): number {
@@ -337,8 +344,8 @@ export class PersistentShellSession {
       env: this.env,
       transcriptLimit: this.transcriptLimit,
       commandTranscriptBytes: this.commandTranscriptBytes,
-      defaultOutputBytes: this.defaultOutputBytes,
-      maxOutputBytes: this.maxOutputBytes,
+      defaultOutputTokens: this.defaultOutputTokens,
+      maxOutputTokens: this.maxOutputTokens,
       recordLimit: this.recordLimit,
       parallelCommandTimeoutMs: this.parallelCommandTimeoutMs,
       parallelScheduler: this.parallelScheduler,
@@ -362,7 +369,7 @@ export class PersistentShellSession {
     validateRequestId(input.requestId)
     validateCommand(input.command)
     const waitMs = normalizeWaitMs(input.waitMs)
-    const maxOutputBytes = this.normalizeOutputBytes(input.maxOutputBytes)
+    const maxOutputTokens = this.normalizeOutputTokens(input.maxOutputTokens)
     const commandHash = hashCommand(input.command, input.cwd)
     const parallelCommands = parseParallelCommand(input.command)
 
@@ -374,9 +381,9 @@ export class PersistentShellSession {
       }
 
       if (existing.status === "running") {
-        await this.waitForCommandResult(existing, existing.startCursor, maxOutputBytes, waitMs, input.signal)
+        await this.waitForCommandResult(existing, existing.startCursor, maxOutputTokens, waitMs, input.signal)
       }
-      return this.snapshot(existing, existing.startCursor, maxOutputBytes)
+      return this.snapshot(existing, existing.startCursor, maxOutputTokens)
     }
     const existingParallel = this.parallelRecords.get(input.requestId)
     if (existingParallel) {
@@ -384,9 +391,9 @@ export class PersistentShellSession {
         throw new ShellSessionError("request_conflict", `request_id ${JSON.stringify(input.requestId)} was already used for a different command.`)
       }
       if (existingParallel.status === "running") {
-        await this.waitForParallelResult(existingParallel, 0, maxOutputBytes, waitMs, input.signal)
+        await this.waitForParallelResult(existingParallel, 0, maxOutputTokens, waitMs, input.signal)
       }
-      return this.parallelSnapshot(existingParallel, 0, maxOutputBytes)
+      return this.parallelSnapshot(existingParallel, 0, maxOutputTokens)
     }
 
     if (this.resetInFlight) {
@@ -409,7 +416,7 @@ export class PersistentShellSession {
         commands: parallelCommands,
         commandHash,
         waitMs,
-        maxOutputBytes,
+        maxOutputTokens,
       })
     }
 
@@ -443,8 +450,8 @@ export class PersistentShellSession {
       throw new ShellSessionError("shell_unavailable", `Could not write to the shell: ${errorMessage(error)}`)
     }
 
-    await this.waitForCommandResult(record, record.startCursor, maxOutputBytes, waitMs, input.signal)
-    return this.snapshot(record, record.startCursor, maxOutputBytes)
+    await this.waitForCommandResult(record, record.startCursor, maxOutputTokens, waitMs, input.signal)
+    return this.snapshot(record, record.startCursor, maxOutputTokens)
   }
 
   async pollCommand(input: PollCommandInput): Promise<ShellSnapshot> {
@@ -460,13 +467,13 @@ export class PersistentShellSession {
     }
     if (parallelRecord) {
       const waitMs = normalizeWaitMs(input.waitMs)
-      const maxOutputBytes = this.normalizeOutputBytes(input.maxOutputBytes)
+      const maxOutputTokens = this.normalizeOutputTokens(input.maxOutputTokens)
       const version = this.updateVersion
-      const initialRead = parallelRecord.transcript.read(input.cursor, maxOutputBytes, parallelRecord.endCursor ?? undefined)
+      const initialRead = parallelRecord.transcript.read(input.cursor, maxOutputTokens, parallelRecord.endCursor ?? undefined)
       if (parallelRecord.status === "running" && initialRead.output.length === 0 && !initialRead.cursorExpired) {
         await this.waitForUpdate(version, waitMs, input.signal)
       }
-      return this.parallelSnapshot(parallelRecord, input.cursor, maxOutputBytes)
+      return this.parallelSnapshot(parallelRecord, input.cursor, maxOutputTokens)
     }
     if (!record) throw new ShellSessionError("request_not_found", `No command exists for request_id ${JSON.stringify(input.requestId)}.`)
     if (input.cursor < record.startCursor) {
@@ -474,14 +481,14 @@ export class PersistentShellSession {
     }
 
     const waitMs = normalizeWaitMs(input.waitMs)
-    const maxOutputBytes = this.normalizeOutputBytes(input.maxOutputBytes)
+    const maxOutputTokens = this.normalizeOutputTokens(input.maxOutputTokens)
     const version = this.updateVersion
-    const initialRead = this.transcript.read(input.cursor, maxOutputBytes, record.endCursor ?? undefined)
+    const initialRead = this.transcript.read(input.cursor, maxOutputTokens, record.endCursor ?? undefined)
     if (record.status === "running" && initialRead.output.length === 0 && !initialRead.cursorExpired) {
       await this.waitForUpdate(version, waitMs, input.signal)
     }
 
-    return this.snapshot(record, input.cursor, maxOutputBytes)
+    return this.snapshot(record, input.cursor, maxOutputTokens)
   }
 
   private async runParallelCommands(options: {
@@ -489,7 +496,7 @@ export class PersistentShellSession {
     commands: ParallelCommandSpec[]
     commandHash: string
     waitMs: number
-    maxOutputBytes: number
+    maxOutputTokens: number
   }): Promise<ShellSnapshot> {
     const rootCwd = options.input.cwd ?? this.currentCwd
     validateWorkingDirectory(rootCwd)
@@ -528,7 +535,7 @@ export class PersistentShellSession {
       context = await this.captureShellContext(options.input.cwd)
     } catch (error) {
       if (record.status === "reset") {
-        return this.parallelSnapshot(record, 0, options.maxOutputBytes)
+        return this.parallelSnapshot(record, 0, options.maxOutputTokens)
       }
       this.parallelRecords.delete(record.requestId)
       if (this.activeParallel === record) this.activeParallel = null
@@ -570,8 +577,8 @@ export class PersistentShellSession {
       record.tasks.push(task)
     }
 
-    await this.waitForParallelResult(record, 0, options.maxOutputBytes, options.waitMs, options.input.signal)
-    return this.parallelSnapshot(record, 0, options.maxOutputBytes)
+    await this.waitForParallelResult(record, 0, options.maxOutputTokens, options.waitMs, options.input.signal)
+    return this.parallelSnapshot(record, 0, options.maxOutputTokens)
   }
 
   private finishParallelRun(record: ParallelBatchRecord, run: ParallelRunRecord, result: ParallelCommandExecutionResult): void {
@@ -590,8 +597,8 @@ export class PersistentShellSession {
     this.notifyUpdate()
   }
 
-  private parallelSnapshot(record: ParallelBatchRecord, cursor: number, maxOutputBytes: number): ShellSnapshot {
-    const read = record.transcript.read(cursor, maxOutputBytes, record.endCursor ?? undefined)
+  private parallelSnapshot(record: ParallelBatchRecord, cursor: number, maxOutputTokens: number): ShellSnapshot {
+    const read = record.transcript.read(cursor, maxOutputTokens, record.endCursor ?? undefined)
     const droppedOutputBytes = record.runs.reduce((total, run) => Math.min(Number.MAX_SAFE_INTEGER, total + run.droppedOutputBytes), 0)
     const exitCode = record.status === "completed" ? (record.runs.every((run) => run.status === "completed" && run.exitCode === 0) ? 0 : 1) : null
     return {
@@ -618,14 +625,14 @@ export class PersistentShellSession {
   private async waitForParallelResult(
     record: ParallelBatchRecord,
     cursor: number,
-    maxOutputBytes: number,
+    maxOutputTokens: number,
     waitMs: number,
     signal?: AbortSignal
   ): Promise<void> {
     const deadline = Date.now() + waitMs
     while (record.status === "running" && !signal?.aborted) {
-      const read = record.transcript.read(cursor, maxOutputBytes, record.endCursor ?? undefined)
-      if (read.cursorExpired || read.hasMore || Buffer.byteLength(read.output, "utf8") >= maxOutputBytes) return
+      const read = record.transcript.read(cursor, maxOutputTokens, record.endCursor ?? undefined)
+      if (read.cursorExpired || read.hasMore || read.tokenCount >= maxOutputTokens) return
       const remainingMs = deadline - Date.now()
       if (remainingMs <= 0) return
       const version = this.updateVersion
@@ -1074,8 +1081,8 @@ export class PersistentShellSession {
     }
   }
 
-  private snapshot(record: CommandRecord, cursor: number, maxOutputBytes: number): ShellSnapshot {
-    const read = this.transcript.read(cursor, maxOutputBytes, record.endCursor ?? undefined)
+  private snapshot(record: CommandRecord, cursor: number, maxOutputTokens: number): ShellSnapshot {
+    const read = this.transcript.read(cursor, maxOutputTokens, record.endCursor ?? undefined)
     return {
       request_id: record.requestId,
       status: record.status,
@@ -1090,12 +1097,12 @@ export class PersistentShellSession {
     }
   }
 
-  private async waitForCommandResult(record: CommandRecord, cursor: number, maxOutputBytes: number, waitMs: number, signal?: AbortSignal): Promise<void> {
+  private async waitForCommandResult(record: CommandRecord, cursor: number, maxOutputTokens: number, waitMs: number, signal?: AbortSignal): Promise<void> {
     const deadline = Date.now() + waitMs
 
     while (record.status === "running" && !signal?.aborted) {
-      const read = this.transcript.read(cursor, maxOutputBytes, record.endCursor ?? undefined)
-      if (read.cursorExpired || read.hasMore || Buffer.byteLength(read.output, "utf8") >= maxOutputBytes) {
+      const read = this.transcript.read(cursor, maxOutputTokens, record.endCursor ?? undefined)
+      if (read.cursorExpired || read.hasMore || read.tokenCount >= maxOutputTokens) {
         return
       }
 
@@ -1107,11 +1114,11 @@ export class PersistentShellSession {
     }
   }
 
-  private normalizeOutputBytes(value: number | undefined): number {
+  private normalizeOutputTokens(value: number | undefined): number {
     if (value === undefined || !Number.isFinite(value)) {
-      return this.defaultOutputBytes
+      return this.defaultOutputTokens
     }
-    return Math.min(Math.max(Math.trunc(value), 1), this.maxOutputBytes)
+    return Math.min(Math.max(Math.trunc(value), MIN_OUTPUT_TOKENS), this.maxOutputTokens)
   }
 
   private pruneCommandRecords(): void {

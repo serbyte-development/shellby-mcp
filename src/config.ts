@@ -28,8 +28,8 @@ const DEFAULTS = {
     path: "/bin/zsh",
     transcriptChars: 1024 * 1024,
     commandTranscriptBytes: 256 * 1024,
-    outputBytes: 4 * 1024,
-    maxOutputBytes: 64 * 1024,
+    outputTokens: 1_024,
+    maxOutputTokens: 16_384,
     defaultWaitMs: 1_500,
     maxWaitMs: 10_000,
     readyTimeoutMs: 10_000,
@@ -45,10 +45,10 @@ const DEFAULTS = {
 }
 
 export function loadMcpConfig(env: NodeJS.ProcessEnv = process.env) {
-  const outputBytes = parsePositiveInteger(env.MCP_DEFAULT_OUTPUT_BYTES, DEFAULTS.shell.outputBytes)
-  const maxOutputBytes = parsePositiveInteger(env.MCP_MAX_OUTPUT_BYTES, DEFAULTS.shell.maxOutputBytes)
-  if (outputBytes > maxOutputBytes) {
-    throw new Error("MCP_DEFAULT_OUTPUT_BYTES cannot exceed MCP_MAX_OUTPUT_BYTES.")
+  const outputTokens = parsePositiveInteger(env.MCP_DEFAULT_OUTPUT_TOKENS, DEFAULTS.shell.outputTokens)
+  const maxOutputTokens = parsePositiveInteger(env.MCP_MAX_OUTPUT_TOKENS, DEFAULTS.shell.maxOutputTokens)
+  if (outputTokens > maxOutputTokens) {
+    throw new Error("MCP_DEFAULT_OUTPUT_TOKENS cannot exceed MCP_MAX_OUTPUT_TOKENS.")
   }
 
   return {
@@ -67,8 +67,8 @@ export function loadMcpConfig(env: NodeJS.ProcessEnv = process.env) {
       path: env.MCP_SHELL ?? DEFAULTS.shell.path,
       transcriptChars: DEFAULTS.shell.transcriptChars,
       commandTranscriptBytes: DEFAULTS.shell.commandTranscriptBytes,
-      outputBytes,
-      maxOutputBytes,
+      outputTokens,
+      maxOutputTokens,
       defaultWaitMs: DEFAULTS.shell.defaultWaitMs,
       maxWaitMs: DEFAULTS.shell.maxWaitMs,
       readyTimeoutMs: DEFAULTS.shell.readyTimeoutMs,
