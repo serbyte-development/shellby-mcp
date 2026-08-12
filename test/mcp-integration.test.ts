@@ -66,7 +66,7 @@ test("serves shell tools through Streamable HTTP and retains state across MCP se
   assert.equal(runTool?.annotations?.openWorldHint, true)
   const shellIdSchema = (runTool?.inputSchema.properties as Record<string, Record<string, unknown>>).shell_id
   assert.ok(shellIdSchema)
-  assert.deepEqual(Object.keys(shellIdSchema), ["type", "description", "default", "minLength", "maxLength"])
+  assert.deepEqual(Object.keys(shellIdSchema), ["description", "type", "default", "minLength", "maxLength"])
   assert.equal(shellIdSchema.default, "default")
   assert.equal(shellIdSchema.minLength, 3)
   assert.equal(shellIdSchema.maxLength, 64)
@@ -75,7 +75,7 @@ test("serves shell tools through Streamable HTTP and retains state across MCP se
   assert.equal(cwdSchema.minLength, 1)
   const maxOutputSchema = (runTool?.inputSchema.properties as Record<string, Record<string, unknown>>).max_output_tokens
   assert.ok(maxOutputSchema)
-  assert.deepEqual(Object.keys(maxOutputSchema), ["type", "description", "default", "minimum", "maximum"])
+  assert.deepEqual(Object.keys(maxOutputSchema), ["description", "type", "default", "minimum", "maximum"])
   assert.equal(maxOutputSchema.minimum, 1)
   assert.equal(maxOutputSchema.default, MCP_CONFIG.shell.outputTokens)
   assert.equal(maxOutputSchema.maximum, MCP_CONFIG.shell.maxOutputTokens)
@@ -132,7 +132,7 @@ test("serves shell tools through Streamable HTTP and retains state across MCP se
   assert.equal(fetchWebsiteTool?.annotations?.openWorldHint, true)
   const webMaxOutputSchema = (fetchWebsiteTool?.inputSchema.properties as Record<string, Record<string, unknown>>).max_output_tokens
   assert.ok(webMaxOutputSchema)
-  assert.deepEqual(Object.keys(webMaxOutputSchema), ["type", "description", "default", "minimum", "maximum"])
+  assert.deepEqual(Object.keys(webMaxOutputSchema), ["description", "type", "default", "minimum", "maximum"])
   assert.equal(webMaxOutputSchema.minimum, 1)
   assert.equal(webMaxOutputSchema.default, DEFAULT_WEB_OUTPUT_TOKENS)
   assert.equal(webMaxOutputSchema.maximum, MAX_WEB_OUTPUT_TOKENS)

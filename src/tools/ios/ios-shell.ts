@@ -10,7 +10,7 @@ const MAX_RESPONSE_BYTES = 1024 * 1024
 const iosShellResultSchema = z.object({
   stdout: z.string(),
   stderr: z.string(),
-  exit_code: z.int().nullable(),
+  exit_code: z.int().min(0).max(255).nullable(),
 })
 
 export interface IosShellClientOptions {

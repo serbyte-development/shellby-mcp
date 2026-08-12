@@ -58,7 +58,7 @@ Use the schema for mechanically inferable constraints:
 
 Prefer schemas that make invalid calls difficult rather than prose that asks the model to remember validation rules.
 
-Before tool schemas are advertised, `src/server/tool-schema-order.ts` recursively puts JSON Schema keywords in one canonical order. Tool parameter order inside `properties` is preserved. The transform changes only object-key insertion order; Zod validation, defaults, constraints, and schema values are unchanged (`src/server/mcp-server.ts`, `src/server/tool-schema-order.ts`, `test/tool-schema-order.test.ts`, `test/mcp-integration.test.ts`).
+Before tool schemas are advertised, `src/server/tool-schema-order.ts` recursively puts JSON Schema keywords in one LLM-oriented canonical order: meaning first (`description`), then shape (`type`/references), defaults and choices, structure, and validation constraints. Tool parameter order inside `properties` is preserved. The transform changes only object-key insertion order; Zod validation, defaults, constraints, and schema values are unchanged (`src/server/mcp-server.ts`, `src/server/tool-schema-order.ts`, `test/tool-schema-order.test.ts`, `test/mcp-integration.test.ts`).
 
 ## Parameter Descriptions
 

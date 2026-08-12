@@ -16,13 +16,28 @@ test("canonicalizes schema keywords while preserving property order", () => {
     type: "object",
   }) as Record<string, unknown>
 
-  assert.deepEqual(Object.keys(schema), ["type", "description", "properties", "required", "$schema"])
+  assert.deepEqual(Object.keys(schema), ["description", "type", "properties", "required", "$schema"])
 
   const properties = schema.properties as Record<string, Record<string, unknown>>
   assert.deepEqual(Object.keys(properties), ["z", "type", "a"])
-  assert.deepEqual(Object.keys(properties.z ?? {}), ["type", "description", "minLength", "maxLength"])
-  assert.deepEqual(Object.keys(properties.type ?? {}), ["type", "description", "default"])
-  assert.deepEqual(Object.keys(properties.a ?? {}), ["type", "description", "minimum", "maximum"])
+  assert.deepEqual(Object.keys(properties.z ?? {}), ["description", "type", "minLength", "maxLength"])
+  assert.deepEqual(Object.keys(properties.type ?? {}), ["description", "type", "default"])
+  assert.deepEqual(Object.keys(properties.a ?? {}), ["description", "type", "minimum", "maximum"])
+})
+
+test("prioritizes shape before defaults and exact choices", () => {
+  const schema = canonicalizeJsonSchema({
+    const: "a",
+    enum: ["a", "b"],
+    default: "a",
+    oneOf: [{ type: "string" }],
+    anyOf: [{ type: "string" }],
+    allOf: [{ type: "string" }],
+    type: "string",
+    description: "Example",
+  }) as Record<string, unknown>
+
+  assert.deepEqual(Object.keys(schema), ["description", "type", "anyOf", "oneOf", "allOf", "default", "enum", "const"])
 })
 
 test("does not reorder objects stored as schema data", () => {

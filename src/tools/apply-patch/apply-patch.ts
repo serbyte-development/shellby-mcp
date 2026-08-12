@@ -29,7 +29,7 @@ export function registerApplyPatchTool(server: McpServer, executable = DEFAULT_A
       }),
       outputSchema: z.object({
         status: z.enum(["completed", "failed"]),
-        exit_code: z.int().nullable(),
+        exit_code: z.int().min(0).max(255).nullable(),
         output: z.string().optional().describe("Present only on failure with bounded apply_patch stdout/stderr diagnostics."),
         output_dropped: z
           .literal(true)

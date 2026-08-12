@@ -2,7 +2,6 @@ import { McpServer } from "@modelcontextprotocol/server"
 import { z } from "zod"
 
 import { MCP_CONFIG } from "../../config.js"
-import { OUTPUT_TOKEN_ENCODING } from "../../tokenizer.js"
 import { WebOpenError, WebPageOpener } from "./web-open.js"
 
 export function registerWebTool(server: McpServer, webPageOpener: WebPageOpener): void {
@@ -26,7 +25,7 @@ export function registerWebTool(server: McpServer, webPageOpener: WebPageOpener)
           .min(1)
           .max(webPageOpener.maximumOutputTokens)
           .default(webPageOpener.defaultOutputTokens)
-          .describe(`Maximum ${OUTPUT_TOKEN_ENCODING} content tokens returned.`),
+          .describe(`Maximum tokens returned.`),
       }),
       outputSchema: z.object({
         url: z.string(),

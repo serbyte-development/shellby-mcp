@@ -620,6 +620,7 @@
 ## [2026-08-12] schema | canonicalize advertised JSON Schema order
 
 - Added one registration-boundary transform that recursively orders JSON Schema keywords before `tools/list` while preserving tool parameter order and validation semantics (`src/server/tool-schema-order.ts`, `src/server/mcp-server.ts`).
+- Prioritized the advertised order for LLM use: `description` first, then type/reference, default before exact choices, structure, and validation constraints.
 
 ## [2026-08-12] simplify | reduce configuration and composition plumbing
 

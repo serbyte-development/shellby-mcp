@@ -2,7 +2,6 @@ import { McpServer } from "@modelcontextprotocol/server"
 import { z } from "zod"
 
 import { MCP_CONFIG } from "../../config.js"
-import { OUTPUT_TOKEN_ENCODING } from "../../tokenizer.js"
 import { ShellSessionError, type ParallelCommandSnapshot, type ShellSnapshot } from "./session.js"
 import { DEFAULT_SHELL_ID, ShellSessionManager } from "./session-manager.js"
 
@@ -26,7 +25,12 @@ const closableShellIdInput = z
 const shellSnapshotSchema = z.object({
   shell_id: z.string().optional().describe("Present only when the command uses a non-default shell."),
   status: z.enum(["running", "completed", "shell_exited", "reset"]),
-  exit_code: z.int().nullable().describe("Command exit code. Completed parallel batches return 0 only when every child succeeded, otherwise 1."),
+  exit_code: z
+    .int()
+    .min(0)
+    .max(255)
+    .nullable()
+    .describe("Command exit code. Completed parallel batches return 0 only when every child succeeded, otherwise 1."),
   cwd: z.string().describe("The shell working directory for this command, or the root cwd for a parallel batch."),
   output: z.string().describe("Command output. Parallel batches return completed run output in labeled blocks"),
   commands: z
@@ -52,7 +56,7 @@ const shellSnapshotSchema = z.object({
   output_truncated: z
     .literal(true)
     .optional()
-    .describe("Present response stopped at max_output_tokens while additional retained output remains. The omitted output is recoverable with shell_poll."),
+    .describe("Present response stopped at max_output_tokens, additional retained output remains. Recoverable with shell_poll."),
   output_dropped: z
     .literal(true)
     .optional()
@@ -67,7 +71,7 @@ export function registerShellExecutionTools(server: McpServer, shells: ShellSess
     .min(1)
     .max(shells.maximumReadTokens)
     .default(shells.defaultReadTokens)
-    .describe(`Maximum ${OUTPUT_TOKEN_ENCODING} tokens returned in this response. DO NOT pass in max_output_tokens unless the default is too small.`)
+    .describe(`Maximum tokens returned in this response. DO NOT pass in max_output_tokens unless the default is too small.`)
 
   server.registerTool(
     "shell_run",
@@ -96,7 +100,7 @@ export function registerShellExecutionTools(server: McpServer, shells: ShellSess
           .min(0)
           .max(MCP_CONFIG.shell.maxWaitMs)
           .default(MCP_CONFIG.shell.defaultWaitMs)
-          .describe("Returns earlier if the output token cap is reached."),
+          .describe("Maximum time to wait. Returns sooner if the command finishes or the output token cap is reached."),
         max_output_tokens: maxOutputTokensInput,
       }),
       outputSchema: shellSnapshotSchema,
