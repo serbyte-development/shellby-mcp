@@ -6,6 +6,9 @@ import { promisify } from "node:util"
 
 import sharp from "sharp"
 
+import { MCP_CONFIG } from "../../config.js"
+import { asRecord, finiteNumber as numberValue } from "../../utils.js"
+
 const execFileAsync = promisify(execFile)
 
 interface PeekabooEnvelope {
@@ -78,7 +81,7 @@ export class PeekabooClient {
   private closed = false
 
   constructor(options: PeekabooClientOptions = {}) {
-    this.executable = options.executable ?? "peekaboo"
+    this.executable = options.executable ?? MCP_CONFIG.peekaboo.executable
     this.baseArgs = options.baseArgs ?? []
     this.env = options.env ?? process.env
     this.timeoutMs = options.timeoutMs ?? 30_000
@@ -281,11 +284,7 @@ function processOutput(error: unknown, field: "stdout" | "stderr"): string {
   return typeof value === "string" ? value : Buffer.isBuffer(value) ? value.toString("utf8") : ""
 }
 
-function asRecord(value: unknown): Record<string, unknown> | null {
-  return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : null
-}
-
-function observationTarget(data: Record<string, unknown> | null): PeekabooSnapshotTarget | undefined {
+function observationTarget(data: Record<string, unknown> | undefined): PeekabooSnapshotTarget | undefined {
   if (!data) return undefined
   const observation = asRecord(data.observation)
   const target = asRecord(observation?.target)
@@ -355,8 +354,4 @@ function integerOption(args: string[], name: string): number | undefined {
 
 function stringValue(value: unknown): string | undefined {
   return typeof value === "string" && value ? value : undefined
-}
-
-function numberValue(value: unknown): number | undefined {
-  return typeof value === "number" && Number.isFinite(value) ? value : undefined
 }

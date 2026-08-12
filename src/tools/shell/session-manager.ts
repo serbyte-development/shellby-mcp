@@ -66,10 +66,6 @@ export class ShellSessionManager {
     return this.defaultShell.maximumReadTokens
   }
 
-  get commandTranscriptByteLimit(): number {
-    return this.defaultShell.commandTranscriptByteLimit
-  }
-
   get shellCount(): number {
     return this.sessions.size
   }

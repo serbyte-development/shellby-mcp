@@ -15,6 +15,7 @@ test("resolves configured workspace paths to absolute paths", () => {
 test("loads runtime configuration from one environment boundary", () => {
   const defaults = loadMcpConfig({})
   assert.equal(defaults.workspace, join(homedir(), "Desktop", "chatgpt-workspace"))
+  assert.equal(defaults.port, 3333)
   assert.equal(defaults.shell.transcriptChars, 1024 * 1024)
   assert.equal(defaults.shell.commandTranscriptBytes, 256 * 1024)
   assert.equal(defaults.shell.outputTokens, 1_024)
@@ -22,6 +23,7 @@ test("loads runtime configuration from one environment boundary", () => {
   assert.equal(defaults.shell.recordLimit, 1024)
 
   const configured = loadMcpConfig({
+    PORT: "9999",
     MCP_DEFAULT_OUTPUT_TOKENS: "2048",
     MCP_MAX_OUTPUT_TOKENS: "4096",
     MCP_MAX_SHELLS: "12",
@@ -35,6 +37,7 @@ test("loads runtime configuration from one environment boundary", () => {
   assert.equal(configured.shell.maxOutputTokens, 4_096)
   assert.equal(configured.shell.recordLimit, defaults.shell.recordLimit)
   assert.equal(configured.shell.maxShells, 12)
+  assert.equal(configured.port, defaults.port)
 })
 
 test("rejects a default shell output cap above the maximum", () => {
@@ -42,4 +45,13 @@ test("rejects a default shell output cap above the maximum", () => {
     () => loadMcpConfig({ MCP_DEFAULT_OUTPUT_TOKENS: "4096", MCP_MAX_OUTPUT_TOKENS: "1024" }),
     /MCP_DEFAULT_OUTPUT_TOKENS cannot exceed MCP_MAX_OUTPUT_TOKENS/
   )
+})
+
+test("rejects partially parsed and fractional integer configuration", () => {
+  for (const value of ["12junk", "1.5", "", " "]) {
+    assert.throws(() => loadMcpConfig({ MCP_MAX_SHELLS: value }), /Expected a positive integer/)
+  }
+  for (const value of ["12junk", "1.5", "", " "]) {
+    assert.throws(() => loadMcpConfig({ MCP_SHELL_IDLE_TTL_MS: value }), /Expected a non-negative integer/)
+  }
 })

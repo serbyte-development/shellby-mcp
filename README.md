@@ -299,7 +299,6 @@ Copy `.env.example` to `.env` to override the defaults below. Internal safety li
 | Variable                   | Default                       | Purpose                                            |
 | -------------------------- | ----------------------------- | -------------------------------------------------- |
 | `HOST`                     | `127.0.0.1`                   | MCP HTTP bind address                              |
-| `PORT`                     | `3333`                        | MCP HTTP port                                      |
 | `NGROK_URL`                | unset                         | Optional fixed ngrok domain used by tunnel helpers |
 | `NGROK_BIN`                | `ngrok` from `PATH`           | Optional ngrok executable override                 |
 | `NGROK_AUTHTOKEN`          | unset                         | Optional ngrok auth token                          |
@@ -313,7 +312,7 @@ Copy `.env.example` to `.env` to override the defaults below. Internal safety li
 | `MCP_MAX_SHELLS`           | `8`                           | Maximum live shells                                |
 | `MCP_SHELL_IDLE_TTL_MS`    | `1800000`                     | Named-shell idle timeout; `0` disables cleanup     |
 
-The included ngrok helper, managed startup flow, and traffic policy assume local port `3333`. If you change `PORT`, update the ngrok command, startup health check, and Host rewrite as well.
+The production listener, managed startup flow, ngrok helper, and traffic policy use fixed local port `3333`. Tests may still request an ephemeral port directly through the HTTP server API.
 
 ## Development
 

@@ -5,7 +5,7 @@ import { Defuddle } from "defuddle/node"
 import { parseHTML } from "linkedom"
 
 import { MIN_OUTPUT_TOKENS, tokenPrefix } from "../../tokenizer.js"
-import { positiveInteger } from "../../utils.js"
+import { positiveInteger, utf8Prefix } from "../../utils.js"
 
 export const DEFAULT_WEB_OUTPUT_TOKENS = 2_048
 export const MAX_WEB_OUTPUT_TOKENS = 8_192
@@ -286,38 +286,10 @@ function decodeCursor(value: string): CursorPayload {
   }
 }
 
-function utf8Chunk(value: string, start: number, maxBytes: number): { value: string; nextOffset: number } {
-  let offset = start
-  let bytes = 0
-
-  while (offset < value.length) {
-    const codePoint = value.codePointAt(offset)
-    if (codePoint === undefined) break
-    const codeUnits = codePoint > 0xffff ? 2 : 1
-    const codePointBytes = Buffer.byteLength(value.slice(offset, offset + codeUnits), "utf8")
-    if (bytes + codePointBytes > maxBytes) break
-    bytes += codePointBytes
-    offset += codeUnits
-  }
-
-  return {
-    value: value.slice(start, offset),
-    nextOffset: offset,
-  }
-}
-
 function tokenChunk(value: string, start: number, maxTokens: number): { value: string; nextOffset: number } {
   const bounded = tokenPrefix(value.slice(start), maxTokens)
   return {
     value: bounded.value,
     nextOffset: start + bounded.value.length,
-  }
-}
-
-function utf8Prefix(value: string, maxBytes: number): { value: string; omittedBytes: number } {
-  const chunk = utf8Chunk(value, 0, maxBytes)
-  return {
-    value: chunk.value,
-    omittedBytes: Buffer.byteLength(value.slice(chunk.nextOffset), "utf8"),
   }
 }

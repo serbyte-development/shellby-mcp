@@ -1,6 +1,8 @@
 import { spawn, type ChildProcess } from "node:child_process"
 import { StringDecoder } from "node:string_decoder"
 
+import { utf8Chunk } from "../../utils.js"
+
 export const DEFAULT_PARALLEL_COMMAND_LIMIT = 4
 export const DEFAULT_PARALLEL_COMMAND_TIMEOUT_MS = 10 * 60 * 1000
 
@@ -236,9 +238,9 @@ class BoundedOutput {
   append(chunk: string): void {
     if (chunk.length === 0) return
     const remaining = Math.max(0, this.maxBytes - this.capturedBytes)
-    const capturedEnd = utf8BoundedEnd(chunk, remaining)
-    const captured = chunk.slice(0, capturedEnd)
-    const dropped = chunk.slice(capturedEnd)
+    const bounded = utf8Chunk(chunk, 0, remaining)
+    const captured = bounded.value
+    const dropped = chunk.slice(bounded.nextOffset)
     if (captured.length > 0) {
       this.value += captured
       this.capturedBytes += Buffer.byteLength(captured, "utf8")
@@ -247,21 +249,6 @@ class BoundedOutput {
       this.droppedBytes = Math.min(Number.MAX_SAFE_INTEGER, this.droppedBytes + Buffer.byteLength(dropped, "utf8"))
     }
   }
-}
-
-function utf8BoundedEnd(value: string, maxBytes: number): number {
-  let offset = 0
-  let bytes = 0
-  while (offset < value.length) {
-    const codePoint = value.codePointAt(offset)
-    if (codePoint === undefined) break
-    const codeUnits = codePoint > 0xffff ? 2 : 1
-    const codePointBytes = codePoint <= 0x7f ? 1 : codePoint <= 0x7ff ? 2 : codePoint <= 0xffff ? 3 : 4
-    if (bytes + codePointBytes > maxBytes) break
-    bytes += codePointBytes
-    offset += codeUnits
-  }
-  return offset
 }
 
 function killProcessGroup(child: ChildProcess, signal: NodeJS.Signals): void {

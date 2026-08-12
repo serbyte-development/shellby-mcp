@@ -1,6 +1,6 @@
 # Architecture Map
 
-Verified 2026-08-11.
+Verified 2026-08-12.
 
 ## Layers
 
@@ -26,7 +26,7 @@ Verified 2026-08-11.
 
 ## Request Lifecycle
 
-1. `src/index.ts` parses configuration, ensures durable authentication state under `~/.shelly/auth.json`, prepares the workspace, and creates a `ShellSessionManager`, shared `PeekabooClient`, shared `ChatGptSubagentModule`, and repository-local `McpAuditLogger`; the HTTP boundary composes the shared `FeedbackStore` and webpage opener when not injected (`src/index.ts`, `src/auth/auth.ts`).
+1. `src/index.ts` ensures durable authentication state under `~/.shelly/auth.json`, prepares the configured workspace, and creates the production `ShellSessionManager`, shared `PeekabooClient`, shared `ChatGptSubagentModule`, and repository-local `McpAuditLogger`. Adapters and shell runtimes consume their own centralized defaults; startup passes only the workspace cwd and production-only browser visibility hook. The HTTP boundary owns default shared `FeedbackStore` and webpage opener instances when they are not injected (`src/index.ts`, `src/config.ts`, `src/auth/auth.ts`, `src/server/http-server.ts`).
 2. Exact `POST /mcp` serves both direct localhost clients and the ngrok tunnel. `createMcpExpressApp` provides JSON parsing plus localhost Host/Origin guards; ngrok remains the remote trust boundary and marks ChatGPT-origin-verified requests with `X-Shelly-Remote: 1`. The first marked `tools/call` binds `X-OpenAI-Subject` before dispatch and later marked tool calls require the same subject. Discovery does not bind. Each accepted POST creates a short-lived `McpServer` and stateless `NodeStreamableHTTPServerTransport` (`src/server/http-server.ts`, `src/auth/auth.ts`, `ngrok-traffic-policy.yml`).
 3. Shell handlers resolve `shell_id` through the shared shell manager. `skill_list` and `skill_load` read `<workspace>/skills` directly on each call, so catalog changes require no server rebuild. `feedback_submit` appends through the shared process-level `FeedbackStore`, which serializes writes to `feedback/agent-feedback.jsonl`. `chatgpt_subagent` resolves caller-named `agent_id` through the shared process-level subagent module. `apply_patch` bypasses the shell manager and directly spawns the prepared Codex executable. All request-scoped Computer Use handlers share the same process-level `PeekabooClient`.
 4. The adapter serializes Computer Use calls and invokes `peekaboo` with `execFile`, exact argv, `--json`, a 30-second timeout, and a 4 MiB process-output cap. It checks the JSON `success` field and does not retry failures (`src/tools/computer/peekaboo.ts`).
@@ -35,4 +35,4 @@ Verified 2026-08-11.
 
 The named shell is the persistence boundary: callers using the same `shell_id` share state across independent MCP clients, while different IDs have independent cwd, environment, transcript, command records, reset lifecycle, and foreground-command lock (`src/server/http-server.ts`, `src/tools/shell/session-manager.ts`, `test/mcp-integration.test.ts`).
 
-`src/config.ts` is the single static configuration surface for MCP identity, shared tool metadata, top-level runtime defaults, and global instructions. `src/index.ts` is the process composition root; `src/server/mcp-server.ts` composes the MCP surface, while each capability under `src/tools/` owns its model-facing contract and implementation helpers. Authentication is intentionally narrow: one durable ChatGPT owner for trusted tunnel tool calls, while localhost MCP remains agent-neutral. There is no database, hosted relay, login UI, OAuth flow, secret URL, or general multi-user authorization system (`src/config.ts`, `src/auth/auth.ts`, `src/server/http-server.ts`).
+`src/config.ts` is the single static configuration surface for MCP identity, shared tool metadata, runtime defaults, and global instructions. `src/index.ts` owns production process lifecycle, `src/server/http-server.ts` owns shared runtime dependencies and stateless request transports, and `src/server/mcp-server.ts` registers the request-scoped MCP tool surface without constructing shared adapters. Each capability under `src/tools/` owns its model-facing contract and implementation helpers. Authentication is intentionally narrow: one durable ChatGPT owner for trusted tunnel tool calls, while localhost MCP remains agent-neutral. There is no database, hosted relay, login UI, OAuth flow, secret URL, or general multi-user authorization system (`src/config.ts`, `src/auth/auth.ts`, `src/server/http-server.ts`).

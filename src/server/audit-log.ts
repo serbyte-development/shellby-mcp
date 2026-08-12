@@ -1,5 +1,7 @@
 import { appendFileSync } from "node:fs"
 
+import { asRecord } from "../utils.js"
+
 const MAX_INLINE_ARGUMENT_CHARS = 600
 const MAX_SHELL_COMMAND_CHARS = 2_000
 const MAX_FAILED_PATCH_CHARS = 32_000
@@ -222,10 +224,6 @@ function parseToolCall(value: unknown): { name: string; arguments?: unknown } | 
   const name = request.params?.name
   if (typeof name !== "string" || !name) return undefined
   return { name, arguments: request.params?.arguments }
-}
-
-function asRecord(value: unknown): Record<string, unknown> | undefined {
-  return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : undefined
 }
 
 function twoDigits(value: number): string {

@@ -26,10 +26,6 @@ export interface RunningMcpServer {
   host: string
   port: number
   url: string
-  shells: ShellSessionManager
-  shell: PersistentShellSession
-  peekaboo: PeekabooClient
-  chatGptSubagents: ChatGptSubagentService
   close: () => Promise<void>
 }
 
@@ -51,9 +47,8 @@ export async function startMcpHttpServer(options: StartMcpServerOptions = {}): P
   const host = options.host ?? MCP_CONFIG.host
   const port = options.port ?? MCP_CONFIG.port
   const shells = options.shellManager ?? new ShellSessionManager({ defaultShell: options.shell })
-  const shell = shells.defaultShell
   const peekaboo = options.peekaboo ?? new PeekabooClient()
-  const chatGptSubagents = options.chatGptSubagents ?? new ChatGptSubagentModule({ cdpEndpoint: MCP_CONFIG.chatGpt.cdpEndpoint })
+  const chatGptSubagents = options.chatGptSubagents ?? new ChatGptSubagentModule()
   const auditLogger = options.auditLogger
   const authStore = options.authStore
   const feedbackStore = options.feedbackStore ?? new FeedbackStore()
@@ -196,10 +191,6 @@ export async function startMcpHttpServer(options: StartMcpServerOptions = {}): P
     host,
     port: boundPort,
     url: `http://${host}:${boundPort}/mcp`,
-    shells,
-    shell,
-    peekaboo,
-    chatGptSubagents,
     close: async () => {
       if (closed) return
       closed = true

@@ -3,6 +3,7 @@ import type { CallToolResult } from "@modelcontextprotocol/server"
 import { z } from "zod"
 
 import { MCP_CONFIG } from "../../config.js"
+import { asRecord, booleanValue, finiteNumber as numberValue } from "../../utils.js"
 import { PeekabooClient, PeekabooError, type PeekabooObservation, type PeekabooResult, type PeekabooSnapshotTarget } from "./peekaboo.js"
 
 const appInput = z.string().min(1).describe("Application name, bundle identifier, or PID:12345 token.")
@@ -720,22 +721,10 @@ function asStructuredContent(value: unknown): Record<string, unknown> | null {
   return asRecord(value) ?? { value }
 }
 
-function asRecord(value: unknown): Record<string, unknown> | null {
-  return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : null
-}
-
 function omitUndefined(value: Record<string, unknown>): Record<string, unknown> {
   return Object.fromEntries(Object.entries(value).filter(([, item]) => item !== undefined))
 }
 
 function stringValue(value: unknown): string | undefined {
   return typeof value === "string" && value ? value : undefined
-}
-
-function numberValue(value: unknown): number | undefined {
-  return typeof value === "number" && Number.isFinite(value) ? value : undefined
-}
-
-function booleanValue(value: unknown): boolean | undefined {
-  return typeof value === "boolean" ? value : undefined
 }

@@ -6,7 +6,7 @@ import { StringDecoder } from "node:string_decoder"
 
 import { MCP_CONFIG } from "../../config.js"
 import { MIN_OUTPUT_TOKENS, tokenPrefix } from "../../tokenizer.js"
-import { positiveInteger } from "../../utils.js"
+import { positiveInteger, utf8Chunk } from "../../utils.js"
 import {
   DEFAULT_PARALLEL_COMMAND_TIMEOUT_MS,
   ParallelCommandAbortedError,
@@ -241,24 +241,6 @@ class TranscriptBuffer {
   }
 }
 
-function utf8BoundedEnd(value: string, start: number, end: number, maxBytes: number): number {
-  let offset = start
-  let bytes = 0
-
-  while (offset < end) {
-    const codePoint = value.codePointAt(offset)
-    if (codePoint === undefined) break
-    const codeUnits = codePoint > 0xffff ? 2 : 1
-    if (offset + codeUnits > end) break
-    const codePointBytes = codePoint <= 0x7f ? 1 : codePoint <= 0x7ff ? 2 : codePoint <= 0xffff ? 3 : 4
-    if (bytes + codePointBytes > maxBytes) break
-    bytes += codePointBytes
-    offset += codeUnits
-  }
-
-  return offset
-}
-
 export class PersistentShellSession {
   private readonly shellPath: string
   private readonly cwd: string
@@ -325,10 +307,6 @@ export class PersistentShellSession {
 
   get maximumReadTokens(): number {
     return this.maxOutputTokens
-  }
-
-  get commandTranscriptByteLimit(): number {
-    return this.commandTranscriptBytes
   }
 
   get hasActiveWork(): boolean {
@@ -1155,9 +1133,9 @@ export class PersistentShellSession {
     if (chunk.length === 0) return
 
     const remaining = Math.max(0, this.commandTranscriptBytes - record.capturedOutputBytes)
-    const capturedEnd = utf8BoundedEnd(chunk, 0, chunk.length, remaining)
-    const captured = chunk.slice(0, capturedEnd)
-    const dropped = chunk.slice(capturedEnd)
+    const bounded = utf8Chunk(chunk, 0, remaining)
+    const captured = bounded.value
+    const dropped = chunk.slice(bounded.nextOffset)
 
     if (captured.length > 0) {
       record.capturedOutputBytes += Buffer.byteLength(captured, "utf8")

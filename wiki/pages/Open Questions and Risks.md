@@ -1,6 +1,6 @@
 # Open Questions and Risks
 
-Verified 2026-08-11.
+Verified 2026-08-12.
 
 ## Active Risks
 
@@ -15,7 +15,6 @@ Verified 2026-08-11.
 - **`apply_patch` path rules are a caller contract, not a sandbox:** the vendored Codex binary accepts absolute patch file paths and `Add File` overwrites an existing path. The MCP validates that `cwd` is absolute but does not parse patch-internal paths, so the relative-path rule is enforced only by the published schema/instructions and the process retains the local user's filesystem permissions (`src/tools/apply-patch/apply-patch.ts`, `vendor/apply-patch/apply_patch`).
 - **MCP audit logging can disclose values:** bounded `tools/call` inputs are stored in the gitignored repository-local `agent-commands.yaml`, including shell commands, prompt prefixes, URLs, and other tool arguments. Ordinary arguments are capped at 600 characters and shell commands at 2,000 characters. `apply_patch` bodies are intentionally omitted and only cwd plus patch size are logged. Tool output is not persisted; only response byte counts are observed to flag unusually large calls (`src/index.ts`, `src/server/http-server.ts`, `src/server/audit-log.ts`).
 - **No CI enforcement:** tests, type-check, and build exist only as local package scripts (`package.json`).
-- **Port configuration is not composed:** `PORT` can move the HTTP listener, while the included ngrok command and Host rewrite remain fixed at 3333 (`src/index.ts`, `package.json`, `ngrok-traffic-policy.yml`).
 - **Peekaboo and permission drift:** the eleven Computer Use schemas are stable at server startup, but the installed Peekaboo CLI version, JSON fields, daemon/Bridge selection, Screen Recording, Accessibility, and Event Synthesizing permissions can change independently. Calls surface the resulting error and are never retried (`src/tools/computer/peekaboo.ts`, `src/tools/computer/computer-tools.ts`).
 - **Ephemeral observation targets:** screenshot IDs and their capture-target mappings live only in process memory, are capped at 64, and disappear on restart or eviction. Coordinate actions fail closed when the mapping is unavailable, so callers must observe again (`src/tools/computer/peekaboo.ts`, `src/tools/computer/computer-tools.ts`).
 - **Coordinate interpretation:** screen captures require display-origin translation, while app/window clicks use screenshot-relative coordinates with an explicit capture target. Multi-display layout or upstream bounds changes are important real-CLI regression cases (`src/tools/computer/peekaboo.ts`, `src/tools/computer/computer-tools.ts`, `test/peekaboo.test.ts`).

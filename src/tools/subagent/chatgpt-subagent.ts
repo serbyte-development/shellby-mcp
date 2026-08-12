@@ -1,6 +1,7 @@
 import { chromium, type Browser, type BrowserContext, type Locator, type Page, type Response } from "playwright-core"
 
-import { nonNegativeInteger, positiveInteger } from "../../utils.js"
+import { MCP_CONFIG } from "../../config.js"
+import { asRecord, booleanValue, finiteNumber as numberValue, nonNegativeInteger, positiveInteger } from "../../utils.js"
 
 const DEFAULT_AGENT_IDLE_TTL_MS = 30 * 60_000
 
@@ -8,7 +9,7 @@ const CAVEMAN_PROMPT =
   "Respond terse like smart caveman — drop articles, filler, pleasantries. Fragments OK. Technical terms exact. Code unchanged. Pattern: [thing] [action] [reason]. [next step]."
 
 export interface ChatGptSubagentOptions {
-  cdpEndpoint: string
+  cdpEndpoint?: string
   onPageCreated?: () => void | Promise<void>
   connectTimeoutMs?: number
   chatGptUrl?: string
@@ -210,6 +211,7 @@ export class ChatGptConversationTracker {
 }
 
 export class ChatGptSubagentModule {
+  private readonly cdpEndpoint: string
   private readonly connectTimeoutMs: number
   private readonly chatGptUrl: string
   private readonly maxConcurrentAgents: number
@@ -228,7 +230,8 @@ export class ChatGptSubagentModule {
   private connectPromise?: Promise<void>
   private readonly cleanupTimer: NodeJS.Timeout
 
-  constructor(private readonly options: ChatGptSubagentOptions) {
+  constructor(private readonly options: ChatGptSubagentOptions = {}) {
+    this.cdpEndpoint = options.cdpEndpoint ?? MCP_CONFIG.chatGpt.cdpEndpoint
     this.connectTimeoutMs = options.connectTimeoutMs ?? 3_000
     this.chatGptUrl = options.chatGptUrl ?? "https://chatgpt.com/"
     this.maxConcurrentAgents = positiveInteger(options.maxConcurrentAgents, 2)
@@ -425,7 +428,7 @@ export class ChatGptSubagentModule {
 
   private async connectOnce(): Promise<void> {
     try {
-      this.browser = await chromium.connectOverCDP(this.options.cdpEndpoint, {
+      this.browser = await chromium.connectOverCDP(this.cdpEndpoint, {
         timeout: this.connectTimeoutMs,
       })
     } catch (error) {
@@ -435,7 +438,7 @@ export class ChatGptSubagentModule {
         "BROWSER_UNAVAILABLE",
         [
           "ChatGPT agent browser is unavailable.",
-          `Expected an already-running debuggable Chrome instance at ${this.options.cdpEndpoint}.`,
+          `Expected an already-running debuggable Chrome instance at ${this.cdpEndpoint}.`,
           "This module is attach-only and will not launch Chrome or choose a Chrome profile.",
         ].join(" "),
         { cause: error }
@@ -1188,24 +1191,12 @@ function validateAgentId(agentId: string): void {
   }
 }
 
-function asRecord(value: unknown): Record<string, unknown> | undefined {
-  return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : undefined
-}
-
 function stringValue(value: unknown): string | undefined {
   return typeof value === "string" ? value : undefined
 }
 
 function nullableString(value: unknown): string | null | undefined {
   return value === null ? null : stringValue(value)
-}
-
-function numberValue(value: unknown): number | undefined {
-  return typeof value === "number" && Number.isFinite(value) ? value : undefined
-}
-
-function booleanValue(value: unknown): boolean | undefined {
-  return typeof value === "boolean" ? value : undefined
 }
 
 function booleanOrNull(value: unknown): boolean | null | undefined {

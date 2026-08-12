@@ -2,6 +2,8 @@ import { readFileSync } from "node:fs"
 import { homedir } from "node:os"
 import { join, resolve } from "node:path"
 
+import { nonNegativeInteger, positiveInteger } from "./utils.js"
+
 const SERVER_CONFIG = {
   name: "chatgpt-local-shell",
   version: "0.1.0",
@@ -55,7 +57,7 @@ export function loadMcpConfig(env: NodeJS.ProcessEnv = process.env) {
     server: SERVER_CONFIG,
     toolMeta: TOOL_META,
     host: env.HOST ?? DEFAULTS.host,
-    port: parsePositiveInteger(env.PORT, DEFAULTS.port),
+    port: DEFAULTS.port,
     workspace: resolveWorkspacePath(env.MCP_CWD ?? DEFAULTS.workspace),
     peekaboo: {
       executable: env.MCP_PEEKABOO_BIN ?? DEFAULTS.peekabooExecutable,
@@ -96,20 +98,24 @@ export function resolveWorkspacePath(configured: string): string {
 
 function parsePositiveInteger(value: string | undefined, fallback: number): number {
   if (value === undefined) return fallback
-  const parsed = Number.parseInt(value, 10)
-  if (!Number.isSafeInteger(parsed) || parsed <= 0) {
+  try {
+    return positiveInteger(strictNumber(value), fallback)
+  } catch {
     throw new Error(`Expected a positive integer, received ${JSON.stringify(value)}.`)
   }
-  return parsed
 }
 
 function parseNonNegativeInteger(value: string | undefined, fallback: number): number {
   if (value === undefined) return fallback
-  const parsed = Number.parseInt(value, 10)
-  if (!Number.isSafeInteger(parsed) || parsed < 0) {
+  try {
+    return nonNegativeInteger(strictNumber(value), fallback)
+  } catch {
     throw new Error(`Expected a non-negative integer, received ${JSON.stringify(value)}.`)
   }
-  return parsed
+}
+
+function strictNumber(value: string): number {
+  return value.trim() === "" ? Number.NaN : Number(value)
 }
 
 export function buildMcpInstructions(workspacePath: string): string {

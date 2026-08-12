@@ -17,9 +17,9 @@ import { registerWebTool } from "../tools/web/web-tool.js"
 export interface CreateMcpServerOptions {
   chatGptSubagents: ChatGptSubagentService
   feedbackStore: FeedbackStore
+  peekaboo: PeekabooClient
+  webPageOpener: WebPageOpener
   applyPatchExecutable?: string
-  peekaboo?: PeekabooClient
-  webPageOpener?: WebPageOpener
 }
 
 export function createMcpServer(shells: ShellSessionManager, options: CreateMcpServerOptions): McpServer {
@@ -34,9 +34,9 @@ export function createMcpServer(shells: ShellSessionManager, options: CreateMcpS
   registerApplyPatchTool(server, options.applyPatchExecutable)
   registerShellManagementTools(server, shells)
   registerSubagentTools(server, options.chatGptSubagents)
-  registerWebTool(server, options.webPageOpener ?? new WebPageOpener())
+  registerWebTool(server, options.webPageOpener)
   registerSkillTools(server, workspace)
-  registerComputerUseTools(server, options.peekaboo ?? new PeekabooClient())
+  registerComputerUseTools(server, options.peekaboo)
   registerFeedbackTool(server, options.feedbackStore)
 
   return server
