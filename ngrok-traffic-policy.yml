@@ -12,6 +12,10 @@ on_http_request:
         config:
           status_code: 404
   - actions:
+      - type: remove-headers
+        config:
+          headers:
+            - x-shelly-remote
       - type: add-headers
         config:
           headers:

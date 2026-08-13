@@ -401,7 +401,7 @@ test("starts staggered subagents and polls turns concurrently across stateless M
     name: "subagent_start",
     arguments: {
       agents: [
-        { agent_id: "architecture-reviewer", prompt: "Review the architecture." },
+        { agent_id: " architecture-reviewer ", prompt: "Review the architecture." },
         { agent_id: "test-reviewer", prompt: "Review the tests." },
         { agent_id: "simplifier", prompt: "Find the simplest implementation." },
       ],

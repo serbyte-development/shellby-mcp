@@ -1,6 +1,6 @@
 # Architecture Map
 
-Verified 2026-08-12.
+Verified 2026-08-13.
 
 ## Layers
 
@@ -22,7 +22,7 @@ Verified 2026-08-12.
 | Apply Patch           | Publish the first-class patch tool and execute the checked-in vendored binary directly                                              | `src/tools/apply-patch/apply-patch.ts`   |
 | Skill catalog         | Discover and load reusable workspace `SKILL.md` files dynamically                                                                   | `src/tools/skills.ts`                    |
 | Website fetching      | Produce Markdown, cleaned HTML, or raw rendered HTML and retain bounded cursor-addressed documents                                  | `src/tools/web/web-open.ts`              |
-| ChatGPT subagents     | Attach to debuggable Chrome, retain caller-named agent/page state, submit turns, and normalize final responses                      | `src/tools/subagent/chatgpt-subagent.ts` |
+| ChatGPT subagents     | Attach to debuggable Chrome, run up to three detached generations, reconcile polls, idle-evict runtime state, and recover saved conversations | `src/tools/subagent/chatgpt-subagent.ts` |
 
 ## Request Lifecycle
 

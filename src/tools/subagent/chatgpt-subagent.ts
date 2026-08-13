@@ -67,6 +67,7 @@ export type ChatGptSubagentErrorCode =
   | "AGENT_BUSY"
   | "SUBAGENT_CAPACITY_REACHED"
   | "AGENT_TARGET_LOST"
+  | "SUBAGENT_CONVERSATION_NOT_FOUND"
   | "REQUEST_ABORTED"
   | "CHATGPT_UI_CHANGED"
 
@@ -113,7 +114,22 @@ interface BrowserTurnState {
   response?: string
   errorCode?: string
   errorMessage?: string
+  tracking?: TurnTrackingInput
+  controller?: AbortController
   completion: Promise<void>
+}
+
+interface TurnTrackingInput {
+  baselineNetworkIds: ReadonlySet<string>
+  baselineDom: readonly DomAssistantMessage[]
+  prompt: string
+  sentAtSeconds: number
+}
+
+interface StoredConversationRef {
+  conversationId: string
+  conversationUrl: string
+  turnCount: number
 }
 
 export interface TrackedConversationNode {
@@ -222,6 +238,7 @@ export class ChatGptSubagentModule {
   private readonly pollIntervalMs: number
   private readonly responseStableMs: number
   private readonly agents = new Map<string, BrowserAgentState>()
+  private readonly conversationRefs = new Map<string, StoredConversationRef>()
   private readonly turns = new Map<string, BrowserTurnState>()
   private readonly activeTurnsByAgent = new Map<string, string>()
   private readonly activeAgentIds = new Set<string>()
@@ -297,6 +314,13 @@ export class ChatGptSubagentModule {
       active.lastUsedAt = Date.now()
       active.turnCount += 1
       const turnId = `${active.agentId}_turn_${active.turnCount}`
+      const tracking: TurnTrackingInput = {
+        baselineNetworkIds,
+        baselineDom,
+        prompt: submittedPrompt,
+        sentAtSeconds,
+      }
+      const controller = new AbortController()
       const turn: BrowserTurnState = {
         turnId,
         agentId: active.agentId,
@@ -305,6 +329,8 @@ export class ChatGptSubagentModule {
         lastActivityAt: Date.now(),
         conversationId: active.conversationId,
         conversationUrl: active.conversationUrl,
+        tracking,
+        controller,
         completion: Promise.resolve(),
       }
       this.turns.set(turnId, turn)
@@ -314,12 +340,7 @@ export class ChatGptSubagentModule {
         turn.activity = activity
         turn.lastActivityAt = Date.now()
       })
-      turn.completion = this.trackTurn(turn, active, {
-        baselineNetworkIds,
-        baselineDom,
-        prompt: submittedPrompt,
-        sentAtSeconds,
-      })
+      turn.completion = this.trackTurn(turn, active, tracking, controller.signal)
       operationTransferred = true
 
       return {
@@ -349,8 +370,12 @@ export class ChatGptSubagentModule {
     }
 
     const boundedWaitMs = Math.min(Math.max(0, waitMs), 60_000)
-    if (turn.status === "running" && boundedWaitMs > 0) {
-      await Promise.race([turn.completion, delay(boundedWaitMs, signal)])
+    const deadline = Date.now() + boundedWaitMs
+    while (turn.status === "running") {
+      await this.reconcileRunningTurn(turn, signal)
+      if (turn.status !== "running" || Date.now() >= deadline) break
+      const remaining = deadline - Date.now()
+      await Promise.race([turn.completion, delay(Math.min(1_000, remaining), signal)])
     }
     throwIfAborted(signal)
     return this.turnResult(turn)
@@ -400,6 +425,7 @@ export class ChatGptSubagentModule {
     }
 
     this.agents.clear()
+    this.conversationRefs.clear()
     this.turns.clear()
     this.activeTurnsByAgent.clear()
     this.activeAgentIds.clear()
@@ -460,21 +486,27 @@ export class ChatGptSubagentModule {
     const page = await context.newPage()
     await this.afterPageCreated()
     const tracker = new ChatGptConversationTracker(page)
+    const stored = this.conversationRefs.get(agentId)
     const state: BrowserAgentState = {
       agentId,
       page,
       tracker,
-      hasSubmittedTurn: false,
+      hasSubmittedTurn: stored !== undefined,
+      conversationId: stored?.conversationId,
+      conversationUrl: stored?.conversationUrl,
       lastUsedAt: Date.now(),
-      turnCount: 0,
+      turnCount: stored?.turnCount ?? 0,
     }
 
     try {
       throwIfAborted(signal)
       state.targetId = await getPageTargetId(context, page)
-      await waitForPromise(page.goto(this.chatGptUrl, { waitUntil: "domcontentloaded" }), signal)
+      await waitForPromise(page.goto(stored?.conversationUrl ?? this.chatGptUrl, { waitUntil: "domcontentloaded" }), signal)
       throwIfAborted(signal)
       await assertAuthenticated(page)
+      if (stored) {
+        await assertConversationAvailable(page, stored.conversationId, this.timeoutMs, signal)
+      }
       await findComposer(page, this.timeoutMs, signal)
       this.agents.set(state.agentId, state)
       return state
@@ -512,36 +544,29 @@ export class ChatGptSubagentModule {
       await waitForPromise(page.goto(state.conversationUrl, { waitUntil: "domcontentloaded" }), signal)
       throwIfAborted(signal)
       await assertAuthenticated(page)
+      if (state.conversationId) {
+        await assertConversationAvailable(page, state.conversationId, this.timeoutMs, signal)
+      }
       await findComposer(page, this.timeoutMs, signal)
-      await page
-        .locator("[data-message-author-role]")
-        .first()
-        .waitFor({
-          state: "attached",
-          timeout: Math.min(this.timeoutMs, 10_000),
-        })
 
       state.tracker.dispose()
       state.page = page
       state.tracker = tracker
       state.targetId = await getPageTargetId(context, page)
       state.lastUsedAt = Date.now()
+      this.rememberConversation(state)
       return state
     } catch (error) {
       tracker.dispose()
       if (!page.isClosed()) await page.close().catch(() => undefined)
+      if (error instanceof ChatGptSubagentError && error.code === "SUBAGENT_CONVERSATION_NOT_FOUND") this.discardUnrecoverableAgent(state)
       throw error
     }
   }
 
   private async waitForResponse(
     state: BrowserAgentState,
-    input: {
-      baselineNetworkIds: ReadonlySet<string>
-      baselineDom: readonly DomAssistantMessage[]
-      prompt: string
-      sentAtSeconds: number
-    },
+    input: TurnTrackingInput,
     signal?: AbortSignal
   ): Promise<{ messageId?: string; text: string }> {
     let stableCandidate: { key: string; text: string; since: number } | undefined
@@ -555,6 +580,7 @@ export class ChatGptSubagentModule {
         )
       }
       captureOrValidateConversationLocation(state)
+      this.rememberConversation(state)
 
       const networkFinal = state.tracker.findFinalResponse({
         baselineIds: input.baselineNetworkIds,
@@ -596,25 +622,17 @@ export class ChatGptSubagentModule {
   private async trackTurn(
     turn: BrowserTurnState,
     state: BrowserAgentState,
-    input: {
-      baselineNetworkIds: ReadonlySet<string>
-      baselineDom: readonly DomAssistantMessage[]
-      prompt: string
-      sentAtSeconds: number
-    }
+    input: TurnTrackingInput,
+    signal?: AbortSignal
   ): Promise<void> {
     try {
-      const answer = await this.waitForResponse(state, input)
+      const answer = await this.waitForResponse(state, input, signal)
+      if (turn.status !== "running") return
       captureOrValidateConversationLocation(state)
-      state.lastReturnedMessageId = answer.messageId
-      state.lastCompletedAt = Date.now()
-      state.lastUsedAt = state.lastCompletedAt
-      turn.status = "completed"
-      turn.messageId = answer.messageId
-      turn.response = answer.text
-      turn.conversationId = state.conversationId
-      turn.conversationUrl = state.conversationUrl ?? state.page.url()
+      this.rememberConversation(state)
+      this.completeTurn(turn, state, answer)
     } catch (error) {
+      if (turn.status !== "running") return
       state.lastUsedAt = Date.now()
       if (error instanceof ChatGptSubagentError && error.code === "AGENT_TARGET_LOST" && !state.conversationUrl) {
         this.discardUnrecoverableAgent(state)
@@ -631,6 +649,65 @@ export class ChatGptSubagentModule {
       }
       this.endAgentOperation(state.agentId, true)
     }
+  }
+
+  private async reconcileRunningTurn(turn: BrowserTurnState, signal?: AbortSignal): Promise<void> {
+    if (turn.status !== "running" || !turn.tracking) return
+    const state = this.agents.get(turn.agentId)
+    if (!state) return
+
+    try {
+      const active = await this.ensureActivePage(state, signal)
+      captureOrValidateConversationLocation(active)
+      this.rememberConversation(active)
+
+      const networkFinal = active.tracker.findFinalResponse({
+        baselineIds: turn.tracking.baselineNetworkIds,
+        prompt: turn.tracking.prompt,
+        sentAtSeconds: turn.tracking.sentAtSeconds,
+      })
+      if (networkFinal?.message.text) {
+        this.completeTurn(turn, active, {
+          messageId: networkFinal.message.id,
+          text: networkFinal.message.text,
+        })
+        turn.controller?.abort()
+        return
+      }
+
+      const domFinal = await findNewDomAssistantMessage(active.page, turn.tracking.baselineDom)
+      if (!domFinal?.text || (await isGenerating(active.page))) return
+
+      this.completeTurn(turn, active, {
+        messageId: domFinal.messageId,
+        text: domFinal.text,
+      })
+      turn.controller?.abort()
+    } catch (error) {
+      if (turn.status !== "running") return
+      if (error instanceof ChatGptSubagentError && error.code === "REQUEST_ABORTED") throw error
+
+      turn.status = "failed"
+      turn.errorCode = error instanceof ChatGptSubagentError ? error.code : "subagent_failed"
+      turn.errorMessage = error instanceof Error ? error.message : String(error)
+      turn.controller?.abort()
+    }
+  }
+
+  private completeTurn(
+    turn: BrowserTurnState,
+    state: BrowserAgentState,
+    answer: { messageId?: string; text: string }
+  ): void {
+    state.lastReturnedMessageId = answer.messageId
+    state.lastCompletedAt = Date.now()
+    state.lastUsedAt = state.lastCompletedAt
+    turn.status = "completed"
+    turn.messageId = answer.messageId
+    turn.response = answer.text
+    turn.conversationId = state.conversationId
+    turn.conversationUrl = state.conversationUrl ?? state.page.url()
+    this.rememberConversation(state)
   }
 
   private turnResult(turn: BrowserTurnState): ChatGptSubagentPollResult {
@@ -691,8 +768,8 @@ export class ChatGptSubagentModule {
   }
 
   private endAgentOperation(agentId: string, generation: boolean): void {
-    this.activeAgentIds.delete(agentId)
-    if (generation) this.activeGenerationCount = Math.max(0, this.activeGenerationCount - 1)
+    const wasActive = this.activeAgentIds.delete(agentId)
+    if (generation && wasActive) this.activeGenerationCount = Math.max(0, this.activeGenerationCount - 1)
   }
 
   private discardUnrecoverableAgent(state: BrowserAgentState): void {
@@ -700,6 +777,15 @@ export class ChatGptSubagentModule {
     if (this.agents.get(state.agentId) === state) {
       this.agents.delete(state.agentId)
     }
+  }
+
+  private rememberConversation(state: BrowserAgentState): void {
+    if (!state.conversationId || !state.conversationUrl) return
+    this.conversationRefs.set(state.agentId, {
+      conversationId: state.conversationId,
+      conversationUrl: state.conversationUrl,
+      turnCount: state.turnCount,
+    })
   }
 
   private async afterPageCreated(): Promise<void> {
@@ -711,11 +797,29 @@ export class ChatGptSubagentModule {
   }
 
   private async cleanupIdleAgents(now = Date.now()): Promise<void> {
-    const staleStates = [...this.agents.values()].filter(
-      (state) => !this.activeAgentIds.has(state.agentId) && now - state.lastUsedAt >= DEFAULT_AGENT_IDLE_TTL_MS
-    )
+    const staleStates = [...this.agents.values()].filter((state) => {
+      const activeTurnId = this.activeTurnsByAgent.get(state.agentId)
+      const activeTurn = activeTurnId ? this.turns.get(activeTurnId) : undefined
+
+      if (activeTurn?.status === "running") {
+        return now - activeTurn.lastActivityAt >= DEFAULT_AGENT_IDLE_TTL_MS
+      }
+      if (this.activeAgentIds.has(state.agentId)) return false
+      return now - state.lastUsedAt >= DEFAULT_AGENT_IDLE_TTL_MS
+    })
 
     for (const state of staleStates) {
+      this.rememberConversation(state)
+      const activeTurnId = this.activeTurnsByAgent.get(state.agentId)
+      const activeTurn = activeTurnId ? this.turns.get(activeTurnId) : undefined
+      if (activeTurn?.status === "running") {
+        activeTurn.status = "failed"
+        activeTurn.errorCode = "AGENT_IDLE_EXPIRED"
+        activeTurn.errorMessage = "ChatGPT subagent turn expired after 30 minutes without observable progress."
+        activeTurn.controller?.abort()
+        this.endAgentOperation(state.agentId, true)
+      }
+
       state.tracker.dispose()
       this.agents.delete(state.agentId)
       this.removeTurnsForAgent(state.agentId)
@@ -1012,6 +1116,36 @@ async function assertAuthenticated(page: Page): Promise<void> {
       "The attached Chrome instance is not authenticated to ChatGPT. Sign in in that Chrome profile before using subagents."
     )
   }
+}
+
+async function assertConversationAvailable(page: Page, conversationId: string, timeoutMs: number, signal?: AbortSignal): Promise<void> {
+  const deadline = Date.now() + Math.min(timeoutMs, 10_000)
+  const unavailable = page
+    .getByText(/conversation.*(?:not found|unavailable)|unable to load conversation/i)
+    .first()
+
+  while (Date.now() < deadline) {
+    throwIfAborted(signal)
+    if (extractConversationId(page.url()) !== conversationId) {
+      throw new ChatGptSubagentError(
+        "SUBAGENT_CONVERSATION_NOT_FOUND",
+        `ChatGPT conversation ${conversationId} is no longer available. It may have been deleted.`
+      )
+    }
+    if (await unavailable.isVisible().catch(() => false)) {
+      throw new ChatGptSubagentError(
+        "SUBAGENT_CONVERSATION_NOT_FOUND",
+        `ChatGPT conversation ${conversationId} is no longer available. It may have been deleted.`
+      )
+    }
+    if ((await page.locator("[data-message-author-role]").count()) > 0) return
+    await delay(200, signal)
+  }
+
+  throw new ChatGptSubagentError(
+    "CHATGPT_UI_CHANGED",
+    `ChatGPT conversation ${conversationId} did not render messages within ${Math.min(timeoutMs, 10_000)} ms.`
+  )
 }
 
 async function enterPrompt(page: Page, composer: Locator, prompt: string): Promise<void> {

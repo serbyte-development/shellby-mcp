@@ -674,3 +674,9 @@
 ## [2026-08-12] optimize | compact shell polling results
 
 - Split `shell_poll` from the catch-all `shell_run` result schema. Polling now returns only status, output, optional exit code, continuation cursor, and permanent dropped-byte count; expired cursors are tool errors instead of success flags.
+
+## [2026-08-13] document | refresh complete subagent architecture
+
+- Rewrote `pages/Browser ChatGPT Subagents.md` against current source: three-agent staggered starts, concurrent per-turn polling, poll-time page reconciliation, activity-based 30-minute cleanup, in-process conversation recovery, deleted-conversation failure semantics, and process-restart limits.
+- Added a maintainer code map covering the subagent service, tracker, MCP wrapper, process composition, browser helpers, and focused tests; refreshed the wiki index and README summary to point to the page.
+- Synchronized the architecture map, MCP tool-surface contract, and test-coverage summary with the same subagent lifecycle so the dedicated page is not contradicted elsewhere in the maintained wiki.

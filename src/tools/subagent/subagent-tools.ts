@@ -12,6 +12,7 @@ const subagentRequestSchema = z.object({
     .min(1)
     .max(64)
     .refine((value) => value.trim().length > 0, "agent_id cannot be only whitespace.")
+    .transform((value) => value.trim())
     .describe("Stable caller-chosen ID that identifies one persistent subagent conversation."),
   prompt: z.string().min(1).describe("Task or next message to send to the subagent."),
   oververbosity: z
@@ -49,7 +50,7 @@ export function registerSubagentTools(server: McpServer, chatGptSubagents: ChatG
     {
       title: "Start ChatGPT subagents",
       description:
-        "Delegate 1-3 independent tasks to ChatGPT subagents. Agents start in array order with natural staggered delays: first immediately, second 5 seconds later, third 7 seconds after that. Use distinct agent_id values for non-overlapping work, then poll the returned turn_ids together with subagent_poll. Reusing an existing agent_id continues that conversation until its local state expires after 30 minutes idle.",
+        "Delegate 1-3 independent tasks to ChatGPT subagents. Agents start in array order with natural staggered delays: first immediately, second 5 seconds later, third 7 seconds after that. Use distinct agent_id values for non-overlapping work, then poll the returned turn_ids together with subagent_poll. Reusing an existing agent_id continues that conversation; runtime state evicted after 30 minutes idle is restored from the saved ChatGPT conversation when available.",
       inputSchema: z.object({
         agents: z
           .array(subagentRequestSchema)
@@ -108,7 +109,7 @@ export function registerSubagentTools(server: McpServer, chatGptSubagents: ChatG
     {
       title: "Check ChatGPT subagent turn statuses",
       description:
-        "Check 1-3 previously submitted subagent turns concurrently. Pass the turn_ids returned by subagent_start. Local completed-turn state expires with its agent after 30 minutes idle; the ChatGPT conversation itself is not deleted.",
+        "Check 1-3 previously submitted subagent turns concurrently. Pass the turn_ids returned by subagent_start. Polling reconciles running state against the actual ChatGPT page. Local turn/runtime state expires after 30 minutes without observable progress; the ChatGPT conversation itself is not deleted.",
       inputSchema: z.object({
         turn_ids: z.array(z.string().min(1).max(128)).min(1).max(3).describe("Turns to check concurrently, returned by subagent_start."),
         wait_ms: z.int().min(0).max(60_000).default(0).describe("How long this check may wait for completion. Use 0 for an immediate status check."),

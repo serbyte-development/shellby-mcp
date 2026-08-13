@@ -1,6 +1,6 @@
 # Build and Test
 
-Verified 2026-08-12.
+Verified 2026-08-13.
 
 ## Build Boundary
 
@@ -34,7 +34,7 @@ Run the cheapest focused test first, then the broader commands when the change w
 - Adapter tests cover exact Peekaboo argv, bounded JSON and images, serialization, cancellation, timeouts, snapshots, webpage extraction, and cursors (`test/peekaboo.test.ts`, `test/web-fetch.test.ts`). Direct `apply_patch` execution and abort behavior are covered by MCP integration tests (`test/mcp-integration.test.ts`).
 - MCP integration tests validate the published tool order and Standard Schema mechanics, cross-request shell state, named-shell concurrency, direct patching, webpage pagination, Computer Use results, semantic errors, restart continuity, exact `/mcp` routing, and Host rejection. Tool and server prose descriptions/instructions are intentionally not assertion-locked because they are model-facing guidance that changes independently of behavior (`test/mcp-integration.test.ts`).
 - Authentication unit tests cover durable state, owner-only permissions, first-owner binding, concurrent first calls, reset, and malformed-state failure. MCP integration tests additionally cover exact routing, local access, discovery without binding, binding on an invalid first tool call, same-owner reuse, different-owner rejection, and owner persistence across an HTTP restart (`test/auth.test.ts`, `test/mcp-integration.test.ts`).
-- Subagent unit tests cover conversation-graph normalization and final-message filtering, while MCP integration coverage injects a fake shared service to verify caller-named agent continuity across stateless HTTP requests without contacting ChatGPT (`test/chatgpt-subagent.test.ts`, `test/mcp-integration.test.ts`).
+- Subagent unit tests cover the hard three-generation cap, page/conversation recovery, deleted-conversation failure, poll-time DOM reconciliation, activity heartbeats, 30-minute idle reclamation, conversation-graph normalization, and duplicate/final-message filtering. MCP integration coverage verifies array-only 1-3 start/poll schemas, real stagger timing, concurrent polling, partial poll failures, and shared service state across stateless HTTP requests without contacting ChatGPT (`test/chatgpt-subagent.test.ts`, `test/mcp-integration.test.ts`).
 
 Tests use temporary directories and real local child shells; process-group tests are POSIX-specific (`test/shell-session.test.ts`).
 

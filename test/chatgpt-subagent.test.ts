@@ -119,6 +119,61 @@ test("keeps an unbound new-chat page through ChatGPT's transient web conversatio
   ])
 })
 
+test("fails explicitly when a saved ChatGPT conversation was deleted", async () => {
+  const module = new ChatGptSubagentModule({
+    cdpEndpoint: "http://127.0.0.1:1",
+  })
+  let closes = 0
+  const page = {
+    isClosed: () => false,
+    url: () => "https://chatgpt.com/",
+    goto: async () => undefined,
+    on() {},
+    off() {},
+    close: async () => {
+      closes += 1
+    },
+    locator: () => ({
+      first: () => ({
+        isVisible: async () => false,
+      }),
+    }),
+    getByText: () => ({
+      first: () => ({
+        isVisible: async () => false,
+      }),
+    }),
+  }
+  const context = {
+    newPage: async () => page,
+  }
+  const internals = module as unknown as {
+    context: typeof context
+    conversationRefs: Map<string, { conversationId: string; conversationUrl: string; turnCount: number }>
+    createAgent(agentId: string): Promise<unknown>
+  }
+  internals.context = context
+  internals.conversationRefs.set("deleted-agent", {
+    conversationId: "deleted-conversation",
+    conversationUrl: "https://chatgpt.com/c/deleted-conversation",
+    turnCount: 3,
+  })
+
+  await assert.rejects(
+    internals.createAgent("deleted-agent"),
+    (error: unknown) => error instanceof ChatGptSubagentError && error.code === "SUBAGENT_CONVERSATION_NOT_FOUND"
+  )
+
+  assert.equal(closes, 1)
+  assert.equal(internals.conversationRefs.has("deleted-agent"), true)
+  await assert.rejects(
+    internals.createAgent("deleted-agent"),
+    (error: unknown) => error instanceof ChatGptSubagentError && error.code === "SUBAGENT_CONVERSATION_NOT_FOUND"
+  )
+  assert.equal(closes, 2)
+  await module.dispose()
+})
+
 test("poll returns immediately while a turn runs and can wait for completion", async () => {
   const module = new ChatGptSubagentModule({
     cdpEndpoint: "http://127.0.0.1:1",
@@ -176,6 +231,83 @@ test("poll returns immediately while a turn runs and can wait for completion", a
   const completed = await module.poll(turn.turnId, 100)
   assert.equal(completed.status, "completed")
   assert.equal(completed.response, "finished")
+})
+
+test("poll reconciles a completed DOM response that background tracking missed", async () => {
+  const module = new ChatGptSubagentModule({
+    cdpEndpoint: "http://127.0.0.1:1",
+  })
+  const page = {
+    isClosed: () => false,
+    url: () => "https://chatgpt.com/c/conversation-1",
+    close: async () => undefined,
+    locator: (selector: string) => {
+      if (selector === '[data-message-author-role="assistant"]') {
+        return {
+          evaluateAll: async () => [
+            {
+              key: "message-1",
+              messageId: "message-1",
+              text: "recovered answer",
+            },
+          ],
+        }
+      }
+      return {
+        first: () => ({
+          count: async () => 0,
+          isVisible: async () => false,
+        }),
+      }
+    },
+  }
+  const tracker = {
+    findFinalResponse: () => undefined,
+    setActivityListener() {},
+    dispose() {},
+  }
+  const state = {
+    agentId: "reconcile-agent",
+    page,
+    tracker,
+    hasSubmittedTurn: true,
+    conversationId: "conversation-1",
+    conversationUrl: "https://chatgpt.com/c/conversation-1",
+    lastUsedAt: Date.now(),
+    turnCount: 1,
+  }
+  const controller = new AbortController()
+  const turn = {
+    turnId: "reconcile-agent_turn_1",
+    agentId: state.agentId,
+    status: "running" as "running" | "completed" | "failed",
+    activity: "Generating response" as const,
+    lastActivityAt: Date.now() - 10_000,
+    conversationId: state.conversationId,
+    conversationUrl: state.conversationUrl,
+    tracking: {
+      baselineNetworkIds: new Set<string>(),
+      baselineDom: [],
+      prompt: "review",
+      sentAtSeconds: Date.now() / 1000 - 10,
+    },
+    controller,
+    completion: new Promise<void>(() => undefined),
+  }
+  const internals = module as unknown as {
+    agents: Map<string, typeof state>
+    turns: Map<string, typeof turn>
+  }
+  internals.agents.set(state.agentId, state)
+  internals.turns.set(turn.turnId, turn)
+
+  const result = await module.poll(turn.turnId)
+
+  assert.equal(result.status, "completed")
+  assert.equal(result.response, "recovered answer")
+  assert.equal(result.messageId, "message-1")
+  assert.equal(controller.signal.aborted, true)
+  await module.dispose()
 })
 
 test("tracker emits coarse activity only when observed conversation state changes", () => {
@@ -317,6 +449,71 @@ test("expires idle agent tabs and local turn state", async () => {
   assert.equal(trackerDisposals, 1)
   assert.deepEqual(module.listAgents(), [])
   assert.equal(internals.turns.size, 0)
+  await module.dispose()
+})
+
+test("uses active-turn progress for idle expiry and preserves conversation recovery metadata", async () => {
+  const module = new ChatGptSubagentModule({
+    cdpEndpoint: "http://127.0.0.1:1",
+  })
+  let closes = 0
+  const controller = new AbortController()
+  const state = {
+    agentId: "long-running-agent",
+    page: {
+      isClosed: () => false,
+      url: () => "https://chatgpt.com/c/conversation-1",
+      close: async () => {
+        closes += 1
+      },
+    },
+    tracker: { dispose() {} },
+    hasSubmittedTurn: true,
+    conversationId: "conversation-1",
+    conversationUrl: "https://chatgpt.com/c/conversation-1",
+    lastUsedAt: 1_000,
+    turnCount: 4,
+  }
+  const turn = {
+    turnId: "long-running-agent_turn_4",
+    agentId: state.agentId,
+    status: "running" as "running" | "completed" | "failed",
+    activity: "Using tools" as const,
+    lastActivityAt: 1_000,
+    controller,
+    completion: new Promise<void>(() => undefined),
+  }
+  const internals = module as unknown as {
+    agents: Map<string, typeof state>
+    turns: Map<string, typeof turn>
+    activeTurnsByAgent: Map<string, string>
+    activeAgentIds: Set<string>
+    conversationRefs: Map<string, { conversationId: string; conversationUrl: string; turnCount: number }>
+    activeGenerationCount: number
+    cleanupIdleAgents(now: number): Promise<void>
+  }
+  internals.agents.set(state.agentId, state)
+  internals.turns.set(turn.turnId, turn)
+  internals.activeTurnsByAgent.set(state.agentId, turn.turnId)
+  internals.activeAgentIds.add(state.agentId)
+  internals.activeGenerationCount = 1
+
+  await internals.cleanupIdleAgents(1_000 + 29 * 60_000)
+  assert.equal(closes, 0)
+  assert.equal(internals.agents.has(state.agentId), true)
+  assert.equal(internals.activeGenerationCount, 1)
+
+  await internals.cleanupIdleAgents(1_000 + 30 * 60_000)
+  assert.equal(closes, 1)
+  assert.equal(controller.signal.aborted, true)
+  assert.equal(internals.agents.has(state.agentId), false)
+  assert.equal(internals.turns.has(turn.turnId), false)
+  assert.equal(internals.activeGenerationCount, 0)
+  assert.deepEqual(internals.conversationRefs.get(state.agentId), {
+    conversationId: "conversation-1",
+    conversationUrl: "https://chatgpt.com/c/conversation-1",
+    turnCount: 4,
+  })
   await module.dispose()
 })
 
