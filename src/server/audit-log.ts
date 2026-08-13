@@ -38,6 +38,11 @@ export class McpAuditLogger {
   startToolCalls(payload: unknown): McpAuditCall[] {
     const requests = Array.isArray(payload) ? payload : [payload]
     return requests.flatMap((request) => {
+      if (isToolListRequest(request)) {
+        this.append(`--- # ${formatAuditTime(this.now())} - tools/list\n`)
+        return []
+      }
+
       const parsed = parseToolCall(request)
       if (!parsed) return []
 
@@ -231,6 +236,10 @@ function parseToolCall(value: unknown): { name: string; arguments?: unknown } | 
   const name = request.params?.name
   if (typeof name !== "string" || !name) return undefined
   return { name, arguments: request.params?.arguments }
+}
+
+function isToolListRequest(value: unknown): boolean {
+  return Boolean(value && typeof value === "object" && !Array.isArray(value) && (value as JsonRpcToolCall).method === "tools/list")
 }
 
 function twoDigits(value: number): string {

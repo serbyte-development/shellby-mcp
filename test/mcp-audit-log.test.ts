@@ -276,12 +276,14 @@ test("uses Better Comments tags for large, slow, and failed calls", async (t) =>
   assert.match(log, /--- # ! 22:30:00 - shell_list - 50ms - 20KB - HTTP 500 closed/)
 })
 
-test("ignores non-tool MCP requests", async (t) => {
+test("logs tools/list as one timestamped line and ignores other non-tool MCP requests", async (t) => {
   const directory = await mkdtemp(join(tmpdir(), "mcp-audit-log-"))
   const file = join(directory, "agent-commands.yaml")
   t.after(() => rm(directory, { recursive: true, force: true }))
 
-  const logger = new McpAuditLogger(file)
+  const timestamp = new Date(2026, 7, 7, 22, 30, 0)
+  const logger = new McpAuditLogger(file, () => timestamp)
   assert.deepEqual(logger.startToolCalls({ jsonrpc: "2.0", id: 1, method: "tools/list" }), [])
-  await assert.rejects(readFile(file, "utf8"), /ENOENT/)
+  assert.deepEqual(logger.startToolCalls({ jsonrpc: "2.0", id: 2, method: "initialize" }), [])
+  assert.equal(await readFile(file, "utf8"), "--- # 22:30:00 - tools/list\n")
 })
