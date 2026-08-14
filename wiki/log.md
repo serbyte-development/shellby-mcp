@@ -812,3 +812,7 @@
 ## [2026-08-14] setup | Delegate Computer Use permissions to Peekaboo
 
 - Added `setup:computer` as a thin wrapper around Peekaboo's built-in `permissions grant` workflow and made normal `setup` show `permissions status --all-sources` when Peekaboo is installed; missing optional Computer Use dependencies do not block core setup.
+
+## [2026-08-14] setup | Add guided terminal setup UI
+
+- Wrapped `npm run setup` in a zero-dependency terminal UI with prerequisite, workspace, build, Computer Use, and multi-agent Chrome steps while preserving the existing setup helpers as the source of behavior.

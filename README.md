@@ -72,7 +72,7 @@ npm run preflight
 npm run setup
 ```
 
-`preflight` only reports whether the runtime is ready. Setup then creates the configured workspace and a starter `AGENTS.md` if one does not already exist, asks an installed Peekaboo to report Computer Use permissions, and best-effort prepares the dedicated ChatGPT browser. Existing workspace instructions are never overwritten. Set `MCP_CWD` before setup to initialize a different workspace.
+`preflight` only reports whether the runtime is ready. `setup` provides a guided terminal workflow that checks prerequisites, prepares the workspace, builds Unhinged Agent, asks an installed Peekaboo to report Computer Use permissions, and best-effort prepares the dedicated ChatGPT browser. Existing workspace instructions are never overwritten. Set `MCP_CWD` before setup to initialize a different workspace.
 
 If Google Chrome is installed, `setup` also creates a separate profile under `~/.unhinged-agent/chatgpt-chrome` and opens ChatGPT. Sign into ChatGPT in that window once. The repository never copies or modifies your normal Chrome profile.
 
