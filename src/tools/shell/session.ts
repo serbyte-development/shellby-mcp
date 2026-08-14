@@ -5,7 +5,7 @@ import { isAbsolute, resolve } from "node:path"
 import { StringDecoder } from "node:string_decoder"
 
 import { MCP_CONFIG } from "../../config.js"
-import { tokenPrefix } from "../../tokenizer.js"
+import { tokenChunk } from "../../tokenizer.js"
 import { positiveInteger, utf8Chunk } from "../../utils.js"
 import {
   DEFAULT_PARALLEL_COMMAND_TIMEOUT_MS,
@@ -110,6 +110,7 @@ interface ParallelBatchRecord {
   endCursor: number | null
   status: Extract<CommandStatus, "running" | "completed" | "reset">
   runs: ParallelRunRecord[]
+  remainingRuns: number
   abortController: AbortController
   tasks: Promise<void>[]
 }
@@ -227,15 +228,15 @@ class TranscriptBuffer {
     const effectiveCursor = Math.min(Math.max(cursor, this.start), availableEnd)
     const localStart = effectiveCursor - this.start
     const localEnd = availableEnd - this.start
-    const bounded = tokenPrefix(this.value.slice(localStart, localEnd), maxTokens)
+    const bounded = tokenChunk(this.value, localStart, maxTokens, localEnd)
     const output = bounded.value
-    const nextCursor = effectiveCursor + output.length
+    const nextCursor = this.start + bounded.nextOffset
 
     return {
       output,
       tokenCount: bounded.tokenCount,
       nextCursor,
-      hasMore: nextCursor < availableEnd,
+      hasMore: bounded.hasMore,
       cursorExpired,
     }
   }
@@ -489,6 +490,7 @@ export class PersistentShellSession {
       endCursor: null,
       status: "running",
       runs,
+      remainingRuns: runs.length,
       abortController: new AbortController(),
       tasks: [],
     }
@@ -555,8 +557,9 @@ export class PersistentShellSession {
     run.exitCode = result.exitCode
     run.droppedOutputBytes = result.droppedOutputBytes
     record.transcript.append(formatParallelRunOutput(run, result.output))
+    record.remainingRuns -= 1
 
-    if (record.runs.every((candidate) => isParallelTerminal(candidate.status))) {
+    if (record.remainingRuns === 0) {
       record.status = "completed"
       record.endCursor = record.transcript.end
       if (this.activeParallel === record) this.activeParallel = null

@@ -1,6 +1,6 @@
 # Persistent Shell Runtime
 
-Verified 2026-08-12.
+Verified 2026-08-14.
 
 ## Process Model
 
@@ -20,7 +20,7 @@ The wrapper clears `errexit` before and after evaluation so a prior `set -e` doe
 ## Output, Polling, and Retries
 
 - `TranscriptBuffer` uses absolute JavaScript-string cursors and drops whole surrogate pairs at the rolling boundary. A cursor older than retained output is clamped and returns `cursor_expired` (`src/tools/shell/session.ts`, `test/shell-session.test.ts`).
-- Response ceilings use `o200k_base` token counts. `shell_run` uses `output_truncated` plus `next_cursor` when the current response hit `max_output_tokens`; the smaller `shell_poll` result uses `next_cursor` alone while more retained output remains. The separate per-command capture ceiling remains byte-based because it protects retained memory; permanent capture loss is reported through `dropped_output_bytes`. An expired poll cursor is a tool error because complete output can no longer be reconstructed (`src/tokenizer.ts`, `src/index.ts`, `src/tools/shell/session.ts`, `src/tools/shell/shell-tools.ts`).
+- Response ceilings use `o200k_base` token counts. Transcript reads tokenize only a bounded local character window instead of the entire remaining transcript, so polling large retained output does not repeatedly rescan megabytes; `max_output_tokens` remains a ceiling and highly compressible text may return below it. `shell_run` uses `output_truncated` plus `next_cursor` when more retained output remains; the smaller `shell_poll` result uses `next_cursor` alone. The separate per-command capture ceiling remains byte-based because it protects retained memory; permanent capture loss is reported through `dropped_output_bytes`. An expired poll cursor is a tool error because complete output can no longer be reconstructed (`src/tokenizer.ts`, `src/index.ts`, `src/tools/shell/session.ts`, `src/tools/shell/shell-tools.ts`).
 - Run waits for completion, abort, timeout, cursor expiry, or a full response. Poll waits on a versioned update when a running command has no new output (`src/tools/shell/session.ts`).
 - Request IDs are scoped to a shell. Exact command retries return the retained record; changed text returns `request_conflict`. Command and reset maps are bounded by the config-only `MCP_CONFIG.shell.recordLimit` (`src/config.ts`, `src/tools/shell/session.ts`, `src/tools/shell/session-manager.ts`).
 

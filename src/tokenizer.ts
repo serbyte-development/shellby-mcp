@@ -43,3 +43,34 @@ export function tokenPrefix(value: string, maxTokens: number): { value: string; 
 
   return { value: "", tokenCount: 0, truncated: value.length > 0 }
 }
+
+export function tokenChunk(
+  value: string,
+  start: number,
+  maxTokens: number,
+  end = value.length
+): { value: string; tokenCount: number; nextOffset: number; hasMore: boolean } {
+  if (!Number.isSafeInteger(start) || start < 0 || start > value.length) {
+    throw new Error(`Expected a valid start offset, received ${start}.`)
+  }
+  if (!Number.isSafeInteger(end) || end < start) {
+    throw new Error(`Expected an end offset at or after start, received ${end}.`)
+  }
+
+  const limit = Math.min(end, value.length)
+  if (start === limit) {
+    return { value: "", tokenCount: 0, nextOffset: start, hasMore: false }
+  }
+
+  // maxTokens is a ceiling, not a target. Limiting each encode to a local
+  // window avoids repeatedly tokenizing megabytes of retained output.
+  const windowEnd = Math.min(limit, start + Math.max(256, maxTokens * 4))
+  const bounded = tokenPrefix(value.slice(start, windowEnd), maxTokens)
+  const nextOffset = start + bounded.value.length
+  return {
+    value: bounded.value,
+    tokenCount: bounded.tokenCount,
+    nextOffset,
+    hasMore: nextOffset < limit,
+  }
+}

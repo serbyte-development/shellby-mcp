@@ -29,6 +29,8 @@ The registration boundary removes annotation values that equal MCP defaults befo
 
 `shell_run` pagination uses `output_truncated` with `next_cursor`; the compact `shell_poll` result and web pagination expose only `next_cursor`, whose presence means more retained content remains. Shell `dropped_output_bytes` and web `dropped_source_bytes` report permanent capture loss. Shell capture and web cache loss remain byte-counted because those are storage safety limits, not model-context budgets (`src/tokenizer.ts`, `src/tools/shell/shell-tools.ts`, `src/tools/apply-patch/apply-patch.ts`, `src/tools/web/web-tool.ts`, `src/tools/web/web-open.ts`).
 
+Shell transcript reads and `fetch_website` cursor reads bound each tokenizer pass to a local character window instead of encoding the full retained suffix. `max_output_tokens` remains a ceiling, so unusually compressible text may return below it while cursors still reconstruct all retained content (`src/tokenizer.ts`, `src/tools/shell/session.ts`, `src/tools/web/web-open.ts`).
+
 ## Computer Use Tools
 
 | Tool               | Contract                                                                                                       |

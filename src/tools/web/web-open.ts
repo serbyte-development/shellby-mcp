@@ -4,7 +4,7 @@ import { launch } from "cloakbrowser"
 import { Defuddle } from "defuddle/node"
 import { parseHTML } from "linkedom"
 
-import { tokenPrefix } from "../../tokenizer.js"
+import { tokenChunk } from "../../tokenizer.js"
 import { positiveInteger, utf8Prefix } from "../../utils.js"
 
 export const DEFAULT_WEB_OUTPUT_TOKENS = 8_192
@@ -280,13 +280,5 @@ function decodeCursor(value: string): CursorPayload {
     return parsed as CursorPayload
   } catch {
     throw new WebOpenError("invalid_cursor", "cursor is invalid.")
-  }
-}
-
-function tokenChunk(value: string, start: number, maxTokens: number): { value: string; nextOffset: number } {
-  const bounded = tokenPrefix(value.slice(start), maxTokens)
-  return {
-    value: bounded.value,
-    nextOffset: start + bounded.value.length,
   }
 }

@@ -542,8 +542,8 @@ export class ChatGptSubagentModule implements ChatGptSubagentService {
         captureOrValidateConversationLocation(state)
         this.rememberConversation(state)
       } catch {
-        // Final network response is enough to complete the turn. Poll-time
-        // reconciliation can recover conversation metadata if the page moved.
+        // Final network response is enough to complete the turn even if the
+        // managed page moved. The saved conversation reference may be stale.
       }
       this.completeTurn(turn, state, { messageId: final.message.id, text: final.message.text })
       this.pendingEvents.push(`agent_finished:${turn.agentId}:${turn.turnId}`)

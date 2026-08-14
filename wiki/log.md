@@ -740,3 +740,9 @@
 
 - Deferred MCP `2026-07-28` / `io.modelcontextprotocol/tasks` adoption because the current Shelly MCP is working well and there is no concrete migration need.
 - Kept `temporary/mcp-2026-tasks-probe/` isolated for a future manual compatibility check; production `/mcp` remains unchanged by the experiment.
+
+## [2026-08-14] optimize | Bound shell and web output hot paths
+
+- Added one shared local-window token chunker for shell transcript reads and `fetch_website` pagination so large retained outputs no longer re-tokenize the entire remaining string on every page.
+- Replaced per-code-point substring allocation in UTF-8 capture limiting with direct UTF-8 width calculation, and made parallel-batch completion O(n) overall instead of rescanning every run after each child finishes.
+- Local micro-benchmarks dropped 12 bounded reads over a 1.1 MB source from about 1.53 s to 17 ms and 50 UTF-8 bounds over a 300 KB source from about 181 ms to 25 ms; these are hot-path measurements, not end-to-end MCP latency.

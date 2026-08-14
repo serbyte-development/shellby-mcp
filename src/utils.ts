@@ -36,7 +36,7 @@ export function utf8Chunk(value: string, start: number, maxBytes: number, end = 
     if (codePoint === undefined) break
     const codeUnits = codePoint > 0xffff ? 2 : 1
     if (offset + codeUnits > limit) break
-    const characterBytes = Buffer.byteLength(value.slice(offset, offset + codeUnits), "utf8")
+    const characterBytes = codePoint <= 0x7f ? 1 : codePoint <= 0x7ff ? 2 : codePoint <= 0xffff ? 3 : 4
     if (bytes + characterBytes > maxBytes) break
     bytes += characterBytes
     offset += codeUnits
