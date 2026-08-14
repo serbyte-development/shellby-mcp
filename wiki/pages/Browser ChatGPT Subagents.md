@@ -37,7 +37,7 @@ turns: turn_id -> BrowserTurnState
 activeTurnsByAgent: agent_id -> currently running turn_id
 ```
 
-`BrowserAgentState` owns the live page, `ChatGptConversationTracker`, conversation identity, last returned message, last completion/use timestamps, and per-agent turn counter. `BrowserTurnState` owns detached turn lifecycle, activity heartbeat, completion/failure result, tracking baselines, and the abort controller used to stop background tracking (`src/tools/subagent/chatgpt-subagent.ts`).
+`BrowserAgentState` owns the live page, `ChatGptConversationTracker`, conversation identity, last returned message, last completion/use timestamps, and per-agent turn counter. `BrowserTurnState` owns detached turn lifecycle, activity heartbeat, completion/failure result, tracking baselines, and one-shot recovery state (`src/tools/subagent/chatgpt-subagent.ts`).
 
 Turn IDs are readable and sequential per agent: `<agent_id>_turn_1`, `<agent_id>_turn_2`, etc. The saved conversation reference also retains `turnCount`, so a 30-minute runtime eviction followed by recovery in the same process does not reuse earlier turn IDs (`src/tools/subagent/chatgpt-subagent.ts`).
 
@@ -49,24 +49,23 @@ Turn IDs are readable and sequential per agent: `<agent_id>_turn_1`, `<agent_id>
 
 Batch submission handles each agent independently. A submission failure is returned on that agent's structured result and does not roll back already-started siblings. If the MCP request is aborted during a stagger delay, that unsent entry fails and later entries are not submitted; already-submitted turns continue according to their own lifecycle (`src/tools/subagent/subagent-tools.ts`, `src/tools/subagent/chatgpt-subagent.ts`).
 
-## Detached Turn Tracking
+## Detached Turn State and Passive Tracking
 
-`ask()` performs only enough synchronous work to safely submit the prompt: resolve/create the agent, ensure the managed page is valid, snapshot response baselines, locate the composer, send the prompt, create `BrowserTurnState`, and start detached `trackTurn()`. The MCP call returns once submission succeeds; it does not wait for ChatGPT's final answer (`src/tools/subagent/chatgpt-subagent.ts`).
+`ask()` performs only enough synchronous work to safely submit the prompt: resolve/create the agent, ensure the managed page is valid, snapshot response baselines, locate the composer, send the prompt, create `BrowserTurnState`, and attach the passive network activity listener. The MCP call returns once submission succeeds; it does not wait for ChatGPT's final answer (`src/tools/subagent/chatgpt-subagent.ts`).
 
-`trackTurn()` calls `waitForResponse()` in the background. The response detector has two paths:
-
-1. `ChatGptConversationTracker` listens to ChatGPT conversation responses, merges mapping nodes by message ID, and finds a new completed user-facing assistant leaf relative to the turn baseline.
-2. DOM inspection is the fallback. A newly observed assistant message is accepted after generation has stopped; background tracking also applies a short stability window before resolving DOM text.
+There is no background DOM polling loop. Between explicit `subagent_poll` calls, `ChatGptConversationTracker` only listens to ChatGPT conversation responses, merges mapping nodes by message ID, and refreshes coarse activity when meaningful network state changes. It may cache a final assistant node, but it does not change the turn status or release the agent's generation slot by itself (`src/tools/subagent/chatgpt-subagent.ts`, `test/chatgpt-subagent.test.ts`).
 
 The tracker excludes intermediate tool/reasoning messages and suppresses previously returned assistant messages. Useful normalized fields include message ID, role, status, `end_turn`, `metadata.is_complete`, parent/children relationships, `turn_exchange_id`, `working_turn_id`, recipient, and text (`src/tools/subagent/chatgpt-subagent.ts`).
 
-When a final response is found, `completeTurn()` stores the final text/message identity, updates conversation metadata and completion timestamps, and leaves the result in the process-local turn registry until normal idle cleanup removes that agent's runtime state (`src/tools/subagent/chatgpt-subagent.ts`).
+When `subagent_poll` finds a final response, `completeTurn()` stores the final text/message identity, updates conversation metadata and completion timestamps, releases the per-agent/global generation lock, and leaves the result in the process-local turn registry until normal idle cleanup removes that agent's runtime state (`src/tools/subagent/chatgpt-subagent.ts`).
 
 ## Polling and Reconciliation
 
 `subagent_poll` accepts 1-3 `turn_id` values and polls them concurrently with `Promise.all()`. Errors are caught per turn, so one invalid/stale turn does not discard valid sibling results. `wait_ms` is bounded to 0-60 seconds and applies to every requested turn in the same concurrent wait window (`src/tools/subagent/subagent-tools.ts`).
 
-The service-level `poll()` does more than read cached state. While a turn is still marked running it calls `reconcileRunningTurn()` before waiting. Reconciliation inspects the actual managed ChatGPT page and can repair a missed background completion by finding either a final network-tracked response or a non-generating new DOM response. When reconciliation completes a turn, it aborts the redundant background tracker (`src/tools/subagent/chatgpt-subagent.ts`).
+The service-level `poll()` is the authoritative active observer. While a turn is still marked running it calls `reconcileRunningTurn()` before waiting. Reconciliation first checks any final response already captured by the passive network tracker, then falls back to the current DOM and generation state. A completed or terminally failed reconciliation releases the per-agent/global generation lock (`src/tools/subagent/chatgpt-subagent.ts`).
+
+After a turn has been successfully submitted, a browser-observation failure is not immediately terminal when a saved conversation is available. The turn gets one conversation-based recovery attempt: Shelly revalidates the saved conversation, reloads its server-side conversation payload when possible, and checks the recovered DOM. Concurrent poll failures share that same recovery attempt. A successful recovery may complete the turn immediately or leave it running for the current/next poll to reconcile again; a later observation failure becomes terminal, preventing recovery loops (`src/tools/subagent/chatgpt-subagent.ts`, `test/chatgpt-subagent.test.ts`).
 
 This makes polling the active self-healing boundary:
 
@@ -84,7 +83,7 @@ A positive `wait_ms` repeats this cycle roughly once per second until the turn f
 
 Running polls may return one coarse activity value: `Working`, `Searching the web`, `Using tools`, or `Generating response`. `activity_age_ms` is milliseconds since the last observable progress, not time since the last poll and not an ETA (`src/tools/subagent/chatgpt-subagent.ts`, `src/tools/subagent/subagent-tools.ts`).
 
-Meaningful network-node changes refresh the heartbeat. Web/search recipients map to `Searching the web`; other internal recipients map to `Using tools`; assistant output maps to `Generating response`; other observed state changes map to `Working`. DOM response-text growth also refreshes `Generating response`. Re-reading unchanged state or merely calling `subagent_poll` does not refresh `lastActivityAt` (`src/tools/subagent/chatgpt-subagent.ts`, `test/chatgpt-subagent.test.ts`).
+Meaningful network-node changes refresh the heartbeat. Web/search recipients map to `Searching the web`; other internal recipients map to `Using tools`; assistant output maps to `Generating response`; other observed state changes map to `Working`. Re-reading unchanged state or merely calling `subagent_poll` does not refresh `lastActivityAt` (`src/tools/subagent/chatgpt-subagent.ts`, `test/chatgpt-subagent.test.ts`).
 
 There is no fixed generation-duration timeout. A legitimately long turn may run beyond 30 minutes as long as the harness continues observing meaningful progress.
 
@@ -155,9 +154,9 @@ subagent_poll({
 | --- | --- | --- |
 | `src/tools/subagent/chatgpt-subagent.ts` | `ChatGptSubagentModule`, `connect()`, `ask()`, `poll()` | Core browser-backed service and detached turn lifecycle. |
 | `src/tools/subagent/chatgpt-subagent.ts` | `createAgent()`, `ensureActivePage()`, `rememberConversation()` | New conversation creation, page recovery, and saved conversation references. |
-| `src/tools/subagent/chatgpt-subagent.ts` | `waitForResponse()`, `trackTurn()`, `reconcileRunningTurn()`, `completeTurn()` | Background response detection plus poll-time self-healing reconciliation. |
+| `src/tools/subagent/chatgpt-subagent.ts` | `reconcileRunningTurn()`, `recoverSubmittedTurn()`, `completeTurn()`, `finishTurnOperation()` | Poll-time response detection, one-shot recovery, and terminal lifecycle release. |
 | `src/tools/subagent/chatgpt-subagent.ts` | `beginAgentOperation()`, `endAgentOperation()` | Per-agent locking and hard global three-generation capacity accounting. |
-| `src/tools/subagent/chatgpt-subagent.ts` | `markTurnActivityForAgent()`, `cleanupIdleAgents()` | Activity heartbeat and 30-minute inactivity reclamation. |
+| `src/tools/subagent/chatgpt-subagent.ts` | `attachTurnActivityListener()`, `cleanupIdleAgents()` | Passive activity heartbeat and 30-minute inactivity reclamation. |
 | `src/tools/subagent/chatgpt-subagent.ts` | `ChatGptConversationTracker`, `snapshotIds()`, `findFinalResponse()`, `setActivityListener()` | Network conversation graph, final-response filtering, and activity observation. |
 | `src/tools/subagent/subagent-tools.ts` | `registerSubagentTools()`, `SUBAGENT_START_DELAYS_MS` | Public Zod schemas, 1-3 batch orchestration, 0/5/7-second staggering, concurrent poll fan-out, and per-item errors. |
 | `src/index.ts` | process-level `ChatGptSubagentModule` construction | Production singleton plus best-effort browser re-hide hook. |

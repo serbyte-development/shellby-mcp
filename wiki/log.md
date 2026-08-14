@@ -680,3 +680,17 @@
 - Rewrote `pages/Browser ChatGPT Subagents.md` against current source: three-agent staggered starts, concurrent per-turn polling, poll-time page reconciliation, activity-based 30-minute cleanup, in-process conversation recovery, deleted-conversation failure semantics, and process-restart limits.
 - Added a maintainer code map covering the subagent service, tracker, MCP wrapper, process composition, browser helpers, and focused tests; refreshed the wiki index and README summary to point to the page.
 - Synchronized the architecture map, MCP tool-surface contract, and test-coverage summary with the same subagent lifecycle so the dedicated page is not contradicted elsewhere in the maintained wiki.
+## [2026-08-13] code | Add one-shot submitted-turn recovery before terminal subagent failure
+
+- Added one shared conversation-based recovery attempt before a successfully submitted turn becomes terminal after browser observation failure.
+- Recovery can complete from saved conversation state or leave the turn running; a later independent observation failure becomes terminal.
+
+## [2026-08-13] simplify | Make subagent_poll the sole active turn reconciler
+
+- Removed the legacy 250 ms background DOM watcher, `waitForResponse()`, `trackTurn()`, and their abort/completion plumbing.
+- Kept the event-driven ChatGPT network listener only for cached response evidence and coarse activity heartbeat; it never resolves turn status itself.
+- `subagent_poll` now owns response reconciliation and terminal generation-slot release, with idle cleanup retained as the emergency reclamation path.
+
+## [2026-08-13] document | Record compact model-facing output direction
+
+- Added a roadmap item to evaluate internal typed result schemas plus a shared MCP-boundary transform that emits compact, purpose-built model content, reserving advertised structured output for consumers that actually need a machine-readable contract.
