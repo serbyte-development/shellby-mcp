@@ -1,55 +1,30 @@
-# Shelly — ChatGPT Local Shell MCP
+# Unhinged Agent — Agent Harness for ChatGPT Web
 
-[![CI](https://github.com/Serbyte-Development/chatgpt-local-shell-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/Serbyte-Development/chatgpt-local-shell-mcp/actions/workflows/ci.yml)
+[![CI](https://github.com/Serbyte-Development/unhinged-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/Serbyte-Development/unhinged-agent/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-A local **ChatGPT MCP server** that turns ChatGPT into a capable macOS coding agent with persistent shells, native patching, webpage fetching, Computer Use, and browser-backed ChatGPT subagents.
+**Turn ChatGPT Web into an unhinged local coding agent. Full computer access. Persistent tools. Multi-agent capabilities.**
 
-> **Security:** this server can execute arbitrary commands with your macOS user permissions. Remote ChatGPT access is restricted by the included ngrok traffic policy and a bound OpenAI subject, but an authorized caller still has the power of your local user account. Run it only on a machine you trust.
+Unhinged Agent is an open-source, context-optimized **agent harness for ChatGPT Web**. It gives ChatGPT persistent local shells, first-class file editing, webpage access, Computer Use, dynamic skills, and parallel browser-backed agents while keeping execution on your computer.
 
-![Architecture diagram showing ChatGPT connecting through ngrok to Shelly, then persistent shells, patching and web tools, and macOS/browser adapters](docs/assets/chatgpt-local-shell-mcp-architecture.svg)
+![Unhinged Agent architecture showing ChatGPT Web connecting to the local agent harness and its persistent tools, Computer Use, and multi-agent runtime](docs/assets/unhinged-agent-architecture.svg)
 
-**Why Shelly:** it gives ChatGPT the same low-level tools strong coding agents rely on while keeping execution on your Mac. Shell sessions persist across calls, output is bounded for model context, file edits use a first-class patch tool, and optional browser/Computer Use adapters extend the same MCP surface when needed.
+> **Security:** Unhinged Agent deliberately gives an authorized ChatGPT caller the power of your local user account. It can execute commands, edit files, and control supported applications. Run it only on a computer you trust.
 
-## What it provides
+## Capabilities
 
-- Named persistent shells with retained cwd, environment, bounded output, polling, reset, and parallel shell IDs.
-- Native `apply_patch` for source edits without routing patches through a shell.
-- `fetch_website` with cleaned Markdown/HTML and cached pagination.
-- Eleven focused macOS `computer_*` tools backed by Peekaboo.
-- Persistent browser-backed ChatGPT subagents through an already-running Chrome CDP session.
-- Dynamic workspace skills loaded from `<workspace>/skills/*/SKILL.md`.
-- Agent feedback logging and compact MCP tool-call auditing.
+- **Full computer access:** persistent shells, native `apply_patch`, webpage fetching, and focused Computer Use tools.
+- **Persistent tools:** named shells retain cwd, environment, transcript state, and background processes across independent ChatGPT tool calls.
+- **Multi-agent capabilities:** launch up to three independent browser-backed ChatGPT agents, continue named agent conversations, and retrieve results concurrently.
+- **Context optimized:** compact model-facing Markdown, token-bounded output, pagination, schema compression, and retained local state reduce repeated context cost.
+- **Extensible:** dynamic workspace skills load directly from `<workspace>/skills/*/SKILL.md`.
+- **Agent-native runtime:** parallel shell batches, idempotent request IDs, feedback logging, and MCP tool-call auditing are designed around autonomous agent work.
 
-The server uses MCP TypeScript SDK v2 with stateless Streamable HTTP requests. Shared runtime state such as shells, browser subagents, and Peekaboo spans independent requests but resets when the process restarts. The bound remote owner is durable and survives restarts in `~/.shelly/auth.json`.
+MCP is the transport layer, not the product boundary. Unhinged Agent uses MCP TypeScript SDK v2 with stateless Streamable HTTP requests while keeping shared agent runtime state in the local process. Shells, browser agents, and adapters span independent requests; durable remote ownership survives restarts in `~/.unhinged-agent/auth.json`.
 
-## How it works
+## Compatibility and requirements
 
-Remote ChatGPT reaches a localhost-only MCP server through the included ngrok policy. The policy accepts ChatGPT-origin traffic on the exact `/mcp` route and marks it as remote; Shelly then binds the first remote tool caller's OpenAI subject and requires that same subject on later remote tool calls.
-
-Direct local MCP clients connect to:
-
-```text
-http://127.0.0.1:3333/mcp
-```
-
-Local access is intentionally unauthenticated. The remote ChatGPT path relies on ngrok to prove the caller came from ChatGPT infrastructure, then binds the first remote tool caller's `X-OpenAI-Subject` as the owner.
-
-Authentication state is stored outside the repository at:
-
-```text
-~/.shelly/auth.json
-```
-
-Reset the bound ChatGPT owner with:
-
-```bash
-npm run auth:reset
-```
-
-## Requirements
-
-- Apple Silicon macOS
+- Apple Silicon macOS **for the current release**. Broader host portability is planned; macOS is a compatibility constraint, not the product category.
 - Node.js 22.13.0+
 - npm
 - An [ngrok](https://ngrok.com/) account and CLI
@@ -69,7 +44,7 @@ peekaboo permissions grant
 
 The server still starts when Peekaboo or the dedicated ChatGPT browser are unavailable. Only the dependent tools fail.
 
-## First-time setup
+## Quick start
 
 Install ngrok if needed:
 
@@ -80,8 +55,8 @@ brew install --cask ngrok
 Clone and install dependencies:
 
 ```bash
-git clone https://github.com/Serbyte-Development/chatgpt-local-shell-mcp.git
-cd chatgpt-local-shell-mcp
+git clone https://github.com/Serbyte-Development/unhinged-agent.git
+cd unhinged-agent
 npm ci
 ```
 
@@ -100,7 +75,7 @@ npm run setup
 
 `preflight` only reports whether the runtime is ready. Setup then creates the configured workspace and a starter `AGENTS.md` if one does not already exist. Existing workspace instructions are never overwritten. Set `MCP_CWD` before setup to initialize a different workspace.
 
-If Google Chrome is installed, `setup` also creates a separate profile under `~/.shelly/chatgpt-chrome` and opens ChatGPT. Sign into ChatGPT in that window once. The repository never copies or modifies your normal Chrome profile.
+If Google Chrome is installed, `setup` also creates a separate profile under `~/.unhinged-agent/chatgpt-chrome` and opens ChatGPT. Sign into ChatGPT in that window once. The repository never copies or modifies your normal Chrome profile.
 
 If browser setup was skipped because Chrome was unavailable or port `9222` was already in use, retry it later with:
 
@@ -147,6 +122,20 @@ Reset the bound ChatGPT owner with:
 npm run auth:reset
 ```
 
+## How it works
+
+ChatGPT Web reaches the local Unhinged Agent harness through the included ngrok policy. The policy accepts ChatGPT-origin traffic on the exact `/mcp` route and marks it as remote; Unhinged Agent then binds the first remote tool caller's OpenAI subject and requires that same subject on later remote tool calls.
+
+MCP carries tool discovery and tool calls. The actual agent state stays local: persistent shells, webpage cache, Computer Use adapters, skills, and browser-backed agents are shared across otherwise stateless MCP requests.
+
+Direct local MCP clients can also connect to:
+
+```text
+http://127.0.0.1:3333/mcp
+```
+
+Local access is intentionally unauthenticated. Authentication state for the trusted remote ChatGPT path is stored outside the repository at `~/.unhinged-agent/auth.json`.
+
 ## Runtime commands
 
 ```bash
@@ -161,9 +150,9 @@ npm run chatgpt
 
 PM2 is a repository dependency and implementation detail; users do not need to install it globally. `restart` also clears the current `agent-commands.yaml` audit log before reloading the runtime.
 
-## Browser ChatGPT subagents
+## Multi-agent capabilities
 
-`npm run setup:chatgpt` creates a dedicated Chrome profile and launches it with the Chrome DevTools Protocol on `127.0.0.1:9222`. After you sign into ChatGPT once, `npm start` launches that profile automatically when needed. `npm run chatgpt` launches it manually or brings the hidden managed browser to the foreground without restarting the MCP.
+Unhinged Agent can use ChatGPT Web itself as a parallel agent runtime. `npm run setup:chatgpt` creates a dedicated Chrome profile and launches it with the Chrome DevTools Protocol on `127.0.0.1:9222`. After you sign into ChatGPT once, `npm start` launches that profile automatically when needed. `npm run chatgpt` launches it manually or brings the hidden managed browser to the foreground without restarting the MCP.
 
 Setup keeps the dedicated Chrome visible so you can sign in. Normal `npm start` runs keep that same headed Chrome process hidden in the background. Creating a subagent tab can make Chrome visible on macOS, so the MCP immediately re-hides only the dedicated profile's Chrome process after page creation. Hiding is best effort: if macOS refuses it, Chrome simply stays visible and subagent behavior is unchanged.
 
@@ -270,7 +259,7 @@ Defaults:
 The workspace defaults to:
 
 ```text
-~/Desktop/chatgpt-workspace
+~/Desktop/agent-workspace
 ```
 
 This is a default working directory and model convention, not a sandbox.
@@ -301,7 +290,7 @@ Copy `.env.example` to `.env` to override the defaults below. Internal safety li
 | `NGROK_BIN`                 | `ngrok` from `PATH`           | Optional ngrok executable override                 |
 | `NGROK_AUTHTOKEN`           | unset                         | Optional ngrok auth token                          |
 | `MCP_SHELL`                 | `/bin/zsh`                    | Persistent shell executable                        |
-| `MCP_CWD`                   | `~/Desktop/chatgpt-workspace` | Initial/default workspace                          |
+| `MCP_CWD`                   | `~/Desktop/agent-workspace` | Initial/default workspace                          |
 | `MCP_PEEKABOO_BIN`          | `peekaboo`                    | Peekaboo executable                                |
 | `MCP_CHATGPT_CDP_ENDPOINT`  | `http://127.0.0.1:9222`       | Chrome CDP endpoint for browser subagents          |
 | `CHROME_BIN`                | normal macOS Chrome path      | Optional dedicated Chrome executable override      |

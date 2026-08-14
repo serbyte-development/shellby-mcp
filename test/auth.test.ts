@@ -3,16 +3,16 @@ import { readFile, stat, writeFile } from "node:fs/promises"
 import { dirname, join } from "node:path"
 import test from "node:test"
 
-import { ShellyAuthError, ShellyAuthStore } from "../src/auth/auth.js"
+import { UnhingedAgentAuthError, UnhingedAgentAuthStore } from "../src/auth/auth.js"
 import { tempDir } from "./helpers/temp.js"
 
 test("creates durable auth state with owner-only permissions", async (t) => {
-  const root = await tempDir(t, "shelly-auth-")
-  const filePath = join(root, ".shelly", "auth.json")
-  const auth = new ShellyAuthStore(filePath)
+  const root = await tempDir(t, "unhinged-agent-auth-")
+  const filePath = join(root, ".unhinged-agent", "auth.json")
+  const auth = new UnhingedAgentAuthStore(filePath)
 
   const first = await auth.ensureState()
-  const second = await new ShellyAuthStore(filePath).ensureState()
+  const second = await new UnhingedAgentAuthStore(filePath).ensureState()
 
   assert.deepEqual(first, { version: 1, subject: null })
   assert.deepEqual(second, first)
@@ -25,21 +25,21 @@ test("creates durable auth state with owner-only permissions", async (t) => {
 })
 
 test("first tool call binds one subject and later calls require it", async (t) => {
-  const root = await tempDir(t, "shelly-auth-bind-")
-  const auth = new ShellyAuthStore(join(root, "auth.json"))
+  const root = await tempDir(t, "unhinged-agent-auth-bind-")
+  const auth = new UnhingedAgentAuthStore(join(root, "auth.json"))
   await auth.ensureState()
 
   assert.equal((await auth.authorizeToolCall("subject-a")).subject, "subject-a")
   assert.equal((await auth.authorizeToolCall("subject-a")).subject, "subject-a")
   await assert.rejects(
     () => auth.authorizeToolCall("subject-b"),
-    (error: unknown) => error instanceof ShellyAuthError && error.code === "subject_mismatch"
+    (error: unknown) => error instanceof UnhingedAgentAuthError && error.code === "subject_mismatch"
   )
 })
 
 test("concurrent first tool calls bind exactly one subject", async (t) => {
-  const root = await tempDir(t, "shelly-auth-race-")
-  const auth = new ShellyAuthStore(join(root, "auth.json"))
+  const root = await tempDir(t, "unhinged-agent-auth-race-")
+  const auth = new UnhingedAgentAuthStore(join(root, "auth.json"))
   await auth.ensureState()
 
   const results = await Promise.allSettled([auth.authorizeToolCall("subject-a"), auth.authorizeToolCall("subject-b")])
@@ -48,8 +48,8 @@ test("concurrent first tool calls bind exactly one subject", async (t) => {
 })
 
 test("reset clears the bound subject", async (t) => {
-  const root = await tempDir(t, "shelly-auth-reset-")
-  const auth = new ShellyAuthStore(join(root, "auth.json"))
+  const root = await tempDir(t, "unhinged-agent-auth-reset-")
+  const auth = new UnhingedAgentAuthStore(join(root, "auth.json"))
   await auth.ensureState()
   await auth.authorizeToolCall("subject-a")
 
@@ -57,14 +57,14 @@ test("reset clears the bound subject", async (t) => {
 })
 
 test("malformed auth state fails closed instead of being replaced", async (t) => {
-  const root = await tempDir(t, "shelly-auth-invalid-")
+  const root = await tempDir(t, "unhinged-agent-auth-invalid-")
   const filePath = join(root, "auth.json")
   await writeFile(filePath, "not-json\n", { mode: 0o600 })
-  const auth = new ShellyAuthStore(filePath)
+  const auth = new UnhingedAgentAuthStore(filePath)
 
   await assert.rejects(
     () => auth.ensureState(),
-    (error: unknown) => error instanceof ShellyAuthError && error.code === "state_invalid"
+    (error: unknown) => error instanceof UnhingedAgentAuthError && error.code === "state_invalid"
   )
   assert.equal(await readFile(filePath, "utf8"), "not-json\n")
 })

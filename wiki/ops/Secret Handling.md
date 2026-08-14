@@ -4,7 +4,7 @@ Verified 2026-08-12.
 
 ## Current State
 
-Remote ChatGPT access uses durable local state at `~/.shelly/auth.json` containing only a version and one bound OpenAI subject. The file and its parent directory are forced to owner-only permissions. Direct localhost `/mcp` access remains unauthenticated (`src/auth/auth.ts`, `src/server/http-server.ts`, `src/index.ts`).
+Remote ChatGPT access uses durable local state at `~/.unhinged-agent/auth.json` containing only a version and one bound OpenAI subject. The file and its parent directory are forced to owner-only permissions. Direct localhost `/mcp` access remains unauthenticated (`src/auth/auth.ts`, `src/server/http-server.ts`, `src/index.ts`).
 
 The ngrok CLI may use credentials stored outside this repository. npm registry credentials and any future CI tokens also belong in their provider configuration, user-level config, or a password manager—not in repository Markdown (`package.json`).
 

@@ -14,7 +14,7 @@ test("resolves configured workspace paths to absolute paths", () => {
 
 test("loads runtime configuration from one environment boundary", () => {
   const defaults = loadMcpConfig({})
-  assert.equal(defaults.workspace, join(homedir(), "Desktop", "chatgpt-workspace"))
+  assert.equal(defaults.workspace, join(homedir(), "Desktop", "agent-workspace"))
   assert.equal(defaults.port, 3333)
   assert.equal(defaults.shell.transcriptChars, 1024 * 1024)
   assert.equal(defaults.shell.commandTranscriptBytes, 256 * 1024)

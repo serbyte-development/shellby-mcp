@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 440" role="img" aria-labelledby="unhinged-agent-architecture-title unhinged-agent-architecture-desc">
+  <title id="unhinged-agent-architecture-title">How Unhinged Agent turns ChatGPT Web into a local computer agent</title>
+  <desc id="unhinged-agent-architecture-desc">ChatGPT Web reaches the context-optimized Unhinged Agent harness through an ngrok trust boundary, then uses persistent tools, file and web tools, Computer Use, and parallel ChatGPT agents on the local computer.</desc>
+  <defs>
+    <style>text { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; }</style>
+    <marker id="arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#9a9a9a" /></marker>
+    <marker id="arrow-accent" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#ff5a36" /></marker>
+    <marker id="arrow-link" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#9a9a9a" /></marker>
+  </defs>
+  <rect width="960" height="440" fill="#141414" />
+  <rect x="200" y="152" width="192" height="136" rx="8" fill="rgba(255,255,255,0.02)" stroke="#2b2b2b" stroke-width="1" stroke-dasharray="4,4" />
+  <rect x="216" y="156" width="112" height="16" rx="4" fill="#141414" />
+  <text x="272" y="168" fill="#5c5c5c" font-size="8" text-anchor="middle" letter-spacing="1.2">TRUST BOUNDARY</text>
+  <line x1="184" y1="220" x2="216" y2="220" stroke="#9a9a9a" stroke-width="1.2" marker-end="url(#arrow)" />
+  <line x1="376" y1="220" x2="408" y2="220" stroke="#ff5a36" stroke-width="1.2" marker-end="url(#arrow-accent)" />
+  <path d="M 600 172 H 624 Q 632 172 632 164 V 88 Q 632 80 640 80 H 704" fill="none" stroke="#9a9a9a" stroke-width="1.2" marker-end="url(#arrow)" />
+  <path d="M 600 204 H 640 Q 648 204 648 196 V 192 Q 648 184 656 184 H 704" fill="none" stroke="#9a9a9a" stroke-width="1.2" marker-end="url(#arrow)" />
+  <path d="M 600 236 H 656 Q 664 236 664 244 V 280 Q 664 288 672 288 H 704" fill="none" stroke="#9a9a9a" stroke-width="1.2" marker-end="url(#arrow)" />
+  <path d="M 600 268 H 672 Q 680 268 680 276 V 380 Q 680 388 688 388 H 704" fill="none" stroke="#9a9a9a" stroke-width="1.2" marker-end="url(#arrow)" />
+  <rect x="24" y="180" width="160" height="80" rx="8" fill="#141414" />
+  <rect x="24" y="180" width="160" height="80" rx="8" fill="rgba(255,255,255,0.02)" stroke="#5c5c5c" stroke-width="1" />
+  <text x="104" y="216" fill="#f5f5f5" font-size="12" font-weight="600" text-anchor="middle">ChatGPT Web</text>
+  <text x="104" y="236" fill="#9a9a9a" font-size="8" text-anchor="middle">remote agent client</text>
+  <rect x="216" y="180" width="160" height="80" rx="8" fill="#141414" />
+  <rect x="216" y="180" width="160" height="80" rx="8" fill="rgba(255,255,255,0.02)" stroke="#5c5c5c" stroke-width="1" />
+  <text x="296" y="216" fill="#f5f5f5" font-size="12" font-weight="600" text-anchor="middle">ngrok</text>
+  <text x="296" y="236" fill="#9a9a9a" font-size="8" text-anchor="middle">ChatGPT-origin filter</text>
+  <rect x="408" y="140" width="192" height="160" rx="8" fill="#141414" />
+  <rect x="408" y="140" width="192" height="160" rx="8" fill="rgba(255,90,54,0.12)" stroke="#ff5a36" stroke-width="1.2" />
+  <text x="504" y="196" fill="#f5f5f5" font-size="16" font-weight="700" text-anchor="middle">Unhinged Agent</text>
+  <text x="504" y="220" fill="#9a9a9a" font-size="8" text-anchor="middle">AGENT HARNESS</text>
+  <text x="504" y="244" fill="#9a9a9a" font-size="8" text-anchor="middle">persistent runtime · MCP transport</text>
+  <text x="504" y="264" fill="#9a9a9a" font-size="8" text-anchor="middle">compact output · token-aware</text>
+  <rect x="704" y="44" width="232" height="72" rx="8" fill="#141414" />
+  <rect x="704" y="44" width="232" height="72" rx="8" fill="rgba(255,255,255,0.02)" stroke="#5c5c5c" stroke-width="1" />
+  <text x="820" y="76" fill="#f5f5f5" font-size="12" font-weight="600" text-anchor="middle">Persistent tools</text>
+  <text x="820" y="96" fill="#9a9a9a" font-size="8" text-anchor="middle">shell state · skills · cache</text>
+  <rect x="704" y="148" width="232" height="72" rx="8" fill="#141414" />
+  <rect x="704" y="148" width="232" height="72" rx="8" fill="rgba(255,255,255,0.02)" stroke="#5c5c5c" stroke-width="1" />
+  <text x="820" y="180" fill="#f5f5f5" font-size="12" font-weight="600" text-anchor="middle">File + web tools</text>
+  <text x="820" y="200" fill="#9a9a9a" font-size="8" text-anchor="middle">apply_patch · fetch_website</text>
+  <rect x="704" y="252" width="232" height="72" rx="8" fill="#141414" />
+  <rect x="704" y="252" width="232" height="72" rx="8" fill="rgba(255,255,255,0.02)" stroke="#5c5c5c" stroke-width="1" />
+  <text x="820" y="284" fill="#f5f5f5" font-size="12" font-weight="600" text-anchor="middle">Computer Use</text>
+  <text x="820" y="304" fill="#9a9a9a" font-size="8" text-anchor="middle">apps · screenshots · input</text>
+  <rect x="704" y="356" width="232" height="72" rx="8" fill="#141414" />
+  <rect x="704" y="356" width="232" height="72" rx="8" fill="rgba(255,255,255,0.02)" stroke="#5c5c5c" stroke-width="1" />
+  <text x="820" y="388" fill="#f5f5f5" font-size="12" font-weight="600" text-anchor="middle">Multi-agent runtime</text>
+  <text x="820" y="408" fill="#9a9a9a" font-size="8" text-anchor="middle">parallel ChatGPT agents</text>
+  <line x1="24" y1="432" x2="680" y2="432" stroke="#2b2b2b" stroke-width="1" />
+  <text x="24" y="428" fill="#5c5c5c" font-size="8" letter-spacing="1.2">CURRENT RELEASE: LOCAL EXECUTION ON APPLE SILICON MACOS</text>
+</svg>

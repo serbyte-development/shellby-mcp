@@ -1,8 +1,8 @@
-# ChatGPT Local Shell MCP Wiki Maintainer
+# Unhinged Agent Wiki Maintainer
 
 This vault follows the LLM wiki pattern from Andrej Karpathy's "LLM Wiki" gist (`https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f`): raw sources are read-only evidence, the wiki is maintained markdown, and this file is the schema for future agents.
 
-This committed vault preserves the current architecture and maintenance contracts for ChatGPT Local Shell MCP. It follows the LLM-wiki split between read-only evidence in `raw/`, maintained synthesis in `pages/`, repository conventions in `ops/`, and an append-only `log.md`; `_private/` is gitignored.
+This committed vault preserves the current architecture and maintenance contracts for Unhinged Agent. It follows the LLM-wiki split between read-only evidence in `raw/`, maintained synthesis in `pages/`, repository conventions in `ops/`, and an append-only `log.md`; `_private/` is gitignored.
 
 ## Rules
 

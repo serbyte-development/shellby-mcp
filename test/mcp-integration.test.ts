@@ -6,7 +6,7 @@ import { join } from "node:path"
 import test from "node:test"
 import { fileURLToPath } from "node:url"
 import { Client, StreamableHTTPClientTransport, LATEST_PROTOCOL_VERSION } from "@modelcontextprotocol/client"
-import { ShellyAuthStore } from "../src/auth/auth.js"
+import { UnhingedAgentAuthStore } from "../src/auth/auth.js"
 import { MCP_CONFIG } from "../src/config.js"
 import { countTokens } from "../src/tokenizer.js"
 import type { ChatGptSubagentService } from "../src/tools/subagent/chatgpt-subagent-contracts.js"
@@ -1467,8 +1467,8 @@ test("rejects a mismatched HTTP Host", { timeout: 10_000 }, async (t) => {
 })
 
 test("remote MCP binds on the first tool call while local MCP remains available", { timeout: 20_000 }, async (t) => {
-  const root = await mkdtemp(join(tmpdir(), "shelly-remote-auth-"))
-  const authStore = new ShellyAuthStore(join(root, "auth.json"))
+  const root = await mkdtemp(join(tmpdir(), "unhinged-agent-remote-auth-"))
+  const authStore = new UnhingedAgentAuthStore(join(root, "auth.json"))
   await authStore.ensureState()
   const running = await startMcpHttpServer({ port: 0, authStore })
   t.after(async () => {
@@ -1515,9 +1515,9 @@ test("remote MCP binds on the first tool call while local MCP remains available"
 })
 
 test("remote MCP owner survives an HTTP server restart", { timeout: 20_000 }, async (t) => {
-  const root = await mkdtemp(join(tmpdir(), "shelly-remote-restart-"))
+  const root = await mkdtemp(join(tmpdir(), "unhinged-agent-remote-restart-"))
   const filePath = join(root, "auth.json")
-  const firstAuthStore = new ShellyAuthStore(filePath)
+  const firstAuthStore = new UnhingedAgentAuthStore(filePath)
   await firstAuthStore.ensureState()
   let running = await startMcpHttpServer({ port: 0, authStore: firstAuthStore })
   const port = running.port
@@ -1527,7 +1527,7 @@ test("remote MCP owner survives an HTTP server restart", { timeout: 20_000 }, as
   await owner.client.callTool({ name: "shell_list", arguments: {} })
   await running.close()
 
-  const secondAuthStore = new ShellyAuthStore(filePath)
+  const secondAuthStore = new UnhingedAgentAuthStore(filePath)
   assert.deepEqual(await secondAuthStore.ensureState(), { version: 1, subject: "subject-a" })
   running = await startMcpHttpServer({ port, authStore: secondAuthStore })
   t.after(async () => {
@@ -1575,7 +1575,7 @@ async function connectClient(url: string, name: string, openAiSubject?: string, 
         ? {
             headers: {
               ...(openAiSubject ? { "x-openai-subject": openAiSubject } : {}),
-              ...(trustedRemote ? { "x-shelly-remote": "1" } : {}),
+              ...(trustedRemote ? { "x-unhinged-agent-remote": "1" } : {}),
             },
           }
         : undefined,

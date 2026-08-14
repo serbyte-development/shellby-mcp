@@ -2,20 +2,20 @@
 
 Verified 2026-08-10.
 
-The target benchmark is ChatGPT Web + Shelly versus Codex on the same real software-engineering work. Prefer tasks derived from work that actually happened, a single user turn, a recoverable pre-task repository state, one autonomous attempt, and an external grader that scores the final repository rather than the agent's prose.
+The target benchmark is ChatGPT Web + Unhinged Agent versus Codex on the same real software-engineering work. Prefer tasks derived from work that actually happened, a single user turn, a recoverable pre-task repository state, one autonomous attempt, and an external grader that scores the final repository rather than the agent's prose.
 
 ## SWE-Lancer
 
 SWE-Lancer is derived from real paid Expensify engineering jobs posted on Upwork. The original benchmark contains 1,488 tasks worth $1 million in actual payouts; 764 are individual-contributor implementation tasks and 724 are management proposal-selection tasks. The current public repository says it retains 198 tasks after adjusting and verifying them for offline execution, down from the original 237-problem public set. Issues are presented as originally written, and IC tasks pair the pre-fix codebase with the task description and objective. Professional engineers wrote end-to-end graders and each IC grader was independently reviewed three times.
 
-This is the stronger fit for a first Shelly-vs-Codex benchmark because IC SWE is natively one-shot. The agent may take many shell/editor/test actions, but the user-facing task does not depend on later clarification turns. The benchmark also uses pass@1 and removes future commits and repository remotes from the execution environment.
+This is the stronger fit for a first Unhinged Agent-vs-Codex benchmark because IC SWE is natively one-shot. The agent may take many shell/editor/test actions, but the user-facing task does not depend on later clarification turns. The benchmark also uses pass@1 and removes future commits and repository remotes from the execution environment.
 
 Main limitations:
 
 - All original tasks come from one large TypeScript/JavaScript product, Expensify, so repository and language diversity are limited.
 - Official task images are heavy; the public README says task-specific images are roughly 14 GB and take 10-20 minutes to build.
 - Valid current runs are designed for internet-disabled Linux. The repository permits macOS runs only with internet left enabled and explicitly does not consider those canonical because some tasks behave abnormally.
-- Because Shelly exposes browser/web capabilities that Codex may not match exactly, decide before the run whether this is a full-system comparison or a shell/files-only comparison. SWE-Lancer itself has published no-user-tool baselines, so a no-browser variant is defensible.
+- Because Unhinged Agent exposes browser/web capabilities that Codex may not match exactly, decide before the run whether this is a full-system comparison or a shell/files-only comparison. SWE-Lancer itself has published no-user-tool baselines, so a no-browser variant is defensible.
 
 ### Bare-macOS investigation
 
@@ -35,7 +35,7 @@ The problem for this benchmark is protocol fit: SWE-Together is intentionally no
 
 Flattening the later intents into the first prompt would create a custom derivative benchmark, not a canonical SWE-Together run. Running only the first message would also omit requirements that the benchmark deliberately expects to arrive later. Some frozen rubrics additionally contain process requirements such as answering a follow-up or diagnosing before editing, so single-turn adaptation can distort grading.
 
-SWE-Together remains valuable for a later benchmark if Shelly-versus-Codex multi-turn replay becomes practical. The repository already ships pinned task environments, tests, reference patches, user-simulator prompts, and support for local Docker or cloud sandboxes.
+SWE-Together remains valuable for a later benchmark if Unhinged Agent-versus-Codex multi-turn replay becomes practical. The repository already ships pinned task environments, tests, reference patches, user-simulator prompts, and support for local Docker or cloud sandboxes.
 
 Sources: [paper](https://arxiv.org/abs/2606.29957), [repository](https://github.com/Togetherbench/SWE-Together), [dataset](https://huggingface.co/datasets/yfwu/SWE-Together).
 
@@ -48,7 +48,7 @@ Sources: [paper](https://arxiv.org/abs/2606.29957), [repository](https://github.
 | Recoverable pre-task repository | Yes | Yes |
 | Final code is externally graded | Yes, hidden end-to-end tests | Yes, primarily frozen agentic rubric + executable evidence |
 | Easy to run one task independently | Yes | Yes, but canonical run requires user simulator |
-| Fits ChatGPT Web + Shelly without a multi-turn adapter | **Yes** | **No** |
+| Fits ChatGPT Web + Unhinged Agent without a multi-turn adapter | **Yes** | **No** |
 | Current Mac friction | High for canonical runs | Docker-supported, but multi-turn integration is the blocker |
 | Repository diversity | Low: Expensify only | Higher: multiple upstream datasets/repos |
 

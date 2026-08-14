@@ -3,7 +3,7 @@ import { createMcpExpressApp } from "@modelcontextprotocol/express"
 import { NodeStreamableHTTPServerTransport } from "@modelcontextprotocol/node"
 import type { Request, Response } from "express"
 
-import { ShellyAuthError, type ShellyAuthStore } from "../auth/auth.js"
+import { UnhingedAgentAuthError, type UnhingedAgentAuthStore } from "../auth/auth.js"
 import { MCP_CONFIG, type ToolOutputStructuredMode } from "../config.js"
 import { ChatGptSubagentModule } from "../tools/subagent/chatgpt-subagent.js"
 import type { ChatGptSubagentService } from "../tools/subagent/chatgpt-subagent-contracts.js"
@@ -36,7 +36,7 @@ export interface StartMcpServerOptions {
   peekaboo?: PeekabooClient
   chatGptSubagents?: ChatGptSubagentService
   auditLogger?: McpAuditLogger
-  authStore?: ShellyAuthStore
+  authStore?: UnhingedAgentAuthStore
   feedbackStore?: FeedbackStore
   applyPatchExecutable?: string
   webPageOpener?: WebPageOpener
@@ -244,11 +244,11 @@ function containsToolCall(payload: unknown): boolean {
 }
 
 function isTrustedRemoteRequest(req: Request): boolean {
-  return req.get("x-shelly-remote") === "1"
+  return req.get("x-unhinged-agent-remote") === "1"
 }
 
 function remoteAuthError(res: Response, error: unknown): void {
-  if (error instanceof ShellyAuthError) {
+  if (error instanceof UnhingedAgentAuthError) {
     if (error.code === "subject_missing" || error.code === "subject_mismatch") {
       jsonRpcError(res, 403, -32002, "Remote MCP access denied.")
       return

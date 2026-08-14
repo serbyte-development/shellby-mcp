@@ -13,7 +13,7 @@ ngrokArgs.push("--traffic-policy-file=./ngrok-traffic-policy.yml", "--inspect=fa
 module.exports = {
   apps: [
     {
-      name: "unhinged-terminal-mcp",
+      name: "unhinged-agent-mcp",
       script: "dist/index.js",
       cwd: __dirname,
       instances: 1,
@@ -22,7 +22,7 @@ module.exports = {
       kill_timeout: 10_000,
     },
     {
-      name: "unhinged-terminal-ngrok",
+      name: "unhinged-agent-ngrok",
       script: ngrokExecutable,
       args: ngrokArgs,
       cwd: __dirname,

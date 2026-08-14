@@ -13,7 +13,7 @@ if (errors.length > 0) {
   printPreflightErrors(errors)
   process.exitCode = 1
 } else {
-  await mkdir(join(homedir(), ".shelly"), { recursive: true })
+  await mkdir(join(homedir(), ".unhinged-agent"), { recursive: true })
   const workspace = await initializeWorkspace()
   console.log(
     workspace.created ? `Created workspace instructions at ${workspace.agentsPath}` : `Keeping existing workspace instructions at ${workspace.agentsPath}`

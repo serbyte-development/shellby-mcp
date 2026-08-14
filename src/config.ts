@@ -7,7 +7,7 @@ import { nonNegativeInteger, positiveInteger } from "./utils.js"
 export type ToolOutputStructuredMode = "always" | "optional" | "never"
 
 const SERVER_CONFIG = {
-  name: "chatgpt-local-shell",
+  name: "unhinged-agent",
   version: "0.1.0",
   icons: [
     {
@@ -25,7 +25,7 @@ const TOOL_META = {
 const DEFAULTS = {
   host: "127.0.0.1",
   port: 3333,
-  workspace: "~/Desktop/chatgpt-workspace",
+  workspace: "~/Desktop/agent-workspace",
   peekabooExecutable: "peekaboo",
   chatGptCdpEndpoint: "http://127.0.0.1:9222",
   toolOutputStructured: "optional" as ToolOutputStructuredMode,

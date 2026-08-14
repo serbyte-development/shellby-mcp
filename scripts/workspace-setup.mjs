@@ -2,7 +2,7 @@ import { mkdir, writeFile } from "node:fs/promises"
 import { homedir } from "node:os"
 import { join, resolve } from "node:path"
 
-const DEFAULT_WORKSPACE = "~/Desktop/chatgpt-workspace"
+const DEFAULT_WORKSPACE = "~/Desktop/agent-workspace"
 
 const STARTER_AGENTS_MD = `# Workspace Instructions
 

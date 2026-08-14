@@ -1,6 +1,6 @@
-# ChatGPT Local Shell MCP Wiki
+# Unhinged Agent Wiki
 
-This wiki is the concise source of truth for maintaining the server; start with [[pages/Architecture Map]], then open only the page relevant to the code you are changing.
+This wiki is the concise source of truth for maintaining the Unhinged Agent harness; start with [[pages/Architecture Map]], then open only the page relevant to the code you are changing.
 
 ## Pages
 
@@ -15,7 +15,7 @@ This wiki is the concise source of truth for maintaining the server; start with 
 - [[pages/Build and Test]] — validation commands, coverage, and gaps.
 - [[pages/Open Questions and Risks]] — unresolved operational and architectural risks.
 - [[pages/Browser ChatGPT Subagents]] — complete CDP-backed subagent architecture: parallel starts, passive completion events, explicit result retrieval/reconciliation, activity, idle cleanup, conversation recovery, failures, and implementation map.
-- [[pages/Possible Evals]] — candidate real-work benchmarks for comparing ChatGPT Web + Shelly against Codex.
+- [[pages/Possible Evals]] — candidate real-work benchmarks for comparing ChatGPT Web + Unhinged Agent against Codex.
 
 ## Supporting Files
 

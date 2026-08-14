@@ -4,7 +4,7 @@ Verified 2026-08-12.
 
 ## Default Workspace
 
-`MCP_CWD` defaults to `MCP_CONFIG.defaults.workspace`, currently `~/Desktop/chatgpt-workspace`. `src/config.ts` expands `~` and resolves relative paths from the startup directory; startup creates the resulting absolute directory recursively and uses it consistently for the initial shell cwd, advertised `AGENTS.md`, and workspace tools. This is a convention, not a sandbox: shell commands retain the local user's filesystem permissions (`src/config.ts`, `src/index.ts`).
+`MCP_CWD` defaults to `MCP_CONFIG.defaults.workspace`, currently `~/Desktop/agent-workspace`. `src/config.ts` expands `~` and resolves relative paths from the startup directory; startup creates the resulting absolute directory recursively and uses it consistently for the initial shell cwd, advertised `AGENTS.md`, and workspace tools. This is a convention, not a sandbox: shell commands retain the local user's filesystem permissions (`src/config.ts`, `src/index.ts`).
 
 ## `apply_patch`
 

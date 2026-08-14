@@ -1,15 +1,15 @@
 {
-  "name": "chatgpt-local-shell-mcp",
+  "name": "unhinged-agent",
   "version": "0.1.0",
-  "description": "Local ChatGPT MCP server for persistent macOS shells, patching, web fetching, Computer Use, and browser subagents.",
+  "description": "Context-optimized agent harness that gives ChatGPT Web full computer access, persistent tools, and multi-agent capabilities.",
   "private": true,
   "license": "MIT",
   "type": "module",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/Serbyte-Development/chatgpt-local-shell-mcp.git"
+    "url": "git+https://github.com/Serbyte-Development/unhinged-agent.git"
   },
-  "homepage": "https://github.com/Serbyte-Development/chatgpt-local-shell-mcp#readme",
+  "homepage": "https://github.com/Serbyte-Development/unhinged-agent#readme",
   "engines": {
     "node": ">=22.13.0"
   },

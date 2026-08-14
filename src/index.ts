@@ -3,7 +3,7 @@ import { mkdir } from "node:fs/promises"
 import { dirname, resolve } from "node:path"
 import { fileURLToPath } from "node:url"
 
-import { ShellyAuthStore } from "./auth/auth.js"
+import { UnhingedAgentAuthStore } from "./auth/auth.js"
 import { MCP_CONFIG } from "./config.js"
 import { ChatGptSubagentModule } from "./tools/subagent/chatgpt-subagent.js"
 import { McpAuditLogger } from "./server/audit-log.js"
@@ -14,7 +14,7 @@ import { startMcpHttpServer } from "./server/http-server.js"
 const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..")
 const auditLogPath = resolve(repositoryRoot, "agent-commands.yaml")
 const auditLogger = new McpAuditLogger(auditLogPath)
-const authStore = new ShellyAuthStore()
+const authStore = new UnhingedAgentAuthStore()
 await authStore.ensureState()
 const cwd = MCP_CONFIG.workspace
 await mkdir(cwd, { recursive: true })

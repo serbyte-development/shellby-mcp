@@ -752,3 +752,9 @@
 - Standardized the public identity around `chatgpt-local-shell-mcp` / Shelly, added MIT licensing, concise contribution/security guidance, arm64 macOS CI, and a gitleaks allowlist for one historical fake integration-test token.
 - Added a simple README architecture diagram under `docs/assets/`, moved the deferred MCP Tasks probe from `temporary/` to `experiments/`, and removed repository-local personal paths from the current tree.
 - Re-ran diagram validation, gitleaks history scanning, dependency audit, lint, type-check, focused integration validation, and build as part of the public-release audit.
+
+## [2026-08-14] identity | Rename product to Unhinged Agent
+
+- Repositioned the project as **Unhinged Agent**, a context-optimized agent harness for ChatGPT Web, with the public tagline centered on full computer access, persistent tools, and multi-agent capabilities.
+- Renamed the repository/package/runtime identity, trusted remote marker, PM2 processes, managed state paths, architecture assets, and maintained documentation; new installs default to `~/Desktop/agent-workspace` while the maintainer's broader existing workspace remains explicitly configured locally.
+- Added a 1280×640 social-preview asset and recorded broader host portability as future work while keeping Apple Silicon macOS explicit as the current release target.

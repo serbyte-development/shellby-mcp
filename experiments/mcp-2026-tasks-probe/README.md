@@ -1,8 +1,8 @@
 # Temporary MCP 2026 + Tasks Probe
 
-**Deferred future experiment.** Do not run or wire this into normal Shelly development unless the MCP 2026/Tasks roadmap item is intentionally resumed.
+**Deferred future experiment.** Do not run or wire this into normal Unhinged Agent development unless the MCP 2026/Tasks roadmap item is intentionally resumed.
 
-This directory is a disposable compatibility test. It does not import or modify Shelly's normal `/mcp` server.
+This directory is a disposable compatibility test. It does not import or modify Unhinged Agent's normal `/mcp` server.
 
 It tests two client capabilities in one manual ChatGPT invocation:
 
@@ -13,11 +13,11 @@ The extension shim is local to `server.ts` because the installed TypeScript MCP 
 
 ## Run
 
-The temporary server defaults to Shelly's local port so the existing ngrok URL can be reused. Stop only the normal MCP process; leave the ngrok PM2 process running.
+The temporary server defaults to Unhinged Agent's local port so the existing ngrok URL can be reused. Stop only the normal MCP process; leave the ngrok PM2 process running.
 
 ```bash
-cd /path/to/chatgpt-local-shell-mcp
-npx pm2 stop unhinged-terminal-mcp
+cd /path/to/unhinged-agent
+npx pm2 stop unhinged-agent-mcp
 node --import tsx temporary/mcp-2026-tasks-probe/server.ts
 ```
 
@@ -41,4 +41,4 @@ npx tsc -p temporary/mcp-2026-tasks-probe/tsconfig.json
 
 Delete `temporary/mcp-2026-tasks-probe` after the manual compatibility decision.
 
-After testing, stop the temporary server with `Ctrl-C` and restore normal Shelly with `npm run restart`.
+After testing, stop the temporary server with `Ctrl-C` and restore normal Unhinged Agent with `npm run restart`.

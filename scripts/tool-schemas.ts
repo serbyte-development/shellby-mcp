@@ -11,7 +11,7 @@ const shells = new ShellSessionManager({
   createShell: () => new PersistentShellSession({ cwd: MCP_CONFIG.workspace }),
 })
 const running = await startMcpHttpServer({ host: "127.0.0.1", port: 0, shellManager: shells })
-const client = new Client({ name: "shelly-schema-viewer", version: "1.0.0" })
+const client = new Client({ name: "unhinged-agent-schema-viewer", version: "1.0.0" })
 const transport = new StreamableHTTPClientTransport(new URL(running.url))
 
 try {

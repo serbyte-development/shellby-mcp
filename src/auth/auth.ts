@@ -3,39 +3,39 @@ import { homedir } from "node:os"
 import { dirname, join } from "node:path"
 
 const AUTH_STATE_VERSION = 1
-const DEFAULT_AUTH_STATE_PATH = join(homedir(), ".shelly", "auth.json")
+const DEFAULT_AUTH_STATE_PATH = join(homedir(), ".unhinged-agent", "auth.json")
 
-export interface ShellyAuthState {
+export interface UnhingedAgentAuthState {
   version: typeof AUTH_STATE_VERSION
   subject: string | null
 }
 
-export type ShellyAuthErrorCode = "state_missing" | "state_invalid" | "subject_missing" | "subject_mismatch"
+export type UnhingedAgentAuthErrorCode = "state_missing" | "state_invalid" | "subject_missing" | "subject_mismatch"
 
-export class ShellyAuthError extends Error {
+export class UnhingedAgentAuthError extends Error {
   constructor(
-    readonly code: ShellyAuthErrorCode,
+    readonly code: UnhingedAgentAuthErrorCode,
     message: string
   ) {
     super(message)
-    this.name = "ShellyAuthError"
+    this.name = "UnhingedAgentAuthError"
   }
 }
 
-export class ShellyAuthStore {
+export class UnhingedAgentAuthStore {
   private mutationTail: Promise<void> = Promise.resolve()
 
   constructor(readonly filePath = DEFAULT_AUTH_STATE_PATH) {}
 
-  async ensureState(): Promise<ShellyAuthState> {
+  async ensureState(): Promise<UnhingedAgentAuthState> {
     return this.withMutation(async () => {
       try {
         return await this.readState()
       } catch (error) {
-        if (!(error instanceof ShellyAuthError) || error.code !== "state_missing") throw error
+        if (!(error instanceof UnhingedAgentAuthError) || error.code !== "state_missing") throw error
       }
 
-      const state: ShellyAuthState = { version: AUTH_STATE_VERSION, subject: null }
+      const state: UnhingedAgentAuthState = { version: AUTH_STATE_VERSION, subject: null }
       await ensurePrivateDirectory(dirname(this.filePath))
       try {
         await writeFile(this.filePath, serializeState(state), { encoding: "utf8", flag: "wx", mode: 0o600 })
@@ -48,13 +48,13 @@ export class ShellyAuthStore {
     })
   }
 
-  async readState(): Promise<ShellyAuthState> {
+  async readState(): Promise<UnhingedAgentAuthState> {
     let raw: string
     try {
       raw = await readFile(this.filePath, "utf8")
     } catch (error) {
       if (isNodeError(error, "ENOENT")) {
-        throw new ShellyAuthError("state_missing", "Shelly authentication state is missing.")
+        throw new UnhingedAgentAuthError("state_missing", "Unhinged Agent authentication state is missing.")
       }
       throw error
     }
@@ -65,28 +65,28 @@ export class ShellyAuthStore {
     return state
   }
 
-  async authorizeToolCall(subject: string | undefined): Promise<ShellyAuthState> {
+  async authorizeToolCall(subject: string | undefined): Promise<UnhingedAgentAuthState> {
     if (!isValidSubject(subject)) {
-      throw new ShellyAuthError("subject_missing", "OpenAI subject is required for remote tool calls.")
+      throw new UnhingedAgentAuthError("subject_missing", "OpenAI subject is required for remote tool calls.")
     }
 
     return this.withMutation(async () => {
       const state = await this.readState()
       if (state.subject === null) {
-        const boundState: ShellyAuthState = { ...state, subject }
+        const boundState: UnhingedAgentAuthState = { ...state, subject }
         await writeStateAtomically(this.filePath, boundState)
         return boundState
       }
       if (state.subject !== subject) {
-        throw new ShellyAuthError("subject_mismatch", "This Shelly installation is bound to a different ChatGPT user.")
+        throw new UnhingedAgentAuthError("subject_mismatch", "This Unhinged Agent installation is bound to a different ChatGPT user.")
       }
       return state
     })
   }
 
-  async reset(): Promise<ShellyAuthState> {
+  async reset(): Promise<UnhingedAgentAuthState> {
     return this.withMutation(async () => {
-      const state: ShellyAuthState = { version: AUTH_STATE_VERSION, subject: null }
+      const state: UnhingedAgentAuthState = { version: AUTH_STATE_VERSION, subject: null }
       await writeStateAtomically(this.filePath, state)
       return state
     })
@@ -107,28 +107,28 @@ export class ShellyAuthStore {
   }
 }
 
-function parseState(raw: string): ShellyAuthState {
+function parseState(raw: string): UnhingedAgentAuthState {
   let parsed: unknown
   try {
     parsed = JSON.parse(raw)
   } catch {
-    throw invalidState("Shelly authentication state is malformed.")
+    throw invalidState("Unhinged Agent authentication state is malformed.")
   }
 
   if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-    throw invalidState("Shelly authentication state must be an object.")
+    throw invalidState("Unhinged Agent authentication state must be an object.")
   }
   const state = parsed as Record<string, unknown>
   if (state.version !== AUTH_STATE_VERSION) {
-    throw invalidState("Shelly authentication state version is unsupported.")
+    throw invalidState("Unhinged Agent authentication state version is unsupported.")
   }
   if (state.subject !== null && !isValidSubject(state.subject)) {
-    throw invalidState("Shelly authentication subject is invalid.")
+    throw invalidState("Unhinged Agent authentication subject is invalid.")
   }
   return { version: AUTH_STATE_VERSION, subject: state.subject as string | null }
 }
 
-async function writeStateAtomically(filePath: string, state: ShellyAuthState): Promise<void> {
+async function writeStateAtomically(filePath: string, state: UnhingedAgentAuthState): Promise<void> {
   const directory = dirname(filePath)
   await ensurePrivateDirectory(directory)
   const temporaryPath = join(directory, `.auth-${process.pid}-${Date.now()}.tmp`)
@@ -146,7 +146,7 @@ async function ensurePrivateDirectory(directory: string): Promise<void> {
   await chmod(directory, 0o700)
 }
 
-function serializeState(state: ShellyAuthState): string {
+function serializeState(state: UnhingedAgentAuthState): string {
   return `${JSON.stringify(state, null, 2)}\n`
 }
 
@@ -154,8 +154,8 @@ function isValidSubject(subject: unknown): subject is string {
   return typeof subject === "string" && subject.length > 0 && subject.length <= 512
 }
 
-function invalidState(message: string): ShellyAuthError {
-  return new ShellyAuthError("state_invalid", message)
+function invalidState(message: string): UnhingedAgentAuthError {
+  return new UnhingedAgentAuthError("state_invalid", message)
 }
 
 function isNodeError(error: unknown, code: string): error is NodeJS.ErrnoException {
