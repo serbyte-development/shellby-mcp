@@ -766,3 +766,8 @@
 ## [2026-08-14] ci | Update GitHub Actions runtimes
 
 - Updated `actions/checkout` and `actions/setup-node` from v4 to their current v7 majors after GitHub flagged the older Node 20 action runtimes as deprecated.
+
+## [2026-08-14] rename | Standardize local workspace identity
+
+- Renamed Austin's broader local agent workspace from `~/Desktop/chatgpt-workspace` to `~/Desktop/agent-workspace` and updated the local `MCP_CWD` override to match the public default.
+- Scanned current repo/workspace/user configuration and symlink targets for Shelly, `chatgpt-local-shell-mcp`, and old workspace-path references; repointed live `git-init-org` and `diagram-design` symlinks and retained dated raw/history or editor-cache artifacts rather than rewriting history.
