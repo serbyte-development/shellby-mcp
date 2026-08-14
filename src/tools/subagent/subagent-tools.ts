@@ -2,7 +2,7 @@ import { McpServer } from "@modelcontextprotocol/server"
 import { z } from "zod"
 
 import { MCP_CONFIG } from "../../config.js"
-import { ChatGptSubagentError, type ChatGptSubagentService } from "./chatgpt-subagent.js"
+import { ChatGptSubagentError, type ChatGptSubagentService } from "./chatgpt-subagent-contracts.js"
 
 const SUBAGENT_START_DELAYS_MS = [0, 5_000, 7_000] as const
 

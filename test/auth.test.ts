@@ -1,14 +1,13 @@
 import assert from "node:assert/strict"
-import { mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises"
-import { tmpdir } from "node:os"
+import { readFile, stat, writeFile } from "node:fs/promises"
 import { dirname, join } from "node:path"
 import test from "node:test"
 
 import { ShellyAuthError, ShellyAuthStore } from "../src/auth/auth.js"
+import { tempDir } from "./helpers/temp.js"
 
 test("creates durable auth state with owner-only permissions", async (t) => {
-  const root = await mkdtemp(join(tmpdir(), "shelly-auth-"))
-  t.after(() => rm(root, { recursive: true, force: true }))
+  const root = await tempDir(t, "shelly-auth-")
   const filePath = join(root, ".shelly", "auth.json")
   const auth = new ShellyAuthStore(filePath)
 
@@ -26,8 +25,7 @@ test("creates durable auth state with owner-only permissions", async (t) => {
 })
 
 test("first tool call binds one subject and later calls require it", async (t) => {
-  const root = await mkdtemp(join(tmpdir(), "shelly-auth-bind-"))
-  t.after(() => rm(root, { recursive: true, force: true }))
+  const root = await tempDir(t, "shelly-auth-bind-")
   const auth = new ShellyAuthStore(join(root, "auth.json"))
   await auth.ensureState()
 
@@ -40,8 +38,7 @@ test("first tool call binds one subject and later calls require it", async (t) =
 })
 
 test("concurrent first tool calls bind exactly one subject", async (t) => {
-  const root = await mkdtemp(join(tmpdir(), "shelly-auth-race-"))
-  t.after(() => rm(root, { recursive: true, force: true }))
+  const root = await tempDir(t, "shelly-auth-race-")
   const auth = new ShellyAuthStore(join(root, "auth.json"))
   await auth.ensureState()
 
@@ -51,8 +48,7 @@ test("concurrent first tool calls bind exactly one subject", async (t) => {
 })
 
 test("reset clears the bound subject", async (t) => {
-  const root = await mkdtemp(join(tmpdir(), "shelly-auth-reset-"))
-  t.after(() => rm(root, { recursive: true, force: true }))
+  const root = await tempDir(t, "shelly-auth-reset-")
   const auth = new ShellyAuthStore(join(root, "auth.json"))
   await auth.ensureState()
   await auth.authorizeToolCall("subject-a")
@@ -61,8 +57,7 @@ test("reset clears the bound subject", async (t) => {
 })
 
 test("malformed auth state fails closed instead of being replaced", async (t) => {
-  const root = await mkdtemp(join(tmpdir(), "shelly-auth-invalid-"))
-  t.after(() => rm(root, { recursive: true, force: true }))
+  const root = await tempDir(t, "shelly-auth-invalid-")
   const filePath = join(root, "auth.json")
   await writeFile(filePath, "not-json\n", { mode: 0o600 })
   const auth = new ShellyAuthStore(filePath)

@@ -153,12 +153,14 @@ subagent_result({
 
 | Location | Important symbols | Responsibility |
 | --- | --- | --- |
-| `src/tools/subagent/chatgpt-subagent.ts` | `ChatGptSubagentModule`, `connect()`, `ask()`, `poll()` | Core browser-backed service and detached turn lifecycle. |
-| `src/tools/subagent/chatgpt-subagent.ts` | `createAgent()`, `ensureActivePage()`, `rememberConversation()` | New conversation creation, page recovery, and saved conversation references. |
+| `src/tools/subagent/chatgpt-subagent.ts` | `ChatGptSubagentModule`, `connect()`, `ask()`, `poll()` | Detached turn lifecycle, agent state, recovery, capacity, events, and cleanup. |
+| `src/tools/subagent/chatgpt-subagent.ts` | `createAgent()`, `ensureActivePage()`, `rememberConversation()` | Agent page ownership, replacement, and saved conversation references. |
 | `src/tools/subagent/chatgpt-subagent.ts` | `reconcileRunningTurn()`, `recoverSubmittedTurn()`, `completeTurn()`, `finishTurnOperation()` | Poll-time response detection, one-shot recovery, and terminal lifecycle release. |
 | `src/tools/subagent/chatgpt-subagent.ts` | `beginAgentOperation()`, `endAgentOperation()` | Per-agent locking and hard global three-generation capacity accounting. |
 | `src/tools/subagent/chatgpt-subagent.ts` | `attachTurnListeners()`, `cleanupIdleAgents()`, `drainEvents()` | Passive activity/final-response observation, completion-event queue, and 30-minute inactivity reclamation. |
-| `src/tools/subagent/chatgpt-subagent.ts` | `ChatGptConversationTracker`, `snapshotIds()`, `findFinalResponse()`, `setActivityListener()`, `setUpdateListener()` | Network conversation graph, final-response filtering, and passive progress observation. |
+| `src/tools/subagent/chatgpt-subagent-browser.ts` | `ChatGptConversationTracker`, conversation extraction/matching helpers | Reverse-engineered ChatGPT conversation graph, final-response filtering, and passive progress observation. |
+| `src/tools/subagent/chatgpt-subagent-browser.ts` | composer/auth/page helpers | ChatGPT DOM selectors, overlay recovery, prompt submission, generation detection, and CDP/browser mechanics. |
+| `src/tools/subagent/chatgpt-subagent-contracts.ts` | service/request/result/error contracts | Dependency-light shared contracts used by the lifecycle module, MCP registration, and HTTP composition. |
 | `src/tools/subagent/subagent-tools.ts` | `registerSubagentTools()`, `SUBAGENT_START_DELAYS_MS` | Public Zod schemas, 1-3 batch orchestration, 0/5/7-second staggering, concurrent result fan-out, and per-item errors. |
 | `src/index.ts` | process-level `ChatGptSubagentModule` construction | Production singleton plus best-effort browser re-hide hook. |
 | `src/server/http-server.ts` | `StartMcpServerOptions.chatGptSubagents` | Shares one subagent service across stateless MCP requests. |
@@ -166,12 +168,13 @@ subagent_result({
 | `src/config.ts` | `MCP_CONFIG.chatGpt` | CDP endpoint and static ChatGPT runtime configuration. |
 | `scripts/chatgpt-browser.mjs` | managed Chrome helper | Dedicated browser/profile setup, launch, foreground, and hide behavior. |
 | `scripts/start.mjs` | production startup | Starts the managed ChatGPT browser when configured before normal MCP use. |
-| `test/chatgpt-subagent.test.ts` | focused subagent unit tests | Capacity, recovery, deleted conversations, poll reconciliation, activity, idle cleanup, graph parsing, and duplicate suppression. |
+| `test/chatgpt-subagent.test.ts` | lifecycle-focused subagent tests | Capacity, recovery, deleted conversations, result reconciliation, passive completion, event queueing, and idle cleanup. |
+| `test/chatgpt-subagent-browser.test.ts` | browser-adapter tests | Overlay recovery, transient routes, network activity, conversation parsing/matching, branch extraction, and duplicate/intermediate suppression. |
 | `test/mcp-integration.test.ts` | subagent tool integration coverage | Published schemas, batch staggering, concurrent polling, partial failure handling, and shared service behavior across stateless requests. |
 
 ## Failure Semantics
 
-Important service errors are defined by `ChatGptSubagentErrorCode` in `src/tools/subagent/chatgpt-subagent.ts`:
+Important service errors are defined by `ChatGptSubagentErrorCode` in `src/tools/subagent/chatgpt-subagent-contracts.ts`:
 
 - `BROWSER_UNAVAILABLE` — configured CDP browser cannot be reached.
 - `CHATGPT_NOT_AUTHENTICATED` — attached browser is not signed into ChatGPT.

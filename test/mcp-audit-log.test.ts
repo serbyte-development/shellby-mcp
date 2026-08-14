@@ -1,16 +1,14 @@
 import assert from "node:assert/strict"
-import { chmod, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises"
-import { tmpdir } from "node:os"
+import { chmod, readFile, stat, writeFile } from "node:fs/promises"
 import { join } from "node:path"
-import test from "node:test"
+import test, { type TestContext } from "node:test"
 
 import { characterCount, formatAuditTime, McpAuditLogger } from "../src/server/audit-log.js"
 import { countTokens } from "../src/tokenizer.js"
+import { tempDir } from "./helpers/temp.js"
 
 test("writes one compact YAML document for a shell command", async (t) => {
-  const directory = await mkdtemp(join(tmpdir(), "mcp-audit-log-"))
-  const file = join(directory, "agent-commands.yaml")
-  t.after(() => rm(directory, { recursive: true, force: true }))
+  const file = await auditFile(t)
 
   const timestamp = new Date(2026, 7, 7, 20, 58, 30)
   let clock = 1_000
@@ -46,9 +44,7 @@ test("writes one compact YAML document for a shell command", async (t) => {
 })
 
 test("logs shell output token count", async (t) => {
-  const directory = await mkdtemp(join(tmpdir(), "mcp-audit-log-"))
-  const file = join(directory, "agent-commands.yaml")
-  t.after(() => rm(directory, { recursive: true, force: true }))
+  const file = await auditFile(t)
 
   const logger = new McpAuditLogger(
     file,
@@ -84,9 +80,7 @@ test("logs shell output token count", async (t) => {
 })
 
 test("matches batched tool responses by JSON-RPC id", async (t) => {
-  const directory = await mkdtemp(join(tmpdir(), "mcp-audit-log-"))
-  const file = join(directory, "agent-commands.yaml")
-  t.after(() => rm(directory, { recursive: true, force: true }))
+  const file = await auditFile(t)
 
   const logger = new McpAuditLogger(
     file,
@@ -110,14 +104,16 @@ test("matches batched tool responses by JSON-RPC id", async (t) => {
 
   const log = await readFile(file, "utf8")
   assert.match(log, new RegExp(`shell_list - 0ms - ${countTokens(JSON.stringify({ first: true }))} in / ${countTokens(firstOutput)} out`))
-  assert.match(log, new RegExp(`! 00:30:00 - feedback_submit - 0ms - ${countTokens(JSON.stringify({ feedback: "second" }))} in / ${countTokens(secondOutput)} out`))
+  assert.match(
+    log,
+    new RegExp(`! 00:30:00 - feedback_submit - 0ms - ${countTokens(JSON.stringify({ feedback: "second" }))} in / ${countTokens(secondOutput)} out`)
+  )
 })
 
 test("creates and repairs audit logs with owner-only permissions", async (t) => {
-  const directory = await mkdtemp(join(tmpdir(), "mcp-audit-log-permissions-"))
+  const directory = await tempDir(t, "mcp-audit-log-permissions-")
   const newFile = join(directory, "new.yaml")
   const existingFile = join(directory, "existing.yaml")
-  t.after(() => rm(directory, { recursive: true, force: true }))
 
   const newLogger = new McpAuditLogger(newFile)
   const [call] = newLogger.startToolCalls({ method: "tools/call", params: { name: "shell_list", arguments: {} } })
@@ -133,9 +129,7 @@ test("creates and repairs audit logs with owner-only permissions", async (t) => 
 })
 
 test("logs apply_patch bodies only when the tool fails", async (t) => {
-  const directory = await mkdtemp(join(tmpdir(), "mcp-audit-log-"))
-  const file = join(directory, "agent-commands.yaml")
-  t.after(() => rm(directory, { recursive: true, force: true }))
+  const file = await auditFile(t)
 
   const timestamp = new Date(2026, 7, 7, 21, 12, 3)
   let clock = 2_000
@@ -205,9 +199,7 @@ test("logs apply_patch bodies only when the tool fails", async (t) => {
 })
 
 test("logs shell tool errors with their MCP failure reason", async (t) => {
-  const directory = await mkdtemp(join(tmpdir(), "mcp-audit-log-"))
-  const file = join(directory, "agent-commands.yaml")
-  t.after(() => rm(directory, { recursive: true, force: true }))
+  const file = await auditFile(t)
 
   const logger = new McpAuditLogger(
     file,
@@ -289,9 +281,7 @@ test("logs shell tool errors with their MCP failure reason", async (t) => {
 })
 
 test("caps large ordinary tool arguments", async (t) => {
-  const directory = await mkdtemp(join(tmpdir(), "mcp-audit-log-"))
-  const file = join(directory, "agent-commands.yaml")
-  t.after(() => rm(directory, { recursive: true, force: true }))
+  const file = await auditFile(t)
 
   const logger = new McpAuditLogger(
     file,
@@ -312,9 +302,7 @@ test("caps large ordinary tool arguments", async (t) => {
 })
 
 test("uses Better Comments tags for large, slow, and failed calls", async (t) => {
-  const directory = await mkdtemp(join(tmpdir(), "mcp-audit-log-"))
-  const file = join(directory, "agent-commands.yaml")
-  t.after(() => rm(directory, { recursive: true, force: true }))
+  const file = await auditFile(t)
 
   let clock = 0
   const logger = new McpAuditLogger(
@@ -346,9 +334,7 @@ test("uses Better Comments tags for large, slow, and failed calls", async (t) =>
 })
 
 test("logs tools/list as one timestamped line and ignores other non-tool MCP requests", async (t) => {
-  const directory = await mkdtemp(join(tmpdir(), "mcp-audit-log-"))
-  const file = join(directory, "agent-commands.yaml")
-  t.after(() => rm(directory, { recursive: true, force: true }))
+  const file = await auditFile(t)
 
   const timestamp = new Date(2026, 7, 7, 22, 30, 0)
   const logger = new McpAuditLogger(file, () => timestamp)
@@ -356,3 +342,7 @@ test("logs tools/list as one timestamped line and ignores other non-tool MCP req
   assert.deepEqual(logger.startToolCalls({ jsonrpc: "2.0", id: 2, method: "initialize" }), [])
   assert.equal(await readFile(file, "utf8"), "--- # 22:30:00 - tools/list\n")
 })
+
+async function auditFile(t: TestContext): Promise<string> {
+  return join(await tempDir(t, "mcp-audit-log-"), "agent-commands.yaml")
+}

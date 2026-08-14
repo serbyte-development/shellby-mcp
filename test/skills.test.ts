@@ -1,14 +1,13 @@
 import assert from "node:assert/strict"
-import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises"
-import { tmpdir } from "node:os"
+import { mkdir, symlink, writeFile } from "node:fs/promises"
 import { join } from "node:path"
 import test from "node:test"
 
 import { MAX_SKILL_BYTES, SkillCatalog, SkillCatalogError } from "../src/tools/skills.js"
+import { tempDir } from "./helpers/temp.js"
 
 test("lists workspace skills from frontmatter and loads the complete SKILL.md", async (t) => {
-  const workspace = await mkdtemp(join(tmpdir(), "mcp-skills-"))
-  t.after(() => rm(workspace, { recursive: true, force: true }))
+  const workspace = await tempDir(t, "mcp-skills-")
   const skillDirectory = join(workspace, "skills", "create-wiki")
   await mkdir(skillDirectory, { recursive: true })
   const content = [
@@ -39,16 +38,14 @@ test("lists workspace skills from frontmatter and loads the complete SKILL.md", 
 })
 
 test("returns an empty catalog when the workspace has no skills directory", async (t) => {
-  const workspace = await mkdtemp(join(tmpdir(), "mcp-skills-empty-"))
-  t.after(() => rm(workspace, { recursive: true, force: true }))
+  const workspace = await tempDir(t, "mcp-skills-empty-")
 
   const catalog = new SkillCatalog(join(workspace, "skills"))
   assert.deepEqual(await catalog.list(), [])
 })
 
 test("rejects traversal and unknown skill names", async (t) => {
-  const workspace = await mkdtemp(join(tmpdir(), "mcp-skills-errors-"))
-  t.after(() => rm(workspace, { recursive: true, force: true }))
+  const workspace = await tempDir(t, "mcp-skills-errors-")
   const catalog = new SkillCatalog(join(workspace, "skills"))
 
   await assert.rejects(catalog.read("../secret"), (error: unknown) => error instanceof SkillCatalogError && error.code === "invalid_skill_name")
@@ -56,8 +53,7 @@ test("rejects traversal and unknown skill names", async (t) => {
 })
 
 test("bounds SKILL.md size", async (t) => {
-  const workspace = await mkdtemp(join(tmpdir(), "mcp-skills-large-"))
-  t.after(() => rm(workspace, { recursive: true, force: true }))
+  const workspace = await tempDir(t, "mcp-skills-large-")
   const skillDirectory = join(workspace, "skills", "large-skill")
   await mkdir(skillDirectory, { recursive: true })
   await writeFile(join(skillDirectory, "SKILL.md"), "x".repeat(MAX_SKILL_BYTES + 1))
@@ -67,10 +63,8 @@ test("bounds SKILL.md size", async (t) => {
 })
 
 test("supports a skill directory symlink for future shared catalogs", { skip: process.platform === "win32" }, async (t) => {
-  const workspace = await mkdtemp(join(tmpdir(), "mcp-skills-link-"))
-  const source = await mkdtemp(join(tmpdir(), "mcp-skill-source-"))
-  t.after(() => rm(workspace, { recursive: true, force: true }))
-  t.after(() => rm(source, { recursive: true, force: true }))
+  const workspace = await tempDir(t, "mcp-skills-link-")
+  const source = await tempDir(t, "mcp-skill-source-")
   await mkdir(join(workspace, "skills"), { recursive: true })
   await writeFile(join(source, "SKILL.md"), "---\nname: linked\ndescription: Linked skill.\n---\n\n# Linked\n")
   await symlink(source, join(workspace, "skills", "linked"), "dir")

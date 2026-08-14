@@ -50,5 +50,6 @@ Keep implementation centralized and adaptable. Prefer simple shared boundaries o
 
 ## 6. Refactor after behavior is stable (Optional) - [x]
 
-- Reviewed after the functional changes stabilized. No additional `src/tools/subagent/chatgpt-subagent.ts` + test-suite split is needed for this build; the new model-facing output boundary already lives separately in `src/server/tool-output.ts`, and the passive completion changes remain localized.
-- Keep a larger subagent/test split as future roadmap work if maintenance pressure justifies it rather than adding churn here.
+- Split the former subagent monolith by reason to change: lifecycle/orchestration remains in `chatgpt-subagent.ts`, volatile ChatGPT Web/CDP behavior lives in `chatgpt-subagent-browser.ts`, and shared contracts live in `chatgpt-subagent-contracts.ts`.
+- Split subagent tests to match those production boundaries without introducing manager/service abstractions for tightly coupled lifecycle state.
+- Clean up the broader test suite with responsibility-based shell test files, deterministic synchronization for expensive parallel-shell cases, small shared shell/temp helpers, direct script-function tests, and reduced audit-log boilerplate.

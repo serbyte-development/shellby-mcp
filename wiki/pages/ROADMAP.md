@@ -26,4 +26,12 @@ Verified 2026-08-14
   - Treat these as MCP I/O token metrics, not exact model inference-token usage.
   - Keep this simple. If reliable accounting for `subagent_start`, `subagent_result`, or any other tool requires special-case complexity, omit token logging for that tool rather than complicating the architecture.
 
-- [ ] Break `src/tools/subagent/chatgpt-subagent.ts` into smaller smart abstractions after the behavior above is stable.
+- [x] Break `src/tools/subagent/chatgpt-subagent.ts` into smaller smart abstractions after the behavior above is stable.
+  - Keep lifecycle/state-machine behavior in `chatgpt-subagent.ts`.
+  - Isolate ChatGPT Web/CDP selectors, network parsing, and browser interaction in `chatgpt-subagent-browser.ts`.
+  - Keep shared service/request/result/error types in `chatgpt-subagent-contracts.ts`.
+  - Split focused tests along the same lifecycle/browser ownership boundary.
+
+## Future experiments
+
+- [ ] Revisit MCP `2026-07-28` and the current `io.modelcontextprotocol/tasks` extension only if they solve a concrete problem or materially simplify Shelly. A self-contained manual compatibility probe is preserved at `temporary/mcp-2026-tasks-probe/`; do not wire it into the production `/mcp` server unless this roadmap item is intentionally resumed.

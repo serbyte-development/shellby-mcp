@@ -713,3 +713,30 @@
 
 - Dismiss ChatGPT's known `#modal-beacon` overlay with `Escape` before prompt entry and retry a blocked composer/send interaction once if that same overlay races back into view.
 - Keep retry scope to the atomic click or keypress that failed, so overlay recovery cannot duplicate an already-submitted turn.
+
+## [2026-08-14] simplify | Reduce test-suite duplication and fixed waits
+
+- Split parallel shell coverage into `test/shell-parallel.test.ts` and moved shared shell polling/completion helpers into `test/helpers/shell.ts`.
+- Replaced fixed parallel-test delays with release/PID synchronization, centralized temporary-directory cleanup in `test/helpers/temp.ts`, and removed redundant script subprocesses and brittle model-facing prose assertions.
+- Reduced repeated MCP audit-log setup while preserving behavioral assertions.
+
+## [2026-08-14] probe | Add temporary native MCP Tasks compatibility probe
+
+- Added `temporary_native_task_probe`, a side-effect-free MCP 2025-11-25 task probe with an unmistakable `MCP_NATIVE_TASK_PROBE_OK` result.
+- Kept task state in memory and isolated raw task lifecycle handling to the probe while preserving ordinary tool dispatch.
+- Documented that MCP SDK 2.0 has legacy task wire vocabulary but no task runtime and strips task fields on the 2026-07-28 protocol path.
+
+## [2026-08-14] probe | Isolate MCP 2026 Tasks compatibility experiment
+
+- Removed the temporary Tasks probe from Shelly's production MCP registration, HTTP path, integration surface, and maintained tool documentation.
+- Rebuilt it under `temporary/mcp-2026-tasks-probe/` as a standalone modern-only MCP 2026-07-28 server using the current `io.modelcontextprotocol/tasks` extension and `tasks/get` lifecycle.
+
+## [2026-08-14] simplify | Split subagent implementation and matching tests by ownership
+
+- Kept subagent lifecycle/state-machine behavior in `src/tools/subagent/chatgpt-subagent.ts`, moved ChatGPT Web/CDP mechanics into `src/tools/subagent/chatgpt-subagent-browser.ts`, and moved shared contracts into `src/tools/subagent/chatgpt-subagent-contracts.ts`.
+- Split browser-adapter coverage into `test/chatgpt-subagent-browser.test.ts` while keeping lifecycle coverage in `test/chatgpt-subagent.test.ts`; preserved the existing behavioral coverage without adding manager/service abstractions.
+
+## [2026-08-14] defer | Preserve MCP 2026 Tasks probe for future evaluation
+
+- Deferred MCP `2026-07-28` / `io.modelcontextprotocol/tasks` adoption because the current Shelly MCP is working well and there is no concrete migration need.
+- Kept `temporary/mcp-2026-tasks-probe/` isolated for a future manual compatibility check; production `/mcp` remains unchanged by the experiment.

@@ -3,15 +3,7 @@ import { homedir, tmpdir } from "node:os"
 import { join, resolve } from "node:path"
 import test from "node:test"
 
-import { buildMcpInstructions, loadMcpConfig, resolveWorkspacePath } from "../src/config.js"
-
-test("warns agents away from broad shell diagnostics that may be platform-blocked", () => {
-  const instructions = buildMcpInstructions("/tmp/workspace")
-
-  assert.match(instructions, /Avoid broad, unbounded system or environment dumps/)
-  assert.match(instructions, /`pm2 jlist`, `ps aux`, `env`, or `printenv`/)
-  assert.match(instructions, /do not retry the same payload unchanged/)
-})
+import { loadMcpConfig, resolveWorkspacePath } from "../src/config.js"
 
 test("resolves configured workspace paths to absolute paths", () => {
   assert.equal(resolveWorkspacePath("~"), homedir())
