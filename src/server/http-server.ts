@@ -9,7 +9,6 @@ import { ChatGptSubagentModule } from "../tools/subagent/chatgpt-subagent.js"
 import type { ChatGptSubagentService } from "../tools/subagent/chatgpt-subagent-contracts.js"
 import { createMcpServer } from "./mcp-server.js"
 import { McpAuditLogger } from "./audit-log.js"
-import { FeedbackStore } from "../tools/feedback.js"
 import { PeekabooClient } from "../tools/computer/peekaboo.js"
 import { ShellSessionManager } from "../tools/shell/session-manager.js"
 import { WebPageOpener } from "../tools/web/web-open.js"
@@ -37,7 +36,6 @@ export interface StartMcpServerOptions {
   chatGptSubagents?: ChatGptSubagentService
   auditLogger?: McpAuditLogger
   authStore?: UnhingedAgentAuthStore
-  feedbackStore?: FeedbackStore
   applyPatchExecutable?: string
   webPageOpener?: WebPageOpener
   toolOutputStructured?: ToolOutputStructuredMode
@@ -51,7 +49,6 @@ export async function startMcpHttpServer(options: StartMcpServerOptions = {}): P
   const chatGptSubagents = options.chatGptSubagents ?? new ChatGptSubagentModule()
   const auditLogger = options.auditLogger
   const authStore = options.authStore
-  const feedbackStore = options.feedbackStore ?? new FeedbackStore()
   const webPageOpener = options.webPageOpener ?? new WebPageOpener()
   const inFlightRequests = new Set<InFlightMcpRequest>()
 
@@ -93,7 +90,6 @@ export async function startMcpHttpServer(options: StartMcpServerOptions = {}): P
 
     const mcpServer = createMcpServer(shells, {
       chatGptSubagents,
-      feedbackStore,
       applyPatchExecutable: options.applyPatchExecutable,
       peekaboo,
       webPageOpener,

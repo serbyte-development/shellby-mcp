@@ -4,7 +4,6 @@ import { buildMcpInstructions, MCP_CONFIG, type ToolOutputStructuredMode } from 
 import { registerApplyPatchTool } from "../tools/apply-patch/apply-patch.js"
 import { registerComputerUseTools } from "../tools/computer/computer-tools.js"
 import { PeekabooClient } from "../tools/computer/peekaboo.js"
-import { FeedbackStore, registerFeedbackTool } from "../tools/feedback.js"
 // import { registerIosShellTool } from "../tools/ios/ios-shell.js"
 import { registerShellExecutionTools, registerShellManagementTools } from "../tools/shell/shell-tools.js"
 import { ShellSessionManager } from "../tools/shell/session-manager.js"
@@ -17,7 +16,6 @@ import { installToolRegistrationBoundary } from "./tool-registration-boundary.js
 
 export interface CreateMcpServerOptions {
   chatGptSubagents: ChatGptSubagentService
-  feedbackStore: FeedbackStore
   peekaboo: PeekabooClient
   webPageOpener: WebPageOpener
   applyPatchExecutable?: string
@@ -43,7 +41,6 @@ export function createMcpServer(shells: ShellSessionManager, options: CreateMcpS
   registerWebTool(server, options.webPageOpener)
   registerSkillTools(server, workspace)
   registerComputerUseTools(server, options.peekaboo)
-  registerFeedbackTool(server, options.feedbackStore)
 
   return server
 }

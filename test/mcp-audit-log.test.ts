@@ -116,7 +116,7 @@ test("matches batched tool responses by JSON-RPC id", async (t) => {
   )
   const calls = logger.startToolCalls([
     { jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "shell_list", arguments: { first: true } } },
-    { jsonrpc: "2.0", id: 2, method: "tools/call", params: { name: "feedback_submit", arguments: { feedback: "second" } } },
+    { jsonrpc: "2.0", id: 2, method: "tools/call", params: { name: "skill_load", arguments: { name: "second" } } },
   ])
   assert.equal(calls.length, 2)
 
@@ -133,7 +133,7 @@ test("matches batched tool responses by JSON-RPC id", async (t) => {
   assert.match(log, new RegExp(`shell_list - 0ms - ${countTokens(JSON.stringify({ first: true }))} in / ${countTokens(firstOutput)} out`))
   assert.match(
     log,
-    new RegExp(`! 00:30:00 - feedback_submit - 0ms - ${countTokens(JSON.stringify({ feedback: "second" }))} in / ${countTokens(secondOutput)} out`)
+    new RegExp(`! 00:30:00 - skill_load - 0ms - ${countTokens(JSON.stringify({ name: "second" }))} in / ${countTokens(secondOutput)} out`)
   )
 })
 
@@ -317,13 +317,13 @@ test("caps large ordinary tool arguments", async (t) => {
   )
   const [call] = logger.startToolCalls({
     method: "tools/call",
-    params: { name: "feedback_submit", arguments: { feedback: "x".repeat(2_000) } },
+    params: { name: "skill_load", arguments: { name: "x".repeat(2_000) } },
   })
   assert.ok(call)
   call.finish({ httpStatus: 200, state: "finished", responseBytes: 200 })
 
   const log = await readFile(file, "utf8")
-  assert.match(log, /^--- # 22:00:00 - feedback_submit - 0ms - \d+ in\nargs: "/)
+  assert.match(log, /^--- # 22:00:00 - skill_load - 0ms - \d+ in\nargs: "/)
   assert.match(log, /chars omitted/)
   assert.ok(log.length < 800)
 })

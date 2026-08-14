@@ -18,7 +18,7 @@ Unhinged Agent is an open-source, context-optimized **agent harness for ChatGPT 
 - **Multi-agent capabilities:** launch up to three independent browser-backed ChatGPT agents, continue named agent conversations, and retrieve results concurrently.
 - **Context optimized:** compact model-facing Markdown, token-bounded output, pagination, schema compression, and retained local state reduce repeated context cost.
 - **Extensible:** dynamic workspace skills load directly from `<workspace>/skills/*/SKILL.md`.
-- **Agent-native runtime:** parallel shell batches, idempotent request IDs, feedback logging, and MCP tool-call auditing are designed around autonomous agent work.
+- **Agent-native runtime:** parallel shell batches, idempotent request IDs, and MCP tool-call auditing are designed around autonomous agent work.
 
 MCP is only the transport layer. Unhinged Agent uses MCP TypeScript SDK v2 with stateless Streamable HTTP requests while keeping shared agent runtime state in the local process. Shells, browser agents, and adapters span independent requests; durable remote ownership survives restarts in `~/.unhinged-agent/auth.json`.
 
@@ -193,7 +193,6 @@ Core tools:
 - `fetch_website`
 - `skill_list`
 - `skill_load`
-- `feedback_submit`
 - `subagent_start`
 - `subagent_result`
 - `apply_patch`

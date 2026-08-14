@@ -6,7 +6,6 @@ dist/
 /agent-commands.yaml
 *.log
 /wiki/_private/
-/feedback/
 
 
 t.*

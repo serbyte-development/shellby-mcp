@@ -10,7 +10,6 @@ import { UnhingedAgentAuthStore } from "../src/auth/auth.js"
 import { MCP_CONFIG } from "../src/config.js"
 import { countTokens } from "../src/tokenizer.js"
 import type { ChatGptSubagentService } from "../src/tools/subagent/chatgpt-subagent-contracts.js"
-import { FeedbackStore } from "../src/tools/feedback.js"
 import { startMcpHttpServer as startMcpHttpServerRaw } from "../src/server/http-server.js"
 import { McpAuditLogger } from "../src/server/audit-log.js"
 import { PeekabooClient } from "../src/tools/computer/peekaboo.js"
@@ -55,7 +54,6 @@ test("serves shell tools through Streamable HTTP and retains state across MCP se
       "computer_drag",
       "computer_app",
       "computer_window",
-      "feedback_submit",
     ]
   )
   for (const tool of tools.tools) {
@@ -164,14 +162,6 @@ test("serves shell tools through Streamable HTTP and retains state across MCP se
   }
   assert.deepEqual(Object.keys(skillLoadOutputSchema.properties ?? {}), ["path", "instructions"])
   assert.deepEqual(skillLoadOutputSchema.required, ["path", "instructions"])
-  const feedbackTool = tools.tools.find((tool) => tool.name === "feedback_submit")
-  assert.deepEqual(feedbackTool?.annotations, { destructiveHint: false, openWorldHint: false })
-  const feedbackInputSchema = feedbackTool?.inputSchema as {
-    properties?: Record<string, Record<string, unknown>>
-    required?: string[]
-  }
-  assert.deepEqual(Object.keys(feedbackInputSchema.properties ?? {}), ["feedback"])
-  assert.deepEqual(feedbackInputSchema.required, ["feedback"])
   const subagentTool = tools.tools.find((tool) => tool.name === "subagent_start")
   assert.deepEqual(subagentTool?.annotations, { destructiveHint: false })
   const subagentInputSchema = subagentTool?.inputSchema as {
@@ -424,43 +414,6 @@ test("logs output tokens from the final compact model-facing result", { timeout:
   assert.ok(text?.type === "text")
   const log = await readFile(auditPath, "utf8")
   assert.match(log, new RegExp(`shell_list - \\d+ms - ${countTokens("{}")} in / ${countTokens(text.text)} out`))
-})
-
-test("records agent feedback through MCP", { timeout: 10_000 }, async (t) => {
-  const workspace = await mkdtemp(join(tmpdir(), "mcp-feedback-integration-"))
-  t.after(() => rm(workspace, { recursive: true, force: true }))
-  const feedbackPath = join(workspace, "agent-feedback.jsonl")
-  const feedbackStore = new FeedbackStore({
-    path: feedbackPath,
-    now: () => new Date("2026-08-09T22:00:00.000Z"),
-    createId: () => "fb_test",
-  })
-
-  const running = await startMcpHttpServer({
-    port: 0,
-    shellManager: new ShellSessionManager({ defaultShell: new PersistentShellSession({ cwd: workspace }) }),
-    feedbackStore,
-  })
-  t.after(() => running.close())
-  const connected = await connectClient(running.url, "feedback-integration-client")
-  t.after(() => connected.client.close())
-
-  const result = await connected.client.callTool({
-    name: "feedback_submit",
-    arguments: {
-      feedback: "## Result feedback\n\n`subagent_result` should make progress easier to distinguish from a stalled turn.",
-    },
-  })
-
-  assert.deepEqual(result.structuredContent, {
-    id: "fb_test",
-    created_at: "2026-08-09T22:00:00.000Z",
-  })
-  assert.deepEqual(JSON.parse((await readFile(feedbackPath, "utf8")).trim()), {
-    id: "fb_test",
-    created_at: "2026-08-09T22:00:00.000Z",
-    feedback: "## Result feedback\n\n`subagent_result` should make progress easier to distinguish from a stalled turn.",
-  })
 })
 
 test("starts staggered subagents and polls turns concurrently across stateless MCP requests", { timeout: 25_000 }, async (t) => {
