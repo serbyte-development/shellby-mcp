@@ -19,6 +19,7 @@ if (errors.length > 0) {
     workspace.created ? `Created workspace instructions at ${workspace.agentsPath}` : `Keeping existing workspace instructions at ${workspace.agentsPath}`
   )
   run("npm", ["run", "build"])
+  run(process.execPath, [join(scriptsDir, "peekaboo-permissions.mjs"), "--status", "--optional"])
   run(process.execPath, [join(scriptsDir, "chatgpt-browser.mjs"), "--setup", "--optional"])
   console.log("Setup complete. Sign into ChatGPT if the dedicated Chrome window opened, then run `npm start`.")
 }

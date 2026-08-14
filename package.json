@@ -18,6 +18,7 @@
     "dev": "node --env-file-if-exists=.env --import tsx --watch src/index.ts",
     "preflight": "node --env-file-if-exists=.env scripts/preflight.mjs",
     "setup": "node --env-file-if-exists=.env scripts/setup.mjs",
+    "setup:computer": "node --env-file-if-exists=.env scripts/peekaboo-permissions.mjs",
     "setup:chatgpt": "node --env-file-if-exists=.env scripts/chatgpt-browser.mjs --setup",
     "chatgpt": "node --env-file-if-exists=.env scripts/chatgpt-browser.mjs",
     "start": "node --env-file-if-exists=.env scripts/start.mjs",

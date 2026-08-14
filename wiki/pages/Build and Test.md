@@ -46,6 +46,6 @@ Tests use temporary directories and real local child shells; `test/helpers/temp.
 
 GitHub Actions runs the release validation sequence on the supported arm64 macOS runner for pushes to `main` and pull requests (`.github/workflows/ci.yml`, `package.json`).
 
-The tests do not exercise the real `src/index.ts` composition path, `/healthz`, GET/DELETE 405 responses, signal-driven shutdown, tunnel configuration, a real browser launch, or the installed Peekaboo/macOS permission path (`test/`, `src/index.ts`, `src/server/http-server.ts`, `src/tools/web/web-open.ts`, `src/tools/computer/peekaboo.ts`).
+The tests do not exercise the real `src/index.ts` composition path, `/healthz`, GET/DELETE 405 responses, signal-driven shutdown, tunnel configuration, a real browser launch, or the installed Peekaboo/macOS permission path used by `setup`/`setup:computer` (`test/`, `scripts/peekaboo-permissions.mjs`, `src/index.ts`, `src/server/http-server.ts`, `src/tools/web/web-open.ts`, `src/tools/computer/peekaboo.ts`).
 
 The `apply_patch` MCP integration tests inject a fake executable, so they cover wrapper behavior, output caps, concurrency, and abort cleanup but not the checked-in Codex parser itself. Direct MCP probes against `vendor/apply-patch/apply_patch` on 2026-08-11 found three semantics not represented by those tests: consecutive `@@` context anchors are rejected, absolute patch file paths are accepted, and `Add File` overwrites an existing path (`src/tools/apply-patch/apply-patch.ts`, `test/mcp-integration.test.ts`, `vendor/apply-patch/apply_patch`).

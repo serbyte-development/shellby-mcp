@@ -808,3 +808,7 @@
 ## [2026-08-14] simplify | Remove development feedback tool
 
 - Removed `feedback_submit`, its repository-local feedback store/inbox, server dependency injection, published instructions, tests, and current documentation because it existed only for development-time feedback collection.
+
+## [2026-08-14] setup | Delegate Computer Use permissions to Peekaboo
+
+- Added `setup:computer` as a thin wrapper around Peekaboo's built-in `permissions grant` workflow and made normal `setup` show `permissions status --all-sources` when Peekaboo is installed; missing optional Computer Use dependencies do not block core setup.

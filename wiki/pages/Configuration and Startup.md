@@ -33,19 +33,18 @@ Inside the MCP process, startup first ensures `~/.unhinged-agent/auth.json`, pre
 
 ## Computer Use Permission Bootstrap
 
-Install Peekaboo and inspect or request its macOS permissions:
+Install Peekaboo and use its own permission workflow:
 
 ```bash
 brew install steipete/tap/peekaboo
-peekaboo permissions status --all-sources --json
-peekaboo permissions grant
+npm run setup:computer
 ```
 
-Screen Recording enables capture; Accessibility and Event Synthesizing enable actions. TCC grants attach to the responsible launching process, so compare status from the Terminal or PM2 context that runs the server (`src/tools/computer/peekaboo.ts`, `src/tools/computer/computer-tools.ts`).
+Normal `npm run setup` invokes `peekaboo permissions status --all-sources` when Peekaboo is installed and prints the CLI's own source-aware status. `setup:computer` delegates directly to `peekaboo permissions grant`; Unhinged Agent does not duplicate Peekaboo's macOS permission logic. Screen Recording enables capture; Accessibility and Event Synthesizing enable actions. TCC grants attach to the responsible launching process, so use the source reported by Peekaboo itself (`scripts/peekaboo-permissions.mjs`, `src/tools/computer/peekaboo.ts`, `src/tools/computer/computer-tools.ts`).
 
 ## Package Scripts
 
-- Runtime check: `preflight` validates Apple Silicon macOS, Node 22.13.0+, local dependencies, ngrok installation, and ngrok authentication without changing runtime state. `setup` runs the same checks before creating the workspace and best-effort launching `~/.unhinged-agent/chatgpt-chrome` for a one-time ChatGPT sign-in. Browser setup failures do not block the core MCP; `setup:chatgpt` retries that browser step strictly (`scripts/preflight.mjs`, `scripts/setup.mjs`, `scripts/chatgpt-browser.mjs`).
+- Runtime check: `preflight` validates Apple Silicon macOS, Node 22.13.0+, local dependencies, ngrok installation, and ngrok authentication without changing runtime state. `setup` runs the same checks before creating the workspace, asking an installed Peekaboo to report its permission status, and best-effort launching `~/.unhinged-agent/chatgpt-chrome` for a one-time ChatGPT sign-in. Missing Peekaboo or browser setup does not block the core MCP; `setup:computer` and `setup:chatgpt` rerun those optional setup paths (`scripts/preflight.mjs`, `scripts/setup.mjs`, `scripts/peekaboo-permissions.mjs`, `scripts/chatgpt-browser.mjs`).
 - Production runtime: `start` builds and starts/reloads MCP + ngrok and auto-launches the configured ChatGPT browser; `restart` does the same after clearing the current audit log; `status`, `logs`, and `stop` expose the small PM2 management surface. PM2 gives the MCP process 10 seconds to complete its signal-driven cleanup before forcing termination. PM2 is a package dependency rather than a global prerequisite (`package.json`, `scripts/start.mjs`, `ecosystem.config.cjs`).
 - Development: `dev`, `build`, and `inspect` keep direct local development separate from the managed production runtime.
 - Tunnel: `tunnel` remains a low-level helper that exposes port 3333 through the checked-in ngrok policy with the ngrok agent's local HTTP inspector disabled. ngrok assigns the public URL unless `NGROK_URL` supplies the caller's own fixed domain (`package.json`, `ecosystem.config.cjs`).

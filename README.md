@@ -39,10 +39,9 @@ Install Peekaboo if you want Computer Use:
 
 ```bash
 brew install steipete/tap/peekaboo
-peekaboo permissions grant
 ```
 
-The server still starts when Peekaboo or the dedicated ChatGPT browser are unavailable. Only the dependent tools fail.
+`npm run setup` asks Peekaboo to report its own permission status. If a required permission is missing, run `npm run setup:computer`; that delegates directly to Peekaboo's built-in permission guide instead of duplicating macOS permission logic. The server still starts when Peekaboo or the dedicated ChatGPT browser are unavailable. Only the dependent tools fail.
 
 ## Quick start
 
@@ -73,7 +72,7 @@ npm run preflight
 npm run setup
 ```
 
-`preflight` only reports whether the runtime is ready. Setup then creates the configured workspace and a starter `AGENTS.md` if one does not already exist. Existing workspace instructions are never overwritten. Set `MCP_CWD` before setup to initialize a different workspace.
+`preflight` only reports whether the runtime is ready. Setup then creates the configured workspace and a starter `AGENTS.md` if one does not already exist, asks an installed Peekaboo to report Computer Use permissions, and best-effort prepares the dedicated ChatGPT browser. Existing workspace instructions are never overwritten. Set `MCP_CWD` before setup to initialize a different workspace.
 
 If Google Chrome is installed, `setup` also creates a separate profile under `~/.unhinged-agent/chatgpt-chrome` and opens ChatGPT. Sign into ChatGPT in that window once. The repository never copies or modifies your normal Chrome profile.
 
@@ -265,11 +264,13 @@ This is a default working directory and model convention, not a sandbox.
 
 ## Computer Use
 
-Peekaboo permissions can be inspected with:
+Run Peekaboo's permission guide with:
 
 ```bash
-peekaboo permissions status --all-sources --json
+npm run setup:computer
 ```
+
+During normal first-time setup, Unhinged Agent runs `peekaboo permissions status --all-sources` when Peekaboo is installed. `setup:computer` delegates to `peekaboo permissions grant`, which provides Peekaboo's current macOS permission instructions.
 
 `computer_observe` returns a screenshot plus snapshot ID. Snapshot-based actions use that retained capture target so coordinates are interpreted against the correct screen/window. Observe again after the UI changes rather than reusing stale coordinates.
 
