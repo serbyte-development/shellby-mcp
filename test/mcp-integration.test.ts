@@ -985,10 +985,11 @@ test("continues serving an existing client after a stateless HTTP server restart
 test("reports an expired shell_poll cursor as a tool error", { timeout: 10_000 }, async (t) => {
   const workspace = await mkdtemp(join(tmpdir(), "mcp-expired-poll-"))
   t.after(() => rm(workspace, { recursive: true, force: true }))
+  const shell = new PersistentShellSession({ cwd: workspace, transcriptLimit: 1 })
   const running = await startMcpHttpServer({
     port: 0,
     shellManager: new ShellSessionManager({
-      defaultShell: new PersistentShellSession({ cwd: workspace, transcriptLimit: 1 }),
+      defaultShell: shell,
     }),
   })
   t.after(() => running.close())
@@ -1008,7 +1009,11 @@ test("reports an expired shell_poll cursor as a tool error", { timeout: 10_000 }
   assert.equal(started.status, "running")
   assert.notEqual(started.next_cursor, undefined)
 
-  await new Promise((resolve) => setTimeout(resolve, 200))
+  for (let attempt = 0; attempt < 100 && shell.hasActiveWork; attempt += 1) {
+    await new Promise((resolve) => setTimeout(resolve, 25))
+  }
+  assert.equal(shell.hasActiveWork, false, "command did not complete before expired-cursor assertion")
+
   const expired = await connected.client.callTool({
     name: "shell_poll",
     arguments: {

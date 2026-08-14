@@ -758,3 +758,7 @@
 - Repositioned the project as **Unhinged Agent**, a context-optimized agent harness for ChatGPT Web, with the public tagline centered on full computer access, persistent tools, and multi-agent capabilities.
 - Renamed the repository/package/runtime identity, trusted remote marker, PM2 processes, managed state paths, architecture assets, and maintained documentation; new installs default to `~/Desktop/agent-workspace` while the maintainer's broader existing workspace remains explicitly configured locally.
 - Added a 1280×640 social-preview asset and recorded broader host portability as future work while keeping Apple Silicon macOS explicit as the current release target.
+
+## [2026-08-14] test | Stabilize expired-cursor integration coverage
+
+- Replaced the expired `shell_poll` integration test's fixed completion delay with direct shell activity synchronization so slow CI runners cannot poll before transcript rollover has actually occurred.
