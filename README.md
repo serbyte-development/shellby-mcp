@@ -20,11 +20,11 @@ Unhinged Agent is an open-source, context-optimized **agent harness for ChatGPT 
 - **Extensible:** dynamic workspace skills load directly from `<workspace>/skills/*/SKILL.md`.
 - **Agent-native runtime:** parallel shell batches, idempotent request IDs, feedback logging, and MCP tool-call auditing are designed around autonomous agent work.
 
-MCP is the transport layer, not the product boundary. Unhinged Agent uses MCP TypeScript SDK v2 with stateless Streamable HTTP requests while keeping shared agent runtime state in the local process. Shells, browser agents, and adapters span independent requests; durable remote ownership survives restarts in `~/.unhinged-agent/auth.json`.
+MCP is only the transport layer. Unhinged Agent uses MCP TypeScript SDK v2 with stateless Streamable HTTP requests while keeping shared agent runtime state in the local process. Shells, browser agents, and adapters span independent requests; durable remote ownership survives restarts in `~/.unhinged-agent/auth.json`.
 
 ## Compatibility and requirements
 
-- Apple Silicon macOS **for the current release**. Broader host portability is planned; macOS is a compatibility constraint, not the product category.
+- Apple Silicon macOS **for the current release**. Broader host portability is planned; macOS is a compatibility constraint at this time.
 - Node.js 22.13.0+
 - npm
 - An [ngrok](https://ngrok.com/) account and CLI
@@ -284,20 +284,20 @@ Each call requires an absolute `cwd` and a normal Codex-style patch. It runs ind
 
 Copy `.env.example` to `.env` to override the defaults below. Internal safety limits stay in `src/config.ts` and are intentionally not exposed as environment variables.
 
-| Variable                    | Default                       | Purpose                                            |
-| --------------------------- | ----------------------------- | -------------------------------------------------- |
-| `NGROK_URL`                 | unset                         | Optional fixed ngrok domain used by tunnel helpers |
-| `NGROK_BIN`                 | `ngrok` from `PATH`           | Optional ngrok executable override                 |
-| `NGROK_AUTHTOKEN`           | unset                         | Optional ngrok auth token                          |
-| `MCP_SHELL`                 | `/bin/zsh`                    | Persistent shell executable                        |
+| Variable                    | Default                     | Purpose                                            |
+| --------------------------- | --------------------------- | -------------------------------------------------- |
+| `NGROK_URL`                 | unset                       | Optional fixed ngrok domain used by tunnel helpers |
+| `NGROK_BIN`                 | `ngrok` from `PATH`         | Optional ngrok executable override                 |
+| `NGROK_AUTHTOKEN`           | unset                       | Optional ngrok auth token                          |
+| `MCP_SHELL`                 | `/bin/zsh`                  | Persistent shell executable                        |
 | `MCP_CWD`                   | `~/Desktop/agent-workspace` | Initial/default workspace                          |
-| `MCP_PEEKABOO_BIN`          | `peekaboo`                    | Peekaboo executable                                |
-| `MCP_CHATGPT_CDP_ENDPOINT`  | `http://127.0.0.1:9222`       | Chrome CDP endpoint for browser subagents          |
-| `CHROME_BIN`                | normal macOS Chrome path      | Optional dedicated Chrome executable override      |
-| `MCP_DEFAULT_OUTPUT_TOKENS` | `1024`                        | Default `max_output_tokens` when omitted           |
-| `MCP_MAX_OUTPUT_TOKENS`     | `16384`                       | Largest allowed `max_output_tokens` override       |
-| `MCP_MAX_SHELLS`            | `8`                           | Maximum live shells                                |
-| `MCP_SHELL_IDLE_TTL_MS`     | `1800000`                     | Named-shell idle timeout; `0` disables cleanup     |
+| `MCP_PEEKABOO_BIN`          | `peekaboo`                  | Peekaboo executable                                |
+| `MCP_CHATGPT_CDP_ENDPOINT`  | `http://127.0.0.1:9222`     | Chrome CDP endpoint for browser subagents          |
+| `CHROME_BIN`                | normal macOS Chrome path    | Optional dedicated Chrome executable override      |
+| `MCP_DEFAULT_OUTPUT_TOKENS` | `1024`                      | Default `max_output_tokens` when omitted           |
+| `MCP_MAX_OUTPUT_TOKENS`     | `16384`                     | Largest allowed `max_output_tokens` override       |
+| `MCP_MAX_SHELLS`            | `8`                         | Maximum live shells                                |
+| `MCP_SHELL_IDLE_TTL_MS`     | `1800000`                   | Named-shell idle timeout; `0` disables cleanup     |
 
 The production listener always binds to `127.0.0.1:3333`; host and port are not environment-configurable. Tests may still inject a different host or request an ephemeral port directly through the HTTP server API.
 

@@ -1,3 +1,0 @@
-[[allowlists]]
-description = "Historical fake authentication token used only by an integration test"
-regexes = ['''0123456789abcdef0123456789abcdef''']

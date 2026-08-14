@@ -1,4 +1,4 @@
-import { type BrowserContext, type Locator, type Page, type Response } from "playwright-core"
+import { type Locator, type Page, type Response } from "playwright-core"
 
 import { asRecord, booleanValue, finiteNumber as numberValue } from "../../utils.js"
 import {
@@ -378,17 +378,6 @@ export async function isGenerating(page: Page): Promise<boolean> {
     if ((await locator.count()) > 0 && (await locator.isVisible().catch(() => false))) return true
   }
   return false
-}
-
-export async function getPageTargetId(context: BrowserContext, page: Page): Promise<string | undefined> {
-  try {
-    const session = await context.newCDPSession(page)
-    const result = (await session.send("Target.getTargetInfo")) as { targetInfo?: { targetId?: string } }
-    await session.detach()
-    return result.targetInfo?.targetId
-  } catch {
-    return undefined
-  }
 }
 
 export function isExpectedAgentPage(state: ManagedAgentPageState): boolean {

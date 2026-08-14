@@ -15,7 +15,6 @@ import {
   findComposer,
   findLatestAssistantAfterPrompt,
   findNewDomAssistantMessage,
-  getPageTargetId,
   isExpectedAgentPage,
   isGenerating,
   loadConversationPayload,
@@ -50,7 +49,6 @@ interface BrowserAgentState {
   hasSubmittedTurn: boolean
   conversationId?: string
   conversationUrl?: string
-  targetId?: string
   lastReturnedMessageId?: string
   lastCompletedAt?: number
   lastUsedAt: number
@@ -290,22 +288,6 @@ export class ChatGptSubagentModule implements ChatGptSubagentService {
     await Promise.allSettled(ownedPages.map((page) => page.close()))
   }
 
-  listAgents(): Array<{
-    agentId: string
-    conversationId?: string
-    conversationUrl?: string
-    targetId?: string
-    pageClosed: boolean
-  }> {
-    return [...this.agents.values()].map((state) => ({
-      agentId: state.agentId,
-      conversationId: state.conversationId,
-      conversationUrl: state.conversationUrl,
-      targetId: state.targetId,
-      pageClosed: state.page.isClosed(),
-    }))
-  }
-
   private async connectOnce(): Promise<void> {
     try {
       this.browser = await chromium.connectOverCDP(this.cdpEndpoint, { timeout: this.connectTimeoutMs })
@@ -351,7 +333,6 @@ export class ChatGptSubagentModule implements ChatGptSubagentService {
 
     try {
       throwIfAborted(signal)
-      state.targetId = await getPageTargetId(context, page)
       await waitForPromise(page.goto(stored?.conversationUrl ?? this.chatGptUrl, { waitUntil: "domcontentloaded" }), signal)
       throwIfAborted(signal)
       await assertAuthenticated(page)
@@ -397,7 +378,6 @@ export class ChatGptSubagentModule implements ChatGptSubagentService {
       state.tracker.dispose()
       state.page = page
       state.tracker = tracker
-      state.targetId = await getPageTargetId(context, page)
       state.lastUsedAt = Date.now()
       this.rememberConversation(state)
       return state

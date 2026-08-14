@@ -436,10 +436,12 @@ export class PersistentShellSession {
     if (parallelRecord) {
       const waitMs = normalizeWaitMs(input.waitMs)
       const maxOutputTokens = this.normalizeOutputTokens(input.maxOutputTokens)
-      const version = this.updateVersion
-      const initialRead = parallelRecord.transcript.read(input.cursor, maxOutputTokens, parallelRecord.endCursor ?? undefined)
-      if (parallelRecord.status === "running" && initialRead.output.length === 0 && !initialRead.cursorExpired) {
-        await this.waitForUpdate(version, waitMs, input.signal)
+      if (parallelRecord.status === "running") {
+        const version = this.updateVersion
+        const initialRead = parallelRecord.transcript.read(input.cursor, maxOutputTokens, parallelRecord.endCursor ?? undefined)
+        if (initialRead.output.length === 0 && !initialRead.cursorExpired) {
+          await this.waitForUpdate(version, waitMs, input.signal)
+        }
       }
       return this.parallelSnapshot(parallelRecord, input.cursor, maxOutputTokens)
     }
@@ -450,10 +452,12 @@ export class PersistentShellSession {
 
     const waitMs = normalizeWaitMs(input.waitMs)
     const maxOutputTokens = this.normalizeOutputTokens(input.maxOutputTokens)
-    const version = this.updateVersion
-    const initialRead = this.transcript.read(input.cursor, maxOutputTokens, record.endCursor ?? undefined)
-    if (record.status === "running" && initialRead.output.length === 0 && !initialRead.cursorExpired) {
-      await this.waitForUpdate(version, waitMs, input.signal)
+    if (record.status === "running") {
+      const version = this.updateVersion
+      const initialRead = this.transcript.read(input.cursor, maxOutputTokens, record.endCursor ?? undefined)
+      if (initialRead.output.length === 0 && !initialRead.cursorExpired) {
+        await this.waitForUpdate(version, waitMs, input.signal)
+      }
     }
 
     return this.snapshot(record, input.cursor, maxOutputTokens)

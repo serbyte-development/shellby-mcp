@@ -75,7 +75,7 @@ test("forgets an agent whose page is lost before a conversation can be recovered
   await assert.rejects(internals.ensureActivePage(state), (error: unknown) => error instanceof ChatGptSubagentError && error.code === "AGENT_TARGET_LOST")
 
   assert.equal(trackerDisposed, true)
-  assert.deepEqual(module.listAgents(), [])
+  assert.equal(internals.agents.has(state.agentId), false)
 })
 
 test("fails explicitly when a saved ChatGPT conversation was deleted", async () => {
@@ -515,7 +515,7 @@ test("dispose closes managed agent pages but leaves user-repurposed tabs alone",
 
   assert.equal(managedCloses, 1)
   assert.equal(repurposedCloses, 0)
-  assert.deepEqual(module.listAgents(), [])
+  assert.equal(internals.agents.size, 0)
 })
 
 test("expires idle agent tabs and local turn state", async () => {
@@ -563,7 +563,7 @@ test("expires idle agent tabs and local turn state", async () => {
 
   assert.equal(closes, 1)
   assert.equal(trackerDisposals, 1)
-  assert.deepEqual(module.listAgents(), [])
+  assert.equal(internals.agents.has(state.agentId), false)
   assert.equal(internals.turns.size, 0)
   assert.deepEqual(module.drainEvents(), [])
   await module.dispose()

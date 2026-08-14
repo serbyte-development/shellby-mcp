@@ -771,3 +771,7 @@
 
 - Renamed Austin's broader local agent workspace from `~/Desktop/chatgpt-workspace` to `~/Desktop/agent-workspace` and updated the local `MCP_CWD` override to match the public default.
 - Scanned current repo/workspace/user configuration and symlink targets for Shelly, `chatgpt-local-shell-mcp`, and old workspace-path references; repointed live `git-init-org` and `diagram-design` symlinks and retained dated raw/history or editor-cache artifacts rather than rewriting history.
+
+## [2026-08-14] optimize | Avoid duplicate completed shell poll reads
+
+- Skip the preliminary transcript tokenization for already-completed normal and parallel `shell_poll` records; running polls retain the existing read-before-wait behavior.

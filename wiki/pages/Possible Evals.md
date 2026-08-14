@@ -19,7 +19,7 @@ Main limitations:
 
 ### Bare-macOS investigation
 
-The public task files make the pre-task source state easy to reconstruct: each IC task carries a commit ID plus either a bug-reintroduction patch or revert command. The grader is the portability blocker, not the repository snapshot.
+The public task files make the pre-task source state easy to reconstruct: each IC task carries a commit ID plus either a bug-reintroduction patch or revert command. The grader is the portability blocker.
 
 All 198 current IC tasks have a Playwright `test.py` and a recorded `flow.mitm`; there is no simpler unit-test-only subset. The shared grader compiles and starts the historical Expensify web app, starts mitmproxy with the task's recorded network flow, rewrites Playwright to use that proxy, waits for the local app, and then runs the task-specific browser test. The common runtime also starts Pusher-Fake and nginx, edits `/etc/hosts`, installs local certificates, and uses Linux-specific `/app`, `/root`, X11, package-management, and certificate paths (`runtime_scripts/setup_expensify.yml`, `runtime_scripts/setup_mitmproxy.yml`, `runtime_scripts/run_tests.yml`, `runtime_scripts/run.sh`, `runtime_scripts/rewrite_test.py`).
 
@@ -41,16 +41,16 @@ Sources: [paper](https://arxiv.org/abs/2606.29957), [repository](https://github.
 
 ## Fit
 
-| Criterion | SWE-Lancer IC | SWE-Together |
-| --- | --- | --- |
-| Originates from real engineering work | Excellent: actual paid jobs and completed fixes | Excellent: recorded real user-agent coding sessions |
-| Native single-user-turn task | **Yes** | **No** |
-| Recoverable pre-task repository | Yes | Yes |
-| Final code is externally graded | Yes, hidden end-to-end tests | Yes, primarily frozen agentic rubric + executable evidence |
-| Easy to run one task independently | Yes | Yes, but canonical run requires user simulator |
-| Fits ChatGPT Web + Unhinged Agent without a multi-turn adapter | **Yes** | **No** |
-| Current Mac friction | High for canonical runs | Docker-supported, but multi-turn integration is the blocker |
-| Repository diversity | Low: Expensify only | Higher: multiple upstream datasets/repos |
+| Criterion                                                      | SWE-Lancer IC                                   | SWE-Together                                                |
+| -------------------------------------------------------------- | ----------------------------------------------- | ----------------------------------------------------------- |
+| Originates from real engineering work                          | Excellent: actual paid jobs and completed fixes | Excellent: recorded real user-agent coding sessions         |
+| Native single-user-turn task                                   | **Yes**                                         | **No**                                                      |
+| Recoverable pre-task repository                                | Yes                                             | Yes                                                         |
+| Final code is externally graded                                | Yes, hidden end-to-end tests                    | Yes, primarily frozen agentic rubric + executable evidence  |
+| Easy to run one task independently                             | Yes                                             | Yes, but canonical run requires user simulator              |
+| Fits ChatGPT Web + Unhinged Agent without a multi-turn adapter | **Yes**                                         | **No**                                                      |
+| Current Mac friction                                           | High for canonical runs                         | Docker-supported, but multi-turn integration is the blocker |
+| Repository diversity                                           | Low: Expensify only                             | Higher: multiple upstream datasets/repos                    |
 
 ## Recommendation
 
