@@ -7,7 +7,7 @@ const DEFAULT_AGENT_IDLE_TTL_MS = 30 * 60_000
 const MAX_CONCURRENT_AGENTS = 3
 
 const CAVEMAN_PROMPT =
-  "Respond terse like smart caveman — drop articles, filler, pleasantries. Fragments OK. Technical terms exact. Code unchanged. Pattern: [thing] [action] [reason]. [next step]."
+  "Respond terse like smart caveman — drop articles, filler, pleasantries. Fragments OK. Technical terms exact. Code unchanged. Pattern: [thing] [action] [reason]. [next step].\n\nNot use `subagent` tools."
 
 export interface ChatGptSubagentOptions {
   cdpEndpoint?: string
@@ -564,11 +564,7 @@ export class ChatGptSubagentModule {
     }
   }
 
-  private async waitForResponse(
-    state: BrowserAgentState,
-    input: TurnTrackingInput,
-    signal?: AbortSignal
-  ): Promise<{ messageId?: string; text: string }> {
+  private async waitForResponse(state: BrowserAgentState, input: TurnTrackingInput, signal?: AbortSignal): Promise<{ messageId?: string; text: string }> {
     let stableCandidate: { key: string; text: string; since: number } | undefined
 
     while (true) {
@@ -619,12 +615,7 @@ export class ChatGptSubagentModule {
     }
   }
 
-  private async trackTurn(
-    turn: BrowserTurnState,
-    state: BrowserAgentState,
-    input: TurnTrackingInput,
-    signal?: AbortSignal
-  ): Promise<void> {
+  private async trackTurn(turn: BrowserTurnState, state: BrowserAgentState, input: TurnTrackingInput, signal?: AbortSignal): Promise<void> {
     try {
       const answer = await this.waitForResponse(state, input, signal)
       if (turn.status !== "running") return
@@ -694,11 +685,7 @@ export class ChatGptSubagentModule {
     }
   }
 
-  private completeTurn(
-    turn: BrowserTurnState,
-    state: BrowserAgentState,
-    answer: { messageId?: string; text: string }
-  ): void {
+  private completeTurn(turn: BrowserTurnState, state: BrowserAgentState, answer: { messageId?: string; text: string }): void {
     state.lastReturnedMessageId = answer.messageId
     state.lastCompletedAt = Date.now()
     state.lastUsedAt = state.lastCompletedAt
@@ -1120,9 +1107,7 @@ async function assertAuthenticated(page: Page): Promise<void> {
 
 async function assertConversationAvailable(page: Page, conversationId: string, timeoutMs: number, signal?: AbortSignal): Promise<void> {
   const deadline = Date.now() + Math.min(timeoutMs, 10_000)
-  const unavailable = page
-    .getByText(/conversation.*(?:not found|unavailable)|unable to load conversation/i)
-    .first()
+  const unavailable = page.getByText(/conversation.*(?:not found|unavailable)|unable to load conversation/i).first()
 
   while (Date.now() < deadline) {
     throwIfAborted(signal)

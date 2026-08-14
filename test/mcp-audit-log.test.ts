@@ -5,6 +5,7 @@ import { join } from "node:path"
 import test from "node:test"
 
 import { characterCount, formatAuditTime, McpAuditLogger } from "../src/server/audit-log.js"
+import { countTokens } from "../src/tokenizer.js"
 
 test("writes one compact YAML document for a shell command", async (t) => {
   const directory = await mkdtemp(join(tmpdir(), "mcp-audit-log-"))
@@ -42,6 +43,40 @@ test("writes one compact YAML document for a shell command", async (t) => {
     await readFile(file, "utf8"),
     ["--- # 20:58:30 - shell_run - 275ms", 'shell: "api-audit/scan-1"', "command: |-", "  rg -n foo src", "", ""].join("\n")
   )
+})
+
+test("logs shell output token count", async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), "mcp-audit-log-"))
+  const file = join(directory, "agent-commands.yaml")
+  t.after(() => rm(directory, { recursive: true, force: true }))
+
+  const logger = new McpAuditLogger(
+    file,
+    () => new Date(2026, 7, 13, 19, 13, 46),
+    () => 1_380
+  )
+  const [call] = logger.startToolCalls({
+    method: "tools/call",
+    params: {
+      name: "shell_run",
+      arguments: { shell_id: "default", request_id: "tokens", command: "printf 'hello world'" },
+    },
+  })
+  assert.ok(call)
+  const output = "hello world"
+  call.finish({
+    httpStatus: 200,
+    state: "finished",
+    responseBytes: 200,
+    responseBody: JSON.stringify({
+      result: {
+        structuredContent: { status: "completed", exit_code: 0, cwd: "/workspace", output },
+      },
+    }),
+  })
+
+  const log = await readFile(file, "utf8")
+  assert.match(log, new RegExp(`--- # 19:13:46 - shell_run - 0ms - ${countTokens(output)} tokens`))
 })
 
 test("creates and repairs audit logs with owner-only permissions", async (t) => {

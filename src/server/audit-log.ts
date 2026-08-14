@@ -1,5 +1,6 @@
 import { appendFileSync, chmodSync, existsSync } from "node:fs"
 
+import { countTokens } from "../tokenizer.js"
 import { asRecord } from "../utils.js"
 
 const MAX_INLINE_ARGUMENT_CHARS = 600
@@ -66,6 +67,7 @@ export class McpAuditLogger {
                 httpStatus,
                 state,
                 responseBytes,
+                responseTokens: toolResponse.output !== undefined ? countTokens(toolResponse.output) : undefined,
                 toolFailed: toolResponse.failed,
                 failureMessage: toolResponse.failureMessage,
               })
@@ -102,14 +104,16 @@ function formatEntry(input: {
   httpStatus: number
   state: "finished" | "closed"
   responseBytes: number
+  responseTokens?: number
   toolFailed: boolean
   failureMessage?: string
 }): string {
   const abnormal = input.httpStatus >= 400 || input.state !== "finished" ? ` - HTTP ${input.httpStatus} ${input.state}` : ""
   const largeResponse = input.responseBytes >= LARGE_RESPONSE_BYTES ? ` - ${formatBytes(input.responseBytes)}` : ""
+  const responseTokens = input.responseTokens !== undefined ? ` - ${input.responseTokens} tokens` : ""
   const tag = auditTag(input)
   const tagPrefix = tag ? `${tag} ` : ""
-  const heading = `--- # ${tagPrefix}${formatAuditTime(input.time)} - ${input.toolName} - ${input.durationMs}ms${largeResponse}${abnormal}`
+  const heading = `--- # ${tagPrefix}${formatAuditTime(input.time)} - ${input.toolName} - ${input.durationMs}ms${responseTokens}${largeResponse}${abnormal}`
   const details = formatArguments(input.toolName, input.argumentsValue, input.toolFailed, input.failureMessage)
   return details ? `${heading}\n${details}\n\n` : `${heading}\n\n`
 }
@@ -164,18 +168,21 @@ function formatArguments(toolName: string, value: unknown, toolFailed: boolean, 
   return `args: ${yamlString(truncate(serialized, MAX_INLINE_ARGUMENT_CHARS))}`
 }
 
-function parseToolResponse(responseBody: string | undefined): { failed: boolean; failureMessage?: string } {
+function parseToolResponse(responseBody: string | undefined): { failed: boolean; failureMessage?: string; output?: string } {
   if (!responseBody) return { failed: false }
   const payloads = parseResponsePayloads(responseBody)
+  let output: string | undefined
   for (const payload of payloads) {
     const responses = Array.isArray(payload) ? payload : [payload]
     for (const response of responses) {
       if (!response || typeof response !== "object" || Array.isArray(response)) continue
       const result = (response as { result?: unknown }).result
-      if (!result || typeof result !== "object" || Array.isArray(result) || (result as { isError?: unknown }).isError !== true) continue
+      if (!result || typeof result !== "object" || Array.isArray(result)) continue
       const structuredContent = asRecord((result as { structuredContent?: unknown }).structuredContent)
-      const output = structuredContent && typeof structuredContent.output === "string" ? structuredContent.output : undefined
-      if (output) return { failed: true, failureMessage: output }
+      const resultOutput = structuredContent && typeof structuredContent.output === "string" ? structuredContent.output : undefined
+      if (resultOutput !== undefined && output === undefined) output = resultOutput
+      if ((result as { isError?: unknown }).isError !== true) continue
+      if (resultOutput) return { failed: true, failureMessage: resultOutput, output: resultOutput }
       const content = (result as { content?: unknown }).content
       if (Array.isArray(content)) {
         const message = content
@@ -189,7 +196,7 @@ function parseToolResponse(responseBody: string | undefined): { failed: boolean;
       return { failed: true }
     }
   }
-  return { failed: responseBody.includes('"isError":true') }
+  return { failed: responseBody.includes('"isError":true'), output }
 }
 
 function parseResponsePayloads(responseBody: string): unknown[] {
