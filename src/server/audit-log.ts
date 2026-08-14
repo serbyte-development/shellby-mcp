@@ -119,11 +119,24 @@ function formatEntry(input: {
   const abnormal = input.httpStatus >= 400 || input.state !== "finished" ? ` - HTTP ${input.httpStatus} ${input.state}` : ""
   const largeResponse = input.responseBytes >= LARGE_RESPONSE_BYTES ? ` - ${formatBytes(input.responseBytes)}` : ""
   const tokenCounts = ` - ${input.inputTokens} in${input.outputTokens !== undefined ? ` / ${input.outputTokens} out` : ""}`
+  const invocationMarkers = formatInvocationMarkers(input.argumentsValue)
   const tag = auditTag(input)
   const tagPrefix = tag ? `${tag} ` : ""
-  const heading = `--- # ${tagPrefix}${formatAuditTime(input.time)} - ${input.toolName} - ${input.durationMs}ms${tokenCounts}${largeResponse}${abnormal}`
+  const heading = `--- # ${tagPrefix}${formatAuditTime(input.time)} - ${input.toolName} - ${input.durationMs}ms${tokenCounts}${invocationMarkers}${largeResponse}${abnormal}`
   const details = formatArguments(input.toolName, input.argumentsValue, input.toolFailed, input.failureMessage)
   return details ? `${heading}\n${details}\n\n` : `${heading}\n\n`
+}
+
+function formatInvocationMarkers(value: unknown): string {
+  const argumentsRecord = asRecord(value)
+  if (!argumentsRecord) return ""
+
+  const markers: string[] = []
+  if (argumentsRecord.structured === true) markers.push("structured")
+  if (typeof argumentsRecord.max_output_tokens === "number" && Number.isFinite(argumentsRecord.max_output_tokens)) {
+    markers.push(`max_output_tokens=${argumentsRecord.max_output_tokens}`)
+  }
+  return markers.length > 0 ? ` - ${markers.join(" - ")}` : ""
 }
 
 function auditTag(input: { durationMs: number; httpStatus: number; state: "finished" | "closed"; responseBytes: number; toolFailed: boolean }): string {

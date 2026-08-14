@@ -13,7 +13,7 @@ import type { ChatGptSubagentService } from "../tools/subagent/chatgpt-subagent-
 import { registerSubagentTools } from "../tools/subagent/subagent-tools.js"
 import { WebPageOpener } from "../tools/web/web-open.js"
 import { registerWebTool } from "../tools/web/web-tool.js"
-import { installToolRegistrationBoundary } from "./tool-schema-order.js"
+import { installToolRegistrationBoundary } from "./tool-registration-boundary.js"
 
 export interface CreateMcpServerOptions {
   chatGptSubagents: ChatGptSubagentService

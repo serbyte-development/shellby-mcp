@@ -1,7 +1,7 @@
 import assert from "node:assert/strict"
 import test from "node:test"
 
-import { canonicalizeJsonSchema, compactToolAnnotations } from "../src/server/tool-schema-order.js"
+import { canonicalizeJsonSchema, compactToolAnnotations } from "../src/server/tool-registration-boundary.js"
 
 test("canonicalizes schema keywords while preserving property order", () => {
   const schema = canonicalizeJsonSchema({

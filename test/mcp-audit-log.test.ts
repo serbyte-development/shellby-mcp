@@ -79,6 +79,33 @@ test("logs shell output token count", async (t) => {
   assert.match(log, new RegExp(`--- # 19:13:46 - shell_run - 0ms - ${inputTokens} in / ${outputTokens} out`))
 })
 
+test("marks explicit structured and max_output_tokens tool arguments in the heading", async (t) => {
+  const file = await auditFile(t)
+  const logger = new McpAuditLogger(
+    file,
+    () => new Date(2026, 7, 14, 8, 11, 0),
+    () => 0
+  )
+  const [call] = logger.startToolCalls({
+    method: "tools/call",
+    params: {
+      name: "shell_run",
+      arguments: {
+        shell_id: "default",
+        request_id: "markers",
+        command: "pwd",
+        structured: true,
+        max_output_tokens: 4_096,
+      },
+    },
+  })
+  assert.ok(call)
+  call.finish({ httpStatus: 200, state: "finished", responseBytes: 100 })
+
+  const log = await readFile(file, "utf8")
+  assert.match(log, /^--- # 08:11:00 - shell_run - 0ms - \d+ in - structured - max_output_tokens=4096$/m)
+})
+
 test("matches batched tool responses by JSON-RPC id", async (t) => {
   const file = await auditFile(t)
 

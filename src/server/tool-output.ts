@@ -26,6 +26,12 @@ export function renderStructuredContent(value: unknown): string {
   return `result=${formatScalar(value)}`
 }
 
+/**
+ * Render a record as a string, with nested records indented and arrays rendered as lists.
+ * @param record - The record to render. Empty values are skipped.
+ * @param depth - The depth of the record.
+ * @returns The rendered record as a string.
+ */
 function renderRecord(record: Record<string, unknown>, depth: number): string {
   const inline: string[] = []
   const sections: string[] = []
@@ -38,12 +44,12 @@ function renderRecord(record: Record<string, unknown>, depth: number): string {
     }
 
     if (typeof value === "string") {
-      sections.push(`${key}:\n${value}`)
+      sections.push(`${key}:${key === "output" ? "\n\n" : "\n"}${value}`)
       continue
     }
 
     if (Array.isArray(value)) {
-      sections.push(`${key}:\n${renderArray(value, depth + 1)}`)
+      sections.push(`${key}:\n\n${renderArray(value, depth + 1)}`)
       continue
     }
 

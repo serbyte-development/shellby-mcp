@@ -13,7 +13,7 @@ test("renders compact scalar metadata and multiline strings without losing value
   }
   const rendered = renderStructuredContent(structured)
 
-  assert.equal(rendered, "status=completed exit_code=0 cwd=/workspace\n\noutput:\nline one\nline two")
+  assert.equal(rendered, "status=completed exit_code=0 cwd=/workspace\n\noutput:\n\nline one\nline two")
   assert.match(rendered, /completed/)
   assert.match(rendered, /\/workspace/)
   assert.match(rendered, /line one\nline two/)

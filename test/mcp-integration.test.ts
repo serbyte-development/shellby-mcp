@@ -17,7 +17,7 @@ import { PeekabooClient } from "../src/tools/computer/peekaboo.js"
 import { PersistentShellSession } from "../src/tools/shell/session.js"
 import { ShellSessionManager } from "../src/tools/shell/session-manager.js"
 import { DEFAULT_WEB_OUTPUT_TOKENS, MAX_WEB_OUTPUT_TOKENS, WebPageOpener } from "../src/tools/web/web-open.js"
-import { canonicalizeJsonSchema } from "../src/server/tool-schema-order.js"
+import { canonicalizeJsonSchema } from "../src/server/tool-registration-boundary.js"
 
 function startMcpHttpServer(options: Parameters<typeof startMcpHttpServerRaw>[0] = {}) {
   return startMcpHttpServerRaw({ toolOutputStructured: "always", ...options })
