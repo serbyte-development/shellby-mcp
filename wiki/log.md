@@ -762,3 +762,7 @@
 ## [2026-08-14] test | Stabilize expired-cursor integration coverage
 
 - Replaced the expired `shell_poll` integration test's fixed completion delay with direct shell activity synchronization so slow CI runners cannot poll before transcript rollover has actually occurred.
+
+## [2026-08-14] ci | Update GitHub Actions runtimes
+
+- Updated `actions/checkout` and `actions/setup-node` from v4 to their current v7 majors after GitHub flagged the older Node 20 action runtimes as deprecated.
