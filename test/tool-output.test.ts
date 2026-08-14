@@ -43,13 +43,13 @@ test("renders arrays of simple objects as compact rows and nested objects recurs
       ],
       metadata: { count: 2, source: "chatgpt" },
     }),
-    "turns:\n- turn_id=a status=running\n- turn_id=b status=completed\n\nmetadata:\ncount=2 source=chatgpt"
+    "turns:\n\n- turn_id=a status=running\n- turn_id=b status=completed\n\nmetadata:\ncount=2 source=chatgpt"
   )
 })
 
 test("falls back to minified JSON for unusual nested arrays", () => {
   const nested = { items: [[{ value: 1 }], [{ value: 2 }]] }
-  assert.equal(renderStructuredContent(nested), 'items:\n[[{"value":1}],[{"value":2}]]')
+  assert.equal(renderStructuredContent(nested), 'items:\n\n[[{"value":1}],[{"value":2}]]')
 })
 
 test("compact result preserves existing content and removes structuredContent", () => {

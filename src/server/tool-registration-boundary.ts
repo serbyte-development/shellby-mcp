@@ -131,7 +131,7 @@ export function installToolRegistrationBoundary(server: McpServer, options: Tool
 }
 
 function addStructuredInput(schema: unknown): unknown {
-  const structured = z.boolean().optional().default(false).describe("Return the full structured tool result instead of compact model-facing content.")
+  const structured = z.boolean().optional().default(false).describe("Return full structured tool schema result")
   if (schema === undefined) return z.object({ structured })
   if (!isRecord(schema) || typeof schema.extend !== "function") return schema
   const extend = schema.extend as (shape: Record<string, unknown>) => unknown
