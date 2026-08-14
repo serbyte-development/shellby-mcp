@@ -16,12 +16,12 @@ The extension shim is local to `server.ts` because the installed TypeScript MCP 
 The temporary server defaults to Shelly's local port so the existing ngrok URL can be reused. Stop only the normal MCP process; leave the ngrok PM2 process running.
 
 ```bash
-cd /Users/austinserb/Desktop/chatgpt-local-shell-mcp
+cd /path/to/chatgpt-local-shell-mcp
 npx pm2 stop unhinged-terminal-mcp
 node --import tsx temporary/mcp-2026-tasks-probe/server.ts
 ```
 
-The MCP endpoint is `http://127.0.0.1:3333/mcp`. The existing `unhinged-terminal-ngrok` process continues forwarding the same public URL to port 3333. If ngrok was not already running, start `npm run tunnel` in a second terminal. Then update/refresh the ChatGPT MCP app so it rediscovers the temporary server.
+The MCP endpoint is `http://127.0.0.1:3333/mcp`. If the normal ngrok process is already forwarding port 3333, it can keep using the same public URL. Otherwise start `npm run tunnel` in a second terminal. Then update/refresh the ChatGPT MCP app so it rediscovers the temporary server.
 
 In a new ChatGPT conversation, ask it to call `temporary_2026_tasks_probe`.
 

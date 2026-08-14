@@ -1,10 +1,15 @@
-# Unhinged Terminal MCP
+# Shelly — ChatGPT Local Shell MCP
 
-A local MCP agent harness for giving ChatGPT and other local MCP clients controlled access to persistent shells, file patching, webpage fetching, macOS Computer Use, and browser-backed ChatGPT subagents.
+[![CI](https://github.com/Serbyte-Development/chatgpt-local-shell-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/Serbyte-Development/chatgpt-local-shell-mcp/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+
+A local **ChatGPT MCP server** that turns ChatGPT into a capable macOS coding agent with persistent shells, native patching, webpage fetching, Computer Use, and browser-backed ChatGPT subagents.
 
 > **Security:** this server can execute arbitrary commands with your macOS user permissions. Remote ChatGPT access is restricted by the included ngrok traffic policy and a bound OpenAI subject, but an authorized caller still has the power of your local user account. Run it only on a machine you trust.
 
-Maintainers should start with the [architecture wiki](wiki/index.md).
+![Architecture diagram showing ChatGPT connecting through ngrok to Shelly, then persistent shells, patching and web tools, and macOS/browser adapters](docs/assets/chatgpt-local-shell-mcp-architecture.svg)
+
+**Why Shelly:** it gives ChatGPT the same low-level tools strong coding agents rely on while keeping execution on your Mac. Shell sessions persist across calls, output is bounded for model context, file edits use a first-class patch tool, and optional browser/Computer Use adapters extend the same MCP surface when needed.
 
 ## What it provides
 
@@ -18,20 +23,9 @@ Maintainers should start with the [architecture wiki](wiki/index.md).
 
 The server uses MCP TypeScript SDK v2 with stateless Streamable HTTP requests. Shared runtime state such as shells, browser subagents, and Peekaboo spans independent requests but resets when the process restarts. The bound remote owner is durable and survives restarts in `~/.shelly/auth.json`.
 
-## Architecture
+## How it works
 
-Remote ChatGPT traffic:
-
-```text
-ChatGPT
-  -> ngrok
-     -> allow only com.openai.chatgpt source traffic
-     -> expose exact /mcp
-     -> add X-Shelly-Remote: 1
-  -> localhost:3333/mcp
-     -> bind/check X-OpenAI-Subject
-     -> MCP tools
-```
+Remote ChatGPT reaches a localhost-only MCP server through the included ngrok policy. The policy accepts ChatGPT-origin traffic on the exact `/mcp` route and marks it as remote; Shelly then binds the first remote tool caller's OpenAI subject and requires that same subject on later remote tool calls.
 
 Direct local MCP clients connect to:
 
@@ -86,8 +80,8 @@ brew install --cask ngrok
 Clone and install dependencies:
 
 ```bash
-git clone https://github.com/Austin1serb/unhinged-terminal-mcp.git
-cd unhinged-terminal-mcp
+git clone https://github.com/Serbyte-Development/chatgpt-local-shell-mcp.git
+cd chatgpt-local-shell-mcp
 npm ci
 ```
 
@@ -344,3 +338,13 @@ npm run schemas -- shell_run fetch_website
 ```
 
 The wiki under [`wiki/`](wiki/) is the concise source of truth for maintainers. Current code and tests outrank historical raw notes and README text when they disagree.
+
+## Contributing and security
+
+Contributions are welcome; see [CONTRIBUTING.md](CONTRIBUTING.md). For vulnerabilities, use the private reporting guidance in [SECURITY.md](SECURITY.md) rather than opening a public issue.
+
+## License
+
+[MIT](LICENSE). The vendored `apply_patch` binary retains its upstream OpenAI Codex license and notices under [`vendor/apply-patch/`](vendor/apply-patch/).
+
+Developed & maintained by [Serbyte Development](https://www.serbyte.net/).

@@ -1,13 +1,15 @@
 {
   "name": "chatgpt-local-shell-mcp",
   "version": "0.1.0",
-  "description": "Apple Silicon macOS MCP agent harness for ChatGPT with local shells, patching, browser subagents, web fetching, and Computer Use.",
+  "description": "Local ChatGPT MCP server for persistent macOS shells, patching, web fetching, Computer Use, and browser subagents.",
   "private": true,
+  "license": "MIT",
   "type": "module",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/Austin1serb/unhinged-terminal-mcp.git"
+    "url": "git+https://github.com/Serbyte-Development/chatgpt-local-shell-mcp.git"
   },
+  "homepage": "https://github.com/Serbyte-Development/chatgpt-local-shell-mcp#readme",
   "engines": {
     "node": ">=22.13.0"
   },

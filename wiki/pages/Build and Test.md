@@ -40,11 +40,11 @@ As verified on 2026-08-14, published tool definitions cost 5,850 `o200k_base` to
 
 Tests use temporary directories and real local child shells; `test/helpers/temp.ts` centralizes disposable-directory cleanup. Process-group tests are POSIX-specific (`test/shell-session.test.ts`, `test/shell-parallel.test.ts`).
 
-`npm ci` is the reproducible clean-install path. As verified on 2026-08-10, a clean install followed by lint, type-check, tests, and build succeeds. npm currently reports two moderate advisories through `@modelcontextprotocol/node -> @hono/node-server`; the advisory is for Hono static-file serving on Windows, which Shelly does not use on its macOS runtime (`package-lock.json`, `package.json`).
+`npm ci` is the reproducible clean-install path. As verified on 2026-08-14, lint, type-check, tests, and build succeed on the supported Apple Silicon macOS runtime, and `npm audit --omit=dev` reports no production dependency vulnerabilities (`package-lock.json`, `package.json`).
 
 ## Gaps
 
-No CI workflow is present in the repository, so the validation commands are not enforced by checked-in automation (`package.json`, repository tree).
+GitHub Actions runs the release validation sequence on the supported arm64 macOS runner for pushes to `main` and pull requests (`.github/workflows/ci.yml`, `package.json`).
 
 The tests do not exercise the real `src/index.ts` composition path, `/healthz`, GET/DELETE 405 responses, signal-driven shutdown, tunnel configuration, a real browser launch, or the installed Peekaboo/macOS permission path (`test/`, `src/index.ts`, `src/server/http-server.ts`, `src/tools/web/web-open.ts`, `src/tools/computer/peekaboo.ts`).
 

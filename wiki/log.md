@@ -746,3 +746,9 @@
 - Added one shared local-window token chunker for shell transcript reads and `fetch_website` pagination so large retained outputs no longer re-tokenize the entire remaining string on every page.
 - Replaced per-code-point substring allocation in UTF-8 capture limiting with direct UTF-8 width calculation, and made parallel-batch completion O(n) overall instead of rescanning every run after each child finishes.
 - Local micro-benchmarks dropped 12 bounded reads over a 1.1 MB source from about 1.53 s to 17 ms and 50 UTF-8 bounds over a 300 KB source from about 181 ms to 25 ms; these are hot-path measurements, not end-to-end MCP latency.
+
+## [2026-08-14] release | Prepare public OSS surface
+
+- Standardized the public identity around `chatgpt-local-shell-mcp` / Shelly, added MIT licensing, concise contribution/security guidance, arm64 macOS CI, and a gitleaks allowlist for one historical fake integration-test token.
+- Added a simple README architecture diagram under `docs/assets/`, moved the deferred MCP Tasks probe from `temporary/` to `experiments/`, and removed repository-local personal paths from the current tree.
+- Re-ran diagram validation, gitleaks history scanning, dependency audit, lint, type-check, focused integration validation, and build as part of the public-release audit.
