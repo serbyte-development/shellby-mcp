@@ -14,7 +14,7 @@ Verified 2026-08-13
 - [ ] Add one shared compact `content` formatter at the MCP boundary while keeping existing structured results available for the configured modes.
 
 - [ ] Add global subagent completion events.
-  - Passive `page.on("response")` observation should recognize definitive subagent completion.
+  - Passive `page?.on("response")` observation should recognize definitive subagent completion.
   - Mark the turn completed and release its generation slot when completion is definitively observed.
   - Enqueue `agent_finished:<agent_id>:<turn_id>` and append pending events to the next model-facing tool `content` through the global registration wrapper.
   - Do not inject the subagent response itself; the subagent result tool is the only path that returns the actual response to the parent.
