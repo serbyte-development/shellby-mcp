@@ -204,9 +204,18 @@ async function renderWithCloakBrowser(url: string, format: WebsiteContentFormat,
     throw new WebOpenError("open_failed", "The web request was aborted.")
   }
 
+  // Deliberately launch per fetch: web reads are infrequent, and startup cost is preferable to keeping a background Chromium process alive.
   const browser = await launch({ headless: true })
   try {
     const page = await browser.newPage()
+    await page.route("**/*", async (route) => {
+      const resourceType = route.request().resourceType()
+      if (resourceType === "image" || resourceType === "media" || resourceType === "font") {
+        await route.abort()
+        return
+      }
+      await route.continue()
+    })
     await page.goto(url, {
       waitUntil: "domcontentloaded",
       timeout: 30_000,

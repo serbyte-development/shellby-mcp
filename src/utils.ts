@@ -50,8 +50,9 @@ export function utf8Chunk(value: string, start: number, maxBytes: number, end = 
 
 export function utf8Prefix(value: string, maxBytes: number): { value: string; omittedBytes: number } {
   const chunk = utf8Chunk(value, 0, maxBytes)
+  const boundedValue = chunk.nextOffset < value.length ? Buffer.from(chunk.value).toString() : chunk.value
   return {
-    value: chunk.value,
+    value: boundedValue,
     omittedBytes: Buffer.byteLength(value.slice(chunk.nextOffset), "utf8"),
   }
 }

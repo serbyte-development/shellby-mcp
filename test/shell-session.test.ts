@@ -272,6 +272,34 @@ test("drops a whole surrogate pair at the rolling transcript boundary", { timeou
   assert.equal(after.output, "A")
 })
 
+test("preserves rolling transcript cursors across repeated overflow", { timeout: 10_000 }, async (t) => {
+  const shell = new PersistentShellSession({
+    transcriptLimit: 64,
+    commandTranscriptBytes: 512,
+    defaultOutputTokens: 64,
+    maxOutputTokens: 64,
+  })
+  t.after(() => shell.close())
+
+  const first = await runToCompletion(shell, "overflow-0", `printf '00:${"x".repeat(12)}'`)
+  const firstCursor = first.snapshot.next_cursor
+
+  for (let index = 1; index < 20; index += 1) {
+    await runToCompletion(shell, `overflow-${index}`, `printf '${String(index).padStart(2, "0")}:${"x".repeat(12)}'`)
+  }
+
+  const latest = await runToCompletion(shell, "overflow-latest", "printf latest")
+  assert.equal(latest.output, "latest")
+  assert.equal(latest.snapshot.cursor_expired, false)
+
+  const stale = await shell.pollCommand({
+    requestId: "overflow-0",
+    cursor: firstCursor,
+    waitMs: 0,
+  })
+  assert.equal(stale.cursor_expired, true)
+})
+
 test("contains readonly wrapper variables to one command", { timeout: 10_000 }, async (t) => {
   const shell = new PersistentShellSession()
   t.after(() => shell.close())

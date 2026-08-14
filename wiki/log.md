@@ -775,3 +775,29 @@
 ## [2026-08-14] optimize | Avoid duplicate completed shell poll reads
 
 - Skip the preliminary transcript tokenization for already-completed normal and parallel `shell_poll` records; running polls retain the existing read-before-wait behavior.
+
+## [2026-08-14] fix | Restore first-turn ChatGPT URL binding
+
+- Reconciliation now captures a newly submitted agent's stable `/c/<conversation-id>` URL before page recovery validation can reject the natural new-chat navigation; documented the `/` -> transient `/c/WEB:...` -> stable `/c/<id>` lifecycle and added regression coverage.
+
+## [2026-08-14] simplify | remove duplicate subagent network-final scan
+
+- Removed the second synchronous `findFinalResponse()` call from `reconcileRunningTurn()`; `attachTurnListeners()` already installs the update listener and immediately checks the same tracker state before reconciliation reaches any `await`.
+- Updated subagent lifecycle documentation to reflect the single passive-tracker check plus DOM fallback (`src/tools/subagent/chatgpt-subagent.ts`, `pages/Browser ChatGPT Subagents.md`).
+
+## [2026-08-14] simplify | remove unused subagent metadata
+
+- Removed write-only agent message state and turn-level conversation/message metadata that never reached the MCP tool contract.
+- Shrunk internal start/poll result types to fields consumed by `subagent-tools.ts`, while preserving agent-level conversation ID/URL state used for recovery.
+- Removed unused `read()`/`closeAgent()` lifecycle methods, their `UNKNOWN_AGENT` path, and visible-conversation reader; recovery conversation messages now retain only role/text because message IDs had no consumer.
+
+## [2026-08-14] optimize | Skip webpage media downloads
+
+- `fetch_website` now aborts Chromium image, media, and font requests before navigation while preserving their DOM references for HTML/Markdown extraction (`src/tools/web/web-open.ts`, `pages/MCP Tool Surface.md`).
+## [2026-08-14] roadmap | note functional subagent refactor
+
+- Added a future roadmap item to replace the class-based subagent state container with a functional factory/closure design when that subsystem is next substantially changed; this is an architectural consistency goal, not a repo-wide class-removal mandate (`pages/ROADMAP.md`).
+## [2026-08-14] optimization | Lazy shell transcript compaction
+
+- Changed rolling shell transcript eviction to advance a logical head and compact discarded backing text in batches, avoiding repeated large string slicing after the transcript fills (`src/tools/shell/session.ts`).
+- Added repeated-overflow cursor regression coverage (`test/shell-session.test.ts`).

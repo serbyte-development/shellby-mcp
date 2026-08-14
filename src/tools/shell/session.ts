@@ -174,13 +174,18 @@ export class ShellSessionError extends Error {
 }
 
 class TranscriptBuffer {
+  private static readonly COMPACT_THRESHOLD = 64 * 1024
   private value = ""
   private baseOffset = 0
+  private retainedStart = 0
+  private readonly compactThreshold: number
 
-  constructor(private readonly maxLength: number) {}
+  constructor(private readonly maxLength: number) {
+    this.compactThreshold = Math.min(maxLength, TranscriptBuffer.COMPACT_THRESHOLD)
+  }
 
   get start(): number {
-    return this.baseOffset
+    return this.baseOffset + this.retainedStart
   }
 
   get end(): number {
@@ -191,13 +196,19 @@ class TranscriptBuffer {
     if (chunk.length === 0) return
 
     this.value += chunk
-    let overflow = this.value.length - this.maxLength
+    const overflow = this.value.length - this.retainedStart - this.maxLength
     if (overflow > 0) {
-      if (overflow < this.value.length && isHighSurrogate(this.value.charCodeAt(overflow - 1)) && isLowSurrogate(this.value.charCodeAt(overflow))) {
-        overflow += 1
+      let nextStart = this.retainedStart + overflow
+      if (nextStart < this.value.length && isHighSurrogate(this.value.charCodeAt(nextStart - 1)) && isLowSurrogate(this.value.charCodeAt(nextStart))) {
+        nextStart += 1
       }
-      this.value = this.value.slice(overflow)
-      this.baseOffset += overflow
+      this.retainedStart = nextStart
+    }
+
+    if (this.retainedStart >= this.compactThreshold) {
+      this.value = this.value.slice(this.retainedStart)
+      this.baseOffset += this.retainedStart
+      this.retainedStart = 0
     }
   }
 
@@ -226,11 +237,11 @@ class TranscriptBuffer {
     }
 
     const effectiveCursor = Math.min(Math.max(cursor, this.start), availableEnd)
-    const localStart = effectiveCursor - this.start
-    const localEnd = availableEnd - this.start
+    const localStart = effectiveCursor - this.baseOffset
+    const localEnd = availableEnd - this.baseOffset
     const bounded = tokenChunk(this.value, localStart, maxTokens, localEnd)
     const output = bounded.value
-    const nextCursor = this.start + bounded.nextOffset
+    const nextCursor = this.baseOffset + bounded.nextOffset
 
     return {
       output,

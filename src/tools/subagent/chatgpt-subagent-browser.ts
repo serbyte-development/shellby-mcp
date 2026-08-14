@@ -33,7 +33,6 @@ export interface FinalResponseQuery {
 
 export interface DomAssistantMessage {
   key: string
-  messageId?: string
   text: string
 }
 
@@ -197,11 +196,11 @@ export function extractConversationMessages(payload: unknown): ChatGptConversati
     const { message } = node
     if (!message.text) continue
     if (message.role === "user") {
-      messages.push({ id: message.id, role: "user", text: message.text })
+      messages.push({ role: "user", text: message.text })
       continue
     }
     if (isFinalAssistantNode(node)) {
-      messages.push({ id: message.id, role: "assistant", text: message.text })
+      messages.push({ role: "assistant", text: message.text })
     }
   }
   return messages
@@ -318,7 +317,6 @@ export async function readAssistantDomMessages(page: Page): Promise<DomAssistant
       const messageId = owner?.getAttribute("data-message-id") ?? element.getAttribute("data-message-id") ?? undefined
       return {
         key: messageId ?? `assistant:${index}`,
-        messageId,
         text: (element.textContent ?? "").trim(),
       }
     })
@@ -336,20 +334,6 @@ export async function findNewDomAssistantMessage(
   if (newMessages.length > 0) return newMessages.at(-1)
   if (current.length > baseline.length) return current.at(-1)
   return undefined
-}
-
-export async function readVisibleConversation(page: Page): Promise<ChatGptConversationMessage[]> {
-  return page.locator("[data-message-author-role]").evaluateAll((elements) =>
-    elements.flatMap((element) => {
-      const role = element.getAttribute("data-message-author-role")
-      if (role !== "user" && role !== "assistant") return []
-      const owner = element.closest("[data-message-id]")
-      const id = owner?.getAttribute("data-message-id") ?? element.getAttribute("data-message-id") ?? undefined
-      const text = (element.textContent ?? "").trim()
-      if (!text) return []
-      return [{ id, role, text }]
-    })
-  )
 }
 
 export async function loadConversationPayload(page: Page, conversationId: string, timeoutMs: number): Promise<unknown> {

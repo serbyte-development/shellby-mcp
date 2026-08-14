@@ -456,9 +456,9 @@ test("extractConversationMessages follows the active branch and excludes tool no
   }
 
   assert.deepEqual(extractConversationMessages(payload), [
-    { id: "u1", role: "user", text: "first" },
-    { id: "a1", role: "assistant", text: "one" },
-    { id: "u2", role: "user", text: "second" },
-    { id: "a2", role: "assistant", text: "two" },
+    { role: "user", text: "first" },
+    { role: "assistant", text: "one" },
+    { role: "user", text: "second" },
+    { role: "assistant", text: "two" },
   ])
 })

@@ -19,20 +19,13 @@ export interface ChatGptSubagentStartResult {
   agentId: string
   turnId: string
   status: "running"
-  submitted: true
-  conversationId?: string
-  conversationUrl?: string
 }
 
 export interface ChatGptSubagentPollResult {
-  agentId: string
   turnId: string
   status: "running" | "completed" | "failed"
   activity?: ChatGptSubagentActivity
   activityAgeMs?: number
-  conversationId?: string
-  conversationUrl?: string
-  messageId?: string
   response?: string
   errorCode?: string
   errorMessage?: string
@@ -41,7 +34,6 @@ export interface ChatGptSubagentPollResult {
 export type ChatGptSubagentActivity = "Working" | "Searching the web" | "Using tools" | "Generating response"
 
 export interface ChatGptConversationMessage {
-  id?: string
   role: "user" | "assistant"
   text: string
 }
@@ -49,7 +41,6 @@ export interface ChatGptConversationMessage {
 export type ChatGptSubagentErrorCode =
   | "BROWSER_UNAVAILABLE"
   | "CHATGPT_NOT_AUTHENTICATED"
-  | "UNKNOWN_AGENT"
   | "UNKNOWN_TURN"
   | "AGENT_BUSY"
   | "SUBAGENT_CAPACITY_REACHED"

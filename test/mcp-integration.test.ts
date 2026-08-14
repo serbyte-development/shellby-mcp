@@ -485,8 +485,6 @@ test("starts staggered subagents and polls turns concurrently across stateless M
         agentId,
         turnId,
         status: "running",
-        submitted: true,
-        conversationUrl: `https://chatgpt.com/c/fake-${agentId}`,
       }
     },
     async poll(turnId) {
@@ -496,7 +494,6 @@ test("starts staggered subagents and polls turns concurrently across stateless M
         await new Promise((resolve) => setTimeout(resolve, 25))
         if (turnId === "heartbeat-fixture") {
           return {
-            agentId: "heartbeat-agent",
             turnId,
             status: "running",
             activity: "Searching the web",
@@ -506,10 +503,8 @@ test("starts staggered subagents and polls turns concurrently across stateless M
         const result = completed.get(turnId)
         if (!result) throw new Error(`unknown turn ${turnId}`)
         return {
-          agentId: result.agentId,
           turnId,
           status: "completed",
-          conversationUrl: `https://chatgpt.com/c/fake-${result.agentId}`,
           response: result.response,
         }
       } finally {
@@ -683,13 +678,10 @@ test("audits tool calls at the HTTP MCP boundary", { timeout: 10_000 }, async (t
         agentId,
         turnId: `turn-${agentId}`,
         status: "running",
-        submitted: true,
-        conversationUrl: `https://chatgpt.com/c/fake-${agentId}`,
       }
     },
     async poll(turnId) {
       return {
-        agentId: "audit-check",
         turnId,
         status: "completed",
         response: "fake:Inspect the audit path.",

@@ -38,9 +38,27 @@ turns: turn_id -> BrowserTurnState
 activeTurnsByAgent: agent_id -> currently running turn_id
 ```
 
-`BrowserAgentState` owns the live page, `ChatGptConversationTracker`, conversation identity, last returned message, last completion/use timestamps, and per-agent turn counter. `BrowserTurnState` owns detached turn lifecycle, activity heartbeat, completion/failure result, tracking baselines, and one-shot recovery state (`src/tools/subagent/chatgpt-subagent.ts`).
+`BrowserAgentState` owns the live page, `ChatGptConversationTracker`, conversation identity, last completion/use timestamps, and per-agent turn counter. `BrowserTurnState` owns detached turn lifecycle, activity heartbeat, completion/failure result, tracking baselines, and one-shot recovery state (`src/tools/subagent/chatgpt-subagent.ts`).
 
 Turn IDs are readable and sequential per agent: `<agent_id>_turn_1`, `<agent_id>_turn_2`, etc. The saved conversation reference also retains `turnCount`, so a 30-minute runtime eviction followed by recovery in the same process does not reuse earlier turn IDs (`src/tools/subagent/chatgpt-subagent.ts`).
+
+### First-turn URL binding
+
+A new ChatGPT conversation does not receive its stable conversation URL immediately. The submitted first turn starts on `https://chatgpt.com/`; ChatGPT may then expose a transient `/c/WEB:<temporary-id>` route before, usually a few seconds later, changing the same page to the stable `/c/<conversation-id>` URL. `extractConversationId()` intentionally ignores `WEB:` IDs, so the harness must keep the original submitted page alive and wait until the stable ID appears before saving `conversationId`, `conversationUrl`, and `conversationRefs` (`src/tools/subagent/chatgpt-subagent-browser.ts`, `src/tools/subagent/chatgpt-subagent.ts`, `test/chatgpt-subagent.test.ts`, `test/chatgpt-subagent-browser.test.ts`).
+
+During result reconciliation the expected first-turn page lifecycle is:
+
+```text
+submitted turn
+  -> page still open
+     -> https://chatgpt.com/                    : keep waiting; no conversation reference yet
+     -> /c/WEB:<temporary-id>                   : keep waiting; transient ID is not stored
+     -> /c/<conversation-id>                    : capture and store the stable conversation reference
+     -> different known /c/<conversation-id>    : target lost
+     -> non-ChatGPT URL                          : target lost
+```
+
+The stable URL must be captured before `ensureActivePage()` treats an unbound first-turn `/c/...` page as unexpected. Before that capture, there is no saved conversation URL from which to recover a closed/lost page. Pre-submit ownership remains strict: an unbound agent does not adopt an arbitrary conversation merely because a tab was manually navigated there (`src/tools/subagent/chatgpt-subagent.ts`, `src/tools/subagent/chatgpt-subagent-browser.ts`).
 
 ## Parallel Start and Capacity
 
@@ -64,7 +82,7 @@ When either passive network observation or `subagent_result` reconciliation find
 
 `subagent_result` accepts 1-3 `turn_id` values and retrieves them concurrently with `Promise.all()`. Errors are caught per turn, so one invalid/stale turn does not discard valid sibling results. `wait_ms` is bounded to 0-60 seconds and applies to every requested turn in the same concurrent wait window (`src/tools/subagent/subagent-tools.ts`).
 
-The service-level `poll()` is the authoritative active observer. While a turn is still marked running it calls `reconcileRunningTurn()` before waiting. Reconciliation first checks any final response already captured by the passive network tracker, then falls back to the current DOM and generation state. A completed or terminally failed reconciliation releases the per-agent/global generation lock (`src/tools/subagent/chatgpt-subagent.ts`).
+The service-level `poll()` is the authoritative active observer. While a turn is still marked running it calls `reconcileRunningTurn()` before waiting. For an unbound submitted first turn, reconciliation first captures the stable conversation URL if ChatGPT has transitioned to one; it then validates/recovers the managed page, attaches the passive tracker listener (which immediately checks already-captured network state), and falls back to the current DOM and generation state. A completed or terminally failed reconciliation releases the per-agent/global generation lock (`src/tools/subagent/chatgpt-subagent.ts`).
 
 After a turn has been successfully submitted, a browser-observation failure is not immediately terminal when a saved conversation is available. The turn gets one conversation-based recovery attempt: Unhinged Agent revalidates the saved conversation, reloads its server-side conversation payload when possible, and checks the recovered DOM. Concurrent poll failures share that same recovery attempt. A successful recovery may complete the turn immediately or leave it running for the current/next poll to reconcile again; a later observation failure becomes terminal, preventing recovery loops (`src/tools/subagent/chatgpt-subagent.ts`, `test/chatgpt-subagent.test.ts`).
 
@@ -182,7 +200,7 @@ Important service errors are defined by `ChatGptSubagentErrorCode` in `src/tools
 - `SUBAGENT_CAPACITY_REACHED` — three generations are already active.
 - `AGENT_TARGET_LOST` — the managed page/conversation target was lost and cannot be safely reused.
 - `SUBAGENT_CONVERSATION_NOT_FOUND` — a saved conversation reference no longer resolves.
-- `UNKNOWN_TURN` / `UNKNOWN_AGENT` — requested process-local state is absent.
+- `UNKNOWN_TURN` — requested process-local turn state is absent.
 - `REQUEST_ABORTED` — caller cancelled the operation.
 - `CHATGPT_UI_CHANGED` — required ChatGPT UI assumptions no longer hold.
 

@@ -155,7 +155,6 @@ test("poll returns immediately while a turn runs and can wait for completion", a
   }
 
   const running = await module.poll(turn.turnId)
-  assert.equal(running.agentId, "poll-test")
   assert.equal(running.turnId, "turn-test")
   assert.equal(running.status, "running")
   assert.equal(running.activity, "Searching the web")
@@ -163,17 +162,11 @@ test("poll returns immediately while a turn runs and can wait for completion", a
   assert.ok((running.activityAgeMs ?? Number.POSITIVE_INFINITY) < 2_000)
   assert.deepEqual(
     {
-      conversationId: running.conversationId,
-      conversationUrl: running.conversationUrl,
-      messageId: running.messageId,
       response: running.response,
       errorCode: running.errorCode,
       errorMessage: running.errorMessage,
     },
     {
-      conversationId: undefined,
-      conversationUrl: undefined,
-      messageId: undefined,
       response: undefined,
       errorCode: undefined,
       errorMessage: undefined,
@@ -184,6 +177,73 @@ test("poll returns immediately while a turn runs and can wait for completion", a
   assert.equal(completed.status, "completed")
   assert.equal(completed.response, "finished")
   assert.equal(reconciles, 2)
+})
+
+test("poll waits for a first-turn ChatGPT URL to become a stable conversation before saving it", async () => {
+  const module = createModule()
+  let currentUrl = "https://chatgpt.com/"
+  const page = {
+    isClosed: () => false,
+    url: () => currentUrl,
+    close: async () => undefined,
+    locator: () => ({
+      evaluateAll: async () => [],
+    }),
+  }
+  const tracker = {
+    findFinalResponse: () => undefined,
+    setActivityListener() {},
+    setUpdateListener() {},
+    dispose() {},
+  }
+  const state = {
+    agentId: "first-turn-url-agent",
+    page,
+    tracker,
+    hasSubmittedTurn: true,
+    conversationId: undefined as string | undefined,
+    conversationUrl: undefined as string | undefined,
+    lastUsedAt: Date.now(),
+    turnCount: 1,
+  }
+  const turn = {
+    turnId: "first-turn-url-agent_turn_1",
+    agentId: state.agentId,
+    status: "running" as "running" | "completed" | "failed",
+    activity: "Generating response" as const,
+    lastActivityAt: Date.now(),
+    tracking: {
+      baselineNetworkIds: new Set<string>(),
+      baselineDom: [],
+      prompt: "review",
+      sentAtSeconds: Date.now() / 1000,
+    },
+  }
+  const internals = module as unknown as {
+    agents: Map<string, typeof state>
+    turns: Map<string, typeof turn>
+    conversationRefs: Map<string, { conversationId: string; conversationUrl: string; turnCount: number }>
+  }
+  internals.agents.set(state.agentId, state)
+  internals.turns.set(turn.turnId, turn)
+
+  assert.equal((await module.poll(turn.turnId)).status, "running")
+  assert.equal(state.conversationId, undefined)
+
+  currentUrl = "https://chatgpt.com/c/WEB%3Atemporary-conversation-id"
+  assert.equal((await module.poll(turn.turnId)).status, "running")
+  assert.equal(state.conversationId, undefined)
+
+  currentUrl = "https://chatgpt.com/c/conversation-1"
+  assert.equal((await module.poll(turn.turnId)).status, "running")
+  assert.equal(state.conversationId, "conversation-1")
+  assert.equal(state.conversationUrl, currentUrl)
+  assert.deepEqual(internals.conversationRefs.get(state.agentId), {
+    conversationId: "conversation-1",
+    conversationUrl: currentUrl,
+    turnCount: 1,
+  })
+  await module.dispose()
 })
 
 test("poll reconciles a completed DOM response and releases the generation slot", async () => {
@@ -198,7 +258,6 @@ test("poll reconciles a completed DOM response and releases the generation slot"
           evaluateAll: async () => [
             {
               key: "message-1",
-              messageId: "message-1",
               text: "recovered answer",
             },
           ],
@@ -260,7 +319,6 @@ test("poll reconciles a completed DOM response and releases the generation slot"
 
   assert.equal(result.status, "completed")
   assert.equal(result.response, "recovered answer")
-  assert.equal(result.messageId, "message-1")
   assert.equal(internals.activeTurnsByAgent.has(state.agentId), false)
   assert.equal(internals.activeAgentIds.has(state.agentId), false)
   assert.equal(internals.activeGenerationCount, 0)
