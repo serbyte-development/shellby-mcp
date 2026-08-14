@@ -364,9 +364,9 @@
 
 ## [2026-08-09] implement | add single-owner remote ChatGPT authentication
 
-- Added durable `~/.shelly/auth.json` state with a random private MCP capability and one bound `X-OpenAI-Subject`; first valid remote tool call claims an unbound installation.
+- Added durable `~/.unhinged-agent/auth.json` state with a random private MCP capability and one bound `X-OpenAI-Subject`; first valid remote tool call claims an unbound installation.
 - Kept local `/mcp` agent-neutral while remote ChatGPT uses `/mcp/:capability`; reset is a local confirmed command that rotates the capability and clears ownership.
-- Restricted the checked-in ngrok policy to ChatGPT source IP categories and private MCP paths so plain remote `/mcp` cannot bypass Shelly authentication.
+- Restricted the checked-in ngrok policy to ChatGPT source IP categories and private MCP paths so plain remote `/mcp` cannot bypass unhinged-agent authentication.
 - Added focused auth tests plus remote MCP integration coverage; full tests and TypeScript type-check pass without restarting PM2.
 
 ## [2026-08-09] document | record ChatGPT MCP identity metadata
@@ -377,14 +377,14 @@
 ## [2026-08-09] simplify | remove capability URL authentication
 
 - Removed capability generation, private `/mcp/:capability` routing, URL rotation, response buffering, and the cross-process lock dependency.
-- Remote ChatGPT now uses exact `/mcp`; ngrok verifies ChatGPT origin and adds `X-Shelly-Remote: 1`, while Shelly binds the first marked `tools/call` to `X-OpenAI-Subject` before dispatch even when the tool call is invalid.
+- Remote ChatGPT now uses exact `/mcp`; ngrok verifies ChatGPT origin and adds `X-unhinged-agent-Remote: 1`, while unhinged-agent binds the first marked `tools/call` to `X-OpenAI-Subject` before dispatch even when the tool call is invalid.
 - Kept direct localhost `/mcp` unauthenticated and simplified reset to clearing only the bound subject.
 
 ## [2026-08-10] upgrade | migrate MCP TypeScript SDK to v2
 
 - Replaced `@modelcontextprotocol/sdk` v1 with the modular v2 server, Node, Express, and client packages while preserving stateless request transports and shared runtime state.
 - Adopted v2 Standard Schema tool definitions, handler request context, `NodeStreamableHTTPServerTransport`, and `createMcpExpressApp` with the existing 1 MiB JSON limit.
-- Preserved ngrok's ChatGPT source-IP trust boundary and Shelly's `X-OpenAI-Subject` owner binding unchanged; kept exact `/mcp` matching with an explicit regex route.
+- Preserved ngrok's ChatGPT source-IP trust boundary and unhinged-agent's `X-OpenAI-Subject` owner binding unchanged; kept exact `/mcp` matching with an explicit regex route.
 - Updated v2 client regression expectations for trailing-slash routing and unknown-tool protocol errors.
 
 ## [2026-08-10] tooling | restore ESLint after MCP v2 install
@@ -476,7 +476,7 @@
 
 - Added a Mac-first preflight and `npm run setup`, made PM2 a repository dependency, and removed the maintainer-specific ngrok executable path by resolving ngrok from the user's `PATH`.
 - Made `npm start` own the production flow: build, start/reload MCP + ngrok, optionally launch the configured ChatGPT browser, wait for local health, and print the public `/mcp` URL.
-- Added `npm run setup:chatgpt` and `npm run chatgpt` for a dedicated `~/.shelly/chatgpt-chrome` profile with loopback CDP, while keeping the MCP subagent module itself attach-only.
+- Added `npm run setup:chatgpt` and `npm run chatgpt` for a dedicated `~/.unhinged-agent/chatgpt-chrome` profile with loopback CDP, while keeping the MCP subagent module itself attach-only.
 - Folded best-effort ChatGPT browser initialization into `npm run setup`, leaving `setup:chatgpt` as the strict retry path so first-time onboarding can be two npm commands.
 - Replaced the public PM2-prefixed command surface with `start`, `restart`, `status`, `logs`, and `stop`, and rewrote README onboarding around one-time ngrok/ChatGPT sign-in followed by normal `npm start` usage.
 
@@ -492,7 +492,7 @@
 
 ## [2026-08-10] research | compare real-work coding evals
 
-- Added `pages/Possible Evals.md` comparing SWE-Lancer IC and SWE-Together for a ChatGPT Web + Shelly versus Codex benchmark.
+- Added `pages/Possible Evals.md` comparing SWE-Lancer IC and SWE-Together for a ChatGPT Web + unhinged-agent versus Codex benchmark.
 - Recommended SWE-Lancer IC for the first single-turn comparison while retaining SWE-Together as the stronger future multi-turn candidate.
 - Recorded SWE-Lancer's canonical Linux/offline runtime constraint and SWE-Together's state-conditional user-simulator dependency so benchmark adaptations are not mistaken for official runs.
 
@@ -680,6 +680,7 @@
 - Rewrote `pages/Browser ChatGPT Subagents.md` against current source: three-agent staggered starts, concurrent per-turn polling, poll-time page reconciliation, activity-based 30-minute cleanup, in-process conversation recovery, deleted-conversation failure semantics, and process-restart limits.
 - Added a maintainer code map covering the subagent service, tracker, MCP wrapper, process composition, browser helpers, and focused tests; refreshed the wiki index and README summary to point to the page.
 - Synchronized the architecture map, MCP tool-surface contract, and test-coverage summary with the same subagent lifecycle so the dedicated page is not contradicted elsewhere in the maintained wiki.
+
 ## [2026-08-13] code | Add one-shot submitted-turn recovery before terminal subagent failure
 
 - Added one shared conversation-based recovery attempt before a successfully submitted turn becomes terminal after browser observation failure.
@@ -728,7 +729,7 @@
 
 ## [2026-08-14] probe | Isolate MCP 2026 Tasks compatibility experiment
 
-- Removed the temporary Tasks probe from Shelly's production MCP registration, HTTP path, integration surface, and maintained tool documentation.
+- Removed the temporary Tasks probe from unhinged-agent's production MCP registration, HTTP path, integration surface, and maintained tool documentation.
 - Rebuilt it under `temporary/mcp-2026-tasks-probe/` as a standalone modern-only MCP 2026-07-28 server using the current `io.modelcontextprotocol/tasks` extension and `tasks/get` lifecycle.
 
 ## [2026-08-14] simplify | Split subagent implementation and matching tests by ownership
@@ -738,7 +739,7 @@
 
 ## [2026-08-14] defer | Preserve MCP 2026 Tasks probe for future evaluation
 
-- Deferred MCP `2026-07-28` / `io.modelcontextprotocol/tasks` adoption because the current Shelly MCP is working well and there is no concrete migration need.
+- Deferred MCP `2026-07-28` / `io.modelcontextprotocol/tasks` adoption because the current unhinged-agent MCP is working well and there is no concrete migration need.
 - Kept `temporary/mcp-2026-tasks-probe/` isolated for a future manual compatibility check; production `/mcp` remains unchanged by the experiment.
 
 ## [2026-08-14] optimize | Bound shell and web output hot paths
@@ -749,7 +750,7 @@
 
 ## [2026-08-14] release | Prepare public OSS surface
 
-- Standardized the public identity around `chatgpt-local-shell-mcp` / Shelly, added MIT licensing, concise contribution/security guidance, arm64 macOS CI, and a gitleaks allowlist for one historical fake integration-test token.
+- Standardized the public identity around `chatgpt-local-shell-mcp` / unhinged-agent, added MIT licensing, concise contribution/security guidance, arm64 macOS CI, and a gitleaks allowlist for one historical fake integration-test token.
 - Added a simple README architecture diagram under `docs/assets/`, moved the deferred MCP Tasks probe from `temporary/` to `experiments/`, and removed repository-local personal paths from the current tree.
 - Re-ran diagram validation, gitleaks history scanning, dependency audit, lint, type-check, focused integration validation, and build as part of the public-release audit.
 
@@ -770,7 +771,7 @@
 ## [2026-08-14] rename | Standardize local workspace identity
 
 - Renamed Austin's broader local agent workspace from `~/Desktop/chatgpt-workspace` to `~/Desktop/agent-workspace` and updated the local `MCP_CWD` override to match the public default.
-- Scanned current repo/workspace/user configuration and symlink targets for Shelly, `chatgpt-local-shell-mcp`, and old workspace-path references; repointed live `git-init-org` and `diagram-design` symlinks and retained dated raw/history or editor-cache artifacts rather than rewriting history.
+- Scanned current repo/workspace/user configuration and symlink targets for unhinged-agent, `chatgpt-local-shell-mcp`, and old workspace-path references; repointed live `git-init-org` and `diagram-design` symlinks and retained dated raw/history or editor-cache artifacts rather than rewriting history.
 
 ## [2026-08-14] optimize | Avoid duplicate completed shell poll reads
 
@@ -794,10 +795,16 @@
 ## [2026-08-14] optimize | Skip webpage media downloads
 
 - `fetch_website` now aborts Chromium image, media, and font requests before navigation while preserving their DOM references for HTML/Markdown extraction (`src/tools/web/web-open.ts`, `pages/MCP Tool Surface.md`).
+
 ## [2026-08-14] roadmap | note functional subagent refactor
 
 - Added a future roadmap item to replace the class-based subagent state container with a functional factory/closure design when that subsystem is next substantially changed; this is an architectural consistency goal, not a repo-wide class-removal mandate (`pages/ROADMAP.md`).
+
 ## [2026-08-14] optimization | Lazy shell transcript compaction
 
 - Changed rolling shell transcript eviction to advance a logical head and compact discarded backing text in batches, avoiding repeated large string slicing after the transcript fills (`src/tools/shell/session.ts`).
 - Added repeated-overflow cursor regression coverage (`test/shell-session.test.ts`).
+
+## [2026-08-14] simplify | Remove development feedback tool
+
+- Removed `feedback_submit`, its repository-local feedback store/inbox, server dependency injection, published instructions, tests, and current documentation because it existed only for development-time feedback collection.
