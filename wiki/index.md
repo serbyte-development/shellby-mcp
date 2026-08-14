@@ -14,7 +14,7 @@ This wiki is the concise source of truth for maintaining the server; start with 
 - [[pages/Configuration and Startup]] — environment parsing, startup composition, shutdown, and tunnel helper.
 - [[pages/Build and Test]] — validation commands, coverage, and gaps.
 - [[pages/Open Questions and Risks]] — unresolved operational and architectural risks.
-- [[pages/Browser ChatGPT Subagents]] — complete CDP-backed subagent architecture: parallel starts, polling/reconciliation, activity, idle cleanup, conversation recovery, failures, and implementation map.
+- [[pages/Browser ChatGPT Subagents]] — complete CDP-backed subagent architecture: parallel starts, passive completion events, explicit result retrieval/reconciliation, activity, idle cleanup, conversation recovery, failures, and implementation map.
 - [[pages/Possible Evals]] — candidate real-work benchmarks for comparing ChatGPT Web + Shelly against Codex.
 
 ## Supporting Files

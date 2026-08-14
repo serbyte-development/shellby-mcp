@@ -11,6 +11,7 @@ const LARGE_RESPONSE_BYTES = 8 * 1024
 const SLOW_CALL_MS = 5_000
 
 interface JsonRpcToolCall {
+  id?: unknown
   method?: unknown
   params?: {
     name?: unknown
@@ -49,15 +50,20 @@ export class McpAuditLogger {
 
       const startedAt = this.clock()
       const startedTime = this.now()
+      const inputTokens = countTokens(JSON.stringify(parsed.arguments ?? {}))
       let finished = false
+      const captureOutput = !parsed.name.startsWith("computer_")
 
       return [
         {
-          needsResponseBody: parsed.name === "apply_patch" || parsed.name === "shell_run" || parsed.name === "shell_poll",
+          needsResponseBody: captureOutput,
           finish: ({ httpStatus, state, responseBytes, responseBody }) => {
             if (finished) return
             finished = true
-            const toolResponse = parseToolResponse(responseBody)
+            const toolResponse = parseToolResponse(responseBody, parsed.id)
+            const completeResponseBody =
+              captureOutput && responseBody !== undefined && Buffer.byteLength(responseBody, "utf8") === responseBytes ? responseBody : undefined
+            const modelOutput = completeResponseBody ? parseToolResponse(completeResponseBody, parsed.id).modelOutput : undefined
             this.append(
               formatEntry({
                 time: startedTime,
@@ -67,7 +73,8 @@ export class McpAuditLogger {
                 httpStatus,
                 state,
                 responseBytes,
-                responseTokens: toolResponse.output !== undefined ? countTokens(toolResponse.output) : undefined,
+                inputTokens,
+                outputTokens: modelOutput !== undefined ? countTokens(modelOutput) : undefined,
                 toolFailed: toolResponse.failed,
                 failureMessage: toolResponse.failureMessage,
               })
@@ -104,16 +111,17 @@ function formatEntry(input: {
   httpStatus: number
   state: "finished" | "closed"
   responseBytes: number
-  responseTokens?: number
+  inputTokens: number
+  outputTokens?: number
   toolFailed: boolean
   failureMessage?: string
 }): string {
   const abnormal = input.httpStatus >= 400 || input.state !== "finished" ? ` - HTTP ${input.httpStatus} ${input.state}` : ""
   const largeResponse = input.responseBytes >= LARGE_RESPONSE_BYTES ? ` - ${formatBytes(input.responseBytes)}` : ""
-  const responseTokens = input.responseTokens !== undefined ? ` - ${input.responseTokens} tokens` : ""
+  const tokenCounts = ` - ${input.inputTokens} in${input.outputTokens !== undefined ? ` / ${input.outputTokens} out` : ""}`
   const tag = auditTag(input)
   const tagPrefix = tag ? `${tag} ` : ""
-  const heading = `--- # ${tagPrefix}${formatAuditTime(input.time)} - ${input.toolName} - ${input.durationMs}ms${responseTokens}${largeResponse}${abnormal}`
+  const heading = `--- # ${tagPrefix}${formatAuditTime(input.time)} - ${input.toolName} - ${input.durationMs}ms${tokenCounts}${largeResponse}${abnormal}`
   const details = formatArguments(input.toolName, input.argumentsValue, input.toolFailed, input.failureMessage)
   return details ? `${heading}\n${details}\n\n` : `${heading}\n\n`
 }
@@ -168,21 +176,22 @@ function formatArguments(toolName: string, value: unknown, toolFailed: boolean, 
   return `args: ${yamlString(truncate(serialized, MAX_INLINE_ARGUMENT_CHARS))}`
 }
 
-function parseToolResponse(responseBody: string | undefined): { failed: boolean; failureMessage?: string; output?: string } {
+function parseToolResponse(responseBody: string | undefined, responseId?: unknown): { failed: boolean; failureMessage?: string; modelOutput?: string } {
   if (!responseBody) return { failed: false }
   const payloads = parseResponsePayloads(responseBody)
-  let output: string | undefined
+  let modelOutput: string | undefined
   for (const payload of payloads) {
     const responses = Array.isArray(payload) ? payload : [payload]
     for (const response of responses) {
       if (!response || typeof response !== "object" || Array.isArray(response)) continue
+      if (responseId !== undefined && (response as { id?: unknown }).id !== responseId) continue
       const result = (response as { result?: unknown }).result
       if (!result || typeof result !== "object" || Array.isArray(result)) continue
+      if (modelOutput === undefined) modelOutput = serializeModelFacingToolResult(result)
       const structuredContent = asRecord((result as { structuredContent?: unknown }).structuredContent)
       const resultOutput = structuredContent && typeof structuredContent.output === "string" ? structuredContent.output : undefined
-      if (resultOutput !== undefined && output === undefined) output = resultOutput
       if ((result as { isError?: unknown }).isError !== true) continue
-      if (resultOutput) return { failed: true, failureMessage: resultOutput, output: resultOutput }
+      if (resultOutput) return { failed: true, failureMessage: resultOutput, modelOutput }
       const content = (result as { content?: unknown }).content
       if (Array.isArray(content)) {
         const message = content
@@ -191,12 +200,30 @@ function parseToolResponse(responseBody: string | undefined): { failed: boolean;
           .filter((item) => item.type === "text" && typeof item.text === "string")
           .map((item) => item.text as string)
           .join("\n")
-        if (message) return { failed: true, failureMessage: message }
+        if (message) return { failed: true, failureMessage: message, modelOutput }
       }
-      return { failed: true }
+      return { failed: true, modelOutput }
     }
   }
-  return { failed: responseBody.includes('"isError":true'), output }
+  return { failed: responseBody.includes('"isError":true'), modelOutput }
+}
+
+function serializeModelFacingToolResult(result: object): string | undefined {
+  const value = result as { content?: unknown; structuredContent?: unknown }
+  const parts: string[] = []
+  if (Array.isArray(value.content)) {
+    for (const item of value.content) {
+      const record = asRecord(item)
+      if (!record) continue
+      if (record.type === "text" && typeof record.text === "string") {
+        parts.push(record.text)
+      } else if (record.type !== "image") {
+        parts.push(JSON.stringify(record))
+      }
+    }
+  }
+  if (value.structuredContent !== undefined) parts.push(JSON.stringify(value.structuredContent))
+  return parts.length > 0 ? parts.join("\n") : undefined
 }
 
 function parseResponsePayloads(responseBody: string): unknown[] {
@@ -236,13 +263,13 @@ function truncate(value: string, maxChars: number): string {
   return `${characters.slice(0, maxChars).join("")}… [${omitted} chars omitted]`
 }
 
-function parseToolCall(value: unknown): { name: string; arguments?: unknown } | undefined {
+function parseToolCall(value: unknown): { id?: unknown; name: string; arguments?: unknown } | undefined {
   if (!value || typeof value !== "object" || Array.isArray(value)) return undefined
   const request = value as JsonRpcToolCall
   if (request.method !== "tools/call") return undefined
   const name = request.params?.name
   if (typeof name !== "string" || !name) return undefined
-  return { name, arguments: request.params?.arguments }
+  return { id: request.id, name, arguments: request.params?.arguments }
 }
 
 function isToolListRequest(value: unknown): boolean {

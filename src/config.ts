@@ -4,6 +4,8 @@ import { join, resolve } from "node:path"
 
 import { nonNegativeInteger, positiveInteger } from "./utils.js"
 
+export type ToolOutputStructuredMode = "always" | "optional" | "never"
+
 const SERVER_CONFIG = {
   name: "chatgpt-local-shell",
   version: "0.1.0",
@@ -26,6 +28,7 @@ const DEFAULTS = {
   workspace: "~/Desktop/chatgpt-workspace",
   peekabooExecutable: "peekaboo",
   chatGptCdpEndpoint: "http://127.0.0.1:9222",
+  toolOutputStructured: "optional" as ToolOutputStructuredMode,
   shell: {
     path: "/bin/zsh",
     transcriptChars: 1024 * 1024, // 1MB
@@ -65,6 +68,7 @@ export function loadMcpConfig(env: NodeJS.ProcessEnv = process.env) {
     chatGpt: {
       cdpEndpoint: env.MCP_CHATGPT_CDP_ENDPOINT ?? DEFAULTS.chatGptCdpEndpoint,
     },
+    toolOutputStructured: parseToolOutputStructured(env.MCP_TOOL_OUTPUT_STRUCTURED, DEFAULTS.toolOutputStructured),
     shell: {
       path: env.MCP_SHELL ?? DEFAULTS.shell.path,
       transcriptChars: DEFAULTS.shell.transcriptChars,
@@ -112,6 +116,12 @@ function parseNonNegativeInteger(value: string | undefined, fallback: number): n
   } catch {
     throw new Error(`Expected a non-negative integer, received ${JSON.stringify(value)}.`)
   }
+}
+
+function parseToolOutputStructured(value: string | undefined, fallback: ToolOutputStructuredMode): ToolOutputStructuredMode {
+  if (value === undefined) return fallback
+  if (value === "always" || value === "optional" || value === "never") return value
+  throw new Error(`MCP_TOOL_OUTPUT_STRUCTURED must be one of "always", "optional", or "never"; received ${JSON.stringify(value)}.`)
 }
 
 function strictNumber(value: string): number {

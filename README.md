@@ -63,7 +63,7 @@ npm run auth:reset
 
 Optional capabilities:
 
-- Google Chrome for `subagent_start` and `subagent_poll`
+- Google Chrome for `subagent_start` and `subagent_result`
 - [Peekaboo](https://peekaboo.sh/) for `computer_*` tools
 
 Install Peekaboo if you want Computer Use:
@@ -175,7 +175,9 @@ Setup keeps the dedicated Chrome visible so you can sign in. Normal `npm start` 
 
 Returned turn IDs are readable and sequential per agent, for example `seo-audit_turn_1` and `seo-audit_turn_2`. Local runtime state expires after 30 minutes without observable progress. Cleanup closes the managed tab, removes local turn records, and releases any generation slot while retaining the conversation reference in-process. Reusing the same `agent_id` then reopens the saved ChatGPT conversation; if that conversation was deleted, recovery fails explicitly instead of silently starting a new thread.
 
-`subagent_start` accepts 1-3 independent agents per call. The first is submitted immediately, the second 5 seconds later, and the third 7 seconds after that; at most three generations may run at once. `subagent_poll` accepts 1-3 turn IDs, polls them concurrently in the same wait window, and is the active reconciliation boundary for running/completed/failed state. A passive network listener records ChatGPT activity between polls, but only `subagent_poll` resolves a turn and returns its response. Both tools return structured lifecycle results; completed responses appear in `turns[].response`, and failures use one `error` string. See [`wiki/pages/Browser ChatGPT Subagents.md`](wiki/pages/Browser%20ChatGPT%20Subagents.md) for the full architecture and code map.
+`subagent_start` accepts 1-3 independent agents per call. The first is submitted immediately, the second 5 seconds later, and the third 7 seconds after that; at most three generations may run at once. The passive ChatGPT network listener can recognize a definitive final response, complete the local turn, release its generation slot, and queue `agent_finished:<agent_id>:<turn_id>`. That event is appended to the next MCP tool response. `subagent_result` retrieves 1-3 turn results concurrently and remains the reconciliation fallback when a turn is still running. The actual subagent answer is returned only by `subagent_result`. See [`wiki/pages/Browser ChatGPT Subagents.md`](wiki/pages/Browser%20ChatGPT%20Subagents.md) for the full architecture and code map.
+
+Normal non-Computer tools default to compact model-facing Markdown. `MCP_TOOL_OUTPUT_STRUCTURED=always|optional|never` controls the result surface: `always` preserves advertised output schemas and structured results, `optional` is the default and adds `structured: false` to tool inputs so callers may request a structured result per call, and `never` exposes compact content only. Computer Use tools are unchanged. MCP audit entries log approximate tool-context cost as `in / out` token counts when the final model-facing output is available.
 
 Default endpoint:
 
@@ -210,7 +212,7 @@ Core tools:
 - `skill_load`
 - `feedback_submit`
 - `subagent_start`
-- `subagent_poll`
+- `subagent_result`
 - `apply_patch`
 
 Shell tools:

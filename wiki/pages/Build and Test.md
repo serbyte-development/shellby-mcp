@@ -1,6 +1,6 @@
 # Build and Test
 
-Verified 2026-08-13.
+Verified 2026-08-14.
 
 ## Build Boundary
 
@@ -25,16 +25,18 @@ Verified 2026-08-13.
 
 Run the cheapest focused test first, then the broader commands when the change warrants them (`package.json`).
 
+As verified on 2026-08-14, published tool definitions cost 5,850 `o200k_base` tokens in `always` mode, 4,879 in the default `optional` mode, and 4,582 in `never` mode. The default therefore saves 971 tool-definition tokens while keeping per-call structured results available.
+
 `npm run schemas` starts the MCP on an ephemeral localhost port, connects with the real MCP client, calls `tools/list`, and prints the returned tool definitions as formatted JSON. Pass tool names after `--` to filter the output, for example `npm run schemas -- shell_run fetch_website` (`scripts/tool-schemas.ts`, `src/server/http-server.ts`).
 
 ## Test Architecture
 
 - Shell tests cover retained state, cwd, descriptors, idempotency, output caps, polling, concurrency, markers, recovery, and reset (`test/shell-session.test.ts`, `test/shell-session-manager.test.ts`).
-- MCP audit tests cover tool-call filtering, compact YAML formatting, Better Comments status tags, large-response thresholds, bounded `shell_run` command blocks, ordinary-argument truncation, `apply_patch` body omission, and HTTP-boundary interception without contacting external services (`test/mcp-audit-log.test.ts`, `test/mcp-integration.test.ts`).
+- MCP audit tests cover tool-call filtering, compact YAML formatting, MCP `in / out` token counts, Better Comments status tags, large-response thresholds, bounded `shell_run` command blocks, ordinary-argument truncation, `apply_patch` body omission, and HTTP-boundary interception without contacting external services (`test/mcp-audit-log.test.ts`, `test/mcp-integration.test.ts`).
 - Adapter tests cover exact Peekaboo argv, bounded JSON and images, serialization, cancellation, timeouts, snapshots, webpage extraction, and cursors (`test/peekaboo.test.ts`, `test/web-fetch.test.ts`). Direct `apply_patch` execution and abort behavior are covered by MCP integration tests (`test/mcp-integration.test.ts`).
-- MCP integration tests validate the published tool order and Standard Schema mechanics, cross-request shell state, named-shell concurrency, direct patching, webpage pagination, Computer Use results, semantic errors, restart continuity, exact `/mcp` routing, and Host rejection. Tool and server prose descriptions/instructions are intentionally not assertion-locked because they are model-facing guidance that changes independently of behavior (`test/mcp-integration.test.ts`).
+- MCP integration tests validate the published tool order and Standard Schema mechanics, all three model-facing output modes, compact output, one-shot pending-event delivery, final compact-output token logging, cross-request shell state, named-shell concurrency, direct patching, webpage pagination, Computer Use results, semantic errors, restart continuity, exact `/mcp` routing, and Host rejection. Tool and server prose descriptions/instructions are intentionally not assertion-locked because they are model-facing guidance that changes independently of behavior (`test/mcp-integration.test.ts`).
 - Authentication unit tests cover durable state, owner-only permissions, first-owner binding, concurrent first calls, reset, and malformed-state failure. MCP integration tests additionally cover exact routing, local access, discovery without binding, binding on an invalid first tool call, same-owner reuse, different-owner rejection, and owner persistence across an HTTP restart (`test/auth.test.ts`, `test/mcp-integration.test.ts`).
-- Subagent unit tests cover the hard three-generation cap, page/conversation recovery, deleted-conversation failure, poll-time DOM reconciliation, activity heartbeats, 30-minute idle reclamation, conversation-graph normalization, and duplicate/final-message filtering. MCP integration coverage verifies array-only 1-3 start/poll schemas, real stagger timing, concurrent polling, partial poll failures, and shared service state across stateless HTTP requests without contacting ChatGPT (`test/chatgpt-subagent.test.ts`, `test/mcp-integration.test.ts`).
+- Subagent unit tests cover the hard three-generation cap, passive network completion/event queueing, page/conversation recovery, deleted-conversation failure, result-time DOM reconciliation, activity heartbeats, 30-minute idle reclamation, conversation-graph normalization, and duplicate/final-message filtering. MCP integration coverage verifies array-only 1-3 start/result schemas, real stagger timing, concurrent result retrieval, partial failures, compact answer delivery, and shared service state across stateless HTTP requests without contacting ChatGPT (`test/chatgpt-subagent.test.ts`, `test/mcp-integration.test.ts`).
 
 Tests use temporary directories and real local child shells; process-group tests are POSIX-specific (`test/shell-session.test.ts`).
 

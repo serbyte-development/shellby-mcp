@@ -694,3 +694,22 @@
 ## [2026-08-13] document | Record compact model-facing output direction
 
 - Added a roadmap item to evaluate internal typed result schemas plus a shared MCP-boundary transform that emits compact, purpose-built model content, reserving advertised structured output for consumers that actually need a machine-readable contract.
+
+## [2026-08-14] simplify | Add configurable compact MCP output and subagent completion events
+
+- Added `always` / `optional` / `never` model-facing output modes. `optional` is the default and exposes compact Markdown unless a non-Computer tool explicitly requests `structured: true`; Computer Use remains unchanged.
+- Added one generic lossless structured-result-to-Markdown transform at the registration boundary and retained each tool's typed structured result internally.
+- Passive ChatGPT network completion now finishes the local turn, releases generation capacity, queues `agent_finished:<agent_id>:<turn_id>`, and delivers that event once on the next MCP tool response. Renamed the public retrieval tool to `subagent_result`.
+- Audit logging now records serialized MCP input tokens and final model-facing output tokens when the complete ordinary-tool response is available; incomplete/Computer outputs omit the `out` count instead of adding special-case accounting.
+
+## [2026-08-14] fix | Tighten compact output, subagent matching, and audit accounting
+
+- Preserve scalar string semantics in compact Markdown by quoting strings such as `"false"`, `"null"`, and numeric-looking values instead of rendering them identically to booleans, null, or numbers.
+- Require the submitted prompt to be present before network-tracked assistant output can complete that turn, preventing an unrelated conversation response from being bound to the active subagent.
+- Remove queued `agent_finished` events when their local turn state expires so the parent is never notified about a result that `subagent_result` can no longer retrieve.
+- Match JSON-RPC batch responses by request ID before computing output tokens or failure state in the audit logger.
+
+## [2026-08-14] harden | Recover from blocking ChatGPT composer modal
+
+- Dismiss ChatGPT's known `#modal-beacon` overlay with `Escape` before prompt entry and retry a blocked composer/send interaction once if that same overlay races back into view.
+- Keep retry scope to the atomic click or keypress that failed, so overlay recovery cannot duplicate an already-submitted turn.

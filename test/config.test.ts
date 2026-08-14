@@ -29,6 +29,7 @@ test("loads runtime configuration from one environment boundary", () => {
   assert.equal(defaults.shell.defaultOutputTokens, 1_024)
   assert.equal(defaults.shell.maxOutputTokens, 16_384)
   assert.equal(defaults.shell.recordLimit, 1024)
+  assert.equal(defaults.toolOutputStructured, "optional")
 
   const configured = loadMcpConfig({
     HOST: "0.0.0.0",
@@ -39,6 +40,7 @@ test("loads runtime configuration from one environment boundary", () => {
     MCP_TRANSCRIPT_CHARS: "1",
     MCP_COMMAND_TRANSCRIPT_BYTES: "1",
     MCP_RECORD_LIMIT: "1",
+    MCP_TOOL_OUTPUT_STRUCTURED: "never",
   })
   assert.equal(configured.shell.transcriptChars, defaults.shell.transcriptChars)
   assert.equal(configured.shell.commandTranscriptBytes, defaults.shell.commandTranscriptBytes)
@@ -48,6 +50,11 @@ test("loads runtime configuration from one environment boundary", () => {
   assert.equal(configured.shell.maxShells, 12)
   assert.equal(configured.host, defaults.host)
   assert.equal(configured.port, defaults.port)
+  assert.equal(configured.toolOutputStructured, "never")
+})
+
+test("rejects invalid tool output modes", () => {
+  assert.throws(() => loadMcpConfig({ MCP_TOOL_OUTPUT_STRUCTURED: "sometimes" }), /must be one of/)
 })
 
 test("rejects a default shell output cap above the maximum", () => {

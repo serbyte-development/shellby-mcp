@@ -4,7 +4,7 @@ import { NodeStreamableHTTPServerTransport } from "@modelcontextprotocol/node"
 import type { Request, Response } from "express"
 
 import { ShellyAuthError, type ShellyAuthStore } from "../auth/auth.js"
-import { MCP_CONFIG } from "../config.js"
+import { MCP_CONFIG, type ToolOutputStructuredMode } from "../config.js"
 import { ChatGptSubagentModule, type ChatGptSubagentService } from "../tools/subagent/chatgpt-subagent.js"
 import { createMcpServer } from "./mcp-server.js"
 import { McpAuditLogger } from "./audit-log.js"
@@ -39,6 +39,7 @@ export interface StartMcpServerOptions {
   feedbackStore?: FeedbackStore
   applyPatchExecutable?: string
   webPageOpener?: WebPageOpener
+  toolOutputStructured?: ToolOutputStructuredMode
 }
 
 export async function startMcpHttpServer(options: StartMcpServerOptions = {}): Promise<RunningMcpServer> {
@@ -95,6 +96,7 @@ export async function startMcpHttpServer(options: StartMcpServerOptions = {}): P
       applyPatchExecutable: options.applyPatchExecutable,
       peekaboo,
       webPageOpener,
+      toolOutputStructured: options.toolOutputStructured,
     })
     const transport = new NodeStreamableHTTPServerTransport({
       sessionIdGenerator: undefined,

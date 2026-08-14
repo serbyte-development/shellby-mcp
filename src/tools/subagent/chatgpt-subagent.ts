@@ -108,6 +108,7 @@ export class ChatGptSubagentError extends Error {
 export interface ChatGptSubagentService {
   ask(request: ChatGptSubagentRequest, signal?: AbortSignal): Promise<ChatGptSubagentStartResult>
   poll(turnId: string, waitMs?: number, signal?: AbortSignal): Promise<ChatGptSubagentPollResult>
+  drainEvents?(): string[]
   dispose(): Promise<void>
 }
 
@@ -183,6 +184,7 @@ export class ChatGptConversationTracker {
   private readonly messages = new Map<string, TrackedConversationNode>()
   private readonly responseHandler: (response: Response) => void
   private onActivity?: (activity: ChatGptSubagentActivity) => void
+  private onUpdate?: () => void
 
   constructor(private readonly page?: Page) {
     this.responseHandler = (response) => {
@@ -203,14 +205,21 @@ export class ChatGptConversationTracker {
     this.onActivity = listener
   }
 
+  setUpdateListener(listener?: () => void): void {
+    this.onUpdate = listener
+  }
+
   ingestPayload(payload: unknown): void {
+    let changed = false
     for (const node of extractConversationNodes(payload)) {
       const previous = this.messages.get(node.id)
       this.messages.set(node.id, node)
       if (!previous || didTrackedNodeProgress(previous, node)) {
+        changed = true
         this.onActivity?.(classifyActivity(node))
       }
     }
+    if (changed) this.onUpdate?.()
   }
 
   findFinalResponse(query: FinalResponseQuery): TrackedConversationNode | undefined {
@@ -218,6 +227,7 @@ export class ChatGptConversationTracker {
     if (newNodes.length === 0) return undefined
 
     const userNode = findNewestMatchingUserNode(newNodes, query.prompt)
+    if (query.prompt?.trim() && !userNode) return undefined
     const finals = newNodes.filter(isFinalAssistantNode)
     if (finals.length === 0) return undefined
 
@@ -245,7 +255,7 @@ export class ChatGptConversationTracker {
       }
     } catch {
       // Streaming and aborted responses are allowed to be unreadable.
-      // subagent_poll reconciles against the DOM when network evidence is incomplete.
+      // subagent_result reconciles against the DOM when network evidence is incomplete.
     }
   }
 }
@@ -263,6 +273,7 @@ export class ChatGptSubagentModule {
   private readonly turns = new Map<string, BrowserTurnState>()
   private readonly activeTurnsByAgent = new Map<string, string>()
   private readonly activeAgentIds = new Set<string>()
+  private readonly pendingEvents: string[] = []
   private activeGenerationCount = 0
   private browser?: Browser
   private context?: BrowserContext
@@ -319,12 +330,13 @@ export class ChatGptSubagentModule {
       const baselineDom = await readAssistantDomMessages(active.page)
       const sentAtSeconds = Date.now() / 1000
 
+      await dismissBlockingChatGptOverlay(active.page, signal)
       const composer = await findComposer(active.page, this.timeoutMs, signal)
       await delay(this.interactionDelayMs, signal)
       throwIfAborted(signal)
       assertPreSubmitLocation(active)
       const submittedPrompt = active.hasSubmittedTurn ? prompt : appendFirstTurnMode(prompt, oververbosity)
-      await enterPrompt(active.page, composer, submittedPrompt)
+      await enterPrompt(active.page, composer, submittedPrompt, signal)
       await delay(this.interactionDelayMs, signal)
       throwIfAborted(signal)
       assertPreSubmitLocation(active)
@@ -351,7 +363,7 @@ export class ChatGptSubagentModule {
       }
       this.turns.set(turnId, turn)
       this.activeTurnsByAgent.set(active.agentId, turnId)
-      this.attachTurnActivityListener(active, turn)
+      this.attachTurnListeners(active, turn)
       operationTransferred = true
 
       return {
@@ -390,6 +402,10 @@ export class ChatGptSubagentModule {
     }
     throwIfAborted(signal)
     return this.turnResult(turn)
+  }
+
+  drainEvents(): string[] {
+    return this.pendingEvents.splice(0)
   }
 
   async read(agentId: string): Promise<ChatGptConversationMessage[]> {
@@ -440,6 +456,7 @@ export class ChatGptSubagentModule {
     this.turns.clear()
     this.activeTurnsByAgent.clear()
     this.activeAgentIds.clear()
+    this.pendingEvents.length = 0
     this.activeGenerationCount = 0
     this.context = undefined
     this.browser = undefined
@@ -582,7 +599,8 @@ export class ChatGptSubagentModule {
 
     try {
       const active = await this.ensureActivePage(state, signal)
-      this.attachTurnActivityListener(active, turn)
+      this.attachTurnListeners(active, turn)
+      if (turn.status !== "running") return
       captureOrValidateConversationLocation(active)
       this.rememberConversation(active)
 
@@ -685,6 +703,7 @@ export class ChatGptSubagentModule {
   }
 
   private completeTurn(turn: BrowserTurnState, state: BrowserAgentState, answer: { messageId?: string; text: string }): void {
+    if (turn.status !== "running") return
     state.lastReturnedMessageId = answer.messageId
     state.lastCompletedAt = Date.now()
     state.lastUsedAt = state.lastCompletedAt
@@ -697,16 +716,40 @@ export class ChatGptSubagentModule {
     this.finishTurnOperation(turn, state)
   }
 
-  private attachTurnActivityListener(state: BrowserAgentState, turn: BrowserTurnState): void {
+  private attachTurnListeners(state: BrowserAgentState, turn: BrowserTurnState): void {
     state.tracker.setActivityListener((activity) => {
       if (turn.status !== "running") return
       turn.activity = activity
       turn.lastActivityAt = Date.now()
     })
+    const completeTrackedTurn = () => {
+      if (turn.status !== "running" || !turn.tracking) return
+      const final = state.tracker.findFinalResponse({
+        baselineIds: turn.tracking.baselineNetworkIds,
+        prompt: turn.tracking.prompt,
+        sentAtSeconds: turn.tracking.sentAtSeconds,
+      })
+      if (!final?.message.text) return
+      try {
+        captureOrValidateConversationLocation(state)
+        this.rememberConversation(state)
+      } catch {
+        // The final network response is enough to complete the turn. Poll-time
+        // reconciliation can recover conversation metadata if the page moved.
+      }
+      this.completeTurn(turn, state, {
+        messageId: final.message.id,
+        text: final.message.text,
+      })
+      this.pendingEvents.push(`agent_finished:${turn.agentId}:${turn.turnId}`)
+    }
+    state.tracker.setUpdateListener(completeTrackedTurn)
+    completeTrackedTurn()
   }
 
   private finishTurnOperation(turn: BrowserTurnState, state: BrowserAgentState): void {
     state.tracker.setActivityListener(undefined)
+    state.tracker.setUpdateListener(undefined)
     if (this.activeTurnsByAgent.get(state.agentId) !== turn.turnId) return
     this.activeTurnsByAgent.delete(state.agentId)
     this.endAgentOperation(state.agentId, true)
@@ -825,7 +868,12 @@ export class ChatGptSubagentModule {
   private removeTurnsForAgent(agentId: string): void {
     this.activeTurnsByAgent.delete(agentId)
     for (const [turnId, turn] of this.turns) {
-      if (turn.agentId === agentId) this.turns.delete(turnId)
+      if (turn.agentId !== agentId) continue
+      this.turns.delete(turnId)
+      const event = `agent_finished:${turn.agentId}:${turn.turnId}`
+      for (let index = this.pendingEvents.length - 1; index >= 0; index -= 1) {
+        if (this.pendingEvents[index] === event) this.pendingEvents.splice(index, 1)
+      }
     }
   }
 }
@@ -989,8 +1037,8 @@ function findNewestMatchingUserNode(nodes: readonly TrackedConversationNode[], p
   const users = nodes.filter((node) => node.message.role === "user")
   if (users.length === 0) return undefined
   const normalizedPrompt = prompt?.trim()
-  const exact = normalizedPrompt ? users.filter((node) => node.message.text.trim() === normalizedPrompt) : []
-  const candidates = exact.length > 0 ? exact : users
+  const candidates = normalizedPrompt ? users.filter((node) => node.message.text.trim() === normalizedPrompt) : users
+  if (candidates.length === 0) return undefined
   return [...candidates].sort((left, right) => (right.message.createTime ?? 0) - (left.message.createTime ?? 0))[0]
 }
 
@@ -1138,8 +1186,8 @@ async function assertConversationAvailable(page: Page, conversationId: string, t
   )
 }
 
-async function enterPrompt(page: Page, composer: Locator, prompt: string): Promise<void> {
-  await composer.click()
+async function enterPrompt(page: Page, composer: Locator, prompt: string, signal?: AbortSignal): Promise<void> {
+  await retryAfterDismissingBlockingOverlay(page, () => composer.click(), signal)
   await composer.press(process.platform === "darwin" ? "Meta+A" : "Control+A")
   await composer.press("Backspace")
   await page.keyboard.insertText(prompt)
@@ -1154,7 +1202,7 @@ async function submitComposer(page: Page, composer: Locator, signal?: AbortSigna
     for (const selector of sendSelectors) {
       const button = page.locator(selector).first()
       if ((await button.count()) > 0 && (await button.isVisible().catch(() => false)) && (await button.isEnabled().catch(() => false))) {
-        await button.click()
+        await retryAfterDismissingBlockingOverlay(page, () => button.click(), signal)
         return
       }
     }
@@ -1162,7 +1210,25 @@ async function submitComposer(page: Page, composer: Locator, signal?: AbortSigna
   }
 
   throwIfAborted(signal)
-  await composer.press("Enter")
+  await retryAfterDismissingBlockingOverlay(page, () => composer.press("Enter"), signal)
+}
+
+async function retryAfterDismissingBlockingOverlay<T>(page: Page, action: () => Promise<T>, signal?: AbortSignal): Promise<T> {
+  try {
+    return await action()
+  } catch (error) {
+    if (!(await dismissBlockingChatGptOverlay(page, signal))) throw error
+    return action()
+  }
+}
+
+async function dismissBlockingChatGptOverlay(page: Page, signal?: AbortSignal): Promise<boolean> {
+  throwIfAborted(signal)
+  const overlay = page.locator('#modal-beacon, [data-testid="modal-beacon"]').first()
+  if ((await overlay.count()) === 0 || !(await overlay.isVisible().catch(() => false))) return false
+  await page.keyboard.press("Escape")
+  await delay(250, signal)
+  return true
 }
 
 async function readAssistantDomMessages(page: Page): Promise<DomAssistantMessage[]> {

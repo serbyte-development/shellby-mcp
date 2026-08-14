@@ -59,6 +59,102 @@ test("browser visibility hook is best effort", async () => {
   await module.dispose()
 })
 
+test("subagent start dismisses a ChatGPT modal that races with composer interaction and retries only the blocked click", async () => {
+  const module = new ChatGptSubagentModule({
+    cdpEndpoint: "http://127.0.0.1:1",
+    interactionDelayMs: 0,
+  })
+  let modalVisible = false
+  let composerClicks = 0
+  let escapePresses = 0
+  const composer = {
+    count: async () => 1,
+    isVisible: async () => true,
+    click: async () => {
+      composerClicks += 1
+      if (composerClicks === 1) {
+        modalVisible = true
+        throw new Error("modal intercepts pointer events")
+      }
+    },
+    press: async () => undefined,
+  }
+  const emptyLocator = {
+    count: async () => 0,
+    isVisible: async () => false,
+    isEnabled: async () => false,
+  }
+  const page = {
+    isClosed: () => false,
+    url: () => "https://chatgpt.com/",
+    locator: (selector: string) => ({
+      first: () => {
+        if (selector === '#modal-beacon, [data-testid="modal-beacon"]') {
+          return {
+            count: async () => 1,
+            isVisible: async () => modalVisible,
+          }
+        }
+        if (selector === "#prompt-textarea") return composer
+        if (selector === '[data-message-author-role="assistant"]') {
+          return {
+            ...emptyLocator,
+            evaluateAll: async () => [],
+          }
+        }
+        if (selector.includes("send-button")) {
+          return {
+            count: async () => 1,
+            isVisible: async () => true,
+            isEnabled: async () => true,
+            click: async () => undefined,
+          }
+        }
+        return emptyLocator
+      },
+      evaluateAll: async () => [],
+    }),
+    keyboard: {
+      insertText: async () => undefined,
+      press: async (key: string) => {
+        if (key === "Escape") {
+          escapePresses += 1
+          modalVisible = false
+        }
+      },
+    },
+    close: async () => undefined,
+  }
+  const tracker = {
+    snapshotIds: () => new Set<string>(),
+    setActivityListener() {},
+    setUpdateListener() {},
+    findFinalResponse: () => undefined,
+    dispose() {},
+  }
+  const state = {
+    agentId: "modal-agent",
+    page,
+    tracker,
+    hasSubmittedTurn: false,
+    lastUsedAt: Date.now(),
+    turnCount: 0,
+  }
+  const internals = module as unknown as {
+    agents: Map<string, typeof state>
+    connect(): Promise<void>
+  }
+  internals.connect = async () => undefined
+  internals.agents.set(state.agentId, state)
+
+  const result = await module.ask({ agentId: state.agentId, prompt: "Review this." })
+
+  assert.equal(result.status, "running")
+  assert.equal(composerClicks, 2)
+  assert.equal(escapePresses, 1)
+  await module.dispose()
+})
+
 test("forgets an agent whose page is lost before a conversation can be recovered", async () => {
   const module = new ChatGptSubagentModule({
     cdpEndpoint: "http://127.0.0.1:1",
@@ -265,6 +361,7 @@ test("poll reconciles a completed DOM response and releases the generation slot"
   const tracker = {
     findFinalResponse: () => undefined,
     setActivityListener() {},
+    setUpdateListener() {},
     dispose() {},
   }
   const state = {
@@ -328,6 +425,7 @@ test("submitted turn shares one conversation recovery attempt before a later fai
     },
     tracker: {
       setActivityListener() {},
+      setUpdateListener() {},
       dispose() {},
     },
     hasSubmittedTurn: true,
@@ -387,7 +485,7 @@ test("submitted turn shares one conversation recovery attempt before a later fai
   await module.dispose()
 })
 
-test("passive network activity never completes a turn without subagent_poll", async () => {
+test("passive network completion finishes a turn, releases capacity, and queues one event", async () => {
   const module = new ChatGptSubagentModule({
     cdpEndpoint: "http://127.0.0.1:1",
   })
@@ -412,28 +510,61 @@ test("passive network activity never completes a turn without subagent_poll", as
     lastActivityAt: Date.now(),
     conversationId: state.conversationId,
     conversationUrl: state.conversationUrl,
+    tracking: {
+      baselineNetworkIds: new Set<string>(),
+      baselineDom: [],
+      prompt: "review",
+      sentAtSeconds: Date.now() / 1000 - 10,
+    },
   }
   const internals = module as unknown as {
-    attachTurnActivityListener(agent: typeof state, value: typeof turn): void
+    attachTurnListeners(agent: typeof state, value: typeof turn): void
+    activeTurnsByAgent: Map<string, string>
+    activeAgentIds: Set<string>
+    activeGenerationCount: number
   }
-  internals.attachTurnActivityListener(state, turn)
+  internals.activeTurnsByAgent.set(state.agentId, turn.turnId)
+  internals.activeAgentIds.add(state.agentId)
+  internals.activeGenerationCount = 1
+  internals.attachTurnListeners(state, turn)
 
   tracker.ingestPayload({
-    id: "assistant-final",
-    message: {
-      id: "assistant-final",
-      author: { role: "assistant" },
-      content: { parts: ["finished"] },
-      status: "finished_successfully",
-      end_turn: true,
-      metadata: { is_complete: true },
-      recipient: "all",
+    mapping: {
+      user: {
+        id: "user",
+        message: {
+          id: "user",
+          author: { role: "user" },
+          content: { parts: ["review"] },
+          create_time: Date.now() / 1000 - 5,
+        },
+        children: ["assistant-final"],
+      },
+      final: {
+        id: "assistant-final",
+        parent: "user",
+        message: {
+          id: "assistant-final",
+          author: { role: "assistant" },
+          content: { parts: ["finished"] },
+          status: "finished_successfully",
+          end_turn: true,
+          metadata: { is_complete: true },
+          recipient: "all",
+          create_time: Date.now() / 1000,
+        },
+        children: [],
+      },
     },
-    children: [],
   })
 
-  assert.equal(turn.status, "running")
-  assert.equal(turn.activity, "Generating response")
+  assert.equal(turn.status, "completed")
+  assert.equal((turn as typeof turn & { response?: string }).response, "finished")
+  assert.equal(internals.activeTurnsByAgent.has(state.agentId), false)
+  assert.equal(internals.activeAgentIds.has(state.agentId), false)
+  assert.equal(internals.activeGenerationCount, 0)
+  assert.deepEqual(module.drainEvents(), [`agent_finished:${state.agentId}:${turn.turnId}`])
+  assert.deepEqual(module.drainEvents(), [])
   await module.dispose()
 })
 
@@ -446,6 +577,7 @@ test("submitted turn without saved conversation fails without attempting recover
     page: { isClosed: () => false },
     tracker: {
       setActivityListener() {},
+      setUpdateListener() {},
       dispose() {},
     },
     hasSubmittedTurn: true,
@@ -621,10 +753,12 @@ test("expires idle agent tabs and local turn state", async () => {
   const internals = module as unknown as {
     agents: Map<string, typeof state>
     turns: Map<string, typeof turn>
+    pendingEvents: string[]
     cleanupIdleAgents(now: number): Promise<void>
   }
   internals.agents.set(state.agentId, state)
   internals.turns.set(turn.turnId, turn)
+  internals.pendingEvents.push(`agent_finished:${state.agentId}:${turn.turnId}`)
 
   await internals.cleanupIdleAgents(1_000 + 30 * 60_000)
 
@@ -632,6 +766,7 @@ test("expires idle agent tabs and local turn state", async () => {
   assert.equal(trackerDisposals, 1)
   assert.deepEqual(module.listAgents(), [])
   assert.equal(internals.turns.size, 0)
+  assert.deepEqual(module.drainEvents(), [])
   await module.dispose()
 })
 
@@ -824,6 +959,50 @@ test("tracker returns only the new final assistant response for a turn", () => {
 
   assert.equal(result?.id, "a2")
   assert.equal(result?.message.text, "new response")
+})
+
+test("tracker rejects an unrelated completed conversation when the submitted prompt is absent", () => {
+  const tracker = new ChatGptConversationTracker()
+  const baseline = tracker.snapshotIds()
+  tracker.ingestPayload([
+    {
+      id: "other-user",
+      message: {
+        id: "other-user",
+        author: { role: "user" },
+        create_time: 10,
+        content: { parts: ["Send the market report."] },
+        status: "finished_successfully",
+        metadata: { turn_exchange_id: "other-turn" },
+        recipient: "all",
+      },
+      children: ["other-assistant"],
+    },
+    {
+      id: "other-assistant",
+      message: {
+        id: "other-assistant",
+        author: { role: "assistant" },
+        create_time: 11,
+        content: { parts: ["Market report complete."] },
+        status: "finished_successfully",
+        end_turn: true,
+        metadata: { is_complete: true, turn_exchange_id: "other-turn" },
+        recipient: "all",
+      },
+      parent: "other-user",
+      children: [],
+    },
+  ])
+
+  assert.equal(
+    tracker.findFinalResponse({
+      baselineIds: baseline,
+      prompt: "Review the implementation.",
+      sentAtSeconds: 9,
+    }),
+    undefined
+  )
 })
 
 test("tracker does not return an already-seen assistant response", () => {

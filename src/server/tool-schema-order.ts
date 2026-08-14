@@ -1,4 +1,8 @@
 import type { McpServer } from "@modelcontextprotocol/server"
+import { z } from "zod"
+
+import type { ToolOutputStructuredMode } from "../config.js"
+import { appendToolEvents, compactToolResult } from "./tool-output.js"
 
 const SCHEMA_KEY_ORDER = [
   "description",
@@ -72,6 +76,11 @@ interface ToolRegistrationConfig {
   [key: string]: unknown
 }
 
+export interface ToolRegistrationBoundaryOptions {
+  toolOutputStructured: ToolOutputStructuredMode
+  drainPendingEvents?: () => string[]
+}
+
 const TOOL_ANNOTATION_DEFAULTS: Record<string, unknown> = {
   readOnlyHint: false,
   destructiveHint: true,
@@ -86,17 +95,47 @@ interface StandardSchemaJsonSource {
   }
 }
 
-export function installCanonicalToolSchemaOrder(server: McpServer): void {
+export function installToolRegistrationBoundary(server: McpServer, options: ToolRegistrationBoundaryOptions): void {
   const registerTool = server.registerTool.bind(server) as unknown as (name: string, config: ToolRegistrationConfig, callback: unknown) => unknown
 
   server.registerTool = ((name: string, config: ToolRegistrationConfig, callback: unknown) => {
+    const computerUse = name.startsWith("computer_")
+    if (!computerUse && options.toolOutputStructured !== "always") {
+      delete config.outputSchema
+    }
+    if (!computerUse && options.toolOutputStructured === "optional") {
+      config.inputSchema = addStructuredInput(config.inputSchema)
+    }
     canonicalizeStandardSchema(config.inputSchema)
     canonicalizeStandardSchema(config.outputSchema)
     const annotations = compactToolAnnotations(config.annotations)
     if (annotations === undefined) delete config.annotations
     else config.annotations = annotations
-    return registerTool(name, config, callback)
+
+    if (typeof callback !== "function") return registerTool(name, config, callback)
+    const wrapped = async (...args: unknown[]) => {
+      const input = isRecord(args[0]) ? args[0] : undefined
+      const structuredRequested = options.toolOutputStructured === "always" || (options.toolOutputStructured === "optional" && input?.structured === true)
+      if (input && "structured" in input) {
+        const toolInput = { ...input }
+        delete toolInput.structured
+        args[0] = toolInput
+      }
+
+      const result = await callback(...args)
+      const projected = !computerUse && !structuredRequested ? compactToolResult(result) : result
+      return appendToolEvents(projected, options.drainPendingEvents?.() ?? [])
+    }
+    return registerTool(name, config, wrapped)
   }) as typeof server.registerTool
+}
+
+function addStructuredInput(schema: unknown): unknown {
+  const structured = z.boolean().optional().default(false).describe("Return the full structured tool result instead of compact model-facing content.")
+  if (schema === undefined) return z.object({ structured })
+  if (!isRecord(schema) || typeof schema.extend !== "function") return schema
+  const extend = schema.extend as (shape: Record<string, unknown>) => unknown
+  return extend({ structured })
 }
 
 export function compactToolAnnotations(value: unknown): unknown {

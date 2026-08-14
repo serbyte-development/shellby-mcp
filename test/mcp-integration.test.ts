@@ -11,13 +11,17 @@ import { MCP_CONFIG } from "../src/config.js"
 import { countTokens } from "../src/tokenizer.js"
 import type { ChatGptSubagentService } from "../src/tools/subagent/chatgpt-subagent.js"
 import { FeedbackStore } from "../src/tools/feedback.js"
-import { startMcpHttpServer } from "../src/server/http-server.js"
+import { startMcpHttpServer as startMcpHttpServerRaw } from "../src/server/http-server.js"
 import { McpAuditLogger } from "../src/server/audit-log.js"
 import { PeekabooClient } from "../src/tools/computer/peekaboo.js"
 import { PersistentShellSession } from "../src/tools/shell/session.js"
 import { ShellSessionManager } from "../src/tools/shell/session-manager.js"
 import { DEFAULT_WEB_OUTPUT_TOKENS, MAX_WEB_OUTPUT_TOKENS, WebPageOpener } from "../src/tools/web/web-open.js"
 import { canonicalizeJsonSchema } from "../src/server/tool-schema-order.js"
+
+function startMcpHttpServer(options: Parameters<typeof startMcpHttpServerRaw>[0] = {}) {
+  return startMcpHttpServerRaw({ toolOutputStructured: "always", ...options })
+}
 
 test("serves shell tools through Streamable HTTP and retains state across MCP sessions", { timeout: 20_000 }, async (t) => {
   const running = await startMcpHttpServer({ port: 0 })
@@ -36,7 +40,7 @@ test("serves shell tools through Streamable HTTP and retains state across MCP se
       "shell_list",
       "shell_close",
       "subagent_start",
-      "subagent_poll",
+      "subagent_result",
       "fetch_website",
       "skill_list",
       "skill_load",
@@ -197,7 +201,7 @@ test("serves shell tools through Streamable HTTP and retains state across MCP se
   }
   assert.deepEqual(Object.keys(subagentTurnsSchema.items?.properties ?? {}).sort(), ["agent_id", "error", "status", "turn_id"])
   assert.deepEqual(subagentTurnsSchema.items?.required?.sort(), ["agent_id", "status"])
-  const subagentPollTool = tools.tools.find((tool) => tool.name === "subagent_poll")
+  const subagentPollTool = tools.tools.find((tool) => tool.name === "subagent_result")
   assert.deepEqual(subagentPollTool?.annotations, { readOnlyHint: true })
   const subagentPollInputSchema = subagentPollTool?.inputSchema as {
     properties?: Record<string, Record<string, unknown>>
@@ -298,6 +302,130 @@ test("lists and loads dynamic workspace skills through MCP", { timeout: 10_000 }
   })
 })
 
+test("supports always, optional, and never model-facing tool output modes", { timeout: 20_000 }, async () => {
+  for (const mode of ["always", "optional", "never"] as const) {
+    const running = await startMcpHttpServer({ port: 0, toolOutputStructured: mode })
+    const connected = await connectClient(running.url, `tool-output-${mode}`)
+    try {
+      const tools = await connected.client.listTools()
+      const shellList = tools.tools.find((tool) => tool.name === "shell_list")
+      assert.ok(shellList)
+      const properties = shellList.inputSchema.properties as Record<string, Record<string, unknown>>
+      const computerList = tools.tools.find((tool) => tool.name === "computer_list")
+      const computerProperties = computerList?.inputSchema.properties as Record<string, Record<string, unknown>>
+
+      assert.equal("structured" in computerProperties, false)
+      if (mode === "always") {
+        assert.ok(shellList.outputSchema)
+        assert.equal("structured" in properties, false)
+      } else {
+        assert.equal(shellList.outputSchema, undefined)
+        assert.equal("structured" in properties, mode === "optional")
+        if (mode === "optional") assert.equal(properties.structured?.default, false)
+      }
+
+      const compact = await connected.client.callTool({ name: "shell_list", arguments: {} })
+      if (mode === "always") {
+        assert.ok(compact.structuredContent)
+      } else {
+        assert.equal(compact.structuredContent, undefined)
+        const text = compact.content.find((item) => item.type === "text")
+        assert.ok(text?.type === "text")
+        assert.match(text.text, /count=\d+ limit=\d+ idle_timeout_ms=\d+/)
+        assert.match(text.text, /shells:/)
+      }
+
+      if (mode === "optional") {
+        const structured = await connected.client.callTool({ name: "shell_list", arguments: { structured: true } })
+        assert.ok(structured.structuredContent)
+      }
+    } finally {
+      await connected.client.close()
+      await running.close()
+    }
+  }
+})
+
+test("appends pending subagent completion events to the next tool result exactly once", { timeout: 10_000 }, async (t) => {
+  const events = ["agent_finished:reviewer:reviewer_turn_1"]
+  const chatGptSubagents: ChatGptSubagentService = {
+    async ask() {
+      throw new Error("unused")
+    },
+    async poll() {
+      throw new Error("unused")
+    },
+    drainEvents() {
+      return events.splice(0)
+    },
+    async dispose() {},
+  }
+  const running = await startMcpHttpServer({ port: 0, chatGptSubagents, toolOutputStructured: "never" })
+  t.after(() => running.close())
+  const connected = await connectClient(running.url, "subagent-event-client")
+  t.after(() => connected.client.close())
+
+  const first = await connected.client.callTool({ name: "shell_list", arguments: {} })
+  const firstText = first.content.find((item) => item.type === "text")
+  assert.ok(firstText?.type === "text")
+  assert.match(firstText.text, /agent_finished:reviewer:reviewer_turn_1/)
+
+  const second = await connected.client.callTool({ name: "shell_list", arguments: {} })
+  const secondText = second.content.find((item) => item.type === "text")
+  assert.ok(secondText?.type === "text")
+  assert.doesNotMatch(secondText.text, /agent_finished:/)
+})
+
+test("returns the actual subagent answer through compact subagent_result content", { timeout: 10_000 }, async (t) => {
+  const chatGptSubagents: ChatGptSubagentService = {
+    async ask() {
+      throw new Error("unused")
+    },
+    async poll(turnId) {
+      return {
+        agentId: "reviewer",
+        turnId,
+        status: "completed",
+        response: "Use the shared registration boundary.",
+      }
+    },
+    async dispose() {},
+  }
+  const running = await startMcpHttpServer({ port: 0, chatGptSubagents, toolOutputStructured: "never" })
+  t.after(() => running.close())
+  const connected = await connectClient(running.url, "compact-subagent-result-client")
+  t.after(() => connected.client.close())
+
+  const result = await connected.client.callTool({
+    name: "subagent_result",
+    arguments: { turn_ids: ["reviewer_turn_1"] },
+  })
+  assert.equal(result.structuredContent, undefined)
+  const text = result.content.find((item) => item.type === "text")
+  assert.ok(text?.type === "text")
+  assert.match(text.text, /turn_id=reviewer_turn_1 status=completed response="Use the shared registration boundary\."/)
+})
+
+test("logs output tokens from the final compact model-facing result", { timeout: 10_000 }, async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "mcp-compact-audit-"))
+  t.after(() => rm(root, { recursive: true, force: true }))
+  const auditPath = join(root, "agent-commands.yaml")
+  const running = await startMcpHttpServer({
+    port: 0,
+    auditLogger: new McpAuditLogger(auditPath),
+    toolOutputStructured: "never",
+  })
+  t.after(() => running.close())
+  const connected = await connectClient(running.url, "compact-audit-client")
+  t.after(() => connected.client.close())
+
+  const result = await connected.client.callTool({ name: "shell_list", arguments: {} })
+  const text = result.content.find((item) => item.type === "text")
+  assert.ok(text?.type === "text")
+  const log = await readFile(auditPath, "utf8")
+  assert.match(log, new RegExp(`shell_list - \\d+ms - ${countTokens("{}")} in / ${countTokens(text.text)} out`))
+})
+
 test("records agent feedback through MCP", { timeout: 10_000 }, async (t) => {
   const workspace = await mkdtemp(join(tmpdir(), "mcp-feedback-integration-"))
   t.after(() => rm(workspace, { recursive: true, force: true }))
@@ -320,7 +448,7 @@ test("records agent feedback through MCP", { timeout: 10_000 }, async (t) => {
   const result = await connected.client.callTool({
     name: "feedback_submit",
     arguments: {
-      feedback: "## Polling feedback\n\n`subagent_poll` should make progress easier to distinguish from a stalled turn.",
+      feedback: "## Result feedback\n\n`subagent_result` should make progress easier to distinguish from a stalled turn.",
     },
   })
 
@@ -331,7 +459,7 @@ test("records agent feedback through MCP", { timeout: 10_000 }, async (t) => {
   assert.deepEqual(JSON.parse((await readFile(feedbackPath, "utf8")).trim()), {
     id: "fb_test",
     created_at: "2026-08-09T22:00:00.000Z",
-    feedback: "## Polling feedback\n\n`subagent_poll` should make progress easier to distinguish from a stalled turn.",
+    feedback: "## Result feedback\n\n`subagent_result` should make progress easier to distinguish from a stalled turn.",
   })
 })
 
@@ -444,7 +572,7 @@ test("starts staggered subagents and polls turns concurrently across stateless M
   const second = await connectClient(running.url, "subagent-client-2")
   t.after(() => second.client.close())
   const batchPoll = await second.client.callTool({
-    name: "subagent_poll",
+    name: "subagent_result",
     arguments: {
       turn_ids: ["turn-architecture-reviewer-1", "turn-test-reviewer-1", "turn-simplifier-1"],
       wait_ms: 0,
@@ -469,11 +597,11 @@ test("starts staggered subagents and polls turns concurrently across stateless M
       },
     ],
   })
-  assert.deepEqual(batchPoll.content, [{ type: "text", text: "Checked 3 ChatGPT subagent turns." }])
+  assert.deepEqual(batchPoll.content, [{ type: "text", text: "Retrieved 3 ChatGPT subagent turn results." }])
   assert.equal(maxActivePolls, 3)
 
   const partialFailurePoll = await second.client.callTool({
-    name: "subagent_poll",
+    name: "subagent_result",
     arguments: {
       turn_ids: ["turn-architecture-reviewer-1", "missing-turn", "turn-simplifier-1"],
       wait_ms: 0,
@@ -501,7 +629,7 @@ test("starts staggered subagents and polls turns concurrently across stateless M
   })
 
   const heartbeatPoll = await second.client.callTool({
-    name: "subagent_poll",
+    name: "subagent_result",
     arguments: { turn_ids: ["heartbeat-fixture"] },
   })
   assert.deepEqual(heartbeatPoll.structuredContent, {
@@ -530,7 +658,7 @@ test("starts staggered subagents and polls turns concurrently across stateless M
     ],
   })
   const secondPoll = await second.client.callTool({
-    name: "subagent_poll",
+    name: "subagent_result",
     arguments: { turn_ids: ["turn-architecture-reviewer-2"] },
   })
   assert.deepEqual(secondPoll.structuredContent, {
@@ -590,8 +718,11 @@ test("audits tool calls at the HTTP MCP boundary", { timeout: 10_000 }, async (t
   })
 
   const log = await readFile(auditPath, "utf8")
-  assert.match(log, /--- # \d{2}:\d{2}:\d{2} - shell_list - \d+ms\nargs: \{\}/)
-  assert.match(log, /--- # \d{2}:\d{2}:\d{2} - subagent_start - \d+ms\nargs: \{"agents":\[\{"agent_id":"audit-check","prompt":"Inspect the audit path\."\}\]\}/)
+  assert.match(log, /--- # \d{2}:\d{2}:\d{2} - shell_list - \d+ms - \d+ in \/ \d+ out\nargs: \{\}/)
+  assert.match(
+    log,
+    /--- # \d{2}:\d{2}:\d{2} - subagent_start - \d+ms - \d+ in \/ \d+ out\nargs: \{"agents":\[\{"agent_id":"audit-check","prompt":"Inspect the audit path\."\}\]\}/
+  )
 })
 
 test("exposes a stable Peekaboo Computer Use surface and preserves semantic errors", { timeout: 10_000 }, async (t) => {
