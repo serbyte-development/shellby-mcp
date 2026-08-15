@@ -1,6 +1,6 @@
 # Configuration and Startup
 
-Verified 2026-08-12.
+Verified 2026-08-15.
 
 ## Static MCP Configuration
 
@@ -44,7 +44,7 @@ Normal `npm run setup` invokes `peekaboo permissions status --all-sources` when 
 
 ## Package Scripts
 
-- Runtime check: `preflight` validates supported macOS architecture (arm64 or x64), Node 22.13.0+, local dependencies, ngrok installation, and ngrok authentication without changing runtime state. `setup` wraps those checks and the first-time workspace/build/Peekaboo/Chrome flow in a zero-dependency terminal UI with compact step status and actionable notes. Missing Peekaboo or browser setup does not block the core MCP; `setup:computer` and `setup:chatgpt` rerun those optional setup paths (`scripts/preflight.mjs`, `scripts/setup.mjs`, `scripts/setup-ui.mjs`, `scripts/peekaboo-permissions.mjs`, `scripts/chatgpt-browser.mjs`).
+- Runtime check: `preflight` accepts macOS arm64 and x64, then validates Node 22.13.0+, local dependencies, ngrok installation, and ngrok authentication without changing runtime state. `setup` wraps those checks and the first-time workspace/build/Peekaboo/Chrome flow in a zero-dependency terminal UI with compact step status and actionable notes. Missing Peekaboo or browser setup does not block the core MCP; `setup:computer` and `setup:chatgpt` rerun those optional setup paths (`scripts/preflight.mjs`, `scripts/setup.mjs`, `scripts/setup-ui.mjs`, `scripts/peekaboo-permissions.mjs`, `scripts/chatgpt-browser.mjs`).
 - Production runtime: `start` builds and starts/reloads MCP + ngrok and auto-launches the configured ChatGPT browser; `restart` does the same after clearing the current audit log; `status`, `logs`, and `stop` expose the small PM2 management surface. PM2 gives the MCP process 10 seconds to complete its signal-driven cleanup before forcing termination. PM2 is a package dependency rather than a global prerequisite (`package.json`, `scripts/start.mjs`, `ecosystem.config.cjs`).
 - Development: `dev`, `build`, and `inspect` keep direct local development separate from the managed production runtime.
 - Tunnel: `tunnel` remains a low-level helper that exposes port 3333 through the checked-in ngrok policy with the ngrok agent's local HTTP inspector disabled. ngrok assigns the public URL unless `NGROK_URL` supplies the caller's own fixed domain (`package.json`, `ecosystem.config.cjs`).

@@ -877,3 +877,7 @@
 
 - Expanded the current macOS release target from arm64-only to arm64 and x64, with a Universal 2 vendored `apply_patch` binary and matching package/preflight/documentation support.
 - Changed GitHub CI to validate the full suite on both macOS arm64 and Intel x64 runners, including direct execution of the vendored patch binary.
+
+## [2026-08-15] docs | Clarify dual-architecture macOS support
+
+- Updated public and maintainer documentation to state that arm64 and Intel x64 both run the full CI suite and to document the Universal 2 `apply_patch` build/verification flow.

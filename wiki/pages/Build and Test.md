@@ -1,6 +1,6 @@
 # Build and Test
 
-Verified 2026-08-14.
+Verified 2026-08-15.
 
 ## Build Boundary
 
@@ -44,7 +44,7 @@ Tests use temporary directories and real local child shells; `test/helpers/temp.
 
 ## Gaps
 
-GitHub Actions runs the release validation sequence on both `macos-15` arm64 and `macos-15-intel` x64 runners for pushes to `main` and pull requests. The suite includes a direct vendored `apply_patch` smoke test, so each runner executes its native slice of the checked-in Universal 2 binary (`.github/workflows/ci.yml`, `package.json`, `test/apply-patch-vendor.test.ts`).
+GitHub Actions runs the same release validation sequence on both `macos-15` arm64 and `macos-15-intel` x64 runners for pushes to `main` and pull requests: clean install, lint, type-check, tests, and production build. The suite includes a direct vendored `apply_patch` smoke test, so each runner executes its native slice of the checked-in Universal 2 binary (`.github/workflows/ci.yml`, `package.json`, `test/apply-patch-vendor.test.ts`).
 
 The tests do not exercise the real `src/index.ts` composition path, `/healthz`, GET/DELETE 405 responses, signal-driven shutdown, tunnel configuration, a real browser launch, or the installed Peekaboo/macOS permission path used by `setup`/`setup:computer` (`test/`, `scripts/peekaboo-permissions.mjs`, `src/index.ts`, `src/server/http-server.ts`, `src/tools/web/web-open.ts`, `src/tools/computer/peekaboo.ts`).
 

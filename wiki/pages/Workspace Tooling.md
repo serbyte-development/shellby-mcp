@@ -1,6 +1,6 @@
 # Workspace Tooling
 
-Verified 2026-08-14.
+Verified 2026-08-15.
 
 ## Default Workspace
 
@@ -18,7 +18,7 @@ Two parser behaviors are intentionally treated as implementation quirks rather t
 
 On failure, `structuredContent` returns `status: failed`, the native exit code, and up to 1,024 `o200k_base` tokens of combined stdout/stderr in `output`; `output_dropped` marks diagnostics discarded beyond that ceiling. The text `content` also includes the same bounded native diagnostic after the compact `apply_patch failed, exit=...` summary so clients that primarily surface text still receive actionable parser errors. The audit logger records that structured diagnostic as a bounded one-line `message:` field alongside the failed patch entry in `agent-commands.yaml`; wrapper/startup failures that have no structured output use the returned text error instead, so the reason is still logged. Actual parser failures include useful diagnostics such as missing envelope markers, missing files, unmatched context, and invalid hunk lines. Successful calls intentionally omit native output and return only compact status/exit metadata (`src/tokenizer.ts`, `src/tools/apply-patch/apply-patch.ts`, `src/server/audit-log.ts`, `test/mcp-audit-log.test.ts`, `test/mcp-integration.test.ts`).
 
-The vendored binary, provenance, license, and notice live together under `vendor/apply-patch/`. If additional platform-specific binaries are needed later, pin the Codex repository as a source submodule and build `codex-apply-patch` for each target rather than copying a partial Rust source tree into this repository (`scripts/build-apply-patch.sh`, `vendor/apply-patch/provenance.json`).
+The vendored binary, provenance, license, and notice live together under `vendor/apply-patch/`. `scripts/build-apply-patch.sh` builds the pinned Codex source for `aarch64-apple-darwin` and `x86_64-apple-darwin`, strips both slices, merges them with `lipo`, verifies both architectures are present, and records both targets in `provenance.json`. Future non-macOS support should add the minimum platform-specific artifact needed rather than copying a partial Rust source tree into this repository (`scripts/build-apply-patch.sh`, `vendor/apply-patch/provenance.json`).
 
 ## Workspace Skills
 
