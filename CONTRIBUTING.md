@@ -4,7 +4,7 @@ Thanks for improving Unhinged Agent.
 
 ## Development
 
-Unhinged Agent currently targets Apple Silicon macOS and Node.js 22.13.0 or newer.
+Unhinged Agent currently targets macOS on Apple Silicon or Intel and Node.js 22.13.0 or newer.
 
 ```bash
 npm ci

@@ -10,10 +10,23 @@ permissions:
 
 jobs:
   validate:
-    runs-on: macos-15
+    name: validate (${{ matrix.arch }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: arm64
+            runner: macos-15
+            uname: arm64
+          - arch: x64
+            runner: macos-15-intel
+            uname: x86_64
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
+      - name: Verify runner architecture
+        run: test "$(uname -m)" = "${{ matrix.uname }}"
       - uses: actions/setup-node@v7
         with:
           node-version: 22.13.0

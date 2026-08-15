@@ -876,3 +876,4 @@
 ## [2026-08-14] portability | Add Intel Mac support
 
 - Expanded the current macOS release target from arm64-only to arm64 and x64, with a Universal 2 vendored `apply_patch` binary and matching package/preflight/documentation support.
+- Changed GitHub CI to validate the full suite on both macOS arm64 and Intel x64 runners, including direct execution of the vendored patch binary.

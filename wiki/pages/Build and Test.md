@@ -40,11 +40,11 @@ As verified on 2026-08-14, published tool definitions cost 5,850 `o200k_base` to
 
 Tests use temporary directories and real local child shells; `test/helpers/temp.ts` centralizes disposable-directory cleanup. Process-group tests are POSIX-specific (`test/shell-session.test.ts`, `test/shell-parallel.test.ts`).
 
-`npm ci` is the reproducible clean-install path. As verified on 2026-08-14, lint, type-check, tests, and build succeed on the supported Apple Silicon macOS runtime, and `npm audit --omit=dev` reports no production dependency vulnerabilities (`package-lock.json`, `package.json`).
+`npm ci` is the reproducible clean-install path. As verified on 2026-08-14, lint, type-check, tests, and build succeed on the supported macOS runtime, and `npm audit --omit=dev` reports no production dependency vulnerabilities (`package-lock.json`, `package.json`).
 
 ## Gaps
 
-GitHub Actions runs the release validation sequence on the supported arm64 macOS runner for pushes to `main` and pull requests (`.github/workflows/ci.yml`, `package.json`).
+GitHub Actions runs the release validation sequence on both `macos-15` arm64 and `macos-15-intel` x64 runners for pushes to `main` and pull requests. The suite includes a direct vendored `apply_patch` smoke test, so each runner executes its native slice of the checked-in Universal 2 binary (`.github/workflows/ci.yml`, `package.json`, `test/apply-patch-vendor.test.ts`).
 
 The tests do not exercise the real `src/index.ts` composition path, `/healthz`, GET/DELETE 405 responses, signal-driven shutdown, tunnel configuration, a real browser launch, or the installed Peekaboo/macOS permission path used by `setup`/`setup:computer` (`test/`, `scripts/peekaboo-permissions.mjs`, `src/index.ts`, `src/server/http-server.ts`, `src/tools/web/web-open.ts`, `src/tools/computer/peekaboo.ts`).
 

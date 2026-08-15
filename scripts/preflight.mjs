@@ -13,8 +13,8 @@ export async function checkPublicRuntime() {
   if (process.platform !== "darwin") {
     errors.push("This release supports macOS only.")
   }
-  if (process.arch !== "arm64") {
-    errors.push("This release supports Apple Silicon Macs only because the vendored apply_patch binary is arm64.")
+  if (!isSupportedArchitecture(process.arch)) {
+    errors.push("This release supports Apple Silicon and Intel Macs only.")
   }
 
   if (!isSupportedNodeVersion(process.versions.node)) {
@@ -44,6 +44,10 @@ export async function checkPublicRuntime() {
 export function isSupportedNodeVersion(version) {
   const [major = 0, minor = 0] = version.split(".").map(Number)
   return major > 22 || (major === 22 && minor >= 13)
+}
+
+export function isSupportedArchitecture(arch) {
+  return arch === "arm64" || arch === "x64"
 }
 
 export function printPreflightErrors(errors) {

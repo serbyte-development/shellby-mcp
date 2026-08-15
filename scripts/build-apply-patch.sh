@@ -4,12 +4,12 @@ set -euo pipefail
 repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd -P)"
 codex_root_input="${1:-${CODEX_REPO:-"$repo_root/../codex"}}"
 
-if [[ "$(uname -s)" != "Darwin" || "$(uname -m)" != "arm64" ]]; then
-  echo "This vendored binary targets macOS arm64; build it on an Apple Silicon Mac." >&2
+if [[ "$(uname -s)" != "Darwin" ]]; then
+  echo "The vendored Universal 2 binary must be built on macOS." >&2
   exit 1
 fi
 
-for required_command in cargo git node rustc shasum strings strip; do
+for required_command in cargo git lipo node rustc rustup shasum strings strip; do
   if ! command -v "$required_command" >/dev/null 2>&1; then
     echo "Required command not found: $required_command" >&2
     exit 1
@@ -32,7 +32,7 @@ fi
 
 source_commit="$(git -C "$codex_root" rev-parse HEAD)"
 source_repository="$(git -C "$codex_root" remote get-url origin 2>/dev/null || printf 'unknown')"
-target_triple="aarch64-apple-darwin"
+target_triples=("aarch64-apple-darwin" "x86_64-apple-darwin")
 temporary_root="$(mktemp -d "${TMPDIR:-/tmp}/codex-apply-patch.XXXXXX")"
 source_worktree="$temporary_root/codex"
 target_dir="$temporary_root/target"
@@ -55,22 +55,36 @@ git -C "$codex_root" worktree add --detach "$source_worktree" "$source_commit"
 worktree_added=true
 manifest="$source_worktree/codex-rs/Cargo.toml"
 
-RUSTFLAGS="--remap-path-prefix=$HOME=/build/home --remap-path-prefix=$source_worktree=/build/codex" \
-  CARGO_TARGET_DIR="$target_dir" cargo build \
-  --manifest-path "$manifest" \
-  --package codex-apply-patch \
-  --bin apply_patch \
-  --release
+rustup target add "${target_triples[@]}"
 
-built_binary="$target_dir/release/apply_patch"
-if [[ ! -x "$built_binary" ]]; then
-  echo "Build completed without an executable at $built_binary" >&2
+slice_binaries=()
+for target_triple in "${target_triples[@]}"; do
+  RUSTFLAGS="--remap-path-prefix=$HOME=/build/home --remap-path-prefix=$source_worktree=/build/codex" \
+    CARGO_TARGET_DIR="$target_dir" cargo build \
+    --manifest-path "$manifest" \
+    --package codex-apply-patch \
+    --bin apply_patch \
+    --release \
+    --target "$target_triple"
+
+  built_binary="$target_dir/$target_triple/release/apply_patch"
+  if [[ ! -x "$built_binary" ]]; then
+    echo "Build completed without an executable at $built_binary" >&2
+    exit 1
+  fi
+
+  strip -x "$built_binary"
+  slice_binaries+=("$built_binary")
+done
+
+lipo -create "${slice_binaries[@]}" -output "$temporary_binary"
+chmod 0755 "$temporary_binary"
+
+architectures="$(lipo -archs "$temporary_binary")"
+if [[ "$architectures" != *"arm64"* || "$architectures" != *"x86_64"* ]]; then
+  echo "Universal binary is missing a required architecture: $architectures" >&2
   exit 1
 fi
-
-cp "$built_binary" "$temporary_binary"
-strip -x "$temporary_binary"
-chmod 0755 "$temporary_binary"
 
 if strings "$temporary_binary" | grep -Eq '/Users/[^/]+/'; then
   echo "Vendored binary still contains a macOS user-home path after remapping." >&2
@@ -86,7 +100,6 @@ node - \
   "$temporary_provenance" \
   "$source_repository" \
   "$source_commit" \
-  "$target_triple" \
   "$sha256" \
   "$size_bytes" \
   "$rustc_version" \
@@ -97,7 +110,6 @@ const [
   output,
   sourceRepository,
   sourceCommit,
-  target,
   sha256,
   sizeBytes,
   rustc,
@@ -109,9 +121,9 @@ const provenance = {
   source_commit: sourceCommit,
   crate: "codex-apply-patch",
   binary: "apply_patch",
-  target,
+  targets: ["aarch64-apple-darwin", "x86_64-apple-darwin"],
   build_command:
-    "cargo build --package codex-apply-patch --bin apply_patch --release",
+    "cargo build --package codex-apply-patch --bin apply_patch --release --target <target>; lipo -create <slices> -output apply_patch",
   build_environment: {
     CARGO_TARGET_DIR: "<temporary>",
     RUSTFLAGS:
@@ -134,4 +146,5 @@ mv "$temporary_provenance" "$vendor_dir/provenance.json"
 
 echo "Vendored codex-apply-patch $source_commit"
 echo "Binary: $vendor_dir/apply_patch ($size_bytes bytes)"
+echo "Architectures: $architectures"
 echo "SHA-256: $sha256"

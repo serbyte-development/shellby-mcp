@@ -3,14 +3,17 @@
   "source_commit": "5c0e582c59892dbec89af78ae62c784d3da6c9cb",
   "crate": "codex-apply-patch",
   "binary": "apply_patch",
-  "target": "aarch64-apple-darwin",
-  "build_command": "cargo build --package codex-apply-patch --bin apply_patch --release",
+  "targets": [
+    "aarch64-apple-darwin",
+    "x86_64-apple-darwin"
+  ],
+  "build_command": "cargo build --package codex-apply-patch --bin apply_patch --release --target <target>; lipo -create <slices> -output apply_patch",
   "build_environment": {
     "CARGO_TARGET_DIR": "<temporary>",
     "RUSTFLAGS": "--remap-path-prefix=$HOME=/build/home --remap-path-prefix=$SOURCE_WORKTREE=/build/codex"
   },
-  "sha256": "e079d5181b7c6ca2c20be3cd73baa35b982417a04ff67178070130f29eda8688",
-  "size_bytes": 11801152,
+  "sha256": "bd50e68244eb756189fe2139889170d67f41569c4d69fa68cbe7bedf76471d30",
+  "size_bytes": 24908152,
   "rustc": "rustc 1.97.1 (8bab26f4f 2026-07-14)",
   "cargo": "cargo 1.97.1 (c980f4866 2026-06-30)"
 }

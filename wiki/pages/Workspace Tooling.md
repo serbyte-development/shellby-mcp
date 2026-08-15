@@ -1,6 +1,6 @@
 # Workspace Tooling
 
-Verified 2026-08-12.
+Verified 2026-08-14.
 
 ## Default Workspace
 
@@ -8,7 +8,7 @@ Verified 2026-08-12.
 
 ## `apply_patch`
 
-The MCP registers `apply_patch` as a first-class core tool and resolves the checked-in macOS arm64 executable directly from `vendor/apply-patch/apply_patch`. There is no workspace symlink, shell `PATH` injection, or runtime binary override. Shell callers do not need `apply_patch`; agents use the MCP tool directly (`src/tools/apply-patch/apply-patch.ts`, `vendor/apply-patch/apply_patch`).
+The MCP registers `apply_patch` as a first-class core tool and resolves the checked-in macOS Universal 2 executable directly from `vendor/apply-patch/apply_patch`. There is no workspace symlink, shell `PATH` injection, or runtime binary override. Shell callers do not need `apply_patch`; agents use the MCP tool directly (`src/tools/apply-patch/apply-patch.ts`, `vendor/apply-patch/apply_patch`).
 
 The handler requires an absolute patch root, spawns the vendored executable directly in that directory, writes the patch to stdin, and caps combined failure diagnostics internally at 1,024 `o200k_base` tokens; callers cannot raise that limit through the tool schema. On POSIX the child owns a detached process group; request abort sends the group `SIGTERM`, waits 500 ms, escalates to `SIGKILL`, and force-settles after one further bounded grace period if process close never arrives. Windows uses direct child signaling. `apply_patch` remains independent of persistent-shell state and serialization (`src/tokenizer.ts`, `src/server/http-server.ts`, `src/tools/apply-patch/apply-patch.ts`, `test/mcp-integration.test.ts`).
 

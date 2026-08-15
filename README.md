@@ -26,7 +26,7 @@ MCP is only the transport layer. Unhinged Agent uses MCP TypeScript SDK v2 with 
 
 ## Compatibility and requirements
 
-- Apple Silicon macOS **for the current release**. Broader host portability is planned; macOS is a compatibility constraint at this time.
+- macOS on Apple Silicon or Intel **for the current release**. Broader host portability is planned; macOS is a compatibility constraint at this time.
 - Node.js 22.13.0+
 - npm
 - An [ngrok](https://ngrok.com/) account and CLI
@@ -278,7 +278,7 @@ During normal first-time setup, Unhinged Agent runs `peekaboo permissions status
 
 ## `apply_patch`
 
-The repository includes a pinned macOS arm64 standalone `apply_patch` executable at `vendor/apply-patch/apply_patch`. The MCP executes that vendored binary directly as a first-class tool; it is not installed into or exposed through the workspace shell.
+The repository includes a pinned macOS Universal 2 standalone `apply_patch` executable at `vendor/apply-patch/apply_patch`, supporting both arm64 and x86_64. The MCP executes that vendored binary directly as a first-class tool; it is not installed into or exposed through the workspace shell.
 
 Each call requires an absolute `cwd` and a normal Codex-style patch. It runs independently of shell state and has abort escalation. Failure diagnostics are capped internally at 1,024 `o200k_base` tokens so patch errors cannot consume unbounded model context.
 
