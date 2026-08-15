@@ -364,6 +364,40 @@ export async function isGenerating(page: Page): Promise<boolean> {
   return false
 }
 
+export async function getConversationStreamStatus(page: Page, conversationId: string): Promise<string | undefined> {
+  try {
+    return await page.evaluate(async (id) => {
+      try {
+        const response = await fetch(`/backend-api/conversation/${encodeURIComponent(id)}/stream_status`, {
+          credentials: "same-origin",
+        })
+        if (!response.ok) return undefined
+        const payload = (await response.json()) as { status?: unknown }
+        return typeof payload.status === "string" ? payload.status : undefined
+      } catch {
+        return undefined
+      }
+    }, conversationId)
+  } catch {
+    return undefined
+  }
+}
+
+export async function waitForStableConversationLocation(
+  state: ManagedAgentPageState,
+  timeoutMs: number
+): Promise<boolean> {
+  if (state.conversationId) return true
+
+  try {
+    await state.page.waitForURL((url) => extractConversationId(url.toString()) !== undefined, { timeout: timeoutMs })
+    captureOrValidateConversationLocation(state)
+    return state.conversationId !== undefined
+  } catch {
+    return false
+  }
+}
+
 export function isExpectedAgentPage(state: ManagedAgentPageState): boolean {
   const currentUrl = state.page.url()
   if (!isChatGptUrl(currentUrl)) return false

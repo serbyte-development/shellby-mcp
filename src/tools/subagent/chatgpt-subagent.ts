@@ -15,12 +15,14 @@ import {
   findComposer,
   findLatestAssistantAfterPrompt,
   findNewDomAssistantMessage,
+  getConversationStreamStatus,
   isExpectedAgentPage,
   isGenerating,
   loadConversationPayload,
   readAssistantDomMessages,
   submitComposer,
   throwIfAborted,
+  waitForStableConversationLocation,
   waitForPromise,
   type DomAssistantMessage,
 } from "./chatgpt-subagent-browser.js"
@@ -36,6 +38,9 @@ import {
 
 const DEFAULT_AGENT_IDLE_TTL_MS = 30 * 60_000
 const MAX_CONCURRENT_AGENTS = 3
+const COMPLETION_WATCH_INTERVAL_MS = 1_000
+const COMPLETION_DOM_GRACE_MS = 5_000
+const CONVERSATION_BIND_TIMEOUT_MS = 30_000
 
 const CAVEMAN_PROMPT =
   "Respond terse like smart caveman — drop articles, filler, pleasantries. Fragments OK. Technical terms exact. Code unchanged. Pattern: [thing] [action] [reason]. [next step].\n\nNot use `subagent` tools."
@@ -98,6 +103,7 @@ export class ChatGptSubagentModule implements ChatGptSubagentService {
   private context?: BrowserContext
   private connectPromise?: Promise<void>
   private readonly cleanupTimer: NodeJS.Timeout
+  private disposed = false
 
   constructor(private readonly options: ChatGptSubagentOptions = {}) {
     this.cdpEndpoint = options.cdpEndpoint ?? MCP_CONFIG.chatGpt.cdpEndpoint
@@ -139,10 +145,19 @@ export class ChatGptSubagentModule implements ChatGptSubagentService {
       const active = await this.ensureActivePage(state, signal)
       throwIfAborted(signal)
       if (await isGenerating(active.page)) {
-        throw new ChatGptSubagentError(
-          "AGENT_BUSY",
-          `ChatGPT subagent ${active.agentId} is still generating. Do not retry automatically; wait before sending another turn.`
-        )
+        const streamStatus = active.conversationId
+          ? await getConversationStreamStatus(active.page, active.conversationId)
+          : undefined
+        if (streamStatus !== "COMPLETE") {
+          throw new ChatGptSubagentError(
+            "AGENT_BUSY",
+            `ChatGPT subagent ${active.agentId} is still generating. Do not retry automatically; wait before sending another turn.`
+          )
+        }
+
+        await waitForPromise(active.page.reload({ waitUntil: "domcontentloaded" }), signal)
+        throwIfAborted(signal)
+        await assertConversationAvailable(active.page, active.conversationId!, this.timeoutMs, signal)
       }
 
       const baselineNetworkIds = active.tracker.snapshotIds()
@@ -181,6 +196,12 @@ export class ChatGptSubagentModule implements ChatGptSubagentService {
       this.turns.set(turnId, turn)
       this.activeTurnsByAgent.set(active.agentId, turnId)
       this.attachTurnListeners(active, turn)
+      if (!active.conversationId) {
+        void waitForStableConversationLocation(active, Math.min(this.timeoutMs, CONVERSATION_BIND_TIMEOUT_MS)).then((bound) => {
+          if (bound) this.rememberConversation(active)
+        })
+      }
+      void this.watchTurnCompletion(turn, active)
       operationTransferred = true
 
       return {
@@ -223,6 +244,7 @@ export class ChatGptSubagentModule implements ChatGptSubagentService {
   }
 
   async dispose(): Promise<void> {
+    this.disposed = true
     clearInterval(this.cleanupTimer)
     const states = [...this.agents.values()]
     const ownedPages: Page[] = []
@@ -357,7 +379,13 @@ export class ChatGptSubagentModule implements ChatGptSubagentService {
       this.rememberConversation(active)
 
       const domFinal = await findNewDomAssistantMessage(active.page, turn.tracking.baselineDom)
-      if (!domFinal?.text || (await isGenerating(active.page))) return
+      if (!domFinal?.text) return
+      const [streamStatus, uiGenerating] = await Promise.all([
+        active.conversationId ? getConversationStreamStatus(active.page, active.conversationId) : Promise.resolve(undefined),
+        isGenerating(active.page),
+      ])
+      if (streamStatus === "IS_STREAMING") return
+      if (streamStatus !== "COMPLETE" && uiGenerating) return
 
       this.completeTurn(turn, active, domFinal.text)
     } catch (error) {
@@ -441,6 +469,7 @@ export class ChatGptSubagentModule implements ChatGptSubagentService {
     turn.response = response
     this.rememberConversation(state)
     this.finishTurnOperation(turn, state)
+    this.pendingEvents.push(`agent_finished:${turn.agentId}:${turn.turnId}`)
   }
 
   private attachTurnListeners(state: BrowserAgentState, turn: BrowserTurnState): void {
@@ -465,10 +494,80 @@ export class ChatGptSubagentModule implements ChatGptSubagentService {
         // managed page moved. The saved conversation reference may be stale.
       }
       this.completeTurn(turn, state, final.message.text)
-      this.pendingEvents.push(`agent_finished:${turn.agentId}:${turn.turnId}`)
     }
     state.tracker.setUpdateListener(completeTrackedTurn)
     completeTrackedTurn()
+  }
+
+  private async watchTurnCompletion(turn: BrowserTurnState, state: BrowserAgentState): Promise<void> {
+    if (!turn.tracking) return
+    let stableFallback: { key: string; text: string; since: number } | undefined
+    let serverCompletionConfirmed = false
+
+    while (!this.disposed && turn.status === "running") {
+      try {
+        const [streamStatus, uiGenerating, domFinal] = await Promise.all([
+          state.conversationId ? getConversationStreamStatus(state.page, state.conversationId) : Promise.resolve(undefined),
+          isGenerating(state.page),
+          findNewDomAssistantMessage(state.page, turn.tracking.baselineDom),
+        ])
+        if (turn.status !== "running") return
+
+        if (streamStatus === "COMPLETE") {
+          if (domFinal?.text) {
+            this.completeTurn(turn, state, domFinal.text)
+            return
+          }
+
+          if (!serverCompletionConfirmed) {
+            serverCompletionConfirmed = true
+            const deadline = Date.now() + COMPLETION_DOM_GRACE_MS
+            while (!this.disposed && turn.status === "running" && Date.now() < deadline) {
+              await delay(Math.min(COMPLETION_WATCH_INTERVAL_MS, deadline - Date.now()))
+              if (turn.status !== "running") return
+              const delayedDomFinal = await findNewDomAssistantMessage(state.page, turn.tracking.baselineDom)
+              if (!delayedDomFinal?.text) continue
+              this.completeTurn(turn, state, delayedDomFinal.text)
+              return
+            }
+
+            if (turn.status !== "running") return
+            if (!turn.recoveryAttempted) {
+              turn.recoveryAttempted = true
+              const recoveryPromise = this.recoverSubmittedTurn(turn, state)
+              turn.recoveryPromise = recoveryPromise
+              try {
+                await recoveryPromise
+              } catch {
+                // Explicit result reconciliation remains the terminal recovery boundary.
+              } finally {
+                if (turn.recoveryPromise === recoveryPromise) turn.recoveryPromise = undefined
+              }
+              if (turn.status !== "running") return
+            }
+          }
+        } else if (streamStatus === "IS_STREAMING") {
+          stableFallback = undefined
+        } else if (!uiGenerating && domFinal?.text) {
+          const now = Date.now()
+          if (stableFallback?.key === domFinal.key && stableFallback.text === domFinal.text) {
+            if (now - stableFallback.since >= COMPLETION_WATCH_INTERVAL_MS) {
+              this.completeTurn(turn, state, domFinal.text)
+              return
+            }
+          } else {
+            stableFallback = { key: domFinal.key, text: domFinal.text, since: now }
+          }
+        } else {
+          stableFallback = undefined
+        }
+      } catch {
+        // This watcher is redundant by design. page.on(...) and explicit result
+        // reconciliation remain available if one observation tick fails.
+      }
+
+      if (!this.disposed && turn.status === "running") await delay(COMPLETION_WATCH_INTERVAL_MS)
+    }
   }
 
   private finishTurnOperation(turn: BrowserTurnState, state: BrowserAgentState): void {

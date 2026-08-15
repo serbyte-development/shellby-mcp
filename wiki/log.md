@@ -847,3 +847,24 @@
 ## [2026-08-14] test | Make named-shell concurrency integration deterministic
 
 - Replaced a fixed 300 ms sleep in the named-shell busy/concurrency integration test with an explicit release-file signal so slower full-suite runs cannot let the command finish before the busy assertion.
+
+## [2026-08-14] fix | Reconcile stale ChatGPT streaming tabs
+
+- Added server `stream_status` reconciliation so a completed conversation is not left running when its original ChatGPT tab keeps a stale stop button after the final answer rendered; follow-up submission reloads that stale page before typing the next turn.
+## [2026-08-14] docs | Make subagent completion notification a first-class contract
+
+- Promoted autonomous turn-completion detection and `agent_finished:<agent_id>:<turn_id>` delivery on the next MCP tool response into a dedicated top-level contract in `pages/Browser ChatGPT Subagents.md`.
+- Clarified that `subagent_result` is answer retrieval/reconciliation, not the only acceptable way to discover that a detached turn finished.
+
+## [2026-08-14] harden | Restore autonomous subagent completion detection with server state
+
+- Added a one-second detached completion watcher that checks both ChatGPT `stream_status` and the managed tab's generation control while keeping structured `page.on("response")` finals as the fastest path.
+- Treats server `COMPLETE` as authoritative, waits up to five seconds for the final DOM message at one-second intervals, then reuses the existing one-shot conversation recovery path if the page still has not rendered the answer.
+- Moved `agent_finished` queueing into the guarded `completeTurn()` transition so network, watcher, and explicit reconciliation paths cannot emit duplicate completion events.
+- Added best-effort first-turn stable-URL binding from `subagent_start` so the completion watcher consumes conversation identity instead of owning its discovery.
+
+## [2026-08-14] docs | Rewrite Browser ChatGPT Subagents as an end-to-end maintainer guide
+
+- Rewrote `pages/Browser ChatGPT Subagents.md` around the core autonomous-completion/notification contract, with a complete start-to-notification-to-result lifecycle.
+- Documented first-turn URL ownership, prompt submission safety, network/server/UI completion authority, the five-second DOM grace window, single-gate `completeTurn()` semantics, event injection, result reconciliation, one-shot recovery, capacity, cleanup, and historical failure modes.
+- Added explicit maintainer invariants and an updated code map so future changes preserve notification reliability instead of treating `subagent_result` polling as the primary lifecycle mechanism.

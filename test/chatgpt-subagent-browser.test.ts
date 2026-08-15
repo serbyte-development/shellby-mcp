@@ -6,6 +6,7 @@ import {
   extractConversationMessages,
   extractConversationNodes,
   isExpectedAgentPage,
+  waitForStableConversationLocation,
   type ManagedAgentPageState,
 } from "../src/tools/subagent/chatgpt-subagent-browser.js"
 import type { ChatGptSubagentOptions } from "../src/tools/subagent/chatgpt-subagent-contracts.js"
@@ -14,6 +15,30 @@ import { ChatGptSubagentModule } from "../src/tools/subagent/chatgpt-subagent.js
 function createModule(options: ChatGptSubagentOptions = {}): ChatGptSubagentModule {
   return new ChatGptSubagentModule({ cdpEndpoint: "http://127.0.0.1:1", ...options })
 }
+
+test("start-time conversation binding ignores transient WEB routes and stores the stable ChatGPT URL", async () => {
+  let currentUrl = "https://chatgpt.com/"
+  const page = {
+    url: () => currentUrl,
+    waitForURL: async (predicate: (url: URL) => boolean) => {
+      assert.equal(predicate(new URL("https://chatgpt.com/c/WEB%3Atemporary-conversation-id")), false)
+      currentUrl = "https://chatgpt.com/c/conversation-1"
+      assert.equal(predicate(new URL(currentUrl)), true)
+    },
+  }
+  const state = {
+    agentId: "binding-agent",
+    page,
+    conversationId: undefined as string | undefined,
+    conversationUrl: undefined as string | undefined,
+  }
+
+  const bound = await waitForStableConversationLocation(state as unknown as ManagedAgentPageState, 5_000)
+
+  assert.equal(bound, true)
+  assert.equal(state.conversationId, "conversation-1")
+  assert.equal(state.conversationUrl, currentUrl)
+})
 
 test("subagent start dismisses a ChatGPT modal that races with composer interaction and retries only the blocked click", async () => {
   const module = createModule({ interactionDelayMs: 0 })
