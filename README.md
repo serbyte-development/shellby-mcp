@@ -1,11 +1,15 @@
-# Unhinged Agent — Agent Harness for ChatGPT Web
+# Unhinged Agent - Coding Harness for ChatGPT Web
 
 [![CI](https://github.com/Serbyte-Development/unhinged-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/Serbyte-Development/unhinged-agent/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 **Turn ChatGPT Web into an unhinged local coding agent. Full computer access. Persistent tools. Multi-agent capabilities.**
 
-Unhinged Agent is an open-source, context-optimized **agent harness for ChatGPT Web**. It gives ChatGPT persistent local shells, first-class file editing, webpage access, Computer Use, dynamic skills, and parallel browser-backed agents while keeping execution on your computer.
+> [!WARNING]
+> Made for Software Engineers. Not for non-technical users.
+> Use at your own risk.
+
+Unhinged Agent gives ChatGPT complete control of your computer. Persistent local shells, first-class file editing, webpage access, Computer Use, dynamic skills, and parallel browser-backed agents while keeping tool execution and runtime state on your computer.
 
 ![Unhinged Agent architecture showing ChatGPT Web connecting to the local agent harness and its persistent tools, Computer Use, and multi-agent runtime](docs/assets/unhinged-agent-architecture.svg)
 
@@ -28,7 +32,7 @@ MCP is only the transport layer. Unhinged Agent uses MCP TypeScript SDK v2 with 
 - Node.js 22.13.0+
 - npm
 - An [ngrok](https://ngrok.com/) account and CLI
-- A ChatGPT account/workspace that can create a custom MCP app with the actions you want to use. See OpenAI's [Developer mode and MCP apps](https://help.openai.com/en/articles/12584461-developer-mode-and-full-mcp-connectors-in-chatgpt).
+- ChatGPT Plus or higher, with access to Developer Mode/custom MCP apps.
 
 Optional capabilities:
 
@@ -111,7 +115,7 @@ NGROK_URL="your-domain.example" npm start
 
 ## Add it to ChatGPT
 
-Enable Developer Mode in ChatGPT, create a custom app, and use the URL printed by `npm start` as the MCP endpoint. This server uses no MCP OAuth, so choose the no-authentication option, scan the tools, and create the app. OpenAI's current UI and plan requirements are documented in [Developer mode and MCP apps in ChatGPT](https://help.openai.com/en/articles/12584461-developer-mode-and-full-mcp-connectors-in-chatgpt).
+Enable Developer Mode in ChatGPT, create a custom app, and use the URL printed by `npm start` as the MCP endpoint. This server uses no MCP OAuth, so choose the no-authentication option, scan the tools, and create the app.
 
 The first trusted remote `tools/call` binds this installation to the calling ChatGPT subject. Later remote tool calls must carry the same subject. Discovery does not bind ownership.
 

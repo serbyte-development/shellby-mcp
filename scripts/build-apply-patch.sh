@@ -9,7 +9,7 @@ if [[ "$(uname -s)" != "Darwin" || "$(uname -m)" != "arm64" ]]; then
   exit 1
 fi
 
-for required_command in cargo git node rustc shasum strip; do
+for required_command in cargo git node rustc shasum strings strip; do
   if ! command -v "$required_command" >/dev/null 2>&1; then
     echo "Required command not found: $required_command" >&2
     exit 1
@@ -33,9 +33,9 @@ fi
 source_commit="$(git -C "$codex_root" rev-parse HEAD)"
 source_repository="$(git -C "$codex_root" remote get-url origin 2>/dev/null || printf 'unknown')"
 target_triple="aarch64-apple-darwin"
-target_dir="$codex_root/codex-rs/target"
 temporary_root="$(mktemp -d "${TMPDIR:-/tmp}/codex-apply-patch.XXXXXX")"
 source_worktree="$temporary_root/codex"
+target_dir="$temporary_root/target"
 vendor_dir="$repo_root/vendor/apply-patch"
 mkdir -p "$vendor_dir"
 temporary_binary="$(mktemp "$vendor_dir/.apply_patch.XXXXXX")"
@@ -55,7 +55,8 @@ git -C "$codex_root" worktree add --detach "$source_worktree" "$source_commit"
 worktree_added=true
 manifest="$source_worktree/codex-rs/Cargo.toml"
 
-CARGO_TARGET_DIR="$target_dir" cargo build \
+RUSTFLAGS="--remap-path-prefix=$HOME=/build/home --remap-path-prefix=$source_worktree=/build/codex" \
+  CARGO_TARGET_DIR="$target_dir" cargo build \
   --manifest-path "$manifest" \
   --package codex-apply-patch \
   --bin apply_patch \
@@ -70,6 +71,11 @@ fi
 cp "$built_binary" "$temporary_binary"
 strip -x "$temporary_binary"
 chmod 0755 "$temporary_binary"
+
+if strings "$temporary_binary" | grep -Eq '/Users/[^/]+/'; then
+  echo "Vendored binary still contains a macOS user-home path after remapping." >&2
+  exit 1
+fi
 
 sha256="$(shasum -a 256 "$temporary_binary" | awk '{print $1}')"
 size_bytes="$(stat -f '%z' "$temporary_binary")"
@@ -106,6 +112,11 @@ const provenance = {
   target,
   build_command:
     "cargo build --package codex-apply-patch --bin apply_patch --release",
+  build_environment: {
+    CARGO_TARGET_DIR: "<temporary>",
+    RUSTFLAGS:
+      "--remap-path-prefix=$HOME=/build/home --remap-path-prefix=$SOURCE_WORKTREE=/build/codex",
+  },
   sha256,
   size_bytes: Number(sizeBytes),
   rustc,

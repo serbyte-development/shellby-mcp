@@ -1082,7 +1082,7 @@ test("isolates named shell state and allows foreground commands in parallel", { 
     arguments: {
       shell_id: "alpha",
       request_id: "slow01",
-      command: "sleep 0.3; printf alpha-done",
+      command: `while [[ ! -e ${JSON.stringify(join(explicitCwd, "alpha-release"))} ]]; do sleep 0.01; done; printf alpha-done`,
       wait_ms: 0,
     },
   })
@@ -1101,6 +1101,7 @@ test("isolates named shell state and allows foreground commands in parallel", { 
   })
   assert.equal(alphaBusy.isError, true)
   assert.match(JSON.stringify(alphaBusy.content), /busy/)
+  await writeFile(join(explicitCwd, "alpha-release"), "go")
 
   let alphaSnapshot = snapshotFromResult(await slowAlpha)
   assert.equal(alphaSnapshot.shell_id, "alpha")

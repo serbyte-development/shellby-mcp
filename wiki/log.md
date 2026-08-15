@@ -816,3 +816,34 @@
 ## [2026-08-14] setup | Add guided terminal setup UI
 
 - Wrapped `npm run setup` in a zero-dependency terminal UI with prerequisite, workspace, build, Computer Use, and multi-agent Chrome steps while preserving the existing setup helpers as the source of behavior.
+
+## [2026-08-14] release | Restore gitleaks false-positive allowlist
+
+- Restored the narrow `.gitleaks.toml` allowlist for the historical fake integration-test authentication token so full-history release scans remain clean without suppressing real secret findings.
+
+## [2026-08-14] release | Fix public setup and wiki navigation
+
+- Clarified that local execution means tool execution/runtime state and documented OpenAI's current full-MCP plan requirement for write-capable shell, patch, and Computer Use actions in `README.md`.
+- Replaced Obsidian-style navigation in `wiki/index.md` with standard Markdown links so the tracked maintainer wiki is navigable on GitHub.
+
+## [2026-08-14] release | Remove local build paths from vendored apply_patch
+
+- Changed `scripts/build-apply-patch.sh` to build in a fresh temporary Cargo target with Rust path-prefix remapping and fail if the stripped binary still contains a macOS `/Users/<name>/` path.
+- Rebuilt the vendored `apply_patch` from the same pinned OpenAI Codex commit and recorded the path-remapped build environment in provenance.
+
+## [2026-08-14] docs | Rename README positioning
+
+- Changed the README H1 to `Unhinged Agent - Coding Harness for ChatGPT Web`.
+
+## [2026-08-14] release | Correct ChatGPT plan requirement and gitleaks handling
+
+- Updated `README.md` to state the observed requirement as ChatGPT Plus or higher with Developer Mode/custom MCP app access.
+- Removed the restored `.gitleaks.toml`; the historical test value is intentionally fake and does not require a repository allowlist.
+
+## [2026-08-14] release | Add focused GitHub contribution templates
+
+- Added a structured bug report form for the current macOS/Node/ChatGPT setup surface and a concise pull request checklist without adding broader community-process boilerplate.
+
+## [2026-08-14] test | Make named-shell concurrency integration deterministic
+
+- Replaced a fixed 300 ms sleep in the named-shell busy/concurrency integration test with an explicit release-file signal so slower full-suite runs cannot let the command finish before the busy assertion.

@@ -5,8 +5,12 @@
   "binary": "apply_patch",
   "target": "aarch64-apple-darwin",
   "build_command": "cargo build --package codex-apply-patch --bin apply_patch --release",
-  "sha256": "a5c31e6a63e8122e52e8a4c91f4e8c5f73902b74a8295dce544a8ce183acb4d2",
-  "size_bytes": 11817664,
+  "build_environment": {
+    "CARGO_TARGET_DIR": "<temporary>",
+    "RUSTFLAGS": "--remap-path-prefix=$HOME=/build/home --remap-path-prefix=$SOURCE_WORKTREE=/build/codex"
+  },
+  "sha256": "e079d5181b7c6ca2c20be3cd73baa35b982417a04ff67178070130f29eda8688",
+  "size_bytes": 11801152,
   "rustc": "rustc 1.97.1 (8bab26f4f 2026-07-14)",
   "cargo": "cargo 1.97.1 (c980f4866 2026-06-30)"
 }
