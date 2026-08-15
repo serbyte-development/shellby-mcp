@@ -1155,7 +1155,7 @@ test("isolates named shell state and allows foreground commands in parallel", { 
     ["default", "alpha", "beta"]
   )
   assert.equal(listedContent.count, 3)
-  assert.equal(listedContent.limit, 8)
+  assert.equal(listedContent.limit, 16)
   assert.equal(listedContent.idle_timeout_ms, 1_800_000)
   const defaultShell = listedContent.shells.find((shell) => shell.shell_id === "default")
   assert.ok(defaultShell)
