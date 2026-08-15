@@ -38,7 +38,7 @@ The output is for AI agents, not humans. Optimize for token density, scanability
 - Compact mode must preserve every meaningful value available in the structured result.
 - Formatting may change representation, never semantics.
 - Existing summaries may remain as useful headers, but they must not replace the underlying result data.
-- Pending global events such as `agent_finished:<agent_id>:<turn_id>` can be appended after the transformed tool result.
+- Pending global completion events are appended after the transformed tool result in a compact, prominent model-facing form such as `**agent_finished:** agent_id=<agent_id> turn_id=<turn_id>`.
 
 ## Scope
 

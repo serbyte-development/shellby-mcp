@@ -4,7 +4,7 @@ import { z } from "zod"
 import { MCP_CONFIG } from "../../config.js"
 import { ChatGptSubagentError, type ChatGptSubagentService } from "./chatgpt-subagent-contracts.js"
 
-const SUBAGENT_START_DELAYS_MS = [0, 5_000, 7_000] as const
+const SUBAGENT_RUN_DELAYS_MS = [0, 5_000, 7_000] as const
 
 const subagentRequestSchema = z.object({
   agent_id: z
@@ -13,7 +13,9 @@ const subagentRequestSchema = z.object({
     .max(64)
     .refine((value) => value.trim().length > 0, "agent_id cannot be only whitespace.")
     .transform((value) => value.trim())
-    .describe("Stable caller-chosen ID that identifies one persistent subagent conversation."),
+    .describe(
+      "Short task or role label for a persistent subagent, such as architecture-reviewer. Use to retain conversation context, or use a different ID for concurrent work."
+    ),
   prompt: z.string().min(1).describe("Task or next message to send to the subagent."),
   oververbosity: z
     .int()
@@ -25,9 +27,9 @@ const subagentRequestSchema = z.object({
     ),
 })
 
-const subagentStartResultSchema = z.object({
+const subagentRunResultSchema = z.object({
   agent_id: z.string(),
-  turn_id: z.string().optional(),
+  turn_id: z.string().optional().describe("Short operation ID, unique within this subagent. Use with subagent_result to retrieve this exact turn."),
   status: z.enum(["running", "failed"]),
   error: z.string().optional(),
 })
@@ -46,11 +48,11 @@ const subagentResultSchema = z.object({
 
 export function registerSubagentTools(server: McpServer, chatGptSubagents: ChatGptSubagentService): void {
   server.registerTool(
-    "subagent_start",
+    "subagent_run",
     {
-      title: "Start ChatGPT subagents",
+      title: "Run ChatGPT subagent tasks",
       description:
-        "Delegate independent tasks to ChatGPT subagents. Use distinct agent_id values for non-overlapping work, then retrieve returned turn_ids with subagent_result. Reusing an existing agent_id continues that conversation",
+        "Execute one task or a parallel task batch in named persistent ChatGPT subagents. Reuse agent_id to retain conversation context. Retrieve returned turn_ids with subagent_result.",
       inputSchema: z.object({
         agents: z
           .array(subagentRequestSchema)
@@ -59,7 +61,7 @@ export function registerSubagentTools(server: McpServer, chatGptSubagents: ChatG
           .refine((agents) => new Set(agents.map((agent) => agent.agent_id)).size === agents.length, "agent_id values must be unique within a batch."),
       }),
       outputSchema: z.object({
-        turns: z.array(subagentStartResultSchema),
+        turns: z.array(subagentRunResultSchema),
       }),
       annotations: {
         readOnlyHint: false,
@@ -70,7 +72,7 @@ export function registerSubagentTools(server: McpServer, chatGptSubagents: ChatG
       _meta: MCP_CONFIG.toolMeta,
     },
     async ({ agents }, ctx) => {
-      const turns: Array<z.infer<typeof subagentStartResultSchema>> = []
+      const turns: Array<z.infer<typeof subagentRunResultSchema>> = []
 
       for (let index = 0; index < agents.length; index += 1) {
         const agent = agents[index]
@@ -78,9 +80,9 @@ export function registerSubagentTools(server: McpServer, chatGptSubagents: ChatG
 
         if (index > 0) {
           try {
-            await delay(SUBAGENT_START_DELAYS_MS[index] ?? 0, ctx.mcpReq.signal)
+            await delay(SUBAGENT_RUN_DELAYS_MS[index] ?? 0, ctx.mcpReq.signal)
           } catch (error) {
-            turns.push(startFailure(agent.agent_id, error))
+            turns.push(runFailure(agent.agent_id, error))
             break
           }
         }
@@ -93,7 +95,7 @@ export function registerSubagentTools(server: McpServer, chatGptSubagents: ChatG
             status: result.status,
           })
         } catch (error) {
-          turns.push(startFailure(agent.agent_id, error))
+          turns.push(runFailure(agent.agent_id, error))
         }
       }
 
@@ -109,9 +111,13 @@ export function registerSubagentTools(server: McpServer, chatGptSubagents: ChatG
     {
       title: "Get ChatGPT subagent turn results",
       description:
-        "Retrieve previously submitted subagent turns concurrently. Pass the `turn_ids` returned by `subagent_start`. A turn may still report running when checked early; result retrieval reconciles running state against the actual ChatGPT page. Local turn/runtime state expires after 30 minutes without observable progress; the ChatGPT conversation itself is not deleted.",
+        "Retrieve previously submitted subagent turns concurrently. Pass the `turn_ids` returned by `subagent_run`. A turn may still report running when checked early; result retrieval reconciles running state against the actual ChatGPT page. Local turn/runtime state expires after 30 minutes without observable progress; the ChatGPT conversation itself is not deleted.",
       inputSchema: z.object({
-        turn_ids: z.array(z.string().min(1).max(128)).min(1).max(3).describe("Turns to check concurrently, returned by subagent_start."),
+        turn_ids: z
+          .array(z.string().min(1).max(128))
+          .min(1)
+          .max(3)
+          .describe("Turn IDs returned by subagent_run calls. Use to retrieve the exact submitted turns concurrently."),
         wait_ms: z.int().min(0).max(60_000).default(0).describe("How long this check may wait for completion. Use 0 for an immediate status check."),
       }),
       outputSchema: z.object({
@@ -157,7 +163,7 @@ export function registerSubagentTools(server: McpServer, chatGptSubagents: ChatG
   )
 }
 
-function startFailure(agentId: string, error: unknown): z.infer<typeof subagentStartResultSchema> {
+function runFailure(agentId: string, error: unknown): z.infer<typeof subagentRunResultSchema> {
   return {
     agent_id: agentId,
     status: "failed",

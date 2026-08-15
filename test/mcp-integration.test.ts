@@ -38,7 +38,7 @@ test("serves shell tools through Streamable HTTP and retains state across MCP se
       "shell_reset",
       "shell_list",
       "shell_close",
-      "subagent_start",
+      "subagent_run",
       "subagent_result",
       "fetch_website",
       "skill_list",
@@ -162,8 +162,12 @@ test("serves shell tools through Streamable HTTP and retains state across MCP se
   }
   assert.deepEqual(Object.keys(skillLoadOutputSchema.properties ?? {}), ["path", "instructions"])
   assert.deepEqual(skillLoadOutputSchema.required, ["path", "instructions"])
-  const subagentTool = tools.tools.find((tool) => tool.name === "subagent_start")
+  const subagentTool = tools.tools.find((tool) => tool.name === "subagent_run")
   assert.deepEqual(subagentTool?.annotations, { destructiveHint: false })
+  assert.equal(
+    subagentTool?.description,
+    "Execute one task or a parallel task batch in named persistent ChatGPT subagents. Reuse agent_id to retain conversation context. Retrieve returned turn_ids with subagent_result."
+  )
   const subagentInputSchema = subagentTool?.inputSchema as {
     properties?: Record<string, Record<string, unknown>>
     required?: string[]
@@ -180,6 +184,10 @@ test("serves shell tools through Streamable HTTP and retains state across MCP se
   assert.deepEqual(Object.keys(subagentAgentsSchema.items?.properties ?? {}).sort(), ["agent_id", "oververbosity", "prompt"])
   assert.deepEqual(subagentAgentsSchema.items?.required?.sort(), ["agent_id", "prompt"])
   assert.equal(subagentAgentsSchema.items?.properties?.agent_id?.maxLength, 64)
+  assert.equal(
+    subagentAgentsSchema.items?.properties?.agent_id?.description,
+    "Short task or role label for a persistent subagent, such as architecture-reviewer. Use to retain conversation context, or use a different ID for concurrent work."
+  )
   assert.equal(subagentAgentsSchema.items?.properties?.oververbosity?.default, 2)
   assert.equal(subagentAgentsSchema.items?.properties?.oververbosity?.minimum, 1)
   assert.equal(subagentAgentsSchema.items?.properties?.oververbosity?.maximum, 5)
@@ -191,6 +199,10 @@ test("serves shell tools through Streamable HTTP and retains state across MCP se
   }
   assert.deepEqual(Object.keys(subagentTurnsSchema.items?.properties ?? {}).sort(), ["agent_id", "error", "status", "turn_id"])
   assert.deepEqual(subagentTurnsSchema.items?.required?.sort(), ["agent_id", "status"])
+  assert.equal(
+    subagentTurnsSchema.items?.properties?.turn_id?.description,
+    "Short operation ID, unique within this subagent. Use with subagent_result to retrieve this exact turn."
+  )
   const subagentPollTool = tools.tools.find((tool) => tool.name === "subagent_result")
   assert.deepEqual(subagentPollTool?.annotations, { readOnlyHint: true })
   const subagentPollInputSchema = subagentPollTool?.inputSchema as {
@@ -218,6 +230,10 @@ test("serves shell tools through Streamable HTTP and retains state across MCP se
   assert.deepEqual(subagentPollInputSchema.required?.sort(), ["turn_ids"])
   assert.equal(subagentPollInputSchema.properties?.turn_ids?.minItems, 1)
   assert.equal(subagentPollInputSchema.properties?.turn_ids?.maxItems, 3)
+  assert.equal(
+    subagentPollInputSchema.properties?.turn_ids?.description,
+    "Turn IDs returned by subagent_run calls. Use to retrieve the exact submitted turns concurrently."
+  )
   assert.equal(subagentPollInputSchema.properties?.wait_ms?.default, 0)
   assert.equal(subagentPollInputSchema.properties?.wait_ms?.maximum, 60_000)
 
@@ -358,12 +374,12 @@ test("appends pending subagent completion events to the next tool result exactly
   const first = await connected.client.callTool({ name: "shell_list", arguments: {} })
   const firstText = first.content.find((item) => item.type === "text")
   assert.ok(firstText?.type === "text")
-  assert.match(firstText.text, /agent_finished:reviewer:reviewer_turn_1/)
+  assert.match(firstText.text, /\*\*agent_finished:\*\* agent_id=reviewer turn_id=reviewer_turn_1/)
 
   const second = await connected.client.callTool({ name: "shell_list", arguments: {} })
   const secondText = second.content.find((item) => item.type === "text")
   assert.ok(secondText?.type === "text")
-  assert.doesNotMatch(secondText.text, /agent_finished:/)
+  assert.doesNotMatch(secondText.text, /agent_finished/)
 })
 
 test("returns multiline subagent answers as readable compact Markdown", { timeout: 10_000 }, async (t) => {
@@ -482,7 +498,7 @@ test("starts staggered subagents and polls turns concurrently across stateless M
 
   const first = await connectClient(running.url, "subagent-client-1")
   const firstResult = await first.client.callTool({
-    name: "subagent_start",
+    name: "subagent_run",
     arguments: {
       agents: [
         { agent_id: " architecture-reviewer ", prompt: "Review the architecture." },
@@ -516,7 +532,7 @@ test("starts staggered subagents and polls turns concurrently across stateless M
   assert.ok(starts[2]!.at - starts[1]!.at >= 6_500)
 
   const failedStart = await first.client.callTool({
-    name: "subagent_start",
+    name: "subagent_run",
     arguments: { agents: [{ agent_id: "unavailable-agent", prompt: "Try to start." }] },
   })
   assert.deepEqual(failedStart.content, [{ type: "text", text: "Submitted 1 ChatGPT subagent turn." }])
@@ -599,7 +615,7 @@ test("starts staggered subagents and polls turns concurrently across stateless M
     ],
   })
   const secondResult = await second.client.callTool({
-    name: "subagent_start",
+    name: "subagent_run",
     arguments: {
       agents: [{ agent_id: "architecture-reviewer", prompt: "Now critique your answer." }],
     },
@@ -664,7 +680,7 @@ test("audits tool calls at the HTTP MCP boundary", { timeout: 10_000 }, async (t
     arguments: {},
   })
   await connected.client.callTool({
-    name: "subagent_start",
+    name: "subagent_run",
     arguments: {
       agents: [{ agent_id: "audit-check", prompt: "Inspect the audit path." }],
     },
@@ -674,7 +690,7 @@ test("audits tool calls at the HTTP MCP boundary", { timeout: 10_000 }, async (t
   assert.match(log, /--- # \d{2}:\d{2}:\d{2} - shell_list - \d+ms - \d+ in \/ \d+ out\nargs: \{\}/)
   assert.match(
     log,
-    /--- # \d{2}:\d{2}:\d{2} - subagent_start - \d+ms - \d+ in \/ \d+ out\nargs: \{"agents":\[\{"agent_id":"audit-check","prompt":"Inspect the audit path\."\}\]\}/
+    /--- # \d{2}:\d{2}:\d{2} - subagent_run - \d+ms - \d+ in \/ \d+ out\nargs: \{"agents":\[\{"agent_id":"audit-check","prompt":"Inspect the audit path\."\}\]\}/
   )
 })
 

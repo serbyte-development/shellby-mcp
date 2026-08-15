@@ -1,10 +1,10 @@
 # Browser ChatGPT Subagents
 
-Verified 2026-08-14 against current source and tests.
+Verified 2026-08-15 against current source and tests.
 
 ## What This Is
 
-Unhinged Agent exposes ChatGPT Web as a detached browser-backed delegation system. The parent model submits work with `subagent_start`, continues doing other work, learns asynchronously when a delegated turn finishes, and later retrieves the answer with `subagent_result`.
+Unhinged Agent exposes ChatGPT Web as a detached browser-backed delegation system. The parent model submits work with `subagent_run`, continues doing other work, learns asynchronously when a delegated turn finishes, and later retrieves the answer with `subagent_result`.
 
 The browser implementation lives in one process-level `ChatGptSubagentModule`. MCP requests themselves are stateless, but the module keeps browser pages, agent/conversation bindings, turn state, completion events, and recovery metadata alive across requests (`src/tools/subagent/chatgpt-subagent.ts`, `src/index.ts`, `src/server/http-server.ts`, `src/server/mcp-server.ts`).
 
@@ -20,13 +20,13 @@ When a turn completes, `completeTurn()` must perform the single running-to-compl
 agent_finished:<agent_id>:<turn_id>
 ```
 
-The global MCP tool-registration boundary drains queued events after a tool handler finishes and appends them to the next MCP tool response. That is how a parent model that is still running unrelated tools learns that a background subagent is ready (`src/server/tool-registration-boundary.ts`, `src/server/tool-output.ts`, `src/server/mcp-server.ts`).
+The global MCP tool-registration boundary drains queued events after a tool handler finishes and appends them to the next MCP tool response. Internal events keep the compact colon-delimited form above, while model-facing output renders the completion signal as `**agent_finished:** agent_id=<agent_id> turn_id=<turn_id>` so it stands out without overwhelming the surrounding tool result. That is how a parent model that is still running unrelated tools learns that a background subagent is ready (`src/server/tool-registration-boundary.ts`, `src/server/tool-output.ts`, `src/server/mcp-server.ts`).
 
 `subagent_result` is therefore the explicit answer-retrieval and self-healing API, **not the only completion detector**.
 
 ```text
 parent model
-  -> subagent_start(...)
+  -> subagent_run(...)
   <- turn_id
 
   -> parent continues other work
@@ -37,7 +37,7 @@ parent model
 
   -> parent calls any later MCP tool
   <- normal tool result
-     + agent_finished:<agent_id>:<turn_id>
+     + **agent_finished:** agent_id=<agent_id> turn_id=<turn_id>
 
   -> subagent_result({ turn_ids: [...] })
   <- completed answer
@@ -47,10 +47,10 @@ If completion is first discovered during `subagent_result` itself, that same too
 
 ## Public Tool Flow
 
-`subagent_start` accepts one to three independent agents. Each entry supplies a stable caller-chosen `agent_id`, a prompt, and optional first-conversation `oververbosity`. Reusing an existing `agent_id` continues the same ChatGPT conversation while that binding remains recoverable.
+`subagent_run` accepts one to three independent agents. Its public contract intentionally mirrors `shell_run`: `agent_id` is the persistent-context identifier, analogous to `shell_id`, while each returned `turn_id` identifies one submitted operation. Reusing an existing `agent_id` retains the same ChatGPT conversation context while that binding remains recoverable; using a different ID creates independent concurrent context.
 
 ```ts
-subagent_start({
+subagent_run({
   agents: Array<{
     agent_id: string
     prompt: string
@@ -90,7 +90,7 @@ subagent_result({
 
 The normal lifecycle is:
 
-1. `subagent_start` validates the batch and staggers submissions.
+1. `subagent_run` validates the batch and staggers submissions.
 2. `ask()` acquires the per-agent/global generation slot.
 3. The module creates or recovers the agent's owned ChatGPT page.
 4. The prompt is submitted once and a `BrowserTurnState` is created.
@@ -154,7 +154,7 @@ https://chatgpt.com/
 
 `extractConversationId()` deliberately ignores `WEB:` temporary IDs.
 
-After a first-turn submission, `subagent_start` launches `waitForStableConversationLocation()` as a best-effort start-time binding task, currently capped at 30 seconds. When the stable `/c/<id>` appears, it saves `conversationId`, `conversationUrl`, and `conversationRefs` (`src/tools/subagent/chatgpt-subagent-browser.ts`, `src/tools/subagent/chatgpt-subagent.ts`).
+After a first-turn submission, `subagent_run` launches `waitForStableConversationLocation()` as a best-effort start-time binding task, currently capped at 30 seconds. When the stable `/c/<id>` appears, it saves `conversationId`, `conversationUrl`, and `conversationRefs` (`src/tools/subagent/chatgpt-subagent-browser.ts`, `src/tools/subagent/chatgpt-subagent.ts`).
 
 The completion watcher does **not** own conversation identity discovery. It consumes `state.conversationId` when available. `subagent_result` reconciliation can still repair a missed first-turn binding later.
 
@@ -385,7 +385,7 @@ There is no fixed generation-duration timeout. A legitimately long-running turn 
 
 ## Parallel Starts, Per-Agent Locking, and Capacity
 
-`subagent_start` accepts up to three agents. Batch entries are submitted in order with:
+`subagent_run` accepts up to three agents. Batch entries are submitted in order with:
 
 ```text
 agent 1: immediately
@@ -453,7 +453,7 @@ Important service errors are defined by `ChatGptSubagentErrorCode` in `src/tools
 | `REQUEST_ABORTED` | Caller cancelled the MCP operation. |
 | `CHATGPT_UI_CHANGED` | Required ChatGPT UI assumption no longer holds. |
 
-The MCP wrapper catches failures per batch item. One bad `subagent_start` entry or one bad `subagent_result` turn does not discard valid sibling results.
+The MCP wrapper catches failures per batch item. One bad `subagent_run` entry or one bad `subagent_result` turn does not discard valid sibling results.
 
 Idle expiration uses the internal error code `AGENT_IDLE_EXPIRED` on the turn result even though that value is not part of the exported `ChatGptSubagentErrorCode` union.
 

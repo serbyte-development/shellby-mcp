@@ -15,8 +15,14 @@ export function appendToolEvents(result: unknown, events: readonly string[]): un
   if (events.length === 0 || !isRecord(result)) return result
   return {
     ...result,
-    content: appendTextContent(result.content, events.join("\n")),
+    content: appendTextContent(result.content, events.map(formatToolEvent).join("\n")),
   }
+}
+
+function formatToolEvent(event: string): string {
+  const match = /^agent_finished:([^:]+):(.+)$/.exec(event)
+  if (!match) return event
+  return `**agent_finished:** agent_id=${match[1]} turn_id=${match[2]}`
 }
 
 export function renderStructuredContent(value: unknown): string {

@@ -122,7 +122,7 @@ const toolFamilyCases: Array<{ tool: string; structuredContent: unknown; expecte
     expected: "shell_id=review closed=true",
   },
   {
-    tool: "subagent_start",
+    tool: "subagent_run",
     structuredContent: {
       turns: [
         { agent_id: "reviewer", turn_id: "reviewer_turn_1", status: "running" },

@@ -896,6 +896,16 @@
 - Changed compact tool-output rendering so ordinary nested records and record arrays recurse into readable Markdown-style blocks instead of becoming minified JSON when one field is long or multiline.
 - Added exact compact-output fixtures for every registered non-Computer tool family and an MCP integration regression covering multiple multiline subagent answers with Markdown/code.
 
+## [2026-08-15] subagent output | Emphasize completion notifications
+
+- Kept internal queued completion events compact, but render them in model-facing tool output as `**agent_finished:** agent_id=<agent_id> turn_id=<turn_id>` so asynchronous completions are easy to notice and directly actionable with `subagent_result`.
+- Preserved one-shot delivery and locked the exact rendered event shape in MCP integration coverage.
+
+## [2026-08-15] tools | Align subagent execution with shell_run
+
+- Renamed the public `subagent_start` tool to `subagent_run` so first and follow-up turns share the same persistent-resource mental model as `shell_run`.
+- Mirrored the shell tool's ID language: `agent_id` retains conversation context, while returned `turn_id` values identify exact submitted operations for `subagent_result`; integration tests lock the routing and ID descriptions.
+
 ## [2026-08-15] wiki maintenance | Reconcile vault structure and repository coverage
 
 - Added `pages/Project Overview.md`, made it the first index entry, indexed roadmap and active-plan pages, restored the required maintainer workflows, refreshed the page template, and added a maintained-page wikilink graph.
