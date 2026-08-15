@@ -885,3 +885,19 @@
 ## [2026-08-15] test | Remove shell background timing race
 
 - Replaced a fixed sleep in the redirected background-output shell test with a bounded readiness check so CI validates the behavior without depending on runner scheduling speed.
+
+## [2026-08-15] wiki maintenance | Restore source manifest scope
+
+- Removed the duplicated implementation-evidence inventory and stale commit tripwire from `raw/source-manifest.md`.
+- Kept the manifest focused on supporting sources, their reliability, downstream pages, and known conflicts.
+
+## [2026-08-15] tool output | Render record results as Markdown instead of JSON
+
+- Changed compact tool-output rendering so ordinary nested records and record arrays recurse into readable Markdown-style blocks instead of becoming minified JSON when one field is long or multiline.
+- Added exact compact-output fixtures for every registered non-Computer tool family and an MCP integration regression covering multiple multiline subagent answers with Markdown/code.
+
+## [2026-08-15] wiki maintenance | Reconcile vault structure and repository coverage
+
+- Added `pages/Project Overview.md`, made it the first index entry, indexed roadmap and active-plan pages, restored the required maintainer workflows, refreshed the page template, and added a maintained-page wikilink graph.
+- Removed deleted feedback and obsolete schema-order references, removed the resolved no-CI risk, and reconciled failed-patch audit retention across architecture, transport, testing, risk, workspace, and secret-handling documentation.
+- Documented first-time workspace instruction creation, normal PM2/browser restart scope, health-check diagnosis, exceptional daemon recovery, and current citation paths while preserving the active tool-output work.

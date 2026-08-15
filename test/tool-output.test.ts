@@ -43,8 +43,25 @@ test("renders arrays of simple objects as compact rows and nested objects recurs
       ],
       metadata: { count: 2, source: "chatgpt" },
     }),
-    "turns:\n\n- turn_id=a status=running\n- turn_id=b status=completed\n\nmetadata:\ncount=2 source=chatgpt"
+    "turns:\n\n- turn_id=a status=running\n- turn_id=b status=completed\n\nmetadata:\n  count=2 source=chatgpt"
   )
+})
+
+test("renders long record fields as nested Markdown instead of JSON", () => {
+  const response = "## Findings\n\nUse the shared registration boundary.\n\n```ts\ninstallToolRegistrationBoundary(server)\n```"
+  const rendered = renderStructuredContent({
+    turns: [
+      { turn_id: "reviewer_turn_1", status: "completed", response },
+      { turn_id: "tester_turn_1", status: "completed", response: "## Tests\n\nAdd a regression test for multiline output." },
+    ],
+  })
+
+  assert.equal(
+    rendered,
+    "turns:\n\n- turn_id=reviewer_turn_1 status=completed\n\n  response:\n    ## Findings\n\n    Use the shared registration boundary.\n\n    ```ts\n    installToolRegistrationBoundary(server)\n    ```\n\n- turn_id=tester_turn_1 status=completed\n\n  response:\n    ## Tests\n\n    Add a regression test for multiline output."
+  )
+  assert.doesNotMatch(rendered, /\{"turn_id"/)
+  assert.doesNotMatch(rendered, /\\n/)
 })
 
 test("falls back to minified JSON for unusual nested arrays", () => {
@@ -62,28 +79,93 @@ test("compact result preserves existing content and removes structuredContent", 
   assert.deepEqual(compact.content, [{ type: "text", text: "Command finished.\n\nstatus=completed output=hello" }])
 })
 
-test("preserves representative values from every non-Computer tool family", () => {
-  const examples = [
-    { status: "completed", exit_code: 0, cwd: "/workspace", output: "shell output" },
-    { status: "failed", exit_code: 1, output: "patch diagnostic", output_dropped: true },
-    { url: "https://example.com", title: "Example Page", content: "web body", next_cursor: "cursor-2" },
-    { skills: [{ name: "create-wiki", description: "Create a wiki" }] },
-    { id: "fb_123", created_at: "2026-08-14T00:00:00.000Z" },
-    { turns: [{ turn_id: "review_turn_1", status: "completed", response: "subagent answer" }] },
-  ]
+const longSkillDescription =
+  "Create or revise reusable skills for this ChatGPT local-shell MCP workspace, including reusable agent workflows and adaptations of existing skills without bloating the tool schema."
+const longStartError =
+  "subagent_failed: Browser automation was unavailable after the configured recovery attempt, so this turn could not be submitted without risking a duplicate ChatGPT message."
 
-  const rendered = examples.map(renderStructuredContent)
-  for (const value of [
-    "/workspace",
-    "shell output",
-    "patch diagnostic",
-    "https://example.com",
-    "web body",
-    "create-wiki",
-    "fb_123",
-    "review_turn_1",
-    "subagent answer",
-  ]) {
-    assert.ok(rendered.some((output) => output.includes(value)), `missing ${value}`)
-  }
-})
+const toolFamilyCases: Array<{ tool: string; structuredContent: unknown; expected: string }> = [
+  {
+    tool: "shell_run",
+    structuredContent: { status: "completed", cwd: "/workspace", output: "line one\nline two", exit_code: 0 },
+    expected: "status=completed cwd=/workspace exit_code=0\n\noutput:\n\nline one\nline two",
+  },
+  {
+    tool: "shell_poll",
+    structuredContent: { status: "running", output: "chunk one\nchunk two", next_cursor: 8 },
+    expected: "status=running next_cursor=8\n\noutput:\n\nchunk one\nchunk two",
+  },
+  {
+    tool: "apply_patch",
+    structuredContent: { status: "failed", exit_code: 1, output: "Invalid Context 0:\nexpected line", output_dropped: true },
+    expected: "status=failed exit_code=1 output_dropped=true\n\noutput:\n\nInvalid Context 0:\nexpected line",
+  },
+  {
+    tool: "shell_reset",
+    structuredContent: { request_id: "reset-1", shell_generation: 2, state_lost: true, status: "ready" },
+    expected: "request_id=reset-1 shell_generation=2 state_lost=true status=ready",
+  },
+  {
+    tool: "shell_list",
+    structuredContent: {
+      shells: [{ shell_id: "default", status: "idle", is_default: true, can_close: false, idle_ms: 50 }],
+      count: 1,
+      limit: 4,
+      idle_timeout_ms: 1_800_000,
+    },
+    expected:
+      "count=1 limit=4 idle_timeout_ms=1800000\n\nshells:\n\n- shell_id=default status=idle is_default=true can_close=false idle_ms=50",
+  },
+  {
+    tool: "shell_close",
+    structuredContent: { shell_id: "review", closed: true },
+    expected: "shell_id=review closed=true",
+  },
+  {
+    tool: "subagent_start",
+    structuredContent: {
+      turns: [
+        { agent_id: "reviewer", turn_id: "reviewer_turn_1", status: "running" },
+        { agent_id: "tester", status: "failed", error: longStartError },
+      ],
+    },
+    expected: `turns:\n\n- agent_id=reviewer turn_id=reviewer_turn_1 status=running\n\n- agent_id=tester status=failed\n\n  error:\n    ${longStartError}`,
+  },
+  {
+    tool: "subagent_result",
+    structuredContent: {
+      turns: [
+        { turn_id: "reviewer_turn_1", status: "completed", response: "## Review\n\nArchitecture looks good." },
+        { turn_id: "tester_turn_1", status: "running", activity: "Using tools", activity_age_ms: 2_750 },
+      ],
+    },
+    expected:
+      'turns:\n\n- turn_id=reviewer_turn_1 status=completed\n\n  response:\n    ## Review\n\n    Architecture looks good.\n\n- turn_id=tester_turn_1 status=running activity="Using tools" activity_age_ms=2750',
+  },
+  {
+    tool: "fetch_website",
+    structuredContent: {
+      url: "https://example.com/docs",
+      title: "Example Page",
+      content: "# Heading\n\nPage body.",
+      next_cursor: "cursor-2",
+    },
+    expected: 'url=https://example.com/docs title="Example Page" next_cursor=cursor-2\n\ncontent:\n# Heading\n\nPage body.',
+  },
+  {
+    tool: "skill_list",
+    structuredContent: { skills: [{ name: "create-skill", description: longSkillDescription }] },
+    expected: `skills:\n\n- name=create-skill\n\n  description:\n    ${longSkillDescription}`,
+  },
+  {
+    tool: "skill_load",
+    structuredContent: { path: "/workspace/skills/create-skill/SKILL.md", instructions: "# Skill\n\nDo the work." },
+    expected: "path=/workspace/skills/create-skill/SKILL.md\n\ninstructions:\n# Skill\n\nDo the work.",
+  },
+]
+
+for (const { tool, structuredContent, expected } of toolFamilyCases) {
+  test(`renders the ${tool} compact result shape`, () => {
+    assert.equal(renderStructuredContent(structuredContent), expected)
+  })
+}

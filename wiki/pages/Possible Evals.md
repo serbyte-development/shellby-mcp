@@ -2,6 +2,8 @@
 
 Verified 2026-08-10.
 
+## What This Is
+
 The target benchmark is ChatGPT Web + Unhinged Agent versus Codex on the same real software-engineering work. Prefer tasks derived from work that actually happened, a single user turn, a recoverable pre-task repository state, one autonomous attempt, and an external grader that scores the final repository rather than the agent's prose.
 
 ## SWE-Lancer
@@ -59,3 +61,9 @@ For interaction protocol and provenance, **SWE-Lancer IC** remains the better fi
 Keep **SWE-Together** as the preferred future multi-turn benchmark. Its session-to-task construction is closer to real interactive coding work, but removing the replay loop would discard the feature the benchmark was built to measure.
 
 For a defensible SWE-Lancer comparison, give both systems the exact same task checkpoint and text, use the same wall-clock limit and attempt count, prohibit solution lookup, collect the final diff externally, and grade both with the same hidden tests. If results are intended to be comparable to canonical SWE-Lancer rather than only to each other, use the benchmark's supported internet-disabled Linux environment instead of the macOS compatibility path.
+
+## Related
+
+- [[pages/ROADMAP]]
+- [[pages/Project Overview]]
+- [[pages/Browser ChatGPT Subagents]]

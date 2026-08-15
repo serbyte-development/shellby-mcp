@@ -2,6 +2,10 @@
 
 Verified YYYY-MM-DD.
 
+## What This Is
+
+One sentence explaining the question this page answers.
+
 ## Current Facts
 
 - Cite implementation facts with repository-relative paths.
@@ -13,3 +17,7 @@ Verified YYYY-MM-DD.
 ## Risks / Open Questions
 
 - Keep unresolved items explicit.
+
+## Related
+
+- [[pages/Related Page]]

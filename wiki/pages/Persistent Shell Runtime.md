@@ -2,6 +2,10 @@
 
 Verified 2026-08-14.
 
+## What This Is
+
+This page explains the stateful named-shell protocol, retained output, idempotency, parallel batches, and reset behavior behind `shell_run` and `shell_poll`.
+
 ## Process Model
 
 - The runtime spawns `/bin/sh -c 'exec "$1" -l 2>&1'` with the configured shell as `$1`, making the configured program a login shell (`src/tools/shell/session.ts`).
@@ -68,3 +72,10 @@ Execution rules:
 Reset records the stop reason, sends `SIGTERM`, waits 500 ms, sends `SIGKILL`, finalizes if close never arrives, and starts a new generation. Unexpected shell termination is also finalized and queues an automatic restart (`src/tools/shell/session.ts`).
 
 Process-group kill failures such as macOS `EPERM` are deliberately swallowed so cleanup cannot crash the MCP server. Cleanup is therefore best effort; descendants may survive when the OS denies signaling (`src/tools/shell/session.ts`, `test/shell-session.test.ts`).
+
+## Related
+
+- [[pages/MCP Tool Surface]]
+- [[pages/Architecture Map]]
+- [[pages/Workspace Tooling]]
+- [[pages/Open Questions and Risks]]

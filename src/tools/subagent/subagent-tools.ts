@@ -50,7 +50,7 @@ export function registerSubagentTools(server: McpServer, chatGptSubagents: ChatG
     {
       title: "Start ChatGPT subagents",
       description:
-        "Delegate 1-3 independent tasks to ChatGPT subagents. Agents start in array order with natural staggered delays: first immediately, second 5 seconds later, third 7 seconds after that. Use distinct agent_id values for non-overlapping work, then retrieve returned turn_ids with subagent_result. Reusing an existing agent_id continues that conversation; runtime state evicted after 30 minutes idle is restored from the saved ChatGPT conversation when available.",
+        "Delegate independent tasks to ChatGPT subagents. Use distinct agent_id values for non-overlapping work, then retrieve returned turn_ids with subagent_result. Reusing an existing agent_id continues that conversation",
       inputSchema: z.object({
         agents: z
           .array(subagentRequestSchema)
@@ -109,7 +109,7 @@ export function registerSubagentTools(server: McpServer, chatGptSubagents: ChatG
     {
       title: "Get ChatGPT subagent turn results",
       description:
-        "Retrieve 1-3 previously submitted subagent turns concurrently. Pass the turn_ids returned by subagent_start. A turn may still report running when checked early; result retrieval reconciles running state against the actual ChatGPT page. Local turn/runtime state expires after 30 minutes without observable progress; the ChatGPT conversation itself is not deleted.",
+        "Retrieve previously submitted subagent turns concurrently. Pass the `turn_ids` returned by `subagent_start`. A turn may still report running when checked early; result retrieval reconciles running state against the actual ChatGPT page. Local turn/runtime state expires after 30 minutes without observable progress; the ChatGPT conversation itself is not deleted.",
       inputSchema: z.object({
         turn_ids: z.array(z.string().min(1).max(128)).min(1).max(3).describe("Turns to check concurrently, returned by subagent_start."),
         wait_ms: z.int().min(0).max(60_000).default(0).describe("How long this check may wait for completion. Use 0 for an immediate status check."),

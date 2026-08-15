@@ -1,25 +1,65 @@
 # Unhinged Agent Wiki Maintainer
 
-This vault follows the LLM wiki pattern from Andrej Karpathy's "LLM Wiki" gist (`https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f`): raw sources are read-only evidence, the wiki is maintained markdown, and this file is the schema for future agents.
+This vault follows the LLM wiki pattern from Andrej Karpathy's "LLM Wiki" gist (`https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f`): raw sources are read-only evidence, the wiki is maintained Markdown, and this file is the schema for future agents.
 
-This committed vault preserves the current architecture and maintenance contracts for Unhinged Agent. It follows the LLM-wiki split between read-only evidence in `raw/`, maintained synthesis in `pages/`, repository conventions in `ops/`, and an append-only `log.md`; `_private/` is gitignored.
+The vault lives at `wiki/`.
 
-## Rules
+## Purpose
 
-- Read `index.md`, the relevant page, and the exact current source before changing code.
-- Current code and tests outrank README and raw notes. Record source conflicts in `raw/source-manifest.md`.
-- Cite repository-relative paths for implementation facts.
-- Update an existing page before adding one. Keep pages short, direct, and marked `Verified YYYY-MM-DD`.
-- Do not add page-level purpose sections or related-link footers; `index.md` owns description and navigation.
-- Keep end-user workflows out unless they constrain an implemented server contract.
-- After changing MCP tool schemas, descriptions, or published server instructions, remember that ChatGPT may keep previously imported metadata until the user updates the MCP app on the ChatGPT website. A local rebuild/restart alone does not prove this ChatGPT client has the new schema.
+- Preserve the architecture, runtime contracts, operational knowledge, risks, and decisions needed to maintain the Unhinged Agent local MCP harness.
+- Start with [[pages/Project Overview]] for the project's purpose, audience, status, workflows, boundaries, constraints, and deeper wiki entry points.
+- Keep current implementation synthesis in the vault so future agents can verify rather than rediscover how the harness works.
+- Keep end-user setup details only when they constrain an implemented server or operational contract.
+
+## Layers
+
+- `raw/`: supporting source documents and `source-manifest.md`. Treat source material as read-only evidence.
+- `pages/`: maintained synthesis. Update existing pages when project facts change.
+- `ops/`: maintained operational rules that cut across technical pages.
+- `templates/`: templates for future wiki pages and source notes.
+- `index.md`: the content map and primary entry point. Update it when pages are added, removed, or renamed.
+- `log.md`: the append-only maintenance log using `## [YYYY-MM-DD] operation | description` entries.
+- `_private/`: optional gitignored local notes. Never store secret values there or anywhere else in the vault.
+
+## Wiki Rules
+
+- Start with `index.md`, then open only the one to three pages relevant to the current question or task.
+- Read the exact current source before changing code or documenting implementation behavior.
+- Use current code and tests for implementation truth and approved business or upstream sources for external facts.
+- Cite repository-relative paths for implementation claims.
+- If evidence conflicts, preserve the current fact in the maintained page and record the conflict with the supporting source in `raw/source-manifest.md`.
+- Update an existing page before adding one. Keep pages direct and marked `Verified YYYY-MM-DD`.
+- Give every maintained page a short `What This Is` section and a `Related` section with Obsidian wikilinks.
+- Keep roadmap and experimental work explicitly labeled as uncommitted or disabled rather than current behavior.
+- After tool schemas, descriptions, or server instructions change, remember that ChatGPT may retain previously imported metadata until the MCP app is updated on the ChatGPT website. A local rebuild or restart alone does not prove that client has refreshed metadata.
 - Never store secret values anywhere in the vault, including `_private/`.
-- Treat `raw/` as immutable evidence except for maintaining `raw/source-manifest.md`.
+- Do not update the wiki during unrelated work. Update it when the user requests maintenance or the current task changes documented facts.
 
-## Workflow
+## Ingest Workflow
 
-1. Read `index.md` and one to three relevant pages.
-2. Verify drift-prone claims against source and focused tests.
-3. Update synthesis, the index when its entries change, and `raw/source-manifest.md` when evidence conflicts.
-4. Append `## [YYYY-MM-DD] operation | description` to `log.md`.
-5. Lint for dead index entries, contradictions, missing path citations, stale risks, and secrets.
+1. Record the supporting source in `raw/source-manifest.md`.
+2. Read the approved source fully and preserve its actual claims and context.
+3. Verify drift-prone claims against current repository evidence.
+4. Update existing pages before creating a new one.
+5. Add backlinks and update `index.md` when pages change.
+6. Append a `log.md` entry with the source, pages touched, corrections, and unresolved questions.
+
+## Query Workflow
+
+1. Read `index.md`.
+2. Open the one to three most relevant pages.
+3. Answer from the wiki when it is current enough.
+4. Verify drift-prone claims against the repository or relevant service before presenting them as current.
+5. When verification exposes a material stale or missing fact, fold it into the maintained page and append a `log.md` entry if wiki maintenance is in scope.
+
+## Lint Workflow
+
+Periodically check for:
+
+- Dead `index.md` entries and orphan pages.
+- Missing `What This Is`, `Verified`, `Related`, citations, or backlinks.
+- Contradictions between maintained pages and current source.
+- Missing or nonexistent repository-path citations.
+- Stale risks and resolved questions not folded back into maintained pages.
+- Roadmap or experimental work accidentally described as implemented or approved.
+- Secret values, private identifiers, or unsafe operational output.

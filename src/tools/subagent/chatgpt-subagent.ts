@@ -42,8 +42,8 @@ const COMPLETION_WATCH_INTERVAL_MS = 1_000
 const COMPLETION_DOM_GRACE_MS = 5_000
 const CONVERSATION_BIND_TIMEOUT_MS = 30_000
 
-const CAVEMAN_PROMPT =
-  "Respond terse like smart caveman — drop articles, filler, pleasantries. Fragments OK. Technical terms exact. Code unchanged. Pattern: [thing] [action] [reason]. [next step].\n\nNot use `subagent` tools."
+const INJECTED_PROMPT =
+  "Respond terse like smart caveman — drop articles, filler, pleasantries. Fragments OK. Technical terms exact. Code unchanged. Pattern: [thing] [action] [reason]. [next step].\n\nNot use `subagent` or `computer_*` tools."
 
 interface BrowserAgentState {
   agentId: string
@@ -145,9 +145,7 @@ export class ChatGptSubagentModule implements ChatGptSubagentService {
       const active = await this.ensureActivePage(state, signal)
       throwIfAborted(signal)
       if (await isGenerating(active.page)) {
-        const streamStatus = active.conversationId
-          ? await getConversationStreamStatus(active.page, active.conversationId)
-          : undefined
+        const streamStatus = active.conversationId ? await getConversationStreamStatus(active.page, active.conversationId) : undefined
         if (streamStatus !== "COMPLETE") {
           throw new ChatGptSubagentError(
             "AGENT_BUSY",
@@ -704,7 +702,7 @@ function appendFirstTurnMode(prompt: string, oververbosity: number): string {
 
   const level = oververbosity === 1 ? "ultra" : oververbosity === 2 ? "full" : "lite"
   const qualifier = oververbosity === 4 ? " Favor completeness over terseness when useful." : ""
-  return `${prompt}\n\n---\n\nSwitch to caveman ${level} mode. ${CAVEMAN_PROMPT}${qualifier}`
+  return `${prompt}\n\n---\n\nSwitch to caveman ${level} mode. ${INJECTED_PROMPT}${qualifier}`
 }
 
 function validateAgentId(agentId: string): void {

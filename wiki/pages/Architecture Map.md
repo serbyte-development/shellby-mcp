@@ -1,6 +1,10 @@
 # Architecture Map
 
-Verified 2026-08-14.
+Verified 2026-08-15.
+
+## What This Is
+
+This page maps the process-level components and follows one request from the HTTP boundary into shared runtime state and capability handlers.
 
 ## Layers
 
@@ -13,7 +17,6 @@ Verified 2026-08-14.
 | MCP audit log         | Record every `tools/call` request and compact completion metadata without affecting dispatch                                        | `src/server/audit-log.ts`                |
 | MCP composition       | Publish shared instructions and register capability tool modules                                                                    | `src/server/mcp-server.ts`               |
 | Tool contracts        | Own tool schemas, descriptions, handlers, result shaping, and capability-specific errors                                            | `src/tools/`                             |
-| Feedback inbox        | Append agent-reported MCP problems and ideas to a repo-local JSONL inbox                                                            | `src/tools/feedback.ts`                  |
 | Computer Use tools    | Publish eleven focused schemas, validate targets, and normalize compact MCP results                                                 | `src/tools/computer/computer-tools.ts`   |
 | Peekaboo adapter      | Invoke the CLI without a shell, serialize calls, parse bounded JSON, and retain snapshot targets                                    | `src/tools/computer/peekaboo.ts`         |
 | Shell manager         | Lazily create, route, limit, idle-evict, and close named shell runtimes                                                             | `src/tools/shell/session-manager.ts`     |
@@ -36,3 +39,11 @@ Verified 2026-08-14.
 The named shell is the persistence boundary: callers using the same `shell_id` share state across independent MCP clients, while different IDs have independent cwd, environment, transcript, command records, reset lifecycle, and foreground-command lock (`src/server/http-server.ts`, `src/tools/shell/session-manager.ts`, `test/mcp-integration.test.ts`).
 
 `src/config.ts` is the single static configuration surface for MCP identity, shared tool metadata, runtime defaults, and global instructions. `src/index.ts` owns production process lifecycle, `src/server/http-server.ts` owns shared runtime dependencies and stateless request transports, and `src/server/mcp-server.ts` registers the request-scoped MCP tool surface without constructing shared adapters. Each capability under `src/tools/` owns its model-facing contract and implementation helpers. Authentication is intentionally narrow: one durable ChatGPT owner for trusted tunnel tool calls, while localhost MCP remains agent-neutral. There is no database, hosted relay, login UI, OAuth flow, secret URL, or general multi-user authorization system (`src/config.ts`, `src/auth/auth.ts`, `src/server/http-server.ts`).
+
+## Related
+
+- [[pages/Project Overview]]
+- [[pages/HTTP Transport]]
+- [[pages/MCP Tool Surface]]
+- [[pages/Configuration and Startup]]
+- [[pages/Browser ChatGPT Subagents]]

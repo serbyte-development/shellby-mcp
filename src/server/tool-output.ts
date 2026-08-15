@@ -1,6 +1,5 @@
 const SHORT_STRING_MAX = 120
 const MAX_INLINE_LINE = 240
-const MAX_NESTED_DEPTH = 2
 
 export function compactToolResult(result: unknown): unknown {
   if (!isRecord(result) || result.structuredContent === undefined) return result
@@ -44,7 +43,7 @@ function renderRecord(record: Record<string, unknown>, depth: number): string {
     }
 
     if (typeof value === "string") {
-      sections.push(`${key}:${key === "output" ? "\n\n" : "\n"}${value}`)
+      sections.push(`${key}:${key === "output" ? "\n\n" : "\n"}${depth > 0 ? indentBlock(value) : value}`)
       continue
     }
 
@@ -53,9 +52,9 @@ function renderRecord(record: Record<string, unknown>, depth: number): string {
       continue
     }
 
-    if (isRecord(value) && depth < MAX_NESTED_DEPTH) {
+    if (isRecord(value)) {
       const nested = renderRecord(value, depth + 1)
-      sections.push(nested ? `${key}:\n${nested}` : `${key}={}`)
+      sections.push(nested ? `${key}:\n${indentBlock(nested)}` : `${key}={}`)
       continue
     }
 
@@ -70,23 +69,26 @@ function renderArray(values: readonly unknown[], depth: number): string {
   if (values.length === 0) return "[]"
   if (values.every(isInlineScalar)) return minifiedJson(values)
 
-  if (values.every(isSimpleRow)) {
-    return values
-      .map((value) => {
-        const row = Object.entries(value)
-          .filter(([, item]) => item !== undefined)
-          .map(([key, item]) => `${key}=${formatScalar(item)}`)
-          .join(" ")
-        return `- ${row}`
-      })
-      .join("\n")
-  }
-
-  if (depth <= MAX_NESTED_DEPTH && values.every(isRecord)) {
-    return values.map((value) => `- ${minifiedJson(value)}`).join("\n")
+  if (values.every(isRecord)) {
+    const rendered = values.map((value) => renderRecordListItem(value, depth))
+    return rendered.join(rendered.every((item) => !item.includes("\n")) ? "\n" : "\n\n")
   }
 
   return minifiedJson(values)
+}
+
+function renderRecordListItem(record: Record<string, unknown>, depth: number): string {
+  const rendered = renderRecord(record, depth)
+  if (!rendered) return "-"
+  const [first = "", ...rest] = rendered.split("\n")
+  return [`- ${first}`, ...rest.map((line) => (line ? `  ${line}` : ""))].join("\n")
+}
+
+function indentBlock(value: string): string {
+  return value
+    .split("\n")
+    .map((line) => (line ? `  ${line}` : ""))
+    .join("\n")
 }
 
 function appendTextContent(content: unknown, text: string): unknown[] {
@@ -127,10 +129,6 @@ function wrapInlineParts(parts: readonly string[]): string {
 function isInlineScalar(value: unknown): boolean {
   if (value === null || value === undefined || typeof value === "number" || typeof value === "boolean") return true
   return typeof value === "string" && !value.includes("\n") && value.length <= SHORT_STRING_MAX
-}
-
-function isSimpleRow(value: unknown): value is Record<string, unknown> {
-  return isRecord(value) && Object.values(value).every(isInlineScalar)
 }
 
 function formatScalar(value: unknown): string {

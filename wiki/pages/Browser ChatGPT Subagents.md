@@ -2,7 +2,7 @@
 
 Verified 2026-08-14 against current source and tests.
 
-## What This System Is
+## What This Is
 
 Unhinged Agent exposes ChatGPT Web as a detached browser-backed delegation system. The parent model submits work with `subagent_start`, continues doing other work, learns asynchronously when a delegated turn finishes, and later retrieves the answer with `subagent_result`.
 
@@ -534,3 +534,11 @@ Changes to this subsystem should preserve these invariants:
 - Request cancellation after a prompt was already sent cannot unsend that ChatGPT turn.
 - A full MCP process restart loses process-local agent/turn/conversation bindings and pending completion events.
 - The underlying ChatGPT conversation may continue to exist even when local runtime state is gone.
+
+## Related
+
+- [[pages/Project Overview]]
+- [[pages/Architecture Map]]
+- [[pages/MCP Tool Surface]]
+- [[pages/Configuration and Startup]]
+- [[pages/Open Questions and Risks]]

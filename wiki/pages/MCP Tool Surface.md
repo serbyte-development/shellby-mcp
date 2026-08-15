@@ -1,12 +1,16 @@
 # MCP Tool Surface
 
-Verified 2026-08-14.
+Verified 2026-08-15.
+
+## What This Is
+
+This page inventories the published MCP tools and the shared registration, output, instruction, pagination, and capability boundaries that shape their model-facing contracts.
 
 ## Published Order
 
 `tools/list` returns 22 tools in workflow order: `shell_run`, `shell_poll`, `apply_patch`, `shell_reset`, `shell_list`, `shell_close`, `subagent_start`, `subagent_result`, `fetch_website`, `skill_list`, `skill_load`, then eleven `computer_*` tools. `src/server/mcp-server.ts` preserves that registration order while each capability under `src/tools/` owns its Standard Schema-compatible Zod contract and handler. Every tool reuses `MCP_CONFIG.toolMeta` from the central static configuration. Integration tests assert the order and schema mechanics without locking prose descriptions or instructions; tools remain registered when optional host capabilities are unavailable (`src/config.ts`, `src/server/mcp-server.ts`, `src/tools/`, `test/mcp-integration.test.ts`).
 
-The registration boundary removes annotation values that equal MCP defaults before publishing `tools/list`. It also owns non-Computer output projection. `MCP_TOOL_OUTPUT_STRUCTURED` defaults to `optional`: `always` advertises each existing `outputSchema` and returns `structuredContent`; `optional` omits the public output schema, adds global `structured: false`, emits compact Markdown by default, and returns the existing structured result when requested; `never` omits both the public output schema and the global input switch. MCP 2.0 requires `structuredContent` whenever an `outputSchema` is advertised, so `optional` intentionally does not advertise one. Computer Use tools bypass this projection (`src/config.ts`, `src/server/tool-schema-order.ts`, `src/server/tool-output.ts`).
+The registration boundary removes annotation values that equal MCP defaults before publishing `tools/list`. It also owns non-Computer output projection. `MCP_TOOL_OUTPUT_STRUCTURED` defaults to `optional`: `always` advertises each existing `outputSchema` and returns `structuredContent`; `optional` omits the public output schema, adds global `structured: false`, emits compact Markdown by default, and returns the existing structured result when requested; `never` omits both the public output schema and the global input switch. Compact rendering keeps short scalar fields inline, expands long or multiline strings as named sections, recursively renders ordinary nested records and arrays of records as indented Markdown-style blocks, and reserves minified JSON for unusual array shapes that do not have a clear record/scalar representation. MCP 2.0 requires `structuredContent` whenever an `outputSchema` is advertised, so `optional` intentionally does not advertise one. Computer Use tools bypass this projection (`src/config.ts`, `src/server/tool-registration-boundary.ts`, `src/server/tool-output.ts`, `test/tool-registration-boundary.test.ts`, `test/tool-output.test.ts`).
 
 ## Core Tools
 
@@ -61,3 +65,12 @@ Published instructions tell clients to read `<workspace>/AGENTS.md`, conserve ou
 `subagent_start` is stateful and non-idempotent. Same-agent overlap returns `AGENT_BUSY`; the global generation cap is hard-limited to three and returns `SUBAGENT_CAPACITY_REACHED` instead of building a hidden queue. One call accepts 1-3 distinct agents and staggers submission by 0/5/7 seconds (`src/tools/subagent/subagent-tools.ts`, `src/tools/subagent/chatgpt-subagent.ts`).
 
 `subagent_result` is read-only and idempotent. It retrieves requested turns concurrently with per-turn failure isolation and actively reconciles any turn still marked running against the actual ChatGPT page. Its heartbeat is intentionally agent-facing: `activity` is one of `Working`, `Searching the web`, `Using tools`, or `Generating response`, and `activity_age_ms` is elapsed time since observable network or DOM progress; result retrieval itself does not refresh that heartbeat. Runtime state with no observable progress for 30 minutes is evicted while an in-process conversation reference is retained for later continuation (`src/tools/subagent/subagent-tools.ts`, `src/tools/subagent/chatgpt-subagent.ts`, `test/chatgpt-subagent.test.ts`).
+
+## Related
+
+- [[pages/Project Overview]]
+- [[pages/Architecture Map]]
+- [[pages/Tool Naming and Schema Design]]
+- [[pages/Persistent Shell Runtime]]
+- [[pages/Browser ChatGPT Subagents]]
+- [[pages/Workspace Tooling]]

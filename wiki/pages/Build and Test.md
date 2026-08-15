@@ -2,6 +2,10 @@
 
 Verified 2026-08-15.
 
+## What This Is
+
+This page maps the compile boundary, focused validation commands, test responsibilities, CI matrix, and known verification gaps.
+
 ## Build Boundary
 
 - Node.js 22.13.0 or newer is required. Public Node entry scripts depend on `--env-file-if-exists`, and the pinned ESLint release has the same minimum on the Node 22 line (`package.json`, `scripts/preflight.mjs`).
@@ -32,7 +36,8 @@ As verified on 2026-08-14, published tool definitions cost 5,850 `o200k_base` to
 ## Test Architecture
 
 - Shell tests are split by responsibility: persistent-shell behavior lives in `test/shell-session.test.ts`, parallel batch execution in `test/shell-parallel.test.ts`, and named-shell lifecycle in `test/shell-session-manager.test.ts`. Shared completion/polling helpers live in `test/helpers/shell.ts`.
-- MCP audit tests cover tool-call filtering, compact YAML formatting, MCP `in / out` token counts, Better Comments status tags, large-response thresholds, bounded `shell_run` command blocks, ordinary-argument truncation, `apply_patch` body omission, and HTTP-boundary interception without contacting external services (`test/mcp-audit-log.test.ts`, `test/mcp-integration.test.ts`).
+- MCP audit tests cover tool-call filtering, compact YAML formatting, MCP `in / out` token counts, Better Comments status tags, large-response thresholds, bounded `shell_run` command blocks, ordinary-argument truncation, successful `apply_patch` body omission, bounded failed-patch retention, and HTTP-boundary interception without contacting external services (`test/mcp-audit-log.test.ts`, `test/mcp-integration.test.ts`).
+- Registration-boundary and output tests cover annotation compaction, canonical JSON Schema ordering, structured-output modes, compact Markdown projection, and pending-event injection (`test/tool-registration-boundary.test.ts`, `test/tool-output.test.ts`, `test/mcp-integration.test.ts`).
 - Adapter tests cover exact Peekaboo argv, bounded JSON and images, serialization, cancellation, timeouts, snapshots, webpage extraction, and cursors (`test/peekaboo.test.ts`, `test/web-fetch.test.ts`). Direct `apply_patch` execution and abort behavior are covered by MCP integration tests (`test/mcp-integration.test.ts`).
 - MCP integration tests validate the published tool order and Standard Schema mechanics, all three model-facing output modes, compact output, one-shot pending-event delivery, final compact-output token logging, cross-request shell state, named-shell concurrency, direct patching, webpage pagination, Computer Use results, semantic errors, restart continuity, exact `/mcp` routing, and Host rejection. Tool and server prose descriptions/instructions are intentionally not assertion-locked because they are model-facing guidance that changes independently of behavior (`test/mcp-integration.test.ts`).
 - Authentication unit tests cover durable state, owner-only permissions, first-owner binding, concurrent first calls, reset, and malformed-state failure. MCP integration tests additionally cover exact routing, local access, discovery without binding, binding on an invalid first tool call, same-owner reuse, different-owner rejection, and owner persistence across an HTTP restart (`test/auth.test.ts`, `test/mcp-integration.test.ts`).
@@ -42,10 +47,20 @@ Tests use temporary directories and real local child shells; `test/helpers/temp.
 
 `npm ci` is the reproducible clean-install path. As verified on 2026-08-14, lint, type-check, tests, and build succeed on the supported macOS runtime, and `npm audit --omit=dev` reports no production dependency vulnerabilities (`package-lock.json`, `package.json`).
 
-## Gaps
+## Continuous Integration
 
 GitHub Actions runs the same release validation sequence on both `macos-15` arm64 and `macos-15-intel` x64 runners for pushes to `main` and pull requests: clean install, lint, type-check, tests, and production build. The suite includes a direct vendored `apply_patch` smoke test, so each runner executes its native slice of the checked-in Universal 2 binary (`.github/workflows/ci.yml`, `package.json`, `test/apply-patch-vendor.test.ts`).
+
+## Gaps
 
 The tests do not exercise the real `src/index.ts` composition path, `/healthz`, GET/DELETE 405 responses, signal-driven shutdown, tunnel configuration, a real browser launch, or the installed Peekaboo/macOS permission path used by `setup`/`setup:computer` (`test/`, `scripts/peekaboo-permissions.mjs`, `src/index.ts`, `src/server/http-server.ts`, `src/tools/web/web-open.ts`, `src/tools/computer/peekaboo.ts`).
 
 The `apply_patch` MCP integration tests inject a fake executable, so they cover wrapper behavior, output caps, concurrency, and abort cleanup but not the checked-in Codex parser itself. Direct MCP probes against `vendor/apply-patch/apply_patch` on 2026-08-11 found three semantics not represented by those tests: consecutive `@@` context anchors are rejected, absolute patch file paths are accepted, and `Add File` overwrites an existing path (`src/tools/apply-patch/apply-patch.ts`, `test/mcp-integration.test.ts`, `vendor/apply-patch/apply_patch`).
+
+## Related
+
+- [[pages/Project Overview]]
+- [[pages/Configuration and Startup]]
+- [[pages/MCP Tool Surface]]
+- [[pages/Browser ChatGPT Subagents]]
+- [[pages/Open Questions and Risks]]

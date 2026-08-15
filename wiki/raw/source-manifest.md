@@ -39,22 +39,6 @@
 - Feeds: [[pages/Architecture Map]], [[pages/MCP Tool Surface]], [[pages/Configuration and Startup]], and [[pages/Open Questions and Risks]].
 - Secret handling: permission status may expose local host/process metadata, so no raw status output or screenshots are stored in the wiki.
 
-## Verification Evidence
-
-These are current implementation evidence, not copied raw notes:
-
-- Startup and configuration: `src/index.ts`, `package.json`, `tsconfig.json`.
-- HTTP boundary: `src/server/http-server.ts`, `test/mcp-integration.test.ts`.
-- Tool contracts and model instructions: `src/server/mcp-server.ts`, `test/mcp-integration.test.ts`.
-- Peekaboo invocation, snapshots, coordinate mapping, and focused Computer Use schemas: `src/tools/computer/peekaboo.ts`, `src/tools/computer/computer-tools.ts`, `test/peekaboo.test.ts`, `test/mcp-integration.test.ts`.
-- Shell, transcript, idempotency, and reset behavior: `src/tools/shell/session.ts`, `test/shell-session.test.ts`.
-- Named-shell lifecycle: `src/tools/shell/session-manager.ts`, `test/shell-session-manager.test.ts`.
-- Workspace path resolution: `src/config.ts`, `test/config.test.ts`.
-- First-class `apply_patch` runtime and vendored binary: `src/tools/apply-patch/apply-patch.ts`, `vendor/apply-patch/`, `test/mcp-integration.test.ts`. Direct MCP probes on 2026-08-11 confirmed that the real binary rejects consecutive `@@` anchors even though copied Codex prompt guidance describes them, accepts absolute patch file paths, and lets `Add File` overwrite an existing path; the existing MCP integration tests use a fake patch executable and therefore do not establish those parser semantics.
-- Webpage extraction and cached pagination: `src/tools/web/web-open.ts`, `test/web-fetch.test.ts`, `test/mcp-integration.test.ts`.
-- Tunnel helper: `ngrok-traffic-policy.yml`, `package.json`.
-- Change tripwire: current implementation through commit `d00978c` (`Refresh wiki and align subagent polling`).
-
 ### OpenAI ChatGPT MCP identity metadata, 2026-08-09
 
 - Role: OpenAI developer documentation plus direct inspection of live ChatGPT-to-MCP requests for identity metadata available to remote servers.

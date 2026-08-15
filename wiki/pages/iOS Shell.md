@@ -2,6 +2,8 @@
 
 Verified 2026-08-12.
 
+## What This Is
+
 `shell_iOS` is an experimental iPhone command bridge built on stock a-Shell. The implementation remains in-tree, but MCP registration is currently commented out while the feature is deferred (`src/tools/ios/ios-shell.ts`, `src/server/mcp-server.ts`).
 
 ## Architecture
@@ -66,3 +68,10 @@ Result:
 ## Next
 
 Revisit the execution/handoff model before re-enabling the MCP tool. Shortcuts remain the likely path for higher-level iOS capabilities such as Messages. Fork a-Shell only when stock a-Shell reaches a concrete limitation.
+
+## Related
+
+- [[pages/ROADMAP]]
+- [[pages/MCP Tool Surface]]
+- [[pages/Architecture Map]]
+- [[pages/Open Questions and Risks]]

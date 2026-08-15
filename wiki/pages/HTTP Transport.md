@@ -1,6 +1,10 @@
 # HTTP Transport
 
-Verified 2026-08-10.
+Verified 2026-08-15.
+
+## What This Is
+
+This page documents the local HTTP/MCP boundary, trusted remote path, subject binding, request lifetime, and audit interception.
 
 ## Routes and Middleware
 
@@ -22,10 +26,18 @@ Unhinged Agent currently uses `X-OpenAI-Subject` as the remote owner identifier 
 
 Every accepted POST creates a new v2 `McpServer` and `NodeStreamableHTTPServerTransport` with no session ID generator. The response's `finish` or `close` event closes that request's transport/server, while all requests share the process-level `ShellSessionManager`, `WebPageOpener`, `PeekabooClient`, `ChatGptSubagentService`, and production `UnhingedAgentAuthStore`. The HTTP boundary creates default services or accepts explicit instances for production-specific behavior and tests (`src/server/http-server.ts`, `src/index.ts`).
 
-When `src/index.ts` starts the production server it also injects one `McpAuditLogger`. The HTTP boundary inspects only JSON-RPC `tools/call` requests and writes one compact YAML document to `agent-commands.yaml` when each call finishes. Entries contain the tool name and duration plus bounded input context: `shell_run` gets a block scalar, ordinary arguments are truncated, and `apply_patch` omits the patch body while preserving cwd and patch size. The response path counts bytes as they pass through but does not retain response content; calls at least 8 KiB are marked `?`, calls at least 5 seconds are marked `~`, HTTP/connection failures are marked `!`, and normal calls use `^`. Audit failures are best-effort and never alter MCP dispatch (`src/index.ts`, `src/server/http-server.ts`, `src/server/audit-log.ts`).
+When `src/index.ts` starts the production server it also injects one `McpAuditLogger`. The HTTP boundary inspects only JSON-RPC `tools/call` requests and writes one compact YAML document to `agent-commands.yaml` when each call finishes. Entries contain the tool name and duration plus bounded input context: `shell_run` gets a block scalar, ordinary arguments are truncated, successful `apply_patch` calls retain only cwd and patch size, and failed patches also retain a bounded failure message plus up to 32,000 characters of patch text. The response path counts bytes and model-facing input/output tokens when the complete response is available but does not persist ordinary response bodies. Calls at least 8 KiB are marked `?`, calls at least 5 seconds are marked `~`, failures are marked `!`, and normal calls have no Better Comments tag. Audit failures are best-effort and never alter MCP dispatch (`src/index.ts`, `src/server/http-server.ts`, `src/server/audit-log.ts`).
 
 Because no MCP session ID is retained by the HTTP layer, an existing client can send its next request after the server is rebuilt and restarted on the same URL without reconnecting. The bound owner survives because it lives outside the repository in `~/.unhinged-agent/auth.json`; process-local shell and webpage-cache state still reset. ChatGPT needs an app refresh when advertised tool metadata or server instructions change (`src/auth/auth.ts`, `src/server/http-server.ts`).
 
 In-flight request closers are tracked so startup failure and server shutdown can settle them before closing the shell. HTTP shutdown begins before shell shutdown (`src/server/http-server.ts`, `src/index.ts`).
 
 Integration tests prove state sharing across SDK clients, continued client use after a stop/start on the same port, and HTTP 403 for an attacker-controlled Host (`test/mcp-integration.test.ts`).
+
+## Related
+
+- [[pages/Project Overview]]
+- [[pages/Architecture Map]]
+- [[pages/Configuration and Startup]]
+- [[pages/MCP Tool Surface]]
+- [[pages/Open Questions and Risks]]

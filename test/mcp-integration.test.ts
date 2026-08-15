@@ -366,7 +366,7 @@ test("appends pending subagent completion events to the next tool result exactly
   assert.doesNotMatch(secondText.text, /agent_finished:/)
 })
 
-test("returns the actual subagent answer through compact subagent_result content", { timeout: 10_000 }, async (t) => {
+test("returns multiline subagent answers as readable compact Markdown", { timeout: 10_000 }, async (t) => {
   const chatGptSubagents: ChatGptSubagentService = {
     async ask() {
       throw new Error("unused")
@@ -376,7 +376,10 @@ test("returns the actual subagent answer through compact subagent_result content
         agentId: "reviewer",
         turnId,
         status: "completed",
-        response: "Use the shared registration boundary.",
+        response:
+          turnId === "reviewer_turn_1"
+            ? "## Review\n\nUse the shared registration boundary.\n\n```ts\ninstallToolRegistrationBoundary(server)\n```"
+            : "## Tests\n\nAdd a regression test for multiline output.",
       }
     },
     async dispose() {},
@@ -388,12 +391,17 @@ test("returns the actual subagent answer through compact subagent_result content
 
   const result = await connected.client.callTool({
     name: "subagent_result",
-    arguments: { turn_ids: ["reviewer_turn_1"] },
+    arguments: { turn_ids: ["reviewer_turn_1", "tester_turn_1"] },
   })
   assert.equal(result.structuredContent, undefined)
   const text = result.content.find((item) => item.type === "text")
   assert.ok(text?.type === "text")
-  assert.match(text.text, /turn_id=reviewer_turn_1 status=completed response="Use the shared registration boundary\."/)
+  assert.equal(
+    text.text,
+    "Retrieved 2 ChatGPT subagent turn results.\n\nturns:\n\n- turn_id=reviewer_turn_1 status=completed\n\n  response:\n    ## Review\n\n    Use the shared registration boundary.\n\n    ```ts\n    installToolRegistrationBoundary(server)\n    ```\n\n- turn_id=tester_turn_1 status=completed\n\n  response:\n    ## Tests\n\n    Add a regression test for multiline output."
+  )
+  assert.doesNotMatch(text.text, /\{"turn_id"/)
+  assert.doesNotMatch(text.text, /\\n/)
 })
 
 test("logs output tokens from the final compact model-facing result", { timeout: 10_000 }, async (t) => {

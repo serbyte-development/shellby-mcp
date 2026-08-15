@@ -1,6 +1,8 @@
 # Tool Naming and Schema Design
 
-Verified 2026-08-12.
+Verified 2026-08-15.
+
+## What This Is
 
 Tool metadata is a compact routing interface for ChatGPT. Optimize for correct selection and invocation, not for explaining implementation.
 
@@ -58,7 +60,7 @@ Use the schema for mechanically inferable constraints:
 
 Prefer schemas that make invalid calls difficult rather than prose that asks the model to remember validation rules.
 
-Before tool schemas are advertised, `src/server/tool-schema-order.ts` recursively puts JSON Schema keywords in one LLM-oriented canonical order: meaning first (`description`), then shape (`type`/references), defaults and choices, structure, and validation constraints. Tool parameter order inside `properties` is preserved. The transform changes only object-key insertion order; Zod validation, defaults, constraints, and schema values are unchanged (`src/server/mcp-server.ts`, `src/server/tool-schema-order.ts`, `test/tool-schema-order.test.ts`, `test/mcp-integration.test.ts`).
+Before tool schemas are advertised, the registration boundary recursively puts JSON Schema keywords in one LLM-oriented canonical order: meaning first (`description`), then shape (`type`/references), defaults and choices, structure, and validation constraints. Tool parameter order inside `properties` is preserved. The transform changes only object-key insertion order; Zod validation, defaults, constraints, and schema values are unchanged (`src/server/mcp-server.ts`, `src/server/tool-registration-boundary.ts`, `test/tool-registration-boundary.test.ts`, `test/mcp-integration.test.ts`).
 
 ## Parameter Descriptions
 
@@ -97,3 +99,10 @@ Before publishing or revising a tool, ask:
 6. **Noise:** Can any sentence be removed without reducing correct routing or invocation?
 
 When tool-use mistakes are observed, fix the smallest layer that caused the ambiguity: rename an unclear tool, sharpen its routing description, improve a parameter description, tighten the schema, or add a negative boundary only when needed.
+
+## Related
+
+- [[pages/MCP Tool Surface]]
+- [[pages/Architecture Map]]
+- [[pages/Tool Output Markdown Build Plan]]
+- [[pages/Build and Test]]

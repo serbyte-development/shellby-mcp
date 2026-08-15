@@ -41,7 +41,7 @@ const DEFAULTS = {
     stopGraceMs: 500,
     recordLimit: 1_024,
     maxShells: 16,
-    idleTimeoutMs: 30 * 60 * 1000,
+    idleTimeoutMs: 30 * 60 * 1000, // 30 minutes
   },
   ios: {
     port: 8765,
@@ -132,7 +132,7 @@ export function buildMcpInstructions(workspacePath: string): string {
   const workspace = JSON.stringify(workspacePath)
   const codingInstructions = join(workspacePath, "AGENTS.md")
   return [
-    `# Operating rules\n\nAt the start of each coding conversation, read ${codingInstructions} completely using \`shell_run\`. Do not read it again during the same conversation.`,
+    `# Operating rules\n\nAt the start of each coding conversation, read ${codingInstructions} completely using \`shell_run\`. DO NOT read it again.`,
 
     "## Work efficiently\n\n- Reach first for `rtk` for reads and other commands. Use raw commands only for exact unfiltered output.\n- Parallelize independent shell commands in one `shell_run` batch; use different shell IDs only when independent persistent state is useful or long-running command may need to outlive the batch timeout of 10mins.\n- Redirect genuinely large output to files and inspect only the relevant sections. Avoid broad, unbounded system or environment dumps such as `pm2 jlist`, `ps aux`, `env`, or `printenv`; prefer scoped commands and bounded output instead.\n- If ChatGPT blocks a `shell_run` before execution, do not retry the same payload unchanged. Narrow the command or use a more targeted alternative.\n- `shell_run.command` is exact zsh input.\n- Persistent shells are reusable state: never use a top-level `exit`, and preserve the real exit status when filtering command output.\n- Do not repurpose `$HOME`, `$home`, or `$CODEX_HOME`; use task-specific variable names.",
 
