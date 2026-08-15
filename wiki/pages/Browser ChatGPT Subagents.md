@@ -103,6 +103,8 @@ The normal lifecycle is:
 
 The important design property is that completion detection and answer extraction are separate concerns. The network conversation payload is authoritative for the stored answer because it preserves the server-returned Markdown/code text exactly. When the watcher independently proves a turn is complete, it first asks the network tracker for the final response, waits one second and retries once if that response has not arrived yet, and only then permits the rendered DOM text as a recovery fallback. These paths remain redundant completion observers of one turn and converge on the same guarded `completeTurn()` transition.
 
+The real browser contract has two manual compatibility layers, both excluded from the normal test glob and CI. `test/live/chatgpt-fixture-live.test.ts` (`npm run test:live:fixture`) opens a permanent saved conversation in a temporary Chrome CDP target without submitting a prompt, captures its current `/backend-api/conversation/<id>` network response, compares the extracted active branch with the sanitized frozen fixture at `test/fixtures/chatgpt-live-fixture/conversation.json`, and checks recognizable rendered DOM structure. `test/live/subagent-live.test.ts` (`npm run test:live:subagent`) remains the expensive generative canary: one real persistent subagent runs two sequential turns to verify generated-turn completion, answer extraction, compact MCP projection, exactly-once completion events, turn sequencing, and conversation reuse.
+
 ## Runtime State and Identity
 
 The process keeps these main structures (`src/tools/subagent/chatgpt-subagent.ts`):
@@ -231,14 +233,14 @@ DOM state:    new assistant message relative to the turn baseline
 
 The authority rules are:
 
-| Server status | UI stop button | New DOM answer | Meaning / action |
-| --- | --- | --- | --- |
-| `COMPLETE` | absent or present | present | Complete immediately. Server state wins even if UI is stale. |
-| `COMPLETE` | absent or present | absent | Enter the five-second DOM grace period. |
-| `IS_STREAMING` | absent or present | any | Keep waiting. Server state prevents premature completion. |
-| unavailable/unknown | present | present or absent | Keep waiting; UI still says generation is active. |
-| unavailable/unknown | absent | present | Use stable-DOM fallback: answer must be unchanged across watcher ticks before completing. |
-| unavailable/unknown | absent | absent | Keep waiting. |
+| Server status       | UI stop button    | New DOM answer    | Meaning / action                                                                          |
+| ------------------- | ----------------- | ----------------- | ----------------------------------------------------------------------------------------- |
+| `COMPLETE`          | absent or present | present           | Complete immediately. Server state wins even if UI is stale.                              |
+| `COMPLETE`          | absent or present | absent            | Enter the five-second DOM grace period.                                                   |
+| `IS_STREAMING`      | absent or present | any               | Keep waiting. Server state prevents premature completion.                                 |
+| unavailable/unknown | present           | present or absent | Keep waiting; UI still says generation is active.                                         |
+| unavailable/unknown | absent            | present           | Use stable-DOM fallback: answer must be unchanged across watcher ticks before completing. |
+| unavailable/unknown | absent            | absent            | Keep waiting.                                                                             |
 
 This gives the server endpoint authority over lifecycle when it is available, while preserving the UI/DOM pair as a degradation fallback if that private endpoint is temporarily unavailable.
 
@@ -441,17 +443,17 @@ If the saved ChatGPT conversation was deleted or is unavailable, the operation f
 
 Important service errors are defined by `ChatGptSubagentErrorCode` in `src/tools/subagent/chatgpt-subagent-contracts.ts`:
 
-| Error | Meaning |
-| --- | --- |
-| `BROWSER_UNAVAILABLE` | Configured CDP browser cannot be reached. |
-| `CHATGPT_NOT_AUTHENTICATED` | Attached browser is not signed into ChatGPT. |
-| `AGENT_BUSY` | Same agent already owns an active operation or turn. |
-| `SUBAGENT_CAPACITY_REACHED` | Three generations are already active. |
-| `AGENT_TARGET_LOST` | Managed page/conversation ownership was lost. |
-| `SUBAGENT_CONVERSATION_NOT_FOUND` | Saved conversation no longer resolves. |
-| `UNKNOWN_TURN` | Requested process-local turn state does not exist. |
-| `REQUEST_ABORTED` | Caller cancelled the MCP operation. |
-| `CHATGPT_UI_CHANGED` | Required ChatGPT UI assumption no longer holds. |
+| Error                             | Meaning                                              |
+| --------------------------------- | ---------------------------------------------------- |
+| `BROWSER_UNAVAILABLE`             | Configured CDP browser cannot be reached.            |
+| `CHATGPT_NOT_AUTHENTICATED`       | Attached browser is not signed into ChatGPT.         |
+| `AGENT_BUSY`                      | Same agent already owns an active operation or turn. |
+| `SUBAGENT_CAPACITY_REACHED`       | Three generations are already active.                |
+| `AGENT_TARGET_LOST`               | Managed page/conversation ownership was lost.        |
+| `SUBAGENT_CONVERSATION_NOT_FOUND` | Saved conversation no longer resolves.               |
+| `UNKNOWN_TURN`                    | Requested process-local turn state does not exist.   |
+| `REQUEST_ABORTED`                 | Caller cancelled the MCP operation.                  |
+| `CHATGPT_UI_CHANGED`              | Required ChatGPT UI assumption no longer holds.      |
 
 The MCP wrapper catches failures per batch item. One bad `subagent_run` entry or one bad `subagent_result` turn does not discard valid sibling results.
 
@@ -500,31 +502,31 @@ Changes to this subsystem should preserve these invariants:
 
 ## Code Map
 
-| Location | Important symbols | Responsibility |
-| --- | --- | --- |
-| `src/tools/subagent/chatgpt-subagent.ts` | `ChatGptSubagentModule`, `ask()`, `poll()` | Main detached-turn lifecycle and service API. |
-| `src/tools/subagent/chatgpt-subagent.ts` | `createAgent()`, `ensureActivePage()`, `rememberConversation()` | Page ownership, replacement, and saved conversation bindings. |
-| `src/tools/subagent/chatgpt-subagent.ts` | `attachTurnListeners()` | Fast structured-network completion and activity listener attachment. |
-| `src/tools/subagent/chatgpt-subagent.ts` | `watchTurnCompletion()` | One-second server/UI/DOM autonomous completion watcher and five-second DOM grace behavior. |
-| `src/tools/subagent/chatgpt-subagent.ts` | `completeTurn()`, `finishTurnOperation()` | Single successful lifecycle transition, capacity release, and completion event queueing. |
-| `src/tools/subagent/chatgpt-subagent.ts` | `reconcileRunningTurn()` | Explicit `subagent_result` self-healing observation. |
-| `src/tools/subagent/chatgpt-subagent.ts` | `failOrRecoverSubmittedTurn()`, `recoverSubmittedTurn()` | Shared one-shot recovery after submitted-turn observation failure. |
-| `src/tools/subagent/chatgpt-subagent.ts` | `cleanupIdleAgents()` | 30-minute inactivity reclamation. |
-| `src/tools/subagent/chatgpt-subagent-browser.ts` | `ChatGptConversationTracker` | Conversation graph normalization, activity, and structured-final detection. |
-| `src/tools/subagent/chatgpt-subagent-browser.ts` | `getConversationStreamStatus()` | ChatGPT server generation-state probe. |
-| `src/tools/subagent/chatgpt-subagent-browser.ts` | `isGenerating()` | UI stop/generating health signal. |
-| `src/tools/subagent/chatgpt-subagent-browser.ts` | `waitForStableConversationLocation()`, `captureOrValidateConversationLocation()` | Stable first-turn URL binding and conversation ownership validation. |
-| `src/tools/subagent/chatgpt-subagent-browser.ts` | `findNewDomAssistantMessage()`, `loadConversationPayload()` | DOM fallback and recovery payload loading. |
-| `src/tools/subagent/chatgpt-subagent-contracts.ts` | public service/result/error types | Dependency-light subagent contracts. |
-| `src/tools/subagent/subagent-tools.ts` | `registerSubagentTools()`, `SUBAGENT_START_DELAYS_MS` | Public MCP schemas, staggered batching, and concurrent result fan-out. |
-| `src/server/tool-registration-boundary.ts` | `installToolRegistrationBoundary()` | Drains pending completion events after every MCP tool callback. |
-| `src/server/tool-output.ts` | `appendToolEvents()` | Appends queued `agent_finished` strings to model-facing tool content. |
-| `src/server/mcp-server.ts` | `drainPendingEvents` wiring | Connects global MCP tool responses to the process-level subagent event queue. |
-| `src/index.ts` | process-level `ChatGptSubagentModule` | Production singleton shared across stateless MCP requests. |
-| `scripts/chatgpt-browser.mjs` | managed Chrome helper | Dedicated authenticated Chrome/profile setup and lifecycle. |
-| `test/chatgpt-subagent.test.ts` | lifecycle tests | Capacity, stale UI/server completion, watcher behavior, recovery, event uniqueness, and idle cleanup. |
-| `test/chatgpt-subagent-browser.test.ts` | browser-adapter tests | Conversation parsing, transient URL behavior, overlays, activity, and final-node matching. |
-| `test/mcp-integration.test.ts` | MCP integration tests | Event injection exactly once, subagent output, staggering, concurrency, and cross-request sharing. |
+| Location                                           | Important symbols                                                                | Responsibility                                                                                        |
+| -------------------------------------------------- | -------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| `src/tools/subagent/chatgpt-subagent.ts`           | `ChatGptSubagentModule`, `ask()`, `poll()`                                       | Main detached-turn lifecycle and service API.                                                         |
+| `src/tools/subagent/chatgpt-subagent.ts`           | `createAgent()`, `ensureActivePage()`, `rememberConversation()`                  | Page ownership, replacement, and saved conversation bindings.                                         |
+| `src/tools/subagent/chatgpt-subagent.ts`           | `attachTurnListeners()`                                                          | Fast structured-network completion and activity listener attachment.                                  |
+| `src/tools/subagent/chatgpt-subagent.ts`           | `watchTurnCompletion()`                                                          | One-second server/UI/DOM autonomous completion watcher and five-second DOM grace behavior.            |
+| `src/tools/subagent/chatgpt-subagent.ts`           | `completeTurn()`, `finishTurnOperation()`                                        | Single successful lifecycle transition, capacity release, and completion event queueing.              |
+| `src/tools/subagent/chatgpt-subagent.ts`           | `reconcileRunningTurn()`                                                         | Explicit `subagent_result` self-healing observation.                                                  |
+| `src/tools/subagent/chatgpt-subagent.ts`           | `failOrRecoverSubmittedTurn()`, `recoverSubmittedTurn()`                         | Shared one-shot recovery after submitted-turn observation failure.                                    |
+| `src/tools/subagent/chatgpt-subagent.ts`           | `cleanupIdleAgents()`                                                            | 30-minute inactivity reclamation.                                                                     |
+| `src/tools/subagent/chatgpt-subagent-browser.ts`   | `ChatGptConversationTracker`                                                     | Conversation graph normalization, activity, and structured-final detection.                           |
+| `src/tools/subagent/chatgpt-subagent-browser.ts`   | `getConversationStreamStatus()`                                                  | ChatGPT server generation-state probe.                                                                |
+| `src/tools/subagent/chatgpt-subagent-browser.ts`   | `isGenerating()`                                                                 | UI stop/generating health signal.                                                                     |
+| `src/tools/subagent/chatgpt-subagent-browser.ts`   | `waitForStableConversationLocation()`, `captureOrValidateConversationLocation()` | Stable first-turn URL binding and conversation ownership validation.                                  |
+| `src/tools/subagent/chatgpt-subagent-browser.ts`   | `findNewDomAssistantMessage()`, `loadConversationPayload()`                      | DOM fallback and recovery payload loading.                                                            |
+| `src/tools/subagent/chatgpt-subagent-contracts.ts` | public service/result/error types                                                | Dependency-light subagent contracts.                                                                  |
+| `src/tools/subagent/subagent-tools.ts`             | `registerSubagentTools()`, `SUBAGENT_START_DELAYS_MS`                            | Public MCP schemas, staggered batching, and concurrent result fan-out.                                |
+| `src/server/tool-registration-boundary.ts`         | `installToolRegistrationBoundary()`                                              | Drains pending completion events after every MCP tool callback.                                       |
+| `src/server/tool-output.ts`                        | `appendToolEvents()`                                                             | Appends queued `agent_finished` strings to model-facing tool content.                                 |
+| `src/server/mcp-server.ts`                         | `drainPendingEvents` wiring                                                      | Connects global MCP tool responses to the process-level subagent event queue.                         |
+| `src/index.ts`                                     | process-level `ChatGptSubagentModule`                                            | Production singleton shared across stateless MCP requests.                                            |
+| `scripts/chatgpt-browser.mjs`                      | managed Chrome helper                                                            | Dedicated authenticated Chrome/profile setup and lifecycle.                                           |
+| `test/chatgpt-subagent.test.ts`                    | lifecycle tests                                                                  | Capacity, stale UI/server completion, watcher behavior, recovery, event uniqueness, and idle cleanup. |
+| `test/chatgpt-subagent-browser.test.ts`            | browser-adapter tests                                                            | Conversation parsing, transient URL behavior, overlays, activity, and final-node matching.            |
+| `test/mcp-integration.test.ts`                     | MCP integration tests                                                            | Event injection exactly once, subagent output, staggering, concurrency, and cross-request sharing.    |
 
 ## Operational Risks
 

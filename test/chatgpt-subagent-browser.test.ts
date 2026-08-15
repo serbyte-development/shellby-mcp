@@ -1,4 +1,5 @@
 import assert from "node:assert/strict"
+import { readFile } from "node:fs/promises"
 import test from "node:test"
 
 import {
@@ -15,6 +16,24 @@ import { ChatGptSubagentModule } from "../src/tools/subagent/chatgpt-subagent.js
 function createModule(options: ChatGptSubagentOptions = {}): ChatGptSubagentModule {
   return new ChatGptSubagentModule({ cdpEndpoint: "http://127.0.0.1:1", ...options })
 }
+
+test("frozen real ChatGPT conversation fixture preserves the expected user and fenced Markdown assistant messages", async () => {
+  const payload = JSON.parse(await readFile(new URL("./fixtures/chatgpt-live-fixture/conversation.json", import.meta.url), "utf8")) as unknown
+  const messages = extractConversationMessages(payload)
+
+  assert.equal(messages.length, 2)
+  assert.equal(messages[0]?.role, "user")
+  assert.ok(messages[0]?.text.includes("This is a live integration fixture."))
+  assert.equal(messages[1]?.role, "assistant")
+  assert.ok(messages[1]?.text.includes("LIVE_SUBAGENT_FIXTURE_BEGIN"))
+  assert.ok(messages[1]?.text.includes("## Live Fixture"))
+  assert.ok(messages[1]?.text.includes("inline `code`"))
+  assert.ok(messages[1]?.text.includes("```md\n### Nested Markdown\nCONTEXT_KEY: LIVE_CTX_b9536da73e8e\n```"))
+  assert.ok(messages[1]?.text.includes("```ts\nconst answer: number = 42;\n```"))
+  assert.ok(messages[1]?.text.includes("| fixture | ok |"))
+  assert.equal(messages[1]?.text.match(/LONG_LINE:(x+)/)?.[1]?.length, 320)
+  assert.ok(messages[1]?.text.endsWith("LIVE_SUBAGENT_FIXTURE_END"))
+})
 
 test("start-time conversation binding ignores transient WEB routes and stores the stable ChatGPT URL", async () => {
   let currentUrl = "https://chatgpt.com/"

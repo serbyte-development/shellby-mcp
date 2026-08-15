@@ -6,6 +6,7 @@ dist/
 /agent-commands.yaml
 *.log
 /wiki/_private/
+/test/live/artifacts/
 
 
 t.*

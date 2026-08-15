@@ -315,6 +315,22 @@ npm test
 npm run build
 ```
 
+The real ChatGPT browser contract has two separate manual-only compatibility tests. Both are intentionally excluded from `npm test` and CI. The read-only fixture test reopens one permanent saved conversation, captures its current conversation JSON from Chrome's network stream, and verifies it against a frozen sanitized copy without generating a new turn:
+
+```bash
+npm run chatgpt
+npm run test:live:fixture
+```
+
+The generative canary exercises the lifecycle that a saved fixture cannot cover. It consumes one real ChatGPT subagent conversation, so make sure no other subagent generation is active before running:
+
+```bash
+npm run chatgpt
+npm run test:live:subagent
+```
+
+`test:live:fixture` never submits a prompt. It verifies the current ChatGPT conversation endpoint, exact `content.parts` Markdown, active-branch parsing, and recognizable rendered DOM structure against `test/fixtures/chatgpt-live-fixture/conversation.json`. `test:live:subagent` uses one persistent `agent_id` for two sequential generated turns and verifies completion detection, exact server/network response extraction, compact MCP output, one-shot `agent_finished` delivery, turn numbering, and conversation-context reuse. Sanitized evidence from the most recent generative run is written under ignored `test/live/artifacts/`.
+
 Format code with:
 
 ```bash

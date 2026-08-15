@@ -18,14 +18,16 @@ This page maps the compile boundary, focused validation commands, test responsib
 
 ## Validation
 
-| Command              | Purpose                                                |
-| -------------------- | ------------------------------------------------------ |
-| `npm test`           | Run `test/*.test.ts` through `tsx`                     |
-| `npm run type-check` | Check source and tests without emitting                |
-| `npm run lint`       | Lint `src/` and `test/` with ESLint                    |
-| `npm run format`     | Format source, tests, and project config with Prettier |
-| `npm run build`      | Emit production JavaScript to `dist/`                  |
-| `npm run schemas`    | Print the actual registered MCP tool schemas           |
+| Command                      | Purpose                                                                                                     |
+| ---------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| `npm test`                   | Run `test/*.test.ts` through `tsx`                                                                          |
+| `npm run test:live:fixture`  | Read one permanent ChatGPT conversation through real Chrome/CDP without generating a turn; excluded from CI |
+| `npm run test:live:subagent` | Manually exercise one real browser-backed subagent conversation across two turns; excluded from CI          |
+| `npm run type-check`         | Check source and tests without emitting                                                                     |
+| `npm run lint`               | Lint `src/` and `test/` with ESLint                                                                         |
+| `npm run format`             | Format source, tests, and project config with Prettier                                                      |
+| `npm run build`              | Emit production JavaScript to `dist/`                                                                       |
+| `npm run schemas`            | Print the actual registered MCP tool schemas                                                                |
 
 Run the cheapest focused test first, then the broader commands when the change warrants them (`package.json`).
 
@@ -42,6 +44,9 @@ As verified on 2026-08-14, published tool definitions cost 5,850 `o200k_base` to
 - MCP integration tests validate the published tool order and Standard Schema mechanics, all three model-facing output modes, compact output, one-shot pending-event delivery, final compact-output token logging, cross-request shell state, named-shell concurrency, direct patching, webpage pagination, Computer Use results, semantic errors, restart continuity, exact `/mcp` routing, and Host rejection. Tool and server prose descriptions/instructions are intentionally not assertion-locked because they are model-facing guidance that changes independently of behavior (`test/mcp-integration.test.ts`).
 - Authentication unit tests cover durable state, owner-only permissions, first-owner binding, concurrent first calls, reset, and malformed-state failure. MCP integration tests additionally cover exact routing, local access, discovery without binding, binding on an invalid first tool call, same-owner reuse, different-owner rejection, and owner persistence across an HTTP restart (`test/auth.test.ts`, `test/mcp-integration.test.ts`).
 - Subagent tests mirror the production split: lifecycle/state-machine behavior lives in `test/chatgpt-subagent.test.ts`, while ChatGPT Web/CDP parsing and interaction behavior lives in `test/chatgpt-subagent-browser.test.ts`. Together they cover the hard three-generation cap, passive completion/event queueing, recovery, result-time reconciliation, idle reclamation, overlay recovery, conversation-graph normalization, and wrong/duplicate/intermediate-response filtering. MCP integration coverage verifies array-only 1-3 start/result schemas, real stagger timing, concurrent result retrieval, partial failures, compact answer delivery, and shared service state across stateless HTTP requests without contacting ChatGPT (`test/chatgpt-subagent.test.ts`, `test/chatgpt-subagent-browser.test.ts`, `test/mcp-integration.test.ts`).
+- `test/fixtures/chatgpt-live-fixture/conversation.json` is a sanitized frozen copy of a real ChatGPT conversation branch containing ordinary Markdown, inline code, Unicode, lists, fenced Markdown, fenced TypeScript, a table, and a long line. Normal parser tests consume it without any browser or network dependency (`test/chatgpt-subagent-browser.test.ts`).
+- `test/live/chatgpt-fixture-live.test.ts` is the cheap real-service compatibility layer. It creates a temporary Chrome tab through raw CDP, navigates to the permanent saved fixture conversation, captures the real `/backend-api/conversation/<id>` response from Chrome's network stream, compares the extracted branch byte-for-byte with the frozen fixture, checks raw `content.parts`, inspects current rendered DOM structure, then closes only the temporary tab. It never submits a prompt or generates a ChatGPT turn. Run it explicitly with `npm run test:live:fixture` while the authenticated dedicated Chrome is already running.
+- `test/live/subagent-live.test.ts` is a separate manual compatibility canary for the real ChatGPT Web contract. It is outside the `test/*.test.ts` glob, refuses to run in CI, and the dedicated `npm run test:live:subagent` script is the intended entry point. One real `agent_id` is used for exactly two sequential turns: turn 1 stresses ordinary Markdown, Unicode, tables, long lines, fenced Markdown, and fenced TypeScript; turn 2 proves persistent conversation reuse by recalling a random context key supplied only in turn 1. The test compares the stored turn response byte-for-byte with the live network tracker and reloaded conversation JSON `content.parts`, inspects rendered DOM/code blocks, verifies compact MCP output and exactly-once completion events, and writes sanitized last-run evidence to ignored `test/live/artifacts/`. Run it only when the authenticated dedicated Chrome is already running and no other subagent generation is active.
 
 Tests use temporary directories and real local child shells; `test/helpers/temp.ts` centralizes disposable-directory cleanup. Process-group tests are POSIX-specific (`test/shell-session.test.ts`, `test/shell-parallel.test.ts`).
 
@@ -49,11 +54,11 @@ Tests use temporary directories and real local child shells; `test/helpers/temp.
 
 ## Continuous Integration
 
-GitHub Actions runs the same release validation sequence on both `macos-15` arm64 and `macos-15-intel` x64 runners for pushes to `main` and pull requests: clean install, lint, type-check, tests, and production build. The suite includes a direct vendored `apply_patch` smoke test, so each runner executes its native slice of the checked-in Universal 2 binary (`.github/workflows/ci.yml`, `package.json`, `test/apply-patch-vendor.test.ts`).
+GitHub Actions runs the same release validation sequence on both `macos-15` arm64 and `macos-15-intel` x64 runners for pushes to `main` and pull requests: clean install, lint, type-check, tests, and production build. The suite includes a direct vendored `apply_patch` smoke test, so each runner executes its native slice of the checked-in Universal 2 binary. Both real-browser compatibility tests are deliberately excluded because CI has no authenticated ChatGPT session; only `test:live:subagent` consumes a real generated conversation (`.github/workflows/ci.yml`, `package.json`, `test/apply-patch-vendor.test.ts`, `test/live/`).
 
 ## Gaps
 
-The tests do not exercise the real `src/index.ts` composition path, `/healthz`, GET/DELETE 405 responses, signal-driven shutdown, tunnel configuration, a real browser launch, or the installed Peekaboo/macOS permission path used by `setup`/`setup:computer` (`test/`, `scripts/peekaboo-permissions.mjs`, `src/index.ts`, `src/server/http-server.ts`, `src/tools/web/web-open.ts`, `src/tools/computer/peekaboo.ts`).
+The normal/CI tests do not exercise the real `src/index.ts` composition path, `/healthz`, GET/DELETE 405 responses, signal-driven shutdown, tunnel configuration, a real browser launch, or the installed Peekaboo/macOS permission path used by `setup`/`setup:computer`. The separate live fixture and generative canary tests attach to the real authenticated ChatGPT browser but still do not own browser launch/setup (`test/`, `test/live/`, `scripts/peekaboo-permissions.mjs`, `src/index.ts`, `src/server/http-server.ts`, `src/tools/web/web-open.ts`, `src/tools/computer/peekaboo.ts`).
 
 The `apply_patch` MCP integration tests inject a fake executable, so they cover wrapper behavior, output caps, concurrency, and abort cleanup but not the checked-in Codex parser itself. Direct MCP probes against `vendor/apply-patch/apply_patch` on 2026-08-11 found three semantics not represented by those tests: consecutive `@@` context anchors are rejected, absolute patch file paths are accepted, and `Add File` overwrites an existing path (`src/tools/apply-patch/apply-patch.ts`, `test/mcp-integration.test.ts`, `vendor/apply-patch/apply_patch`).
 

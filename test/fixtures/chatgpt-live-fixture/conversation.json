@@ -1,0 +1,78 @@
+{
+  "conversation_id": "6a80cfdd-8428-83e8-86ba-13f3d302d179",
+  "title": "Live Fixture Response",
+  "current_node": "ee87cba8-0068-4229-afa4-52cb45a3e9aa",
+  "mapping": {
+    "c257bd86-ce5f-4c84-b94e-f89baa92211c": {
+      "id": "c257bd86-ce5f-4c84-b94e-f89baa92211c",
+      "parent": "client-created-root",
+      "children": ["a641d21e-0d29-4117-a017-818e87399f3e"],
+      "message": {
+        "id": "c257bd86-ce5f-4c84-b94e-f89baa92211c",
+        "author": {
+          "role": "user"
+        },
+        "create_time": 1786826718,
+        "content": {
+          "content_type": "text",
+          "parts": [
+            "This is a live integration fixture. Do not use tools.\nReturn one response containing every required marker and block below. Preserve the fenced block types. Do not wrap the entire response in another code fence.\n\nLIVE_SUBAGENT_FIXTURE_BEGIN\n\n## Live Fixture\n\nParagraph with inline `code` and Unicode: café → ✓\n\n- alpha\n- beta\n\n```md\n### Nested Markdown\nCONTEXT_KEY: LIVE_CTX_b9536da73e8e\n```\n\n```ts\nconst answer: number = 42;\n```\n\n| key | value |\n| --- | --- |\n| fixture | ok |\n\nLONG_LINE:xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n\nLIVE_SUBAGENT_FIXTURE_END"
+          ]
+        },
+        "status": "finished_successfully",
+        "end_turn": null,
+        "metadata": {
+          "turn_exchange_id": "6cc9842f-4001-4411-8f19-dfead48590d1"
+        },
+        "recipient": "all"
+      }
+    },
+    "a641d21e-0d29-4117-a017-818e87399f3e": {
+      "id": "a641d21e-0d29-4117-a017-818e87399f3e",
+      "parent": "c257bd86-ce5f-4c84-b94e-f89baa92211c",
+      "children": ["ee87cba8-0068-4229-afa4-52cb45a3e9aa"],
+      "message": {
+        "id": "a641d21e-0d29-4117-a017-818e87399f3e",
+        "author": {
+          "role": "assistant"
+        },
+        "create_time": 1786826720.490812,
+        "content": {
+          "content_type": "reasoning_recap",
+          "content": "Worked for a couple of seconds"
+        },
+        "status": "finished_successfully",
+        "end_turn": false,
+        "metadata": {
+          "turn_exchange_id": "6cc9842f-4001-4411-8f19-dfead48590d1"
+        },
+        "recipient": "all"
+      }
+    },
+    "ee87cba8-0068-4229-afa4-52cb45a3e9aa": {
+      "id": "ee87cba8-0068-4229-afa4-52cb45a3e9aa",
+      "parent": "a641d21e-0d29-4117-a017-818e87399f3e",
+      "children": [],
+      "message": {
+        "id": "ee87cba8-0068-4229-afa4-52cb45a3e9aa",
+        "author": {
+          "role": "assistant"
+        },
+        "create_time": 1786826719.184042,
+        "content": {
+          "content_type": "text",
+          "parts": [
+            "LIVE_SUBAGENT_FIXTURE_BEGIN\n\n## Live Fixture\n\nParagraph with inline `code` and Unicode: café → ✓\n\n- alpha\n- beta\n\n```md\n### Nested Markdown\nCONTEXT_KEY: LIVE_CTX_b9536da73e8e\n```\n\n```ts\nconst answer: number = 42;\n```\n\n| key | value |\n| --- | --- |\n| fixture | ok |\n\nLONG_LINE:xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n\nLIVE_SUBAGENT_FIXTURE_END"
+          ]
+        },
+        "status": "finished_successfully",
+        "end_turn": true,
+        "metadata": {
+          "is_complete": true,
+          "turn_exchange_id": "6cc9842f-4001-4411-8f19-dfead48590d1"
+        },
+        "recipient": "all"
+      }
+    }
+  }
+}

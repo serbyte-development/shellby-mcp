@@ -851,6 +851,7 @@
 ## [2026-08-14] fix | Reconcile stale ChatGPT streaming tabs
 
 - Added server `stream_status` reconciliation so a completed conversation is not left running when its original ChatGPT tab keeps a stale stop button after the final answer rendered; follow-up submission reloads that stale page before typing the next turn.
+
 ## [2026-08-14] docs | Make subagent completion notification a first-class contract
 
 - Promoted autonomous turn-completion detection and `agent_finished:<agent_id>:<turn_id>` delivery on the next MCP tool response into a dedicated top-level contract in `pages/Browser ChatGPT Subagents.md`.
@@ -868,6 +869,7 @@
 - Rewrote `pages/Browser ChatGPT Subagents.md` around the core autonomous-completion/notification contract, with a complete start-to-notification-to-result lifecycle.
 - Documented first-turn URL ownership, prompt submission safety, network/server/UI completion authority, the five-second DOM grace window, single-gate `completeTurn()` semantics, event injection, result reconciliation, one-shot recovery, capacity, cleanup, and historical failure modes.
 - Added explicit maintainer invariants and an updated code map so future changes preserve notification reliability instead of treating `subagent_result` polling as the primary lifecycle mechanism.
+
 ## [2026-08-14] repair | Align Computer Use wrappers with Peekaboo v4
 
 - Replaced removed Peekaboo CLI forms used by screen listing, coordinate click/drag, hotkeys, app launch, and AX inspection; made pointer scrolling explicitly foreground and retained screen indexes for snapshot-target reuse.
@@ -912,7 +914,19 @@
 - Removed deleted feedback and obsolete schema-order references, removed the resolved no-CI risk, and reconciled failed-patch audit retention across architecture, transport, testing, risk, workspace, and secret-handling documentation.
 - Documented first-time workspace instruction creation, normal PM2/browser restart scope, health-check diagnosis, exceptional daemon recovery, and current citation paths while preserving the active tool-output work.
 
+## [2026-08-15] test | Add manual live subagent compatibility canary
+
+- Added `npm run test:live:subagent` backed by `test/live/subagent-live.test.ts`, kept outside the normal test glob and explicitly disabled in CI.
+- The live canary consumes one real persistent subagent across two sequential turns and checks server/network response authority, raw conversation `content.parts`, rendered DOM evidence, compact MCP output, exactly-once completion events, turn numbering, and conversation-context reuse.
+- Last-run evidence is sanitized into ignored `test/live/artifacts/` so real-browser observations can be inspected without committing authenticated conversation payloads.
+
 ## [2026-08-15] subagents | Make network response authoritative after completion detection
 
 - Separated completion detection from answer extraction: passive network conversation content now always wins over rendered DOM text, with one one-second network retry before DOM fallback.
 - Added regressions proving fenced Markdown survives server `content.parts` extraction exactly and that a delayed network answer beats mangled rendered DOM text.
+
+## [2026-08-15] test | Add permanent read-only ChatGPT compatibility fixture
+
+- Added a sanitized frozen copy of the existing `Live Fixture Response` conversation and normal parser coverage for its exact Markdown/code response shape.
+- Added `npm run test:live:fixture`, a manual non-generative compatibility test that opens that permanent conversation in a temporary Chrome CDP target, captures the real conversation JSON response, compares it with the frozen fixture, validates `content.parts`, inspects rendered DOM structure, and closes only the temporary tab.
+- Kept the expensive generated-turn lifecycle canary separate as `npm run test:live:subagent`; neither live test is part of normal CI.
