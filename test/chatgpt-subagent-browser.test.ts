@@ -244,6 +244,25 @@ test("extractConversationNodes normalizes ChatGPT mapping nodes", () => {
   assert.equal(nodes.find((node) => node.id === "a1")?.message.text, "final answer")
 })
 
+test("extractConversationNodes preserves fenced Markdown from server content parts exactly", () => {
+  const response = "```md\n## Findings\n\n- exact server response\n```"
+  const nodes = extractConversationNodes({
+    id: "assistant-markdown",
+    message: {
+      id: "assistant-markdown",
+      author: { role: "assistant" },
+      content: { content_type: "text", parts: [response] },
+      status: "finished_successfully",
+      end_turn: true,
+      metadata: { is_complete: true },
+      recipient: "all",
+    },
+    children: [],
+  })
+
+  assert.equal(nodes[0]?.message.text, response)
+})
+
 test("tracker returns only the new final assistant response for a turn", () => {
   const tracker = new ChatGptConversationTracker()
   tracker.ingestPayload({

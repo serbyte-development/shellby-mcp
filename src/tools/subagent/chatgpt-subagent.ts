@@ -39,6 +39,7 @@ import {
 const DEFAULT_AGENT_IDLE_TTL_MS = 30 * 60_000
 const MAX_CONCURRENT_AGENTS = 3
 const COMPLETION_WATCH_INTERVAL_MS = 1_000
+const COMPLETION_NETWORK_RETRY_MS = 1_000
 const COMPLETION_DOM_GRACE_MS = 5_000
 const CONVERSATION_BIND_TIMEOUT_MS = 30_000
 
@@ -385,7 +386,7 @@ export class ChatGptSubagentModule implements ChatGptSubagentService {
       if (streamStatus === "IS_STREAMING") return
       if (streamStatus !== "COMPLETE" && uiGenerating) return
 
-      this.completeTurn(turn, active, domFinal.text)
+      await this.completeDetectedTurn(turn, active, domFinal.text, signal)
     } catch (error) {
       if (turn.status !== "running") return
       if (error instanceof ChatGptSubagentError && error.code === "REQUEST_ABORTED") throw error
@@ -455,7 +456,44 @@ export class ChatGptSubagentModule implements ChatGptSubagentService {
     const domFinal = turn.tracking ? await findNewDomAssistantMessage(active.page, turn.tracking.baselineDom) : undefined
     if (!domFinal?.text || (await isGenerating(active.page))) return true
 
-    this.completeTurn(turn, active, domFinal.text)
+    await this.completeDetectedTurn(turn, active, domFinal.text, signal)
+    return true
+  }
+
+  private trackedFinalResponse(turn: BrowserTurnState, state: BrowserAgentState): string | undefined {
+    if (!turn.tracking) return undefined
+    return state.tracker.findFinalResponse({
+      baselineIds: turn.tracking.baselineNetworkIds,
+      prompt: turn.tracking.prompt,
+      sentAtSeconds: turn.tracking.sentAtSeconds,
+    })?.message.text
+  }
+
+  private async completeDetectedTurn(
+    turn: BrowserTurnState,
+    state: BrowserAgentState,
+    domFallback?: string,
+    signal?: AbortSignal
+  ): Promise<boolean> {
+    if (turn.status !== "running") return true
+
+    const networkResponse = this.trackedFinalResponse(turn, state)
+    if (networkResponse) {
+      this.completeTurn(turn, state, networkResponse)
+      return true
+    }
+
+    await delay(COMPLETION_NETWORK_RETRY_MS, signal)
+    if (turn.status !== "running") return true
+
+    const retriedNetworkResponse = this.trackedFinalResponse(turn, state)
+    if (retriedNetworkResponse) {
+      this.completeTurn(turn, state, retriedNetworkResponse)
+      return true
+    }
+
+    if (!domFallback) return false
+    this.completeTurn(turn, state, domFallback)
     return true
   }
 
@@ -478,12 +516,8 @@ export class ChatGptSubagentModule implements ChatGptSubagentService {
     })
     const completeTrackedTurn = () => {
       if (turn.status !== "running" || !turn.tracking) return
-      const final = state.tracker.findFinalResponse({
-        baselineIds: turn.tracking.baselineNetworkIds,
-        prompt: turn.tracking.prompt,
-        sentAtSeconds: turn.tracking.sentAtSeconds,
-      })
-      if (!final?.message.text) return
+      const response = this.trackedFinalResponse(turn, state)
+      if (!response) return
       try {
         captureOrValidateConversationLocation(state)
         this.rememberConversation(state)
@@ -491,7 +525,7 @@ export class ChatGptSubagentModule implements ChatGptSubagentService {
         // Final network response is enough to complete the turn even if the
         // managed page moved. The saved conversation reference may be stale.
       }
-      this.completeTurn(turn, state, final.message.text)
+      this.completeTurn(turn, state, response)
     }
     state.tracker.setUpdateListener(completeTrackedTurn)
     completeTrackedTurn()
@@ -513,8 +547,7 @@ export class ChatGptSubagentModule implements ChatGptSubagentService {
 
         if (streamStatus === "COMPLETE") {
           if (domFinal?.text) {
-            this.completeTurn(turn, state, domFinal.text)
-            return
+            if (await this.completeDetectedTurn(turn, state, domFinal.text)) return
           }
 
           if (!serverCompletionConfirmed) {
@@ -525,8 +558,7 @@ export class ChatGptSubagentModule implements ChatGptSubagentService {
               if (turn.status !== "running") return
               const delayedDomFinal = await findNewDomAssistantMessage(state.page, turn.tracking.baselineDom)
               if (!delayedDomFinal?.text) continue
-              this.completeTurn(turn, state, delayedDomFinal.text)
-              return
+              if (await this.completeDetectedTurn(turn, state, delayedDomFinal.text)) return
             }
 
             if (turn.status !== "running") return
@@ -550,8 +582,7 @@ export class ChatGptSubagentModule implements ChatGptSubagentService {
           const now = Date.now()
           if (stableFallback?.key === domFinal.key && stableFallback.text === domFinal.text) {
             if (now - stableFallback.since >= COMPLETION_WATCH_INTERVAL_MS) {
-              this.completeTurn(turn, state, domFinal.text)
-              return
+              if (await this.completeDetectedTurn(turn, state, domFinal.text)) return
             }
           } else {
             stableFallback = { key: domFinal.key, text: domFinal.text, since: now }

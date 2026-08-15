@@ -660,6 +660,7 @@ test("background completion watcher finishes a server-complete turn even when th
     agentId: "background-complete-agent",
     page,
     tracker: {
+      findFinalResponse: () => undefined,
       setActivityListener() {},
       setUpdateListener() {},
       dispose() {},
@@ -700,6 +701,82 @@ test("background completion watcher finishes a server-complete turn even when th
   assert.equal(internals.activeTurnsByAgent.has(state.agentId), false)
   assert.equal(internals.activeAgentIds.has(state.agentId), false)
   assert.equal(internals.activeGenerationCount, 0)
+  assert.deepEqual(module.drainEvents(), [`agent_finished:${state.agentId}:${turn.turnId}`])
+  await module.dispose()
+})
+
+test("background completion watcher prefers delayed network response over rendered DOM text", async () => {
+  const module = createModule()
+  const networkResponse = "```md\n## Findings\n\n- exact server response\n```"
+  let networkReads = 0
+  const page = {
+    evaluate: async () => "COMPLETE",
+    locator: (selector: string) => {
+      if (selector === '[data-message-author-role="assistant"]') {
+        return {
+          evaluateAll: async () => [
+            {
+              key: "message-1",
+              text: "Markdown## Findings- exact server response",
+            },
+          ],
+        }
+      }
+      return {
+        first: () => ({
+          count: async () => 0,
+          isVisible: async () => false,
+        }),
+      }
+    },
+  }
+  const state = {
+    agentId: "network-authority-agent",
+    page,
+    tracker: {
+      findFinalResponse: () => {
+        networkReads += 1
+        if (networkReads === 1) return undefined
+        return { message: { text: networkResponse } }
+      },
+      setActivityListener() {},
+      setUpdateListener() {},
+      dispose() {},
+    },
+    hasSubmittedTurn: true,
+    conversationId: "conversation-1",
+    conversationUrl: "https://chatgpt.com/c/conversation-1",
+    lastUsedAt: Date.now(),
+    turnCount: 1,
+  }
+  const turn = {
+    turnId: "network-authority-agent_turn_1",
+    agentId: state.agentId,
+    status: "running" as "running" | "completed" | "failed",
+    activity: "Generating response" as const,
+    lastActivityAt: Date.now(),
+    tracking: {
+      baselineNetworkIds: new Set<string>(),
+      baselineDom: [],
+      prompt: "review",
+      sentAtSeconds: Date.now() / 1000 - 5,
+    },
+  }
+  const internals = module as unknown as {
+    watchTurnCompletion(value: typeof turn, agent: typeof state): Promise<void>
+    activeTurnsByAgent: Map<string, string>
+    activeAgentIds: Set<string>
+    activeGenerationCount: number
+  }
+  internals.activeTurnsByAgent.set(state.agentId, turn.turnId)
+  internals.activeAgentIds.add(state.agentId)
+  internals.activeGenerationCount = 1
+
+  await internals.watchTurnCompletion(turn, state)
+
+  assert.equal(networkReads, 2)
+  assert.equal(turn.status, "completed")
+  assert.equal((turn as typeof turn & { response?: string }).response, networkResponse)
   assert.deepEqual(module.drainEvents(), [`agent_finished:${state.agentId}:${turn.turnId}`])
   await module.dispose()
 })

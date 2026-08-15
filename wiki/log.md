@@ -911,3 +911,8 @@
 - Added `pages/Project Overview.md`, made it the first index entry, indexed roadmap and active-plan pages, restored the required maintainer workflows, refreshed the page template, and added a maintained-page wikilink graph.
 - Removed deleted feedback and obsolete schema-order references, removed the resolved no-CI risk, and reconciled failed-patch audit retention across architecture, transport, testing, risk, workspace, and secret-handling documentation.
 - Documented first-time workspace instruction creation, normal PM2/browser restart scope, health-check diagnosis, exceptional daemon recovery, and current citation paths while preserving the active tool-output work.
+
+## [2026-08-15] subagents | Make network response authoritative after completion detection
+
+- Separated completion detection from answer extraction: passive network conversation content now always wins over rendered DOM text, with one one-second network retry before DOM fallback.
+- Added regressions proving fenced Markdown survives server `content.parts` extraction exactly and that a delayed network answer beats mangled rendered DOM text.

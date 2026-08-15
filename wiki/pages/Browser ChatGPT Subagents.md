@@ -101,7 +101,7 @@ The normal lifecycle is:
 9. The parent receives that event on the next MCP tool response and calls `subagent_result` when it wants the answer.
 10. `subagent_result` also acts as a reconciliation/recovery boundary if autonomous observation missed or partially lost state.
 
-The important design property is that these paths are redundant observers of one turn, not separate lifecycle owners. They all converge on the same guarded `completeTurn()` transition.
+The important design property is that completion detection and answer extraction are separate concerns. The network conversation payload is authoritative for the stored answer because it preserves the server-returned Markdown/code text exactly. When the watcher independently proves a turn is complete, it first asks the network tracker for the final response, waits one second and retries once if that response has not arrived yet, and only then permits the rendered DOM text as a recovery fallback. These paths remain redundant completion observers of one turn and converge on the same guarded `completeTurn()` transition.
 
 ## Runtime State and Identity
 
