@@ -99,17 +99,7 @@ if (
     messages: ["ready", 42],
     debug_logs: ["fixture debug output"],
   })
-} else if (command === "inspect-ui") {
-  respond({
-    success: true,
-    data: {
-      text: '[B1] button "Continue"',
-      tool: "inspect_ui",
-      content: [{ type: "text", text: '[B1] button "Continue"' }],
-    },
-    debug_logs: ["fixture debug output"],
-  })
-} else if (command === "list" && args[1] === "screens") {
+} else if (command === "screen" && args[1] === "list") {
   respond({
     success: true,
     data: {

@@ -46,7 +46,7 @@ Shell transcript reads and `fetch_website` cursor reads bound each tokenizer pas
 | `computer_app`     | Launch, switch, quit, relaunch, hide, or unhide an application.                                                |
 | `computer_window`  | Focus, close, minimize, maximize, move, resize, or set bounds for one window.                                  |
 
-The focused tools translate screenshot-relative coordinates through retained capture bounds and share one serialized `PeekabooClient`. The adapter uses exact argv plus `--json`, bounds process output, preserves upstream semantic failures, returns images only for observation, and never retries stateful actions. Advanced Peekaboo operations remain available through `shell_run` (`src/tools/computer/computer-tools.ts`, `src/tools/computer/peekaboo.ts`, `test/peekaboo.test.ts`).
+The focused tools target Peekaboo v4 directly and share one serialized `PeekabooClient`. Window-relative coordinate clicks/drags stay relative to the retained window target; screen coordinates are translated through retained display bounds. Pointer scrolling uses foreground delivery while element-targeted scrolling can stay in the background. Keyboard shortcuts are emitted as one `press` chord, application launch uses v4 `--wait-ready`, and display inventory uses `screen list`. The adapter uses exact argv plus `--json`, bounds process output, preserves upstream semantic failures, returns images only for observation, and never retries stateful actions. Advanced Peekaboo operations remain available through `shell_run` (`src/tools/computer/computer-tools.ts`, `src/tools/computer/peekaboo.ts`, `test/peekaboo.test.ts`).
 
 ## Results and Instructions
 

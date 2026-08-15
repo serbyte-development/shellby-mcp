@@ -868,3 +868,11 @@
 - Rewrote `pages/Browser ChatGPT Subagents.md` around the core autonomous-completion/notification contract, with a complete start-to-notification-to-result lifecycle.
 - Documented first-turn URL ownership, prompt submission safety, network/server/UI completion authority, the five-second DOM grace window, single-gate `completeTurn()` semantics, event injection, result reconciliation, one-shot recovery, capacity, cleanup, and historical failure modes.
 - Added explicit maintainer invariants and an updated code map so future changes preserve notification reliability instead of treating `subagent_result` polling as the primary lifecycle mechanism.
+## [2026-08-14] repair | Align Computer Use wrappers with Peekaboo v4
+
+- Replaced removed Peekaboo CLI forms used by screen listing, coordinate click/drag, hotkeys, app launch, and AX inspection; made pointer scrolling explicitly foreground and retained screen indexes for snapshot-target reuse.
+- Updated focused MCP integration coverage and Computer Use architecture/tool-surface documentation.
+
+## [2026-08-14] portability | Add Intel Mac support
+
+- Expanded the current macOS release target from arm64-only to arm64 and x64, with a Universal 2 vendored `apply_patch` binary and matching package/preflight/documentation support.

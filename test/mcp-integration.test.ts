@@ -740,7 +740,7 @@ test("exposes a stable Peekaboo Computer Use surface and preserves semantic erro
     },
   })
   assert.equal(inspection.isError, undefined)
-  assert.deepEqual(inspection.content, [{ type: "text", text: '[B1] button "Continue"' }])
+  assert.deepEqual(inspection.content, [{ type: "text", text: '[B1] AXButton "Continue"' }])
   assert.equal(inspection.structuredContent, undefined)
 
   const invalidClick = await connected.client.callTool({
@@ -767,7 +767,7 @@ test("exposes a stable Peekaboo Computer Use surface and preserves semantic erro
   })
   assert.deepEqual(windowCoordinateClick.structuredContent, {
     command: "click",
-    args: ["click", "--coords", "10,20", "--window-id", "4242", "--json"],
+    args: ["click", "--at", "10,20", "--window-id", "4242", "--foreground", "--json"],
   })
 
   const windowCoordinateDrag = await connected.client.callTool({
@@ -780,7 +780,7 @@ test("exposes a stable Peekaboo Computer Use surface and preserves semantic erro
   })
   assert.deepEqual(windowCoordinateDrag.structuredContent, {
     command: "drag",
-    args: ["drag", "--snapshot", "snapshot-42", "--from-coords", "60,95", "--to-coords", "80,115", "--window-id", "4242", "--json"],
+    args: ["drag", "--snapshot", "snapshot-42", "--from", "10,20", "--to", "30,40", "--window-id", "4242", "--foreground", "--json"],
   })
 
   const screenState = await connected.client.callTool({
@@ -796,7 +796,7 @@ test("exposes a stable Peekaboo Computer Use surface and preserves semantic erro
   })
   assert.deepEqual(screenCoordinateClick.structuredContent, {
     command: "click",
-    args: ["click", "--coords", "1090,1620", "--global-coords", "--foreground", "--json"],
+    args: ["click", "--at", "1090,1620", "--global", "--foreground", "--json"],
   })
 
   const forwardingCases = [
@@ -825,7 +825,7 @@ test("exposes a stable Peekaboo Computer Use surface and preserves semantic erro
     {
       name: "computer_hotkey",
       arguments: { app: "Finder", keys: ["cmd", "shift", "g"] },
-      expected: ["hotkey", "--keys", "cmd,shift,g", "--app", "Finder", "--json"],
+      expected: ["press", "cmd+shift+g", "--app", "Finder", "--json"],
     },
     {
       name: "computer_scroll",
@@ -836,7 +836,7 @@ test("exposes a stable Peekaboo Computer Use surface and preserves semantic erro
         amount: 3,
         smooth: true,
       },
-      expected: ["scroll", "--direction", "down", "--amount", "3", "--on", "B1", "--snapshot", "snapshot-42", "--smooth", "--json"],
+      expected: ["scroll", "--direction", "down", "--amount", "3", "--on", "B1", "--snapshot", "snapshot-42", "--smooth", "--foreground", "--json"],
     },
     {
       name: "computer_app",
@@ -845,7 +845,7 @@ test("exposes a stable Peekaboo Computer Use surface and preserves semantic erro
         app: "TextEdit",
         open: ["/tmp/note.txt"],
       },
-      expected: ["app", "launch", "TextEdit", "--wait-until-ready", "--open", "/tmp/note.txt", "--json"],
+      expected: ["app", "launch", "TextEdit", "--wait-ready", "--open", "/tmp/note.txt", "--json"],
     },
     {
       name: "computer_window",

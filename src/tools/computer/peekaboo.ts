@@ -39,6 +39,8 @@ export interface PeekabooSnapshotTarget {
   kind?: string
   app?: string
   windowId?: number
+  windowTitle?: string
+  screenIndex?: number
   bounds?: {
     x: number
     y: number
@@ -144,12 +146,15 @@ export class PeekabooClient {
       }
 
       const screenCapture = target?.kind?.toLowerCase().includes("screen") || optionValue(args, "--mode") === "screen"
-      if (screenCapture && !target?.bounds) {
-        const screens = await this.runNow(["list", "screens"], signal)
+      if (screenCapture) {
         const screenIndex = integerOption(args, "--screen-index") ?? 0
-        const bounds = screenBounds(screens.data, screenIndex)
-        if (bounds) {
-          target = { ...target, kind: target?.kind ?? "screen", bounds }
+        target = { ...target, kind: target?.kind ?? "screen", screenIndex }
+        if (!target.bounds) {
+          const screens = await this.runNow(["screen", "list"], signal)
+          const bounds = screenBounds(screens.data, screenIndex)
+          if (bounds) {
+            target = { ...target, bounds }
+          }
         }
       }
       if (snapshotId && target) this.rememberSnapshot(snapshotId, target)
@@ -302,12 +307,14 @@ function observationTarget(data: Record<string, unknown> | undefined): PeekabooS
     numberValue(stateSnapshot?.frontmostWindowID) ??
     numberValue(stateSnapshot?.frontmost_window_id)
   const app = stringValue(data.application_name)
+  const windowTitle = stringValue(data.window_title)
 
-  if (!kind && !windowId && !app && !bounds) return undefined
+  if (!kind && !windowId && !app && !windowTitle && !bounds) return undefined
   return {
     ...(kind ? { kind } : {}),
     ...(app ? { app } : {}),
     ...(windowId ? { windowId } : {}),
+    ...(windowTitle ? { windowTitle } : {}),
     ...(bounds ? { bounds } : {}),
   }
 }

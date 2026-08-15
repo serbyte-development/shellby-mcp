@@ -65,7 +65,7 @@ export function registerComputerUseTools(server: McpServer, peekaboo: PeekabooCl
       } else if (kind === "windows") {
         args = ["window", "list", "--app", app!]
       } else if (kind === "screens") {
-        args = ["list", "screens"]
+        args = ["screen", "list"]
       } else {
         args = ["permissions", "status", "--all-sources"]
       }
@@ -147,20 +147,11 @@ export function registerComputerUseTools(server: McpServer, peekaboo: PeekabooCl
     },
     async ({ snapshot_id, max_depth, max_elements, max_children }, ctx) => {
       try {
-        const result = await peekaboo.run(
-          [
-            "inspect-ui",
-            "--snapshot",
-            snapshot_id,
-            "--max-depth",
-            String(max_depth),
-            "--max-elements",
-            String(max_elements),
-            "--max-children",
-            String(max_children),
-          ],
-          ctx.mcpReq.signal
-        )
+        const target = requireSnapshotTarget(peekaboo, snapshot_id)
+        const args = ["see"]
+        addObservationTargetArgs(args, target)
+        args.push("--tree", "--no-screenshot", "--depth", String(max_depth), "--max-elements", String(max_elements), "--max-children", String(max_children))
+        const result = await peekaboo.run(args, ctx.mcpReq.signal)
         return inspectionResult(result)
       } catch (error) {
         return peekabooToolError(error)
@@ -229,11 +220,11 @@ export function registerComputerUseTools(server: McpServer, peekaboo: PeekabooCl
         try {
           const target = requireSnapshotTarget(peekaboo, input.snapshot_id)
           const coordinates = clickCoordinates(target, input.x!, input.y!)
-          args.push("--coords", `${coordinates.x},${coordinates.y}`)
+          args.push("--at", `${coordinates.x},${coordinates.y}`)
           addSnapshotTargetArgs(args, target)
+          forceForeground = true
           if (coordinates.global) {
-            args.push("--global-coords")
-            forceForeground = true
+            args.push("--global")
           }
         } catch (error) {
           return peekabooToolError(error)
@@ -334,7 +325,7 @@ export function registerComputerUseTools(server: McpServer, peekaboo: PeekabooCl
       _meta: MCP_CONFIG.toolMeta,
     },
     async (input, ctx) => {
-      const args = ["hotkey", "--keys", input.keys.join(",")]
+      const args = ["press", input.keys.join("+")]
       addTargetArgs(args, input)
       if (input.foreground) args.push("--foreground")
       return callPeekaboo(peekaboo, args, ctx.mcpReq.signal, "Shortcut completed.")
@@ -378,6 +369,7 @@ export function registerComputerUseTools(server: McpServer, peekaboo: PeekabooCl
       if (input.element_id) args.push("--on", input.element_id)
       addTargetArgs(args, input)
       if (input.smooth) args.push("--smooth")
+      if (!input.element_id || input.smooth) args.push("--foreground")
       return callPeekaboo(peekaboo, args, ctx.mcpReq.signal, "Scroll completed.")
     }
   )
@@ -426,6 +418,7 @@ export function registerComputerUseTools(server: McpServer, peekaboo: PeekabooCl
       if (input.duration_ms !== undefined) args.push("--duration", String(input.duration_ms))
       if (input.steps !== undefined) args.push("--steps", String(input.steps))
       if (input.modifiers?.length) args.push("--modifiers", input.modifiers.join(","))
+      args.push("--foreground")
       return callPeekaboo(peekaboo, args, ctx.mcpReq.signal, "Drag completed.")
     }
   )
@@ -565,8 +558,8 @@ function addTargetArgs(args: string[], target: { app?: string; window_id?: numbe
 function addDragPointArgs(args: string[], side: "from" | "to", point: { element_id: string } | { x: number; y: number }, target: PeekabooSnapshotTarget): void {
   if ("element_id" in point) args.push(`--${side}`, point.element_id)
   else {
-    const coordinates = globalSnapshotCoordinates(target, point.x, point.y)
-    args.push(`--${side}-coords`, `${coordinates.x},${coordinates.y}`)
+    const coordinates = clickCoordinates(target, point.x, point.y)
+    args.push(`--${side}`, `${coordinates.x},${coordinates.y}`)
   }
 }
 
@@ -590,13 +583,6 @@ function clickCoordinates(target: PeekabooSnapshotTarget, x: number, y: number):
   }
 }
 
-function globalSnapshotCoordinates(target: PeekabooSnapshotTarget, x: number, y: number): { x: number; y: number } {
-  if (!target.bounds) {
-    throw new PeekabooError("SNAPSHOT_BOUNDS_MISSING", "The observation bounds are unavailable. Call computer_observe again.")
-  }
-  return { x: x + target.bounds.x, y: y + target.bounds.y }
-}
-
 function addSnapshotTargetArgs(args: string[], target: PeekabooSnapshotTarget): void {
   const screenCapture = target.kind?.toLowerCase().includes("screen") ?? false
   if (screenCapture) return
@@ -607,6 +593,21 @@ function addSnapshotTargetArgs(args: string[], target: PeekabooSnapshotTarget): 
   }
 }
 
+function addObservationTargetArgs(args: string[], target: PeekabooSnapshotTarget): void {
+  const screenCapture = target.kind?.toLowerCase().includes("screen") ?? false
+  if (screenCapture) {
+    args.push("--mode", "screen", "--screen-index", String(target.screenIndex ?? 0))
+  } else if (target.app && target.windowTitle) {
+    args.push("--app", target.app, "--window-title", target.windowTitle)
+  } else if (target.windowId !== undefined) {
+    args.push("--window-id", String(target.windowId))
+  } else if (target.app) {
+    args.push("--app", target.app)
+  } else {
+    args.push("--mode", "frontmost")
+  }
+}
+
 function appCommandArgs(
   action: "launch" | "switch" | "quit" | "relaunch" | "hide" | "unhide",
   app: string,
@@ -614,7 +615,7 @@ function appCommandArgs(
   force: boolean
 ): string[] {
   if (action === "launch") {
-    const args = ["app", "launch", app, "--wait-until-ready"]
+    const args = ["app", "launch", app, "--wait-ready"]
     for (const item of open ?? []) args.push("--open", item)
     return args
   }
@@ -684,9 +685,22 @@ function inspectionResult(result: PeekabooResult): CallToolResult {
         .map((item) => stringValue(item?.text))
         .find((value) => value !== undefined)
     : undefined
+  const elements = Array.isArray(data?.ui_elements)
+    ? data.ui_elements
+        .map(asRecord)
+        .filter((item): item is Record<string, unknown> => item !== undefined)
+        .map((item) => {
+          const id = stringValue(item.id)
+          const role = stringValue(item.role) ?? stringValue(item.role_description) ?? "element"
+          const label = stringValue(item.label) ?? stringValue(item.title) ?? stringValue(item.value)
+          return `${id ? `[${id}] ` : ""}${role}${label ? ` ${JSON.stringify(label)}` : ""}`
+        })
+        .filter(Boolean)
+    : []
   const text =
     stringValue(data?.text) ??
     embeddedText ??
+    (elements.length ? elements.join("\n") : undefined) ??
     (typeof result.summary === "string" ? result.summary : undefined) ??
     result.messages?.find((message) => message.trim()) ??
     "Inspected accessible UI."

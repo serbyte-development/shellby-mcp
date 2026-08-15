@@ -1,6 +1,6 @@
 # Architecture Map
 
-Verified 2026-08-13.
+Verified 2026-08-14.
 
 ## Layers
 
@@ -31,7 +31,7 @@ Verified 2026-08-13.
 3. Shell handlers resolve `shell_id` through the shared shell manager. `skill_list` and `skill_load` read `<workspace>/skills` directly on each call, so catalog changes require no server rebuild. `subagent_start` resolves caller-named `agent_id` through the shared process-level subagent module. `apply_patch` bypasses the shell manager and directly spawns the prepared Codex executable. All request-scoped Computer Use handlers share the same process-level `PeekabooClient`.
 4. The adapter serializes Computer Use calls and invokes `peekaboo` with `execFile`, exact argv, `--json`, a 30-second timeout, and a 4 MiB process-output cap. It checks the JSON `success` field and does not retry failures (`src/tools/computer/peekaboo.ts`).
 5. Each `PersistentShellSession` writes normal commands into its own child login shell and detects completion through randomized control markers. For a parallel `*** Run` batch it first captures the shell's exported environment/cwd, then `parallel-runner.ts` schedules isolated short-lived shell children under the shared four-process ceiling; the outer session retains per-run state and paged grouped output.
-6. `computer_observe` reads Peekaboo's temporary PNG and encodes it as a same-dimension quality-65 JPEG while returning only essential snapshot metadata. `computer_inspect` separately invokes bounded `inspect-ui` text retrieval for a snapshot when AX is actually needed. The adapter retains at most 64 snapshot-to-capture-target mappings, and coordinate actions resolve through that mapping before reaching Peekaboo (`src/tools/computer/peekaboo.ts`, `src/tools/computer/computer-tools.ts`).
+6. `computer_observe` reads Peekaboo's temporary PNG and encodes it as a same-dimension quality-65 JPEG while returning only essential snapshot metadata. `computer_inspect` reuses the retained observation target and invokes Peekaboo v4 `see --tree --no-screenshot` with bounded AX traversal limits, then renders the returned elements as compact text. The adapter retains at most 64 snapshot-to-capture-target mappings, including display index for screen observations, and coordinate actions resolve through that mapping before reaching Peekaboo (`src/tools/computer/peekaboo.ts`, `src/tools/computer/computer-tools.ts`).
 
 The named shell is the persistence boundary: callers using the same `shell_id` share state across independent MCP clients, while different IDs have independent cwd, environment, transcript, command records, reset lifecycle, and foreground-command lock (`src/server/http-server.ts`, `src/tools/shell/session-manager.ts`, `test/mcp-integration.test.ts`).
 
