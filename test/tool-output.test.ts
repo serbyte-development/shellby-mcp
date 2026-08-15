@@ -1,6 +1,8 @@
 import assert from "node:assert/strict"
+import { readFile } from "node:fs/promises"
 import test from "node:test"
 
+import { extractConversationMessages } from "../src/tools/subagent/chatgpt-subagent-browser.js"
 import { compactToolResult, renderStructuredContent } from "../src/server/tool-output.js"
 import { countTokens } from "../src/tokenizer.js"
 
@@ -77,6 +79,25 @@ test("compact result preserves existing content and removes structuredContent", 
 
   assert.equal(compact.structuredContent, undefined)
   assert.deepEqual(compact.content, [{ type: "text", text: "Command finished.\n\nstatus=completed output=hello" }])
+})
+
+test("subagent formatter preserves fenced Markdown from the frozen real ChatGPT fixture", async () => {
+  const payload = JSON.parse(
+    await readFile(new URL("./fixtures/chatgpt-live-fixture/conversation.json", import.meta.url), "utf8")
+  ) as unknown
+  const assistant = extractConversationMessages(payload).filter((message) => message.role === "assistant").at(-1)
+  assert.ok(assistant)
+
+  const rendered = renderStructuredContent({
+    turns: [{ turn_id: "fixture_turn_1", status: "completed", response: assistant.text }],
+  })
+
+  assert.ok(rendered.includes("## Live Fixture"))
+  assert.ok(rendered.includes("```md"))
+  assert.ok(rendered.includes("```ts"))
+  assert.ok(rendered.includes("const answer: number = 42;"))
+  assert.ok(rendered.includes("| fixture | ok |"))
+  assert.ok(rendered.includes("CONTEXT_KEY:"))
 })
 
 const longSkillDescription =

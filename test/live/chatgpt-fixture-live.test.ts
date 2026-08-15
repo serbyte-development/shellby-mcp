@@ -82,6 +82,26 @@ test(
     assert.ok(rawServerContentParts(livePayload).includes(expectedResponse), "live content.parts must contain the exact Markdown response")
     t.diagnostic("Live extracted conversation messages match the frozen parser fixture exactly")
 
+    const reloadConversationResponse = session.waitForEvent<CdpResponseReceived>(
+      "Network.responseReceived",
+      (params) => params.response.url === FIXTURE_API_URL && params.response.status === 200,
+      10_000
+    )
+    await session.call("Page.reload")
+    const reloadResponseReceived = await reloadConversationResponse
+    const reloadResponseBody = await getResponseBodyWithRetry(session, reloadResponseReceived.requestId)
+    const reloadBodyText = reloadResponseBody.base64Encoded
+      ? Buffer.from(reloadResponseBody.body, "base64").toString("utf8")
+      : reloadResponseBody.body
+    const reloadPayload = JSON.parse(reloadBodyText) as unknown
+    assert.deepEqual(
+      extractConversationMessages(reloadPayload),
+      frozenMessages,
+      "ChatGPT reload must emit the same exact conversation branch used by recovery"
+    )
+    assert.ok(rawServerContentParts(reloadPayload).includes(expectedResponse), "reload content.parts must preserve the exact Markdown response")
+    t.diagnostic("ChatGPT reload emits a successful conversation JSON response with exact Markdown content.parts")
+
     await waitForFixtureDom(session)
     const dom = await session.evaluate<DomSnapshot>(`(() => {
       const messages = Array.from(document.querySelectorAll('[data-message-author-role="assistant"]'));

@@ -188,6 +188,10 @@ test("poll waits for a first-turn ChatGPT URL to become a stable conversation be
     close: async () => undefined,
     locator: () => ({
       evaluateAll: async () => [],
+      first: () => ({
+        count: async () => 0,
+        isVisible: async () => false,
+      }),
     }),
   }
   const tracker = {
@@ -248,17 +252,38 @@ test("poll waits for a first-turn ChatGPT URL to become a stable conversation be
 
 test("poll reconciles a completed DOM response and releases the generation slot", async () => {
   const module = createModule()
+  let reloadCalls = 0
+  const renderedDomText = [
+    "Live Fixture",
+    "Paragraph with inline code and Unicode: café → ✓",
+    "alpha",
+    "beta",
+    "CONTEXT_KEY: LIVE_CTX_domfallback",
+    "const answer: number = 42;",
+    "key value fixture ok",
+  ].join("\n")
   const page = {
     isClosed: () => false,
     url: () => "https://chatgpt.com/c/conversation-1",
     close: async () => undefined,
+    evaluate: async () => "COMPLETE",
+    reload: async () => {
+      reloadCalls += 1
+    },
+    waitForResponse: async () => ({
+      json: async () => ({ current_node: "missing", mapping: {} }),
+    }),
+    getByText: () => ({
+      first: () => ({ isVisible: async () => false }),
+    }),
     locator: (selector: string) => {
+      if (selector === "[data-message-author-role]") return { count: async () => 1 }
       if (selector === '[data-message-author-role="assistant"]') {
         return {
           evaluateAll: async () => [
             {
               key: "message-1",
-              text: "recovered answer",
+              text: renderedDomText,
             },
           ],
         }
@@ -291,6 +316,7 @@ test("poll reconciles a completed DOM response and releases the generation slot"
     turnId: "reconcile-agent_turn_1",
     agentId: state.agentId,
     status: "running" as "running" | "completed" | "failed",
+    serverStreamingObserved: true,
     activity: "Generating response" as const,
     lastActivityAt: Date.now() - 10_000,
     conversationId: state.conversationId,
@@ -318,7 +344,15 @@ test("poll reconciles a completed DOM response and releases the generation slot"
   const result = await module.poll(turn.turnId)
 
   assert.equal(result.status, "completed")
-  assert.equal(result.response, "recovered answer")
+  assert.ok(result.response?.includes("Live Fixture"))
+  assert.ok(result.response?.includes("café → ✓"))
+  assert.ok(result.response?.includes("alpha"))
+  assert.ok(result.response?.includes("beta"))
+  assert.ok(result.response?.includes("LIVE_CTX_domfallback"))
+  assert.ok(result.response?.includes("const answer: number = 42;"))
+  assert.ok(result.response?.includes("fixture ok"))
+  assert.ok(!result.response?.includes("## Live Fixture"), "DOM fallback must not require Markdown source markers")
+  assert.equal(reloadCalls, 1)
   assert.equal(internals.activeTurnsByAgent.has(state.agentId), false)
   assert.equal(internals.activeAgentIds.has(state.agentId), false)
   assert.equal(internals.activeGenerationCount, 0)
@@ -327,12 +361,57 @@ test("poll reconciles a completed DOM response and releases the generation slot"
 
 test("poll completes when the server says complete but the managed tab is stuck showing the stop button", async () => {
   const module = createModule()
+  let reloadCalls = 0
+  let reloaded = false
   const page = {
     isClosed: () => false,
     url: () => "https://chatgpt.com/c/conversation-1",
     close: async () => undefined,
     evaluate: async () => "COMPLETE",
+    reload: async () => {
+      reloadCalls += 1
+      reloaded = true
+    },
+    waitForResponse: async () => ({
+      json: async () => ({
+        current_node: "assistant-1",
+        mapping: {
+          user: {
+            id: "user-1",
+            parent: null,
+            children: ["assistant-1"],
+            message: {
+              id: "user-1",
+              author: { role: "user" },
+              content: { parts: ["review"] },
+              status: "finished_successfully",
+              end_turn: null,
+              metadata: {},
+              recipient: "all",
+            },
+          },
+          assistant: {
+            id: "assistant-1",
+            parent: "user-1",
+            children: [],
+            message: {
+              id: "assistant-1",
+              author: { role: "assistant" },
+              content: { parts: ["server-complete answer"] },
+              status: "finished_successfully",
+              end_turn: true,
+              metadata: { is_complete: true },
+              recipient: "all",
+            },
+          },
+        },
+      }),
+    }),
+    getByText: () => ({
+      first: () => ({ isVisible: async () => false }),
+    }),
     locator: (selector: string) => {
+      if (selector === "[data-message-author-role]") return { count: async () => 1 }
       if (selector === '[data-message-author-role="assistant"]') {
         return {
           evaluateAll: async () => [
@@ -353,7 +432,7 @@ test("poll completes when the server says complete but the managed tab is stuck 
     },
   }
   const tracker = {
-    findFinalResponse: () => undefined,
+    findFinalResponse: () => (reloaded ? { message: { text: "server-complete answer" } } : undefined),
     setActivityListener() {},
     setUpdateListener() {},
     dispose() {},
@@ -372,6 +451,7 @@ test("poll completes when the server says complete but the managed tab is stuck 
     turnId: "stale-stream-agent_turn_1",
     agentId: state.agentId,
     status: "running" as "running" | "completed" | "failed",
+    serverStreamingObserved: true,
     activity: "Generating response" as const,
     lastActivityAt: Date.now() - 10_000,
     tracking: {
@@ -398,6 +478,7 @@ test("poll completes when the server says complete but the managed tab is stuck 
 
   assert.equal(result.status, "completed")
   assert.equal(result.response, "server-complete answer")
+  assert.equal(reloadCalls, 1)
   assert.equal(internals.activeTurnsByAgent.has(state.agentId), false)
   assert.equal(internals.activeAgentIds.has(state.agentId), false)
   assert.equal(internals.activeGenerationCount, 0)
@@ -481,6 +562,201 @@ test("poll keeps waiting when the server is streaming even if the stop button is
   await module.dispose()
 })
 
+test("poll keeps waiting when completion state is unknown even if rendered DOM says Thinking", async () => {
+  const module = createModule()
+  let reloadCalls = 0
+  const page = {
+    isClosed: () => false,
+    url: () => "https://chatgpt.com/c/conversation-1",
+    close: async () => undefined,
+    evaluate: async () => undefined,
+    reload: async () => {
+      reloadCalls += 1
+    },
+    locator: (selector: string) => {
+      if (selector === '[data-message-author-role="assistant"]') {
+        return {
+          evaluateAll: async () => [
+            {
+              key: "message-1",
+              text: "Thinking",
+            },
+          ],
+        }
+      }
+      return {
+        first: () => ({
+          count: async () => 0,
+          isVisible: async () => false,
+        }),
+      }
+    },
+  }
+  const tracker = {
+    findFinalResponse: () => undefined,
+    setActivityListener() {},
+    setUpdateListener() {},
+    dispose() {},
+  }
+  const state = {
+    agentId: "unknown-completion-agent",
+    page,
+    tracker,
+    hasSubmittedTurn: true,
+    conversationId: "conversation-1",
+    conversationUrl: "https://chatgpt.com/c/conversation-1",
+    lastUsedAt: Date.now(),
+    turnCount: 1,
+  }
+  const turn = {
+    turnId: "unknown-completion-agent_turn_1",
+    agentId: state.agentId,
+    status: "running" as "running" | "completed" | "failed",
+    activity: "Generating response" as const,
+    lastActivityAt: Date.now(),
+    tracking: {
+      baselineNetworkIds: new Set<string>(),
+      baselineDom: [],
+      prompt: "review",
+      sentAtSeconds: Date.now() / 1000 - 5,
+    },
+  }
+  const internals = module as unknown as {
+    agents: Map<string, typeof state>
+    turns: Map<string, typeof turn>
+    activeTurnsByAgent: Map<string, string>
+    activeAgentIds: Set<string>
+    activeGenerationCount: number
+  }
+  internals.agents.set(state.agentId, state)
+  internals.turns.set(turn.turnId, turn)
+  internals.activeTurnsByAgent.set(state.agentId, turn.turnId)
+  internals.activeAgentIds.add(state.agentId)
+  internals.activeGenerationCount = 1
+
+  assert.equal((await module.poll(turn.turnId)).status, "running")
+  assert.equal((await module.poll(turn.turnId)).status, "running")
+  assert.equal(reloadCalls, 0)
+  assert.equal(internals.activeTurnsByAgent.get(state.agentId), turn.turnId)
+  assert.equal(internals.activeGenerationCount, 1)
+  assert.deepEqual(module.drainEvents(), [])
+  await module.dispose()
+})
+
+test("poll ignores stale COMPLETE while the current follow-up is visibly generating", async () => {
+  const module = createModule()
+  let reloadCalls = 0
+  const page = {
+    isClosed: () => false,
+    url: () => "https://chatgpt.com/c/conversation-1",
+    close: async () => undefined,
+    evaluate: async () => "COMPLETE",
+    reload: async () => {
+      reloadCalls += 1
+    },
+    locator: (selector: string) => {
+      if (selector === '[data-message-author-role="assistant"]') {
+        return {
+          evaluateAll: async () => [
+            {
+              key: "message-1",
+              text: "Thinking",
+            },
+          ],
+        }
+      }
+      const isStopButton = selector === 'button[data-testid="stop-button"]'
+      return {
+        first: () => ({
+          count: async () => (isStopButton ? 1 : 0),
+          isVisible: async () => isStopButton,
+        }),
+      }
+    },
+  }
+  const tracker = {
+    findFinalResponse: () => undefined,
+    setActivityListener() {},
+    setUpdateListener() {},
+    dispose() {},
+  }
+  const state = {
+    agentId: "stale-complete-follow-up",
+    page,
+    tracker,
+    hasSubmittedTurn: true,
+    conversationId: "conversation-1",
+    conversationUrl: "https://chatgpt.com/c/conversation-1",
+    lastUsedAt: Date.now(),
+    turnCount: 2,
+  }
+  const turn = {
+    turnId: "stale-complete-follow-up_turn_2",
+    agentId: state.agentId,
+    status: "running" as "running" | "completed" | "failed",
+    activity: "Generating response" as const,
+    lastActivityAt: Date.now(),
+    tracking: {
+      baselineNetworkIds: new Set<string>(),
+      baselineDom: [],
+      prompt: "follow up",
+      sentAtSeconds: Date.now() / 1000 - 1,
+    },
+  }
+  const internals = module as unknown as {
+    agents: Map<string, typeof state>
+    turns: Map<string, typeof turn>
+    activeTurnsByAgent: Map<string, string>
+    activeAgentIds: Set<string>
+    activeGenerationCount: number
+  }
+  internals.agents.set(state.agentId, state)
+  internals.turns.set(turn.turnId, turn)
+  internals.activeTurnsByAgent.set(state.agentId, turn.turnId)
+  internals.activeAgentIds.add(state.agentId)
+  internals.activeGenerationCount = 1
+
+  assert.equal((await module.poll(turn.turnId)).status, "running")
+  assert.equal((await module.poll(turn.turnId)).status, "running")
+  assert.equal(reloadCalls, 0)
+  assert.equal((turn as typeof turn & { uiGeneratingObserved?: boolean }).uiGeneratingObserved, true)
+  assert.deepEqual(module.drainEvents(), [])
+  await module.dispose()
+})
+
+test("next-turn submission ignores stale prior-turn generating UI without reloading", async () => {
+  const module = createModule()
+  let reloadCalls = 0
+  const page = {
+    locator: (selector: string) => {
+      const isStopButton = selector === 'button[data-testid="stop-button"]'
+      return {
+        first: () => ({
+          count: async () => (isStopButton ? 1 : 0),
+          isVisible: async () => isStopButton,
+        }),
+      }
+    },
+    evaluate: async () => "COMPLETE",
+    reload: async () => {
+      reloadCalls += 1
+    },
+  }
+  const state = {
+    agentId: "stale-ui-between-turns",
+    page,
+    conversationId: "conversation-1",
+  }
+  const internals = module as unknown as {
+    assertReadyForSubmission(value: typeof state): Promise<void>
+  }
+
+  await internals.assertReadyForSubmission(state)
+
+  assert.equal(reloadCalls, 0)
+  await module.dispose()
+})
+
 test("submitted turn shares one conversation recovery attempt before a later failure becomes terminal", async () => {
   const module = createModule()
   const state = {
@@ -548,6 +824,118 @@ test("submitted turn shares one conversation recovery attempt before a later fai
   assert.equal(turn.status, "failed")
   assert.equal(turn.errorCode, "subagent_failed")
   assert.equal(turn.errorMessage, "second browser observation failure")
+  await module.dispose()
+})
+
+test("catastrophic recovery reloads the existing managed page once and still prefers network output", async () => {
+  const module = createModule()
+  const networkResponse = "```ts\nconst recovered = true\n```"
+  let reloadCalls = 0
+  let reloaded = false
+  const page = {
+    isClosed: () => false,
+    url: () => "https://chatgpt.com/c/conversation-1",
+    close: async () => undefined,
+    reload: async () => {
+      reloadCalls += 1
+      reloaded = true
+    },
+    waitForResponse: async () => ({
+      json: async () => ({
+        current_node: "assistant-1",
+        mapping: {
+          user: {
+            id: "user-1",
+            parent: null,
+            children: ["assistant-1"],
+            message: {
+              id: "user-1",
+              author: { role: "user" },
+              content: { parts: ["review"] },
+              status: "finished_successfully",
+              end_turn: null,
+              metadata: {},
+              recipient: "all",
+            },
+          },
+          assistant: {
+            id: "assistant-1",
+            parent: "user-1",
+            children: [],
+            message: {
+              id: "assistant-1",
+              author: { role: "assistant" },
+              content: { parts: [networkResponse] },
+              status: "finished_successfully",
+              end_turn: true,
+              metadata: { is_complete: true },
+              recipient: "all",
+            },
+          },
+        },
+      }),
+    }),
+    getByText: () => ({
+      first: () => ({ isVisible: async () => false }),
+    }),
+    locator: (selector: string) => {
+      if (selector === "[data-message-author-role]") return { count: async () => 1 }
+      if (selector === '[data-message-author-role="assistant"]') return { evaluateAll: async () => [] }
+      return {
+        first: () => ({
+          count: async () => 0,
+          isVisible: async () => false,
+        }),
+      }
+    },
+  }
+  const tracker = {
+    findFinalResponse: () => (reloaded ? { message: { text: networkResponse } } : undefined),
+    setActivityListener() {},
+    setUpdateListener() {},
+    dispose() {},
+  }
+  const state = {
+    agentId: "catastrophic-recovery-agent",
+    page,
+    tracker,
+    hasSubmittedTurn: true,
+    conversationId: "conversation-1",
+    conversationUrl: "https://chatgpt.com/c/conversation-1",
+    lastUsedAt: Date.now(),
+    turnCount: 1,
+  }
+  const turn = {
+    turnId: "catastrophic-recovery-agent_turn_1",
+    agentId: state.agentId,
+    status: "running" as "running" | "completed" | "failed",
+    activity: "Generating response" as const,
+    lastActivityAt: Date.now(),
+    tracking: {
+      baselineNetworkIds: new Set<string>(),
+      baselineDom: [],
+      prompt: "review",
+      sentAtSeconds: Date.now() / 1000 - 5,
+    },
+  }
+  const internals = module as unknown as {
+    agents: Map<string, typeof state>
+    activeTurnsByAgent: Map<string, string>
+    activeAgentIds: Set<string>
+    activeGenerationCount: number
+    recoverSubmittedTurn(value: typeof turn, agent: typeof state): Promise<boolean>
+  }
+  internals.agents.set(state.agentId, state)
+  internals.activeTurnsByAgent.set(state.agentId, turn.turnId)
+  internals.activeAgentIds.add(state.agentId)
+  internals.activeGenerationCount = 1
+
+  await internals.recoverSubmittedTurn(turn, state)
+
+  assert.equal(reloadCalls, 1)
+  assert.equal(turn.status, "completed")
+  assert.equal((turn as typeof turn & { response?: string }).response, networkResponse)
+  assert.deepEqual(module.drainEvents(), [`agent_finished:${state.agentId}:${turn.turnId}`])
   await module.dispose()
 })
 
@@ -632,6 +1020,94 @@ test("passive network completion finishes a turn, releases capacity, and queues 
   await module.dispose()
 })
 
+test("background watcher waits through unknown and streaming states until a later poll has final evidence", async () => {
+  const module = createModule()
+  let streamStatusReads = 0
+  let reloadCalls = 0
+  const page = {
+    evaluate: async () => {
+      streamStatusReads += 1
+      if (streamStatusReads === 1) return undefined
+      if (streamStatusReads === 2) return "IS_STREAMING"
+      return "COMPLETE"
+    },
+    reload: async () => {
+      reloadCalls += 1
+    },
+    locator: (selector: string) => {
+      if (selector === '[data-message-author-role="assistant"]') {
+        return {
+          evaluateAll: async () => [
+            {
+              key: "message-1",
+              text: "Thinking",
+            },
+          ],
+        }
+      }
+      return {
+        first: () => ({
+          count: async () => 0,
+          isVisible: async () => false,
+        }),
+      }
+    },
+  }
+  const finalResponse = "actual final answer"
+  const state = {
+    agentId: "unknown-then-complete-agent",
+    page,
+    tracker: {
+      findFinalResponse: () =>
+        streamStatusReads >= 3
+          ? {
+              message: { text: finalResponse },
+            }
+          : undefined,
+      setActivityListener() {},
+      setUpdateListener() {},
+      dispose() {},
+    },
+    hasSubmittedTurn: true,
+    conversationId: "conversation-1",
+    conversationUrl: "https://chatgpt.com/c/conversation-1",
+    lastUsedAt: Date.now(),
+    turnCount: 1,
+  }
+  const turn = {
+    turnId: "unknown-then-complete-agent_turn_1",
+    agentId: state.agentId,
+    status: "running" as "running" | "completed" | "failed",
+    activity: "Generating response" as const,
+    lastActivityAt: Date.now(),
+    tracking: {
+      baselineNetworkIds: new Set<string>(),
+      baselineDom: [],
+      prompt: "review",
+      sentAtSeconds: Date.now() / 1000 - 5,
+    },
+  }
+  const internals = module as unknown as {
+    watchTurnCompletion(value: typeof turn, agent: typeof state): Promise<void>
+    activeTurnsByAgent: Map<string, string>
+    activeAgentIds: Set<string>
+    activeGenerationCount: number
+  }
+  internals.activeTurnsByAgent.set(state.agentId, turn.turnId)
+  internals.activeAgentIds.add(state.agentId)
+  internals.activeGenerationCount = 1
+
+  await internals.watchTurnCompletion(turn, state)
+
+  assert.equal(streamStatusReads, 3)
+  assert.equal(reloadCalls, 0)
+  assert.equal(turn.status, "completed")
+  assert.equal((turn as typeof turn & { response?: string }).response, finalResponse)
+  assert.notEqual((turn as typeof turn & { response?: string }).response, "Thinking")
+  assert.deepEqual(module.drainEvents(), [`agent_finished:${state.agentId}:${turn.turnId}`])
+  await module.dispose()
+})
+
 test("background completion watcher finishes a server-complete turn even when the stop button is stale", async () => {
   const module = createModule()
   const page = {
@@ -675,6 +1151,7 @@ test("background completion watcher finishes a server-complete turn even when th
     turnId: "background-complete-agent_turn_1",
     agentId: state.agentId,
     status: "running" as "running" | "completed" | "failed",
+    serverStreamingObserved: true,
     activity: "Generating response" as const,
     lastActivityAt: Date.now(),
     tracking: {
@@ -753,6 +1230,7 @@ test("background completion watcher prefers delayed network response over render
     turnId: "network-authority-agent_turn_1",
     agentId: state.agentId,
     status: "running" as "running" | "completed" | "failed",
+    serverStreamingObserved: true,
     activity: "Generating response" as const,
     lastActivityAt: Date.now(),
     tracking: {
@@ -777,6 +1255,103 @@ test("background completion watcher prefers delayed network response over render
   assert.equal(networkReads, 2)
   assert.equal(turn.status, "completed")
   assert.equal((turn as typeof turn & { response?: string }).response, networkResponse)
+  assert.deepEqual(module.drainEvents(), [`agent_finished:${state.agentId}:${turn.turnId}`])
+  await module.dispose()
+})
+
+test("background completion watcher falls back to rendered DOM text after passive network misses", async () => {
+  const module = createModule()
+  let evaluateCalls = 0
+  let networkReads = 0
+  let reloadCalls = 0
+  const domResponse = "Markdown## Findings- exact server response"
+  const page = {
+    isClosed: () => false,
+    url: () => "https://chatgpt.com/c/conversation-1",
+    close: async () => undefined,
+    evaluate: async () => {
+      evaluateCalls += 1
+      return "COMPLETE"
+    },
+    reload: async () => {
+      reloadCalls += 1
+    },
+    waitForResponse: async () => ({
+      json: async () => ({ current_node: "missing", mapping: {} }),
+    }),
+    getByText: () => ({
+      first: () => ({ isVisible: async () => false }),
+    }),
+    locator: (selector: string) => {
+      if (selector === "[data-message-author-role]") return { count: async () => 1 }
+      if (selector === '[data-message-author-role="assistant"]') {
+        return {
+          evaluateAll: async () => [
+            {
+              key: "message-1",
+              text: domResponse,
+            },
+          ],
+        }
+      }
+      return {
+        first: () => ({
+          count: async () => 0,
+          isVisible: async () => false,
+        }),
+      }
+    },
+  }
+  const state = {
+    agentId: "server-fetch-authority-agent",
+    page,
+    tracker: {
+      findFinalResponse: () => {
+        networkReads += 1
+        return undefined
+      },
+      setActivityListener() {},
+      setUpdateListener() {},
+      dispose() {},
+    },
+    hasSubmittedTurn: true,
+    conversationId: "conversation-1",
+    conversationUrl: "https://chatgpt.com/c/conversation-1",
+    lastUsedAt: Date.now(),
+    turnCount: 1,
+  }
+  const turn = {
+    turnId: "server-fetch-authority-agent_turn_1",
+    agentId: state.agentId,
+    status: "running" as "running" | "completed" | "failed",
+    serverStreamingObserved: true,
+    activity: "Generating response" as const,
+    lastActivityAt: Date.now(),
+    tracking: {
+      baselineNetworkIds: new Set<string>(),
+      baselineDom: [],
+      prompt: "review",
+      sentAtSeconds: Date.now() / 1000 - 5,
+    },
+  }
+  const internals = module as unknown as {
+    watchTurnCompletion(value: typeof turn, agent: typeof state): Promise<void>
+    activeTurnsByAgent: Map<string, string>
+    activeAgentIds: Set<string>
+    activeGenerationCount: number
+  }
+  internals.activeTurnsByAgent.set(state.agentId, turn.turnId)
+  internals.activeAgentIds.add(state.agentId)
+  internals.activeGenerationCount = 1
+
+  await internals.watchTurnCompletion(turn, state)
+
+  assert.equal(evaluateCalls, 1)
+  assert.ok(networkReads >= 2)
+  assert.equal(reloadCalls, 1)
+  assert.equal(turn.status, "completed")
+  assert.equal((turn as typeof turn & { response?: string }).response, domResponse)
+  assert.equal((turn as typeof turn & { recoveryAttempted?: boolean }).recoveryAttempted, true)
   assert.deepEqual(module.drainEvents(), [`agent_finished:${state.agentId}:${turn.turnId}`])
   await module.dispose()
 })

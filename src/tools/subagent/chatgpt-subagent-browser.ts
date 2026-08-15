@@ -350,7 +350,7 @@ export async function loadConversationPayload(page: Page, conversationId: string
     { timeout: timeoutMs }
   )
 
-  await page.reload({ waitUntil: "domcontentloaded" })
+  await page.reload({ waitUntil: "domcontentloaded", timeout: timeoutMs }).catch(() => undefined)
   const response = await responsePromise
   return response.json()
 }
@@ -524,8 +524,7 @@ function isFinalAssistantNode(node: TrackedConversationNode): boolean {
   if (message.status !== "finished_successfully") return false
   if (!message.text) return false
   if (message.recipient && message.recipient !== "all") return false
-  if (message.endTurn === false) return false
-  return message.endTurn === true || message.isComplete === true
+  return message.endTurn === true
 }
 
 function classifyActivity(node: TrackedConversationNode): ChatGptSubagentActivity {

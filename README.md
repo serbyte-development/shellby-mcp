@@ -329,7 +329,7 @@ npm run chatgpt
 npm run test:live:subagent
 ```
 
-`test:live:fixture` never submits a prompt. It verifies the current ChatGPT conversation endpoint, exact `content.parts` Markdown, active-branch parsing, and recognizable rendered DOM structure against `test/fixtures/chatgpt-live-fixture/conversation.json`. `test:live:subagent` uses one persistent `agent_id` for two sequential generated turns and verifies completion detection, exact server/network response extraction, compact MCP output, one-shot `agent_finished` delivery, turn numbering, and conversation-context reuse. Sanitized evidence from the most recent generative run is written under ignored `test/live/artifacts/`.
+`test:live:fixture` never submits a prompt. It verifies the current ChatGPT conversation endpoint, deliberately reloads only its disposable fixture tab to prove the saved conversation still emits exact `content.parts` Markdown, checks active-branch parsing, and validates recognizable rendered DOM structure against `test/fixtures/chatgpt-live-fixture/conversation.json`. `test:live:subagent` is a black-box MCP canary: it starts the normal MCP server, uses only public `subagent_run`/`subagent_result` calls, and reuses one `agent_id` for two sequential generated turns. It does not inspect module internals, tracker state, DOM, Page objects, or conversation IDs. Turn 2 proves persistent context by recalling a random key supplied only in Turn 1. Sanitized evidence from the most recent generative run is written under ignored `test/live/artifacts/`.
 
 Format code with:
 

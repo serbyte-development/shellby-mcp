@@ -922,11 +922,73 @@
 
 ## [2026-08-15] subagents | Make network response authoritative after completion detection
 
-- Separated completion detection from answer extraction: passive network conversation content now always wins over rendered DOM text, with one one-second network retry before DOM fallback.
-- Added regressions proving fenced Markdown survives server `content.parts` extraction exactly and that a delayed network answer beats mangled rendered DOM text.
+- Separated completion detection from answer extraction: passive network conversation content now always wins over rendered DOM text, with one one-second passive retry followed by an authenticated active fetch of `/backend-api/conversation/<conversation_id>` before DOM fallback.
+- Added regressions proving fenced Markdown survives server `content.parts` extraction exactly, that a delayed passive network answer beats mangled rendered DOM text, and that the active conversation fetch wins when the passive tracker misses both reads.
 
 ## [2026-08-15] test | Add permanent read-only ChatGPT compatibility fixture
 
 - Added a sanitized frozen copy of the existing `Live Fixture Response` conversation and normal parser coverage for its exact Markdown/code response shape.
 - Added `npm run test:live:fixture`, a manual non-generative compatibility test that opens that permanent conversation in a temporary Chrome CDP target, captures the real conversation JSON response, compares it with the frozen fixture, validates `content.parts`, inspects rendered DOM structure, and closes only the temporary tab.
 - Kept the expensive generated-turn lifecycle canary separate as `npm run test:live:subagent`; neither live test is part of normal CI.
+
+## [2026-08-15] subagents | Bound active conversation recovery fetches
+
+- Added a 10-second timeout to the authenticated active `/backend-api/conversation/<conversation_id>` fetch used after passive completion-response capture misses.
+- Added regression coverage proving a stalled active fetch aborts and returns control so completion can continue to the final DOM recovery path instead of hanging indefinitely.
+
+## [2026-08-15] test | Treat DOM fallback as semantic text
+
+- Kept server/network response assertions strict about exact Markdown source while changing DOM-fallback coverage to assert preserved fixture words and meaning instead of Markdown markers that disappear when ChatGPT renders headings, lists, code, and tables as HTML.
+
+## [2026-08-15] subagents | Replace direct recovery fetch with reload capture
+
+- Replaced the direct page-context conversation fetch, which ChatGPT returned as `conversation_inaccessible`, with the already-proven reload-and-capture path that observes ChatGPT's own successful `/backend-api/conversation/<conversation_id>` request.
+- Kept the recovery window at 10 seconds, bounded both the response wait and reload, and preserved rendered DOM text as the final fallback only after passive network capture and reload-based server recovery miss.
+- Updated regressions so a mangled DOM answer loses to the exact fenced Markdown returned by the reload-captured conversation payload.
+
+## [2026-08-15] subagents | Keep normal generation passive until proven complete
+
+- Removed the completion path that treated unknown stream status plus non-generating-looking DOM text as a finished turn; unknown state now waits for the next one-second poll and never triggers reload recovery by itself.
+- Tightened tracked final-answer detection to require `end_turn: true`, preventing completed intermediate reasoning/`Thinking` nodes from being mistaken for the final assistant answer.
+- Bound conversation-wide `COMPLETE` to current-turn progress: a follow-up must first be observed streaming, or visibly generating and later stopped, before server `COMPLETE` may trigger recovery. This prevents the previous turn's stale `COMPLETE` from completing a new turn as `Thinking`.
+- Removed deliberate conversation reloads from the two-turn generative live canary so it now exercises the same persistent-tab lifecycle as ordinary `subagent_run`; deliberate reload/recovery validation remains in the permanent read-only fixture.
+
+## [2026-08-15] subagents | Remove stale inter-turn reload
+
+- Removed the remaining normal-path reload before follow-up submission: if the prior turn is server-complete but ChatGPT still renders a stale generating control, `subagent_run` now continues on the same managed page instead of refreshing it.
+- Added a regression proving stale prior-turn `COMPLETE` plus stale generating UI causes zero reloads before the next turn; full deterministic validation now passes 176 tests plus type-check, lint, and diff-check.
+- This supersedes the 2026-08-14 stale-UI note that prescribed reloading before a follow-up; reload remains recovery-only after current-turn completion is positively established.
+
+## [2026-08-15] subagents | Make live canary black-box and stop reloading managed tabs
+
+- Reworked `test:live:subagent` to start the normal MCP server and interact only through public `subagent_run` / `subagent_result`; it no longer inspects module maps, tracker state, DOM, Page identity, or conversation IDs.
+- Replaced managed-page reload recovery with a temporary read-only ChatGPT recovery page that captures `/backend-api/conversation/<id>` and closes immediately, preserving the persistent agent tab across submission, polling, recovery, and follow-up turns.
+- Production source now contains no `page.reload()` call. Deliberate reload testing remains isolated to the disposable saved-fixture compatibility test.
+
+## [2026-08-15] subagents | Simplify answer recovery around passive network authority
+
+- Removed active conversation-payload recovery from production, including the temporary recovery page introduced during live-test hardening.
+- Kept passive structured network capture as the authoritative answer source, including one one-second retry so exact Markdown/code fences win whenever the final network node arrives slightly late.
+- After current-turn completion is positively established, fall back directly to rendered DOM only when both passive network reads miss; production no longer reloads, navigates, or opens another page merely to recover answer formatting.
+- Kept the generative live canary black-box over the public MCP surface; the separate disposable saved-fixture test remains the place that directly validates ChatGPT conversation JSON and reload compatibility.
+
+## [2026-08-15] subagents | Restore network-first completion polling
+
+- Restored the original response-waiting semantics at a 1,000 ms cadence: every completion tick checks the passive network tracker before server/UI/DOM state instead of depending on repeated `page.on("response")` events from a streaming response.
+- Kept the newer current-turn protections: unknown state and `IS_STREAMING` continue polling, and conversation-wide `COMPLETE` is ignored until this turn has its own generation evidence.
+- When the current turn is positively complete but the expected final network node never appeared, one recovery reload captures `/backend-api/conversation/<conversation_id>` and resolves the exact server `content.parts` response before DOM fallback.
+- Removed the temporary pending-`response.text()` bookkeeping; the listener remains an opportunistic fast path, while the 1-second loop and canonical reload are the reliable completion path.
+
+## [2026-08-15] subagents | Keep one catastrophic browser recovery
+
+- Preserved a single destructive recovery attempt for genuine browser/page observation failures only; ordinary passive-network misses never trigger it.
+- If the managed conversation page is still valid, catastrophic recovery reloads it once. If that page is closed or lost, the existing saved-conversation recovery opens a replacement page once instead.
+- Reattaches the passive tracker after recovery so an exact network final still wins over DOM; the submitted prompt is never retried.
+- Added regressions proving ordinary DOM fallback does not arm recovery while catastrophic recovery performs one reload and prefers recovered network output.
+
+## [2026-08-15] wiki maintenance | Reconcile final subagent polling and live-test contract
+
+- Updated `pages/Browser ChatGPT Subagents.md` to match the final network-first 1,000 ms polling behavior: passive `page.on("response")` is a fast path, current-turn completion requires generation evidence, one shared recovery may reload/open the saved conversation once to capture canonical JSON, and DOM is the final answer fallback.
+- Clarified that normal follow-up submission does not reload, prompts are never resubmitted, and the old 250 ms loop contributed the network-first polling principle rather than a required polling frequency.
+- Updated `pages/Build and Test.md` to separate the two live-test responsibilities: the permanent saved-conversation fixture owns strict network/Markdown/reload compatibility, while the generative canary only proves public-MCP startup, Turn 1, Turn 2, and cross-turn context reuse, with diagnostics and a five-minute process hard cap.
+- Current deterministic validation before this documentation pass was 177/177 non-live tests plus type-check, lint, and diff-check; the simplified two-turn live canary also passed once against real ChatGPT.

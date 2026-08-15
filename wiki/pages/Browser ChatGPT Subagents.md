@@ -95,15 +95,15 @@ The normal lifecycle is:
 3. The module creates or recovers the agent's owned ChatGPT page.
 4. The prompt is submitted once and a `BrowserTurnState` is created.
 5. First-turn stable conversation binding begins if the conversation does not yet have a permanent `/c/<id>` URL.
-6. Two autonomous completion observers run in parallel: the structured network tracker and the one-second server/UI watcher.
+6. Two autonomous completion observers run in parallel: the structured network tracker and the one-second server-status watcher.
 7. Whichever trusted path proves completion first calls `completeTurn()`.
 8. `completeTurn()` stores the response, releases capacity, and queues `agent_finished` exactly once.
 9. The parent receives that event on the next MCP tool response and calls `subagent_result` when it wants the answer.
 10. `subagent_result` also acts as a reconciliation/recovery boundary if autonomous observation missed or partially lost state.
 
-The important design property is that completion detection and answer extraction are separate concerns. The network conversation payload is authoritative for the stored answer because it preserves the server-returned Markdown/code text exactly. When the watcher independently proves a turn is complete, it first asks the network tracker for the final response, waits one second and retries once if that response has not arrived yet, and only then permits the rendered DOM text as a recovery fallback. These paths remain redundant completion observers of one turn and converge on the same guarded `completeTurn()` transition.
+The important design property is that completion detection and answer extraction are separate concerns. The passive network conversation payload is authoritative for the stored answer because it preserves the server-returned Markdown/code text exactly. A final tracked assistant node must be `finished_successfully` and explicitly marked `end_turn: true`; an intermediate node being `is_complete` is not enough. The watcher runs every 1,000 ms and checks the tracker first on every pass, matching the original network-first polling semantics without the old 250 ms cadence. Conversation-wide `COMPLETE` is trusted only after this turn has first been observed as `IS_STREAMING`, or after the generating UI has been observed and then stopped, so a follow-up cannot inherit the previous turn's stale completion bit. `IS_STREAMING`, unknown stream status, a currently visible generating UI, or rendered text such as `Thinking` all mean keep polling. Once the current turn is positively complete, the tracker is checked again. If the expected final network node is still absent, one recovery reload of the saved conversation captures ChatGPT's canonical `/backend-api/conversation/<conversation_id>` JSON and resolves the assistant answer from that exact server payload. Rendered DOM text is used only if that canonical recovery also fails to provide the answer. The submitted prompt is never retried.
 
-The real browser contract has two manual compatibility layers, both excluded from the normal test glob and CI. `test/live/chatgpt-fixture-live.test.ts` (`npm run test:live:fixture`) opens a permanent saved conversation in a temporary Chrome CDP target without submitting a prompt, captures its current `/backend-api/conversation/<id>` network response, compares the extracted active branch with the sanitized frozen fixture at `test/fixtures/chatgpt-live-fixture/conversation.json`, and checks recognizable rendered DOM structure. `test/live/subagent-live.test.ts` (`npm run test:live:subagent`) remains the expensive generative canary: one real persistent subagent runs two sequential turns to verify generated-turn completion, answer extraction, compact MCP projection, exactly-once completion events, turn sequencing, and conversation reuse.
+The real browser contract has two manual compatibility layers, both excluded from the normal test glob and CI. `test/live/chatgpt-fixture-live.test.ts` (`npm run test:live:fixture`) owns strict compatibility checks: it opens a permanent saved conversation in a disposable Chrome CDP target without submitting a prompt, captures `/backend-api/conversation/<id>`, deliberately reloads only that disposable fixture tab, compares the extracted active branch with the sanitized frozen fixture at `test/fixtures/chatgpt-live-fixture/conversation.json`, and verifies exact Markdown/code plus recognizable rendered DOM structure. `test/live/subagent-live.test.ts` (`npm run test:live:subagent`) deliberately does **not** duplicate those assertions. It is a minimal generative black-box canary that starts the normal MCP HTTP server and interacts only through public `subagent_run`/`subagent_result`: Turn 1 must start and return a non-empty response containing a random context key, then Turn 2 on the same `agent_id` must return a non-empty response containing that remembered key. It records a polling/failure artifact for diagnosis but does not inspect module internals, tracker state, DOM, Page identity, conversation IDs, Markdown fidelity, compact formatting, or exact event/turn naming. The test itself never reloads the managed agent page. A live-test-only five-minute process hard cap prevents a lingering Playwright/CDP handle from leaving the test runner alive indefinitely after the test body finishes (`test/live/subagent-live.test.ts`).
 
 ## Runtime State and Identity
 
@@ -233,34 +233,38 @@ DOM state:    new assistant message relative to the turn baseline
 
 The authority rules are:
 
-| Server status       | UI stop button    | New DOM answer    | Meaning / action                                                                          |
-| ------------------- | ----------------- | ----------------- | ----------------------------------------------------------------------------------------- |
-| `COMPLETE`          | absent or present | present           | Complete immediately. Server state wins even if UI is stale.                              |
-| `COMPLETE`          | absent or present | absent            | Enter the five-second DOM grace period.                                                   |
-| `IS_STREAMING`      | absent or present | any               | Keep waiting. Server state prevents premature completion.                                 |
-| unavailable/unknown | present           | present or absent | Keep waiting; UI still says generation is active.                                         |
-| unavailable/unknown | absent            | present           | Use stable-DOM fallback: answer must be unchanged across watcher ticks before completing. |
-| unavailable/unknown | absent            | absent            | Keep waiting.                                                                             |
+| Server status       | Current-turn evidence                              | UI stop button    | Meaning / action                                                                 |
+| ------------------- | -------------------------------------------------- | ----------------- | -------------------------------------------------------------------------------- |
+| `COMPLETE`          | current turn was previously `IS_STREAMING`          | absent or present | Current turn is complete; prefer network answer, then bounded recovery if needed. |
+| `COMPLETE`          | generating UI was observed and has now stopped      | absent            | Current turn is complete; prefer network answer, then bounded recovery if needed. |
+| `COMPLETE`          | no current-turn generation evidence                 | absent or present | Treat as potentially stale from the previous turn and keep waiting.               |
+| `IS_STREAMING`      | any                                                 | absent or present | Keep waiting.                                                                    |
+| unavailable/unknown | any                                                 | absent or present | Keep waiting; unknown lifecycle state never proves completion.                    |
 
-This gives the server endpoint authority over lifecycle when it is available, while preserving the UI/DOM pair as a degradation fallback if that private endpoint is temporarily unavailable.
+The server endpoint is the strongest lifecycle signal, but conversation-wide `COMPLETE` is not attributed to a new follow-up until this turn has its own generation evidence. DOM text is answer fallback only after current-turn completion has already been proven; it does not independently end an unknown-state turn.
 
 The one-second watcher itself does **not** refresh `lastActivityAt`. Polling is observation, not proof of progress. A wedged turn must not stay alive forever merely because the watcher is still making requests.
 
 ## Server COMPLETE and the Five-Second DOM Grace Period
 
-`stream_status === "COMPLETE"` proves generation has ended, but the final DOM node may render slightly later. The watcher therefore does not immediately fail or recover when the server finishes before the page catches up.
+Once the current turn has its own generation evidence, `stream_status === "COMPLETE"` proves that turn has ended, but the final DOM node may render slightly later. Without current-turn evidence, the same conversation-wide value may still belong to the previous turn and is ignored. The watcher therefore does not immediately fail or recover when the server finishes before the page catches up.
 
-It waits up to five seconds and checks for the new assistant DOM message once per second:
+The autonomous watcher waits up to five seconds and checks for the new assistant DOM message once per second:
 
 ```text
-server => COMPLETE
-  -> DOM answer present?
-       yes -> completeTurn()
-       no  -> wait 1 second
-              retry, up to 5 seconds total
+server => COMPLETE with current-turn evidence
+  -> network final present?
+       yes -> completeTurn(network)
+       no  -> DOM answer present?
+              yes -> completeDetectedTurn()
+                     -> network again
+                     -> one recovery attempt
+                     -> DOM only if recovery did not produce server text
+              no  -> wait 1 second
+                     retry DOM, up to 5 seconds total
 ```
 
-If the message still has not appeared after that grace period, the watcher reuses the existing one-shot conversation recovery path. It does not introduce a second recovery subsystem.
+The watcher itself is redundant and does not force a reload merely because the five-second DOM grace expires with no DOM answer. Explicit `subagent_result` reconciliation continues checking the turn once per second and, once current-turn completion is proven, calls the same `completeDetectedTurn()` path even when no DOM answer is available. That is the reliable boundary that can invoke the shared one-shot recovery. This keeps ordinary waiting passive while still allowing a completed turn to recover exact server text when the streaming listener missed it (`src/tools/subagent/chatgpt-subagent.ts`).
 
 ## The Stale ChatGPT UI Failure and Why Server State Wins
 
@@ -278,13 +282,13 @@ Opening the exact same conversation URL in a fresh tab showed the completed answ
 Therefore:
 
 ```text
-stream_status = lifecycle truth
-stop button    = UI-health signal
+current-turn stream_status = lifecycle truth once attributed to this turn
+stop button                 = UI-health signal
 ```
 
-The stop button is still useful, but it is no longer authoritative when the server explicitly reports `COMPLETE`.
+The stop button is still useful, but it is no longer authoritative once a server `COMPLETE` has been safely attributed to the current turn.
 
-Before submitting a later follow-up, `ask()` checks the managed tab. If the UI still claims it is generating but the known conversation's server status is `COMPLETE`, the page is treated as stale and reloaded before the next prompt is entered. If the server does not confirm completion, the agent remains busy.
+Before submitting a later follow-up, `ask()` checks the managed tab. If the UI still claims it is generating but the known conversation's server status is `COMPLETE`, that UI is treated as stale from the prior completed turn and submission continues on the same page without reloading it. If the server does not confirm completion, the agent remains busy. Normal submission and ordinary running-state polling never reload the page; the single reload path is reserved for a positively completed turn whose expected final network payload was not captured.
 
 ## `completeTurn()` Is the Single Completion Gate
 
@@ -355,16 +359,16 @@ Recovery is deliberately limited. A successfully submitted prompt must not be du
 
 When recovery is allowed, `recoverSubmittedTurn()`:
 
-1. validates or recreates the agent's owned page from the saved conversation URL;
-2. captures/validates the conversation location;
-3. reloads the server-side conversation payload when a conversation ID is available;
-4. walks the active conversation branch and looks for the latest assistant answer after the submitted prompt;
-5. falls back to the recovered DOM when appropriate;
-6. calls `completeTurn()` if a final answer is found.
+1. records whether the existing managed page is still the expected ChatGPT conversation;
+2. calls `ensureActivePage()`; if the page was closed/lost, that opens the saved conversation once instead of creating a new conversation;
+3. reattaches the passive network listener and lets any recovered exact network final complete the turn first;
+4. when the original managed page is still valid and a stable conversation ID exists, reloads that same page once while `loadConversationPayload()` waits specifically for ChatGPT's successful `/backend-api/conversation/<conversation_id>` response;
+5. extracts the active conversation branch and finds the assistant answer after the submitted prompt, preserving exact server `content.parts` text when found;
+6. otherwise inspects the recovered page's DOM and uses it only when the page is no longer generating.
 
 `BrowserTurnState.recoveryAttempted` and `recoveryPromise` make this one shared attempt even when multiple observers fail concurrently. A later independent observation failure becomes terminal rather than creating a recovery loop.
 
-The background completion watcher also uses this same recovery path after `COMPLETE` plus five seconds with no rendered DOM answer. This keeps all last-effort recovery logic centralized.
+`completeDetectedTurn()` checks the passive tracker first. Once the current turn is positively complete and the expected final network answer is still absent, it may enter this same shared one-shot recovery before accepting DOM fallback. Browser/page observation failures also use the same recovery state. `BrowserTurnState.recoveryAttempted` plus `recoveryPromise` ensure concurrent observers share one attempt. No path resubmits the prompt or loops reloads. Normal polling and normal follow-up submission do not reload the page (`src/tools/subagent/chatgpt-subagent.ts`, `src/tools/subagent/chatgpt-subagent-browser.ts`).
 
 ## Activity and Liveness
 
@@ -463,13 +467,13 @@ Idle expiration uses the internal error code `AGENT_IDLE_EXPIRED` on the turn re
 
 The current implementation is intentionally redundant because two earlier assumptions proved unsafe.
 
-### Old background DOM watcher
+### Old 250 ms watcher and the restored polling principle
 
-The original implementation ran `waitForResponse()` every 250 ms. It checked the structured network tracker first, then inspected the DOM and waited for assistant text to remain stable for 750 ms after the UI stopped generating.
+The original implementation ran `waitForResponse()` every 250 ms. Its useful property was not the 250 ms frequency; it was that every pass checked the structured network tracker before considering rendered DOM state.
 
 That background loop was removed in commit `e3f3dec` (`Simplify subagent polling and document compact outputs`) and `subagent_result` became the active reconciler. Passive network completion was later added back through `page.on("response")`.
 
-The old loop provided autonomous completion, but its final DOM decision still depended on the stop button disappearing. It therefore would also have hung in the stale-client failure where the server was complete but the original tab kept showing `Stop answering`.
+The current implementation restores that network-first polling principle at a 1,000 ms cadence while retaining the newer server-status/current-turn protections. The passive `page.on("response")` listener is a fast path, not an assumption that every streamed chunk produces a new Playwright `Response`. If the listener eventually populates the final node, the next one-second pass sees it. If current-turn completion is positively established but the final network node never materializes, the one-shot canonical reload capture is available before DOM fallback.
 
 ### Stream handoff + stale UI
 
@@ -499,6 +503,7 @@ Changes to this subsystem should preserve these invariants:
 8. Recovery reuses the existing submitted conversation; it never resubmits the prompt.
 9. A manually repurposed user tab is never hijacked back into subagent control.
 10. One agent has at most one active turn and the process has at most three active generations.
+11. Normal lifecycle polling is approximately once per second and checks the passive network tracker first; reload/open recovery is one-shot and never part of ordinary inter-turn behavior.
 
 ## Code Map
 
@@ -516,7 +521,8 @@ Changes to this subsystem should preserve these invariants:
 | `src/tools/subagent/chatgpt-subagent-browser.ts`   | `getConversationStreamStatus()`                                                  | ChatGPT server generation-state probe.                                                                |
 | `src/tools/subagent/chatgpt-subagent-browser.ts`   | `isGenerating()`                                                                 | UI stop/generating health signal.                                                                     |
 | `src/tools/subagent/chatgpt-subagent-browser.ts`   | `waitForStableConversationLocation()`, `captureOrValidateConversationLocation()` | Stable first-turn URL binding and conversation ownership validation.                                  |
-| `src/tools/subagent/chatgpt-subagent-browser.ts`   | `findNewDomAssistantMessage()`, `loadConversationPayload()`                      | DOM fallback and recovery payload loading.                                                            |
+| `src/tools/subagent/chatgpt-subagent-browser.ts`   | `loadConversationPayload()`                                                       | One-shot same-page reload capture of canonical conversation JSON during recovery.                      |
+| `src/tools/subagent/chatgpt-subagent-browser.ts`   | `findNewDomAssistantMessage()`                                                    | Rendered DOM fallback after network/canonical recovery misses.                                         |
 | `src/tools/subagent/chatgpt-subagent-contracts.ts` | public service/result/error types                                                | Dependency-light subagent contracts.                                                                  |
 | `src/tools/subagent/subagent-tools.ts`             | `registerSubagentTools()`, `SUBAGENT_START_DELAYS_MS`                            | Public MCP schemas, staggered batching, and concurrent result fan-out.                                |
 | `src/server/tool-registration-boundary.ts`         | `installToolRegistrationBoundary()`                                              | Drains pending completion events after every MCP tool callback.                                       |
@@ -527,6 +533,8 @@ Changes to this subsystem should preserve these invariants:
 | `test/chatgpt-subagent.test.ts`                    | lifecycle tests                                                                  | Capacity, stale UI/server completion, watcher behavior, recovery, event uniqueness, and idle cleanup. |
 | `test/chatgpt-subagent-browser.test.ts`            | browser-adapter tests                                                            | Conversation parsing, transient URL behavior, overlays, activity, and final-node matching.            |
 | `test/mcp-integration.test.ts`                     | MCP integration tests                                                            | Event injection exactly once, subagent output, staggering, concurrency, and cross-request sharing.    |
+| `test/live/chatgpt-fixture-live.test.ts`           | stable saved-conversation live fixture                                            | Strict real-service network/Markdown/reload compatibility without generation.                         |
+| `test/live/subagent-live.test.ts`                  | two-turn public-MCP live canary                                                   | Minimal startup, Turn 1, Turn 2, and persistent-context proof with diagnostic artifact.                |
 
 ## Operational Risks
 

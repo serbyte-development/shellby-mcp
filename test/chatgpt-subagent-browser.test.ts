@@ -442,6 +442,27 @@ test("tracker rejects completed assistant nodes that explicitly do not end the t
   assert.equal(tracker.findFinalResponse({ baselineIds: baseline }), undefined)
 })
 
+test("tracker rejects completed assistant nodes until ChatGPT marks end_turn true", () => {
+  const tracker = new ChatGptConversationTracker()
+  const baseline = tracker.snapshotIds()
+  tracker.ingestPayload({
+    id: "thinking",
+    message: {
+      id: "thinking",
+      author: { role: "assistant" },
+      create_time: 5,
+      content: { parts: ["Thinking"] },
+      status: "finished_successfully",
+      end_turn: null,
+      metadata: { is_complete: true },
+      recipient: "all",
+    },
+    children: [],
+  })
+
+  assert.equal(tracker.findFinalResponse({ baselineIds: baseline }), undefined)
+})
+
 test("extractConversationMessages follows the active branch and excludes tool nodes", () => {
   const payload = {
     current_node: "a2",
