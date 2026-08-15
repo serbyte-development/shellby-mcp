@@ -40,7 +40,7 @@ const DEFAULTS = {
     readyTimeoutMs: 10_000,
     stopGraceMs: 500,
     recordLimit: 1_024,
-    maxShells: 8,
+    maxShells: 16,
     idleTimeoutMs: 30 * 60 * 1000,
   },
   ios: {
