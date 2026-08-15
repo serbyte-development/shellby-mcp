@@ -3,8 +3,6 @@
 [![CI](https://github.com/Serbyte-Development/unhinged-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/Serbyte-Development/unhinged-agent/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-**Turn ChatGPT Web into an unhinged local coding agent. Full computer access. Persistent tools. Multi-agent capabilities.**
-
 > [!WARNING]
 > Made for Software Engineers. Not for non-technical users.
 > Use at your own risk.
