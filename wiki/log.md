@@ -881,3 +881,7 @@
 ## [2026-08-15] docs | Clarify dual-architecture macOS support
 
 - Updated public and maintainer documentation to state that arm64 and Intel x64 both run the full CI suite and to document the Universal 2 `apply_patch` build/verification flow.
+
+## [2026-08-15] test | Remove shell background timing race
+
+- Replaced a fixed sleep in the redirected background-output shell test with a bounded readiness check so CI validates the behavior without depending on runner scheduling speed.

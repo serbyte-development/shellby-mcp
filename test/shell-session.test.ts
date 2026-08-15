@@ -402,7 +402,7 @@ test("handles multiline commands, quotes, and redirected background output", { t
   const readBackground = await runToCompletion(
     shell,
     "background-output",
-    `sleep 0.2; value=$(<${quote(backgroundFile)}); rm ${quote(backgroundFile)}; printf '%s' "$value"`
+    `for _ in {1..200}; do [[ -s ${quote(backgroundFile)} ]] && break; sleep 0.01; done; [[ -s ${quote(backgroundFile)} ]] || exit 1; value=$(<${quote(backgroundFile)}); rm ${quote(backgroundFile)}; printf '%s' "$value"`
   )
   assert.equal(readBackground.output, "background-finished")
 })
