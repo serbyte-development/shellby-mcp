@@ -100,10 +100,11 @@ export function installToolRegistrationBoundary(server: McpServer, options: Tool
 
   server.registerTool = ((name: string, config: ToolRegistrationConfig, callback: unknown) => {
     const computerUse = name.startsWith("computer_")
-    if (!computerUse && options.toolOutputStructured !== "always") {
+    const nativeContent = computerUse || name === "image_view"
+    if (!nativeContent && options.toolOutputStructured !== "always") {
       delete config.outputSchema
     }
-    if (!computerUse && options.toolOutputStructured === "optional") {
+    if (!nativeContent && options.toolOutputStructured === "optional") {
       config.inputSchema = addStructuredInput(config.inputSchema)
     }
     canonicalizeStandardSchema(config.inputSchema)
@@ -123,7 +124,7 @@ export function installToolRegistrationBoundary(server: McpServer, options: Tool
       }
 
       const result = await callback(...args)
-      const projected = !computerUse && !structuredRequested ? compactToolResult(result) : result
+      const projected = !nativeContent && !structuredRequested ? compactToolResult(result) : result
       return appendToolEvents(projected, options.drainPendingEvents?.() ?? [])
     }
     return registerTool(name, config, wrapped)

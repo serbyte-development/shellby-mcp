@@ -4,10 +4,9 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { promisify } from "node:util"
 
-import sharp from "sharp"
-
 import { MCP_CONFIG } from "../../config.js"
 import { asRecord, finiteNumber as numberValue } from "../../utils.js"
+import { encodeImageForMcp, ImageEncodingError } from "../image/image-encoding.js"
 
 const execFileAsync = promisify(execFile)
 
@@ -167,20 +166,17 @@ export class PeekabooClient {
 
       try {
         const image = await readFile(imagePath)
-        const encodedImage = await sharp(image)
-          .jpeg({
-            quality: 65,
-            progressive: true,
-            chromaSubsampling: "4:4:4",
-          })
-          .toBuffer()
+        const encodedImage = await encodeImageForMcp(image)
         return {
           ...result,
-          imageData: encodedImage.toString("base64"),
-          mimeType: "image/jpeg",
+          imageData: encodedImage.data,
+          mimeType: encodedImage.mimeType,
           ...(target ? { target } : {}),
         }
       } catch (error) {
+        if (error instanceof ImageEncodingError) {
+          throw new PeekabooError(error.code, error.message, undefined, { cause: error })
+        }
         throw new PeekabooError(
           "SCREENSHOT_READ_FAILED",
           "Peekaboo completed but its screenshot could not be read or encoded.",

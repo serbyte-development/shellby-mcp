@@ -6,6 +6,7 @@ import { join } from "node:path"
 import test from "node:test"
 import { fileURLToPath } from "node:url"
 import { Client, StreamableHTTPClientTransport, LATEST_PROTOCOL_VERSION } from "@modelcontextprotocol/client"
+import sharp from "sharp"
 import { UnhingedAgentAuthStore } from "../src/auth/auth.js"
 import { MCP_CONFIG } from "../src/config.js"
 import { countTokens } from "../src/tokenizer.js"
@@ -43,6 +44,7 @@ test("serves shell tools through Streamable HTTP and retains state across MCP se
       "fetch_website",
       "skill_list",
       "skill_load",
+      "image_view",
       "computer_list",
       "computer_observe",
       "computer_inspect",
@@ -319,8 +321,11 @@ test("supports always, optional, and never model-facing tool output modes", { ti
       const properties = shellList.inputSchema.properties as Record<string, Record<string, unknown>>
       const computerList = tools.tools.find((tool) => tool.name === "computer_list")
       const computerProperties = computerList?.inputSchema.properties as Record<string, Record<string, unknown>>
+      const imageView = tools.tools.find((tool) => tool.name === "image_view")
+      const imageViewProperties = imageView?.inputSchema.properties as Record<string, Record<string, unknown>>
 
       assert.equal("structured" in computerProperties, false)
+      assert.equal("structured" in imageViewProperties, false)
       if (mode === "always") {
         assert.ok(shellList.outputSchema)
         assert.equal("structured" in properties, false)
@@ -350,6 +355,46 @@ test("supports always, optional, and never model-facing tool output modes", { ti
       await running.close()
     }
   }
+})
+
+test("views a local image as MCP image content with compact metadata", { timeout: 20_000 }, async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "image-view-integration-"))
+  const imagePath = join(root, "sample.png")
+  await sharp({
+    create: {
+      width: 12,
+      height: 8,
+      channels: 3,
+      background: { r: 120, g: 80, b: 40 },
+    },
+  })
+    .png()
+    .toFile(imagePath)
+
+  const running = await startMcpHttpServer({ port: 0 })
+  t.after(async () => {
+    await running.close()
+    await rm(root, { recursive: true, force: true })
+  })
+  const connected = await connectClient(running.url, "image-view-integration-client")
+  t.after(() => connected.client.close())
+
+  const result = await connected.client.callTool({
+    name: "image_view",
+    arguments: { path: imagePath },
+  })
+
+  assert.equal(result.isError, undefined)
+  assert.equal(result.structuredContent, undefined)
+  assert.deepEqual(
+    result.content.map((block) => block.type),
+    ["text", "image"]
+  )
+  assert.equal(result.content[0]?.type, "text")
+  assert.match(result.content[0]?.type === "text" ? result.content[0].text : "", /^sample\.png — 12×8 — \d+(?:\.\d+)? (?:B|KB|MB)$/)
+  assert.equal(result.content[1]?.type, "image")
+  assert.equal(result.content[1]?.type === "image" ? result.content[1].mimeType : undefined, "image/jpeg")
+  assert.ok(result.content[1]?.type === "image" && result.content[1].data.length > 0)
 })
 
 test("appends pending subagent completion events to the next tool result exactly once", { timeout: 10_000 }, async (t) => {

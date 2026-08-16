@@ -161,7 +161,7 @@ Returned turn IDs are readable and sequential per agent, for example `seo-audit_
 
 `subagent_run` accepts 1-3 independent agents per call. Reusing an `agent_id` retains that subagent's conversation context; a new ID creates a new conversation. The first task is submitted immediately, the second 5 seconds later, and the third 7 seconds after that; at most three generations may run at once. The passive ChatGPT network listener can recognize a definitive final response, complete the local turn, release its generation slot, and queue `agent_finished:<agent_id>:<turn_id>`. That event is appended to the next MCP tool response. `subagent_result` retrieves 1-3 turn results concurrently and remains the reconciliation fallback when a turn is still running. The actual subagent answer is returned only by `subagent_result`. See [`wiki/pages/Browser ChatGPT Subagents.md`](wiki/pages/Browser%20ChatGPT%20Subagents.md) for the full architecture and code map.
 
-Normal non-Computer tools default to compact model-facing Markdown. `MCP_TOOL_OUTPUT_STRUCTURED=always|optional|never` controls the result surface: `always` preserves advertised output schemas and structured results, `optional` is the default and adds `structured: false` to tool inputs so callers may request a structured result per call, and `never` exposes compact content only. Computer Use tools are unchanged. MCP audit entries log approximate tool-context cost as `in / out` token counts when the final model-facing output is available.
+Normal non-Computer tools default to compact model-facing Markdown. `MCP_TOOL_OUTPUT_STRUCTURED=always|optional|never` controls the result surface: `always` preserves advertised output schemas and structured results, `optional` is the default and adds `structured: false` to tool inputs so callers may request a structured result per call, and `never` exposes compact content only. Computer Use tools and `image_view` keep their native content contracts. MCP audit entries log approximate tool-context cost as `in / out` token counts when the final model-facing output is available.
 
 Default endpoint:
 
@@ -192,6 +192,7 @@ The local endpoint is `http://127.0.0.1:3333/mcp`. `npm run inspect` opens the M
 Core tools:
 
 - `fetch_website`
+- `image_view`
 - `skill_list`
 - `skill_load`
 - `subagent_run`
@@ -275,6 +276,10 @@ npm run setup:computer
 During normal first-time setup, Unhinged Agent runs `peekaboo permissions status --all-sources` when Peekaboo is installed. `setup:computer` delegates to `peekaboo permissions grant`, which provides Peekaboo's current macOS permission instructions.
 
 `computer_observe` returns a screenshot plus snapshot ID. Snapshot-based actions use that retained capture target so coordinates are interpreted against the correct screen/window. Observe again after the UI changes rather than reusing stale coordinates.
+
+## Image viewing
+
+`image_view` accepts one local image path and returns a native MCP image block plus compact `filename — dimensions — size` text. Relative paths resolve from the configured workspace. Images are JPEG-encoded through the same shared transport helper used by `computer_observe`; dimensions are never resized, quality is reduced only when necessary to keep the MCP response under the 4 MiB transport budget, and images that still cannot fit fail explicitly rather than being resized.
 
 ## `apply_patch`
 
