@@ -40,7 +40,7 @@ const DEFAULTS = {
     readyTimeoutMs: 10_000,
     stopGraceMs: 500,
     recordLimit: 1_024,
-    maxShells: 16,
+    maxShells: 8,
     idleTimeoutMs: 5 * 60 * 1000, // 5 minutes
     cacheTimeoutMs: 24 * 60 * 60 * 1000, // 24 hours
   },

@@ -21,7 +21,7 @@ test("loads runtime configuration from one environment boundary", () => {
   assert.equal(defaults.shell.defaultOutputTokens, 1_024)
   assert.equal(defaults.shell.maxOutputTokens, 16_384)
   assert.equal(defaults.shell.recordLimit, 1024)
-  assert.equal(defaults.shell.maxShells, 16)
+  assert.equal(defaults.shell.maxShells, 8)
   assert.equal(defaults.shell.idleTimeoutMs, 5 * 60 * 1000)
   assert.equal(defaults.shell.cacheTimeoutMs, 24 * 60 * 60 * 1000)
   assert.equal(defaults.toolOutputStructured, "optional")
