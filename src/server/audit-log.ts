@@ -7,7 +7,6 @@ const MAX_INLINE_ARGUMENT_CHARS = 600
 const MAX_SHELL_COMMAND_CHARS = 2_000
 const MAX_FAILED_PATCH_CHARS = 32_000
 const MAX_FAILED_MESSAGE_CHARS = 1_000
-const LARGE_RESPONSE_BYTES = 8 * 1024
 const SLOW_CALL_MS = 5_000
 
 interface JsonRpcToolCall {
@@ -21,7 +20,7 @@ interface JsonRpcToolCall {
 
 export interface McpAuditCall {
   readonly needsResponseBody: boolean
-  finish(input: { httpStatus: number; state: "finished" | "closed"; responseBytes: number; responseBody?: string }): void
+  finish(input: { httpStatus: number; state: "finished" | "closed"; responseBody?: string }): void
 }
 
 export class McpAuditLogger {
@@ -57,12 +56,11 @@ export class McpAuditLogger {
       return [
         {
           needsResponseBody: captureOutput,
-          finish: ({ httpStatus, state, responseBytes, responseBody }) => {
+          finish: ({ httpStatus, state, responseBody }) => {
             if (finished) return
             finished = true
             const toolResponse = parseToolResponse(responseBody, parsed.id)
-            const completeResponseBody =
-              captureOutput && responseBody !== undefined && Buffer.byteLength(responseBody, "utf8") === responseBytes ? responseBody : undefined
+            const completeResponseBody = captureOutput ? responseBody : undefined
             const modelOutput = completeResponseBody ? parseToolResponse(completeResponseBody, parsed.id).modelOutput : undefined
             this.append(
               formatEntry({
@@ -72,7 +70,6 @@ export class McpAuditLogger {
                 durationMs: Math.max(0, this.clock() - startedAt),
                 httpStatus,
                 state,
-                responseBytes,
                 inputTokens,
                 outputTokens: modelOutput !== undefined ? countTokens(modelOutput) : undefined,
                 toolFailed: toolResponse.failed,
@@ -110,19 +107,17 @@ function formatEntry(input: {
   durationMs: number
   httpStatus: number
   state: "finished" | "closed"
-  responseBytes: number
   inputTokens: number
   outputTokens?: number
   toolFailed: boolean
   failureMessage?: string
 }): string {
   const abnormal = input.httpStatus >= 400 || input.state !== "finished" ? ` - HTTP ${input.httpStatus} ${input.state}` : ""
-  const largeResponse = input.responseBytes >= LARGE_RESPONSE_BYTES ? ` - ${formatBytes(input.responseBytes)}` : ""
   const tokenCounts = ` - ${input.inputTokens} in${input.outputTokens !== undefined ? ` / ${input.outputTokens} out` : ""}`
   const invocationMarkers = formatInvocationMarkers(input.argumentsValue)
   const tag = auditTag(input)
   const tagPrefix = tag ? `${tag} ` : ""
-  const heading = `--- # ${tagPrefix}${formatAuditTime(input.time)} - ${input.toolName} - ${input.durationMs}ms${tokenCounts}${invocationMarkers}${largeResponse}${abnormal}`
+  const heading = `--- # ${tagPrefix}${formatAuditTime(input.time)} - ${input.toolName} - ${input.durationMs}ms${tokenCounts}${invocationMarkers}${abnormal}`
   const details = formatArguments(input.toolName, input.argumentsValue, input.toolFailed, input.failureMessage)
   return details ? `${heading}\n${details}\n\n` : `${heading}\n\n`
 }
@@ -139,17 +134,10 @@ function formatInvocationMarkers(value: unknown): string {
   return markers.length > 0 ? ` - ${markers.join(" - ")}` : ""
 }
 
-function auditTag(input: { durationMs: number; httpStatus: number; state: "finished" | "closed"; responseBytes: number; toolFailed: boolean }): string {
+function auditTag(input: { durationMs: number; httpStatus: number; state: "finished" | "closed"; toolFailed: boolean }): string {
   if (input.toolFailed || input.httpStatus >= 400 || input.state !== "finished") return "!"
   if (input.durationMs >= SLOW_CALL_MS) return "~"
-  if (input.responseBytes >= LARGE_RESPONSE_BYTES) return "?"
   return ""
-}
-
-function formatBytes(bytes: number): string {
-  if (bytes < 1024) return `${bytes}B`
-  const kilobytes = bytes / 1024
-  return `${kilobytes >= 10 ? Math.round(kilobytes) : kilobytes.toFixed(1)}KB`
 }
 
 function formatArguments(toolName: string, value: unknown, toolFailed: boolean, failureMessage?: string): string {

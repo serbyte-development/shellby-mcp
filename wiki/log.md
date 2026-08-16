@@ -1000,3 +1000,9 @@
 - Kept automatic idle/LRU hibernation responsible for caching cwd/exported environment, while `shell_close` is deliberately destructive and discards both live and cached state; `shell_reset` also starts clean.
 - Added shared cache sweeping without one timer per cached shell, public cache-TTL configuration/schema reporting, focused lifecycle/failure tests, and MCP integration coverage for close-and-restore behavior.
 - Final validation passed 191/191 deterministic tests, TypeScript checking, ESLint, production build, and `git diff --check`.
+
+## [2026-08-16] audit log | Remove response-size logging
+
+- Removed response-byte counting, B/KB header suffixes, the 8 KiB large-response threshold, and the `?` Better Comments tag from MCP audit logging; `in / out` token counts remain the output-volume signal.
+- Kept bounded response-body capture only for deriving model-facing output token counts. If the body exceeds the capture ceiling, the audit entry simply omits the output-token count instead of parsing a partial response.
+- Retained `~` for calls lasting at least five seconds and `!` for tool/HTTP/connection failures.

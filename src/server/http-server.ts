@@ -61,15 +61,18 @@ export async function startMcpHttpServer(options: StartMcpServerOptions = {}): P
 
   const handleMcpPost = async (req: Request, res: Response): Promise<void> => {
     const auditCalls = auditLogger?.startToolCalls(req.body) ?? []
-    let responseBytes = 0
-    let responseBody = ""
+    let responseBody = Buffer.alloc(0)
+    let responseBodyTruncated = false
     const captureResponseBody = auditCalls.some((call) => call.needsResponseBody)
-    if (auditCalls.length > 0) {
+    if (captureResponseBody) {
       trackResponse(res, (chunk) => {
-        responseBytes += chunk.byteLength
-        if (captureResponseBody && Buffer.byteLength(responseBody, "utf8") < MAX_AUDIT_RESPONSE_BODY_BYTES) {
-          responseBody += chunk.toString("utf8", 0, Math.max(0, MAX_AUDIT_RESPONSE_BODY_BYTES - Buffer.byteLength(responseBody, "utf8")))
+        if (responseBodyTruncated) return
+        if (responseBody.byteLength + chunk.byteLength > MAX_AUDIT_RESPONSE_BODY_BYTES) {
+          responseBody = Buffer.alloc(0)
+          responseBodyTruncated = true
+          return
         }
+        responseBody = Buffer.concat([responseBody, chunk])
       })
     }
     let auditFinished = false
@@ -80,8 +83,7 @@ export async function startMcpHttpServer(options: StartMcpServerOptions = {}): P
         auditCall.finish({
           httpStatus: res.statusCode,
           state,
-          responseBytes,
-          ...(auditCall.needsResponseBody ? { responseBody } : {}),
+          ...(auditCall.needsResponseBody && !responseBodyTruncated ? { responseBody: responseBody.toString("utf8") } : {}),
         })
       }
     }
