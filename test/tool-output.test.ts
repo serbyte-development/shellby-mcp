@@ -133,10 +133,8 @@ const toolFamilyCases: Array<{ tool: string; structuredContent: unknown; expecte
       count: 1,
       limit: 4,
       idle_timeout_ms: 300_000,
-      cache_ttl_ms: 86_400_000,
     },
-    expected:
-      "count=1 limit=4 idle_timeout_ms=300000 cache_ttl_ms=86400000\n\nshells:\n\n- shell_id=default status=idle is_default=true can_close=false idle_ms=50",
+    expected: "count=1 limit=4 idle_timeout_ms=300000\n\nshells:\n\n- shell_id=default status=idle is_default=true can_close=false idle_ms=50",
   },
   {
     tool: "shell_close",

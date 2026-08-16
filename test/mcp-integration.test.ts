@@ -237,7 +237,7 @@ test("serves shell tools through Streamable HTTP and retains state across MCP se
     "Turn IDs returned by subagent_run calls. Use to retrieve the exact submitted turns concurrently."
   )
   assert.equal(subagentPollInputSchema.properties?.wait_ms?.default, 0)
-  assert.equal(subagentPollInputSchema.properties?.wait_ms?.maximum, 60_000)
+  assert.equal(subagentPollInputSchema.properties?.wait_ms?.maximum, 270_000)
 
   const firstResult = await callUntilComplete(first.client, "mcp001", ["cd /tmp", "export MCP_HTTP_RETAINED=yes", "printf initialized"].join("; "))
   assert.equal(firstResult.output, "initialized")
@@ -342,7 +342,8 @@ test("supports always, optional, and never model-facing tool output modes", { ti
         assert.equal(compact.structuredContent, undefined)
         const text = compact.content.find((item) => item.type === "text")
         assert.ok(text?.type === "text")
-        assert.match(text.text, /count=\d+ limit=\d+ idle_timeout_ms=\d+ cache_ttl_ms=\d+/)
+        assert.match(text.text, /count=\d+ limit=\d+ idle_timeout_ms=\d+/)
+        assert.doesNotMatch(text.text, /cache_ttl_ms/)
         assert.match(text.text, /shells:/)
       }
 
@@ -1225,7 +1226,6 @@ test("isolates named shell state and allows foreground commands in parallel", { 
     count: number
     limit: number
     idle_timeout_ms: number
-    cache_ttl_ms: number
   }
   assert.deepEqual(
     listedContent.shells.map((shell) => shell.shell_id),
@@ -1234,7 +1234,6 @@ test("isolates named shell state and allows foreground commands in parallel", { 
   assert.equal(listedContent.count, 3)
   assert.equal(listedContent.limit, 16)
   assert.equal(listedContent.idle_timeout_ms, 300_000)
-  assert.equal(listedContent.cache_ttl_ms, 86_400_000)
   const defaultShell = listedContent.shells.find((shell) => shell.shell_id === "default")
   assert.ok(defaultShell)
   assert.deepEqual(defaultShell, {

@@ -66,7 +66,7 @@ subagent_run({
 }
 ```
 
-`subagent_result` accepts one to three `turn_id` values and retrieves them concurrently. `wait_ms` is bounded to 0-60 seconds; while waiting, each still-running turn is reconciled roughly once per second.
+`subagent_result` accepts one to three `turn_id` values and retrieves them concurrently. `wait_ms` is bounded to 0-270 seconds (4.5 minutes); while waiting, each still-running turn is reconciled roughly once per second.
 
 ```ts
 subagent_result({

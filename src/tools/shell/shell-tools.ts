@@ -13,7 +13,7 @@ const shellIdInput = z
   .max(64)
   .default(DEFAULT_SHELL_ID)
   .describe(
-    "Short task or project label for a persistent shell, such as api-audit. Reusing an idle/evicted ID restores its cached cwd and exported environment when available."
+    "Short task or project label for a persistent shell, such as api-audit. Use to retain cwd and environment, or use a different ID for concurrent work."
   )
 
 const closableShellIdInput = z
@@ -172,7 +172,7 @@ export function registerShellManagementTools(server: McpServer, shells: ShellSes
     {
       title: "Reset the local shell",
       description:
-        "Attempt to terminate the persistent shell process group, discard live or cached working-directory/environment state, and start a clean shell. Use this to recover from a stuck foreground command. Process-group cleanup is best effort if signaling is denied.",
+        "Attempt to terminate the persistent shell process group, discard its working directory and environment state, and start a clean shell. Use this to recover from a stuck foreground command. Process-group cleanup is best effort if signaling is denied.",
       inputSchema: z.object({
         shell_id: shellIdInput,
         request_id: requestIdInput,
@@ -214,8 +214,7 @@ export function registerShellManagementTools(server: McpServer, shells: ShellSes
     "shell_list",
     {
       title: "List local shells",
-      description:
-        "List currently live persistent shells, their activity state, idle duration, live-slot limit, idle hibernation timeout, cache TTL, and whether they may be closed.",
+      description: "List currently open persistent shells, their activity state, idle duration, and whether they may be closed.",
       outputSchema: z.object({
         shells: z.array(
           z.object({
@@ -229,7 +228,6 @@ export function registerShellManagementTools(server: McpServer, shells: ShellSes
         count: z.int().nonnegative(),
         limit: z.int().positive(),
         idle_timeout_ms: z.int().nonnegative(),
-        cache_ttl_ms: z.int().positive(),
       }),
       annotations: {
         readOnlyHint: true,
@@ -246,7 +244,6 @@ export function registerShellManagementTools(server: McpServer, shells: ShellSes
           count: shells.shellCount,
           limit: shells.maximumShells,
           idle_timeout_ms: shells.idleTimeoutMilliseconds,
-          cache_ttl_ms: shells.cacheTimeoutMilliseconds,
         }
         return {
           structuredContent: result,
@@ -267,7 +264,7 @@ export function registerShellManagementTools(server: McpServer, shells: ShellSes
     "shell_close",
     {
       title: "Close a local shell",
-      description: `Terminate a named live shell, discard its live and cached state and retained records, and immediately free its slot. The ${DEFAULT_SHELL_ID} shell is protected; use shell_reset if it freezes.`,
+      description: `Terminate a named shell, discard its state and retained records, and immediately free its slot. The ${DEFAULT_SHELL_ID} shell is protected; use shell_reset if it freezes.`,
       inputSchema: z.object({
         shell_id: closableShellIdInput,
       }),

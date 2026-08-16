@@ -22,7 +22,9 @@ export function registerApplyPatchTool(server: McpServer, executable = DEFAULT_A
       inputSchema: z.object({
         patch: z
           .string()
-          .describe("The complete patch text, beginning with *** Begin Patch and ending with *** End Patch. File references must be relative to cwd."),
+          .describe(
+            "The complete patch text, beginning with *** Begin Patch and ending with *** End Patch. Prefer multiple small, focused apply_patch calls over one large patch, especially when editing files that were modified earlier in the task."
+          ),
         cwd: z.string().refine(isAbsolute, "cwd must be an absolute path.").describe("Required absolute directory used as the patch root."),
       }),
       outputSchema: z.object({

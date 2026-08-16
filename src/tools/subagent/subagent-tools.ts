@@ -23,7 +23,7 @@ const subagentRequestSchema = z.object({
     .max(5)
     .default(2)
     .describe(
-      "Response verbosity for a new subagent conversation, from 1 to 5. Defaults to 2. Applied only when this agent_id is first created; later values do not change that conversation."
+      "Response verbosity for a new subagent conversation. Applied only when this agent_id is first created; later values do not change that conversation."
     ),
 })
 
@@ -111,14 +111,14 @@ export function registerSubagentTools(server: McpServer, chatGptSubagents: ChatG
     {
       title: "Get ChatGPT subagent turn results",
       description:
-        "Retrieve previously submitted subagent turns concurrently. Pass the `turn_ids` returned by `subagent_run`. A turn may still report running when checked early; result retrieval reconciles running state against the actual ChatGPT page. Local turn/runtime state expires after 30 minutes without observable progress; the ChatGPT conversation itself is not deleted.",
+        "Retrieve previously submitted subagent turns concurrently. Pass the `turn_ids` returned by `subagent_run`. Agents may take up to 30mins to complete.",
       inputSchema: z.object({
         turn_ids: z
           .array(z.string().min(1).max(128))
           .min(1)
           .max(3)
           .describe("Turn IDs returned by subagent_run calls. Use to retrieve the exact submitted turns concurrently."),
-        wait_ms: z.int().min(0).max(60_000).default(0).describe("How long this check may wait for completion. Use 0 for an immediate status check."),
+        wait_ms: z.int().min(0).max(270_000).default(0).describe("How long this check may wait for completion, up to 4.5 minutes. Use 0 for an immediate status check."),
       }),
       outputSchema: z.object({
         turns: z.array(subagentResultSchema),

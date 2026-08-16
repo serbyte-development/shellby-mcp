@@ -215,7 +215,7 @@ export class ChatGptSubagentModule implements ChatGptSubagentService {
       throw new ChatGptSubagentError("UNKNOWN_TURN", `Unknown ChatGPT subagent turn: ${normalizedTurnId}`)
     }
 
-    const boundedWaitMs = Math.min(Math.max(0, waitMs), 60_000)
+    const boundedWaitMs = Math.min(Math.max(0, waitMs), 270_000)
     const deadline = Date.now() + boundedWaitMs
     while (turn.status === "running") {
       await this.reconcileRunningTurn(turn, signal)

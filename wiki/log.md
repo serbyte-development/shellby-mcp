@@ -1006,3 +1006,13 @@
 - Removed response-byte counting, B/KB header suffixes, the 8 KiB large-response threshold, and the `?` Better Comments tag from MCP audit logging; `in / out` token counts remain the output-volume signal.
 - Kept bounded response-body capture only for deriving model-facing output token counts. If the body exceeds the capture ceiling, the audit entry simply omits the output-token count instead of parsing a partial response.
 - Retained `~` for calls lasting at least five seconds and `!` for tool/HTTP/connection failures.
+
+## [2026-08-16] subagents | Allow longer result waits
+
+- Raised `subagent_result.wait_ms` from a 60-second maximum to 270 seconds (4.5 minutes) so callers can wait through longer subagent runs without issuing a result request every minute.
+- Kept the subagent lifecycle timeout unchanged; this only changes how long one result-retrieval call may wait.
+
+## [2026-08-16] shells | Keep lifecycle details out of tool language
+
+- Restored the shell tools' caller-facing descriptions so they explain how to use shell IDs, reset, list, and close without exposing cache/hibernation implementation details.
+- Removed `cache_ttl_ms` from the public `shell_list` result; cached state behavior remains unchanged internally.

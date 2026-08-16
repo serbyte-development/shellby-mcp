@@ -28,7 +28,7 @@ const DEFAULTS = {
   workspace: "~/Desktop/agent-workspace",
   peekabooExecutable: "peekaboo",
   chatGptCdpEndpoint: "http://127.0.0.1:9222",
-  toolOutputStructured: "optional" as ToolOutputStructuredMode,
+  toolOutputStructured: "never" as ToolOutputStructuredMode,
   shell: {
     path: "/bin/zsh",
     transcriptChars: 1024 * 1024, // 1MB
