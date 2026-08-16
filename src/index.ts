@@ -29,7 +29,7 @@ const chatGptSubagents = new ChatGptSubagentModule({
 })
 
 const shells = new ShellSessionManager({
-  createShell: () => new PersistentShellSession({ cwd }),
+  createShell: (initialState) => new PersistentShellSession({ cwd, initialState }),
 })
 
 const running = await startMcpHttpServer({
@@ -42,7 +42,7 @@ console.log(`Local shell MCP server: ${running.url}`)
 console.log("Remote MCP authentication: trusted ChatGPT origin + bound OpenAI subject")
 console.log(`Shell: ${MCP_CONFIG.shell.path}`)
 console.log(`Default workspace: ${cwd}`)
-console.log(`Maximum named shells: ${shells.maximumShells}`)
+console.log(`Maximum live shells: ${shells.maximumShells}`)
 console.log(`Agent MCP audit log: ${auditLogPath}`)
 console.log(`Computer Use: Peekaboo CLI (${MCP_CONFIG.peekaboo.executable})`)
 console.log(`ChatGPT Subagents: attach-only CDP ${MCP_CONFIG.chatGpt.cdpEndpoint}`)

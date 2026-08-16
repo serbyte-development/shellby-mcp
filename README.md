@@ -16,7 +16,7 @@ Unhinged Agent gives ChatGPT complete control of your computer. Persistent local
 ## Capabilities
 
 - **Full computer access:** persistent shells, native `apply_patch`, webpage fetching, and focused Computer Use tools.
-- **Persistent tools:** named shells retain cwd, environment, transcript state, and background processes across independent ChatGPT tool calls.
+- **Persistent tools:** live named shells retain full process state across calls; hibernated shells retain only cwd and exported environment and transparently recreate when reused.
 - **Multi-agent capabilities:** launch up to three independent browser-backed ChatGPT agents, continue named agent conversations, and retrieve results concurrently.
 - **Context optimized:** compact model-facing Markdown, token-bounded output, pagination, schema compression, and retained local state reduce repeated context cost.
 - **Extensible:** dynamic workspace skills load directly from `<workspace>/skills/*/SKILL.md`.
@@ -225,7 +225,9 @@ For exact schemas, lifecycle behavior, output limits, and model-facing descripti
 
 ## Persistent shells
 
-`shell_id` defaults to `default`. Reusing the same ID preserves cwd, environment variables, functions, transcript, and background processes. Different shell IDs run independently and may execute foreground work concurrently.
+`shell_id` defaults to `default`. While a shell is live, reusing the same ID preserves its full process state, including cwd, exported environment, functions, retained command records, and background processes. Live shells form a 16-slot LRU working set. A non-busy named shell may hibernate after 5 minutes idle or be pressure-evicted when capacity is needed; hibernation caches only cwd and exported environment for 24 hours since last use. Reusing that `shell_id` transparently creates a new process with those two pieces of state. Functions, aliases, transcripts/request records, and live/background processes are not restored. The protected `default` shell is not automatically evicted or explicitly closable.
+
+When all live capacity is occupied by busy shells (plus any protected default slot), new shell creation fails instead of evicting active work. `shell_close` is destructive: it terminates a non-default live shell and discards any cached state for that ID. `shell_reset` likewise starts clean. `shell_poll` only works while the original live shell and its request records still exist.
 
 Each new `shell_run` command requires a `request_id`. Retrying the same request ID with the same command returns the retained result rather than executing it twice. Reusing the ID with different command text returns a conflict.
 
@@ -248,8 +250,9 @@ Starting `command` with `*** Run: <directory-or-relative-path>` selects batch mo
 
 Defaults:
 
-- 8 live shells including `default`
-- 30-minute idle timeout for named shells
+- 16 live shells including `default`
+- 5-minute idle hibernation for non-default named shells
+- 24-hour cached cwd/exported-environment lifetime since last use
 - 1,024-token response output (`o200k_base`)
 - 16,384-token maximum response override
 - 256 KiB retained output per command
@@ -303,8 +306,9 @@ Copy `.env.example` to `.env` to override the defaults below. Internal safety li
 | `CHROME_BIN`                | normal macOS Chrome path    | Optional dedicated Chrome executable override      |
 | `MCP_DEFAULT_OUTPUT_TOKENS` | `1024`                      | Default `max_output_tokens` when omitted           |
 | `MCP_MAX_OUTPUT_TOKENS`     | `16384`                     | Largest allowed `max_output_tokens` override       |
-| `MCP_MAX_SHELLS`            | `8`                         | Maximum live shells                                |
-| `MCP_SHELL_IDLE_TTL_MS`     | `1800000`                   | Named-shell idle timeout; `0` disables cleanup     |
+| `MCP_MAX_SHELLS`            | `16`                        | Maximum live shells including `default`            |
+| `MCP_SHELL_IDLE_TTL_MS`     | `300000`                    | Idle hibernation; `0` disables idle hibernation    |
+| `MCP_SHELL_CACHE_TTL_MS`    | `86400000`                  | Hibernated cwd/environment lifetime since last use |
 
 The production listener always binds to `127.0.0.1:3333`; host and port are not environment-configurable. Tests may still inject a different host or request an ephemeral port directly through the HTTP server API.
 

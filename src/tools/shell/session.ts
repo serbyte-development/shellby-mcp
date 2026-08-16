@@ -70,6 +70,7 @@ export interface ShellSessionOptions {
   shellPath?: string
   cwd?: string
   env?: NodeJS.ProcessEnv
+  initialState?: ShellRecoverableState
   transcriptLimit?: number
   commandTranscriptBytes?: number
   defaultOutputTokens?: number
@@ -148,6 +149,11 @@ interface ContextCaptureState {
 }
 
 interface ShellContext {
+  cwd: string
+  env: NodeJS.ProcessEnv
+}
+
+export interface ShellRecoverableState {
   cwd: string
   env: NodeJS.ProcessEnv
 }
@@ -283,6 +289,7 @@ export class PersistentShellSession {
   private stderrDecoder = new StringDecoder("utf8")
   private generation = 1
   private currentCwd: string
+  private initialState: ShellRecoverableState | null
   private updateVersion = 0
   private ready = false
   private closed = false
@@ -291,8 +298,9 @@ export class PersistentShellSession {
   constructor(options: ShellSessionOptions = {}) {
     this.shellPath = options.shellPath ?? MCP_CONFIG.shell.path
     this.cwd = options.cwd ?? process.cwd()
-    this.currentCwd = this.cwd
-    this.env = options.env ?? process.env
+    this.env = cloneEnvironment(options.env ?? process.env)
+    this.initialState = options.initialState ? cloneRecoverableState(options.initialState) : null
+    this.currentCwd = this.initialState?.cwd ?? this.cwd
     this.transcriptLimit = positiveInteger(options.transcriptLimit, MCP_CONFIG.shell.transcriptChars)
     this.transcript = new TranscriptBuffer(this.transcriptLimit)
     this.commandTranscriptBytes = positiveInteger(options.commandTranscriptBytes, MCP_CONFIG.shell.commandTranscriptBytes)
@@ -316,11 +324,12 @@ export class PersistentShellSession {
     )
   }
 
-  fork(): PersistentShellSession {
+  fork(initialState?: ShellRecoverableState): PersistentShellSession {
     return new PersistentShellSession({
       shellPath: this.shellPath,
       cwd: this.cwd,
       env: this.env,
+      initialState,
       transcriptLimit: this.transcriptLimit,
       commandTranscriptBytes: this.commandTranscriptBytes,
       defaultOutputTokens: this.defaultOutputTokens,
@@ -342,6 +351,20 @@ export class PersistentShellSession {
       this.startPromise = null
     })
     return this.startPromise
+  }
+
+  async captureRecoverableState(): Promise<ShellRecoverableState> {
+    if (this.closed) {
+      throw new ShellSessionError("closed", "The shell session is closed.")
+    }
+    if (this.hasActiveWork) {
+      throw new ShellSessionError("busy", "The shell is busy and cannot capture recoverable state.")
+    }
+    if (!this.child || !this.ready) {
+      return cloneRecoverableState(this.initialState ?? { cwd: this.currentCwd, env: this.env })
+    }
+    const context = await this.captureShellContext()
+    return cloneRecoverableState(context)
   }
 
   async runCommand(input: RunCommandInput): Promise<ShellSnapshot> {
@@ -725,6 +748,8 @@ export class PersistentShellSession {
     state_lost: true
     status: "ready"
   }> {
+    this.initialState = null
+    this.currentCwd = this.cwd
     await this.cancelActiveParallelBatch()
     const child = this.child
     if (child) {
@@ -772,11 +797,23 @@ export class PersistentShellSession {
     this.stdoutDecoder = new StringDecoder("utf8")
     this.stderrDecoder = new StringDecoder("utf8")
     this.ready = false
-    this.currentCwd = this.cwd
+    let restoreState = this.initialState
+    if (restoreState) {
+      try {
+        validateWorkingDirectory(restoreState.cwd)
+      } catch {
+        restoreState = null
+        this.initialState = null
+        this.currentCwd = this.cwd
+      }
+    }
+    const spawnCwd = restoreState?.cwd ?? this.cwd
+    const spawnEnv = restoreState?.env ?? this.env
+    this.currentCwd = spawnCwd
 
     const child = spawn("/bin/sh", ["-c", 'exec "$1" -l 2>&1', "mcp-shell", this.shellPath], {
-      cwd: this.cwd,
-      env: this.env,
+      cwd: spawnCwd,
+      env: spawnEnv,
       detached: process.platform !== "win32",
       stdio: ["pipe", "pipe", "pipe"],
     })
@@ -834,6 +871,7 @@ export class PersistentShellSession {
         this.killProcessGroup(child, "SIGKILL")
       })
     })
+    if (this.initialState === restoreState) this.initialState = null
   }
 
   private handleDecodedOutput(chunk: string): void {
@@ -1012,6 +1050,9 @@ export class PersistentShellSession {
 
       if (reason !== "close") {
         this.generation += 1
+        if (reason !== "reset") {
+          this.currentCwd = this.cwd
+        }
         this.appendTranscript(`\n[mcp] Shell state lost (${reason ?? "unexpected"}: ${description}). Starting generation ${this.generation}.\n`)
       }
       this.notifyUpdate()
@@ -1234,6 +1275,17 @@ function parseShellContext(value: string): ShellContext {
   }
   env.PWD = cwd
   return { cwd, env }
+}
+
+function cloneRecoverableState(state: ShellRecoverableState): ShellRecoverableState {
+  return {
+    cwd: state.cwd,
+    env: cloneEnvironment(state.env),
+  }
+}
+
+function cloneEnvironment(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  return { ...env }
 }
 
 function parseParallelCommand(command: string): ParallelCommandSpec[] | null {

@@ -342,7 +342,7 @@ test("supports always, optional, and never model-facing tool output modes", { ti
         assert.equal(compact.structuredContent, undefined)
         const text = compact.content.find((item) => item.type === "text")
         assert.ok(text?.type === "text")
-        assert.match(text.text, /count=\d+ limit=\d+ idle_timeout_ms=\d+/)
+        assert.match(text.text, /count=\d+ limit=\d+ idle_timeout_ms=\d+ cache_ttl_ms=\d+/)
         assert.match(text.text, /shells:/)
       }
 
@@ -1139,6 +1139,13 @@ test("isolates named shell state and allows foreground commands in parallel", { 
   })
   assert.equal(closedCwdShell.isError, undefined)
 
+  const freshCwdShell = await callUntilComplete(connected.client, "cwd003", `printf '%s' "$PWD"`, "cwd-shell")
+  assert.notEqual(freshCwdShell.output, explicitCwd)
+  await connected.client.callTool({
+    name: "shell_close",
+    arguments: { shell_id: "cwd-shell" },
+  })
+
   const alphaState = await callUntilComplete(connected.client, "shared-request", "cd /tmp && export NAMED_STATE=alpha && printf alpha-ready", "alpha")
   const betaState = await callUntilComplete(connected.client, "shared-request", `printf '%s|%s' "$PWD" "\${NAMED_STATE-unset}"`, "beta")
   assert.equal(alphaState.output, "alpha-ready")
@@ -1218,6 +1225,7 @@ test("isolates named shell state and allows foreground commands in parallel", { 
     count: number
     limit: number
     idle_timeout_ms: number
+    cache_ttl_ms: number
   }
   assert.deepEqual(
     listedContent.shells.map((shell) => shell.shell_id),
@@ -1225,7 +1233,8 @@ test("isolates named shell state and allows foreground commands in parallel", { 
   )
   assert.equal(listedContent.count, 3)
   assert.equal(listedContent.limit, 16)
-  assert.equal(listedContent.idle_timeout_ms, 1_800_000)
+  assert.equal(listedContent.idle_timeout_ms, 300_000)
+  assert.equal(listedContent.cache_ttl_ms, 86_400_000)
   const defaultShell = listedContent.shells.find((shell) => shell.shell_id === "default")
   assert.ok(defaultShell)
   assert.deepEqual(defaultShell, {

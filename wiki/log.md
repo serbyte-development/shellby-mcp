@@ -992,3 +992,11 @@
 - Clarified that normal follow-up submission does not reload, prompts are never resubmitted, and the old 250 ms loop contributed the network-first polling principle rather than a required polling frequency.
 - Updated `pages/Build and Test.md` to separate the two live-test responsibilities: the permanent saved-conversation fixture owns strict network/Markdown/reload compatibility, while the generative canary only proves public-MCP startup, Turn 1, Turn 2, and cross-turn context reuse, with diagnostics and a five-minute process hard cap.
 - Current deterministic validation before this documentation pass was 177/177 non-live tests plus type-check, lint, and diff-check; the simplified two-turn live canary also passed once against real ChatGPT.
+
+## [2026-08-16] shells | Add LRU live-shell hibernation and cached restoration
+
+- Capped the live shell working set at 16 including protected `default`, added LRU pressure eviction for non-busy named shells, and kept creation blocked when every eligible slot is busy or protected.
+- Reduced normal named-shell idle lifetime to five minutes and retained only cwd plus exported environment for 24 hours since last use; cached IDs transparently recreate fresh shell processes when reused.
+- Kept automatic idle/LRU hibernation responsible for caching cwd/exported environment, while `shell_close` is deliberately destructive and discards both live and cached state; `shell_reset` also starts clean.
+- Added shared cache sweeping without one timer per cached shell, public cache-TTL configuration/schema reporting, focused lifecycle/failure tests, and MCP integration coverage for close-and-restore behavior.
+- Final validation passed 191/191 deterministic tests, TypeScript checking, ESLint, production build, and `git diff --check`.

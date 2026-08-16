@@ -1,6 +1,6 @@
 # Configuration and Startup
 
-Verified 2026-08-15.
+Verified 2026-08-16.
 
 ## What This Is
 
@@ -24,8 +24,11 @@ This page documents the supported environment surface, first-time workspace init
 | `CHROME_BIN`                | normal macOS Chrome path      | Optional dedicated-browser executable override         |
 | `MCP_DEFAULT_OUTPUT_TOKENS` | `1024`                        | Default `max_output_tokens` when omitted               |
 | `MCP_MAX_OUTPUT_TOKENS`     | `16384`                       | Largest allowed `max_output_tokens` override           |
-| `MCP_MAX_SHELLS`            | `8`                           | Maximum named shells including `default`               |
-| `MCP_SHELL_IDLE_TTL_MS`     | `1800000`                     | Idle lifetime for named shells; `0` disables cleanup   |
+| `MCP_MAX_SHELLS`            | `16`                          | Maximum live shells including protected `default`      |
+| `MCP_SHELL_IDLE_TTL_MS`     | `300000`                      | Live named-shell idle lifetime; `0` disables hibernation |
+| `MCP_SHELL_CACHE_TTL_MS`    | `86400000`                    | Cached cwd/exported-environment lifetime since last use |
+
+Shell cleanup uses one shared manager interval for both live-idle hibernation and cached-state expiry. Hibernated state contains only cwd and exported environment; it is process-local and is not durable across MCP restarts (`src/config.ts`, `src/tools/shell/session-manager.ts`).
 
 Production HTTP always binds to `127.0.0.1:3333`; host and port are not environment-configurable. `MCP_CWD` expands `~`, resolves relative values from startup cwd, and becomes the shell/workspace/instruction root. Its `AGENTS.md` is the coding-instructions path advertised to MCP clients. Numeric values are range-checked. Production startup writes completed MCP `tools/call` activity to the gitignored repository-local `agent-commands.yaml`, creating or repairing it with owner-only `0600` permissions. Each call is one compact YAML document. Normal calls have no Better Comments tag; noteworthy calls use `?` for responses at least 8 KiB, `~` for calls at least 5 seconds, and `!` for MCP tool/HTTP/connection failures, in that priority order. Large response size is shown in the header without retaining normal response bodies. `shell_run` uses a block scalar capped at 2,000 characters, ordinary arguments are capped at 600 characters, and successful `apply_patch` calls record only cwd and patch size. Failed `apply_patch` calls also retain the patch body, capped at 32,000 characters, to make debugging failed edits practical (`src/config.ts`, `src/index.ts`, `src/server/audit-log.ts`, `src/server/http-server.ts`).
 

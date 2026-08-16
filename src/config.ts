@@ -41,7 +41,8 @@ const DEFAULTS = {
     stopGraceMs: 500,
     recordLimit: 1_024,
     maxShells: 16,
-    idleTimeoutMs: 30 * 60 * 1000, // 30 minutes
+    idleTimeoutMs: 5 * 60 * 1000, // 5 minutes
+    cacheTimeoutMs: 24 * 60 * 60 * 1000, // 24 hours
   },
   ios: {
     port: 8765,
@@ -82,6 +83,7 @@ export function loadMcpConfig(env: NodeJS.ProcessEnv = process.env) {
       recordLimit: DEFAULTS.shell.recordLimit,
       maxShells: parsePositiveInteger(env.MCP_MAX_SHELLS, DEFAULTS.shell.maxShells),
       idleTimeoutMs: parseNonNegativeInteger(env.MCP_SHELL_IDLE_TTL_MS, DEFAULTS.shell.idleTimeoutMs),
+      cacheTimeoutMs: parsePositiveInteger(env.MCP_SHELL_CACHE_TTL_MS, DEFAULTS.shell.cacheTimeoutMs),
     },
     ios: {
       host: env.MCP_IOS_HOST,

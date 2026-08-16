@@ -1,6 +1,6 @@
 import { MCP_CONFIG } from "../../config.js"
 import { nonNegativeInteger, positiveInteger } from "../../utils.js"
-import { PersistentShellSession, ShellSessionError } from "./session.js"
+import { PersistentShellSession, ShellSessionError, type ShellRecoverableState } from "./session.js"
 
 export const DEFAULT_SHELL_ID = "default"
 
@@ -8,10 +8,11 @@ const DEFAULT_CLEANUP_INTERVAL_MS = 60 * 1000
 const MAX_SHELL_ID_LENGTH = 64
 
 export interface ShellSessionManagerOptions {
-  createShell?: () => PersistentShellSession
+  createShell?: (initialState?: ShellRecoverableState) => PersistentShellSession
   defaultShell?: PersistentShellSession
   maxShells?: number
   idleTimeoutMs?: number
+  cacheTimeoutMs?: number
   now?: () => number
 }
 
@@ -23,35 +24,45 @@ export interface ManagedShellInfo extends Record<string, unknown> {
   idle_ms: number
 }
 
+interface CachedShellState {
+  state: ShellRecoverableState
+  lastUsedAt: number
+}
+
 export class ShellSessionManager {
-  private readonly createShell: () => PersistentShellSession
+  private readonly createShell: (initialState?: ShellRecoverableState) => PersistentShellSession
   private readonly sessions = new Map<string, PersistentShellSession>()
   private readonly lastUsedAt = new Map<string, number>()
-  private readonly closingShells = new Map<string, Promise<void>>()
+  private readonly leases = new Map<string, number>()
+  private readonly cachedStates = new Map<string, CachedShellState>()
   private readonly maxShells: number
   private readonly idleTimeoutMs: number
+  private readonly cacheTimeoutMs: number
   private readonly now: () => number
-  private readonly cleanupTimer: NodeJS.Timeout | null
+  private readonly cleanupTimer: NodeJS.Timeout
   private cleanupPromise: Promise<string[]> | null = null
+  private lifecycleTail: Promise<void> = Promise.resolve()
   private closed = false
 
   constructor(options: ShellSessionManagerOptions = {}) {
     const defaultShell = options.defaultShell
-    this.createShell = options.createShell ?? (defaultShell ? () => defaultShell.fork() : () => new PersistentShellSession())
+    this.createShell =
+      options.createShell ?? (defaultShell ? (state) => defaultShell.fork(state) : (state) => new PersistentShellSession({ initialState: state }))
     this.maxShells = positiveInteger(options.maxShells, MCP_CONFIG.shell.maxShells)
     this.idleTimeoutMs = nonNegativeInteger(options.idleTimeoutMs, MCP_CONFIG.shell.idleTimeoutMs)
+    this.cacheTimeoutMs = positiveInteger(options.cacheTimeoutMs, MCP_CONFIG.shell.cacheTimeoutMs)
     this.now = options.now ?? Date.now
     this.sessions.set(DEFAULT_SHELL_ID, defaultShell ?? this.createShell())
     this.lastUsedAt.set(DEFAULT_SHELL_ID, this.now())
-    this.cleanupTimer =
-      this.idleTimeoutMs === 0
-        ? null
-        : setInterval(() => {
-            void this.cleanupIdle().catch(() => {
-              // Idle cleanup is best effort and must not terminate the server.
-            })
-          }, cleanupInterval(this.idleTimeoutMs))
-    this.cleanupTimer?.unref()
+    this.cleanupTimer = setInterval(
+      () => {
+        void this.cleanupIdle().catch(() => {
+          // Lifecycle cleanup is best effort and must not terminate the server.
+        })
+      },
+      cleanupInterval(this.idleTimeoutMs, this.cacheTimeoutMs)
+    )
+    this.cleanupTimer.unref()
   }
 
   get initialCwd(): string {
@@ -70,63 +81,81 @@ export class ShellSessionManager {
     return this.idleTimeoutMs
   }
 
+  get cacheTimeoutMilliseconds(): number {
+    return this.cacheTimeoutMs
+  }
+
   get defaultShell(): PersistentShellSession {
     return this.sessions.get(DEFAULT_SHELL_ID)!
   }
 
-  getOrCreate(shellId = DEFAULT_SHELL_ID): PersistentShellSession {
-    this.assertOpen()
-    validateShellId(shellId)
-
-    if (this.closingShells.has(shellId)) {
-      throw new ShellSessionError("busy", `Shell ${JSON.stringify(shellId)} is closing. Retry after it has closed.`)
-    }
-
-    const existing = this.sessions.get(shellId)
-    if (existing) {
-      this.touch(shellId)
-      return existing
-    }
-
-    if (this.sessions.size >= this.maxShells) {
-      throw new ShellSessionError(
-        "shell_limit_reached",
-        `Cannot create shell ${JSON.stringify(shellId)} because the ${this.maxShells}-shell limit has been reached. Reuse an existing shell_id, or use shell_list and shell_close to free an unused named shell.`
-      )
-    }
-
-    const shell = this.createShell()
-    this.sessions.set(shellId, shell)
-    this.touch(shellId)
-    return shell
+  async getOrCreate(shellId = DEFAULT_SHELL_ID, options: { restoreCached?: boolean } = {}): Promise<PersistentShellSession> {
+    return this.withLifecycleLock(() => this.getOrCreateUnlocked(shellId, options.restoreCached !== false))
   }
 
   getExisting(shellId = DEFAULT_SHELL_ID): PersistentShellSession {
     this.assertOpen()
     validateShellId(shellId)
-    if (this.closingShells.has(shellId)) {
-      throw new ShellSessionError("busy", `Shell ${JSON.stringify(shellId)} is closing.`)
-    }
     const existing = this.sessions.get(shellId)
     if (!existing) {
       throw new ShellSessionError(
         "request_not_found",
-        `No shell exists for shell_id ${JSON.stringify(shellId)}. Start a command in that shell before polling it.`
+        `No live shell exists for shell_id ${JSON.stringify(shellId)}. Start a new command in that shell before polling it.`
       )
     }
     this.touch(shellId)
     return existing
   }
 
+  async withShell<T>(shellId: string, operation: (shell: PersistentShellSession) => Promise<T>, options: { restoreCached?: boolean } = {}): Promise<T> {
+    const shell = await this.withLifecycleLock(async () => {
+      const acquired = await this.getOrCreateUnlocked(shellId, options.restoreCached !== false)
+      this.leases.set(shellId, (this.leases.get(shellId) ?? 0) + 1)
+      return acquired
+    })
+    try {
+      return await operation(shell)
+    } finally {
+      this.releaseLease(shellId, shell)
+    }
+  }
+
+  async withExistingShell<T>(shellId: string, operation: (shell: PersistentShellSession) => Promise<T>): Promise<T> {
+    const shell = await this.withLifecycleLock(async () => {
+      this.assertOpen()
+      validateShellId(shellId)
+      const existing = this.sessions.get(shellId)
+      if (!existing) {
+        throw new ShellSessionError(
+          "request_not_found",
+          `No live shell exists for shell_id ${JSON.stringify(shellId)}. Its retained command records are unavailable after hibernation or close.`
+        )
+      }
+      this.touch(shellId)
+      this.leases.set(shellId, (this.leases.get(shellId) ?? 0) + 1)
+      return existing
+    })
+    try {
+      return await operation(shell)
+    } finally {
+      this.releaseLease(shellId, shell)
+    }
+  }
+
   listShellIds(): string[] {
     return [...this.sessions.keys()]
+  }
+
+  listCachedShellIds(now = this.now()): string[] {
+    this.removeExpiredCachedStates(now)
+    return [...this.cachedStates.keys()]
   }
 
   listShells(now = this.now()): ManagedShellInfo[] {
     this.assertOpen()
     return [...this.sessions.entries()].map(([shellId, shell]) => ({
       shell_id: shellId,
-      status: shell.hasActiveWork ? "active" : "idle",
+      status: shell.hasActiveWork || (this.leases.get(shellId) ?? 0) > 0 ? "active" : "idle",
       is_default: shellId === DEFAULT_SHELL_ID,
       can_close: shellId !== DEFAULT_SHELL_ID,
       idle_ms: Math.max(0, now - (this.lastUsedAt.get(shellId) ?? now)),
@@ -134,23 +163,27 @@ export class ShellSessionManager {
   }
 
   async closeShell(shellId: string): Promise<void> {
-    this.assertOpen()
-    validateShellId(shellId)
-    if (shellId === DEFAULT_SHELL_ID) {
-      throw new ShellSessionError("protected_shell", `The ${JSON.stringify(DEFAULT_SHELL_ID)} shell cannot be closed. Use shell_reset to recover it if needed.`)
-    }
+    return this.withLifecycleLock(async () => {
+      this.assertOpen()
+      validateShellId(shellId)
+      if (shellId === DEFAULT_SHELL_ID) {
+        throw new ShellSessionError(
+          "protected_shell",
+          `The ${JSON.stringify(DEFAULT_SHELL_ID)} shell cannot be closed. Use shell_reset to recover it if needed.`
+        )
+      }
 
-    const closing = this.closingShells.get(shellId)
-    if (closing) return closing
+      const shell = this.sessions.get(shellId)
+      if (!shell) {
+        throw new ShellSessionError("request_not_found", `No live shell exists for shell_id ${JSON.stringify(shellId)}.`)
+      }
 
-    const shell = this.sessions.get(shellId)
-    if (!shell) {
-      throw new ShellSessionError("request_not_found", `No shell exists for shell_id ${JSON.stringify(shellId)}.`)
-    }
-
-    this.sessions.delete(shellId)
-    this.lastUsedAt.delete(shellId)
-    return this.beginClose(shellId, shell)
+      this.cachedStates.delete(shellId)
+      this.sessions.delete(shellId)
+      this.lastUsedAt.delete(shellId)
+      this.leases.delete(shellId)
+      await shell.close()
+    })
   }
 
   async startDefault(): Promise<void> {
@@ -160,7 +193,7 @@ export class ShellSessionManager {
 
   cleanupIdle(now = this.now()): Promise<string[]> {
     if (this.cleanupPromise) return this.cleanupPromise
-    const cleanup = this.performIdleCleanup(now).finally(() => {
+    const cleanup = this.withLifecycleLock(() => this.performCleanup(now)).finally(() => {
       if (this.cleanupPromise === cleanup) this.cleanupPromise = null
     })
     this.cleanupPromise = cleanup
@@ -170,14 +203,14 @@ export class ShellSessionManager {
   async close(): Promise<void> {
     if (this.closed) return
     this.closed = true
-    if (this.cleanupTimer) clearInterval(this.cleanupTimer)
+    clearInterval(this.cleanupTimer)
     const cleanup = this.cleanupPromise
     const shells = [...this.sessions.values()]
-    const closing = [...this.closingShells.values()]
     this.sessions.clear()
     this.lastUsedAt.clear()
-    await Promise.allSettled([...(cleanup ? [cleanup] : []), ...closing, ...shells.map((shell) => shell.close())])
-    this.closingShells.clear()
+    this.leases.clear()
+    this.cachedStates.clear()
+    await Promise.allSettled([...(cleanup ? [cleanup] : []), ...shells.map((shell) => shell.close())])
   }
 
   private assertOpen(): void {
@@ -190,38 +223,114 @@ export class ShellSessionManager {
     this.lastUsedAt.set(shellId, this.now())
   }
 
-  private async performIdleCleanup(now: number): Promise<string[]> {
-    if (this.closed || this.idleTimeoutMs === 0) return []
+  private releaseLease(shellId: string, shell: PersistentShellSession): void {
+    const count = this.leases.get(shellId) ?? 0
+    if (count <= 1) this.leases.delete(shellId)
+    else this.leases.set(shellId, count - 1)
+    if (this.sessions.get(shellId) === shell) this.touch(shellId)
+  }
+
+  private async getOrCreateUnlocked(shellId: string, restoreCached: boolean): Promise<PersistentShellSession> {
+    this.assertOpen()
+    validateShellId(shellId)
+
+    const existing = this.sessions.get(shellId)
+    if (existing) {
+      this.touch(shellId)
+      return existing
+    }
+
+    const now = this.now()
+    const cached = this.cachedStates.get(shellId)
+    if (cached && now - cached.lastUsedAt >= this.cacheTimeoutMs) {
+      this.cachedStates.delete(shellId)
+    }
+    if (!restoreCached) this.cachedStates.delete(shellId)
+
+    if (this.sessions.size >= this.maxShells) {
+      const evicted = await this.evictLeastRecentlyUsedShell()
+      if (!evicted) {
+        throw new ShellSessionError(
+          "shell_limit_reached",
+          `Cannot create shell ${JSON.stringify(shellId)} because all ${this.maxShells} live shell slots are unavailable. Busy shells and the protected ${JSON.stringify(DEFAULT_SHELL_ID)} shell are never pressure-evicted.`
+        )
+      }
+    }
+
+    const restored = restoreCached ? this.cachedStates.get(shellId) : undefined
+    if (restored) this.cachedStates.delete(shellId)
+    const shell = this.createShell(restored?.state)
+    this.sessions.set(shellId, shell)
+    this.touch(shellId)
+    return shell
+  }
+
+  private async evictLeastRecentlyUsedShell(): Promise<boolean> {
+    const candidates = [...this.sessions.entries()]
+      .filter(([shellId, shell]) => shellId !== DEFAULT_SHELL_ID && !shell.hasActiveWork && (this.leases.get(shellId) ?? 0) === 0)
+      .sort(([leftId], [rightId]) => (this.lastUsedAt.get(leftId) ?? 0) - (this.lastUsedAt.get(rightId) ?? 0))
+
+    for (const [shellId, shell] of candidates) {
+      if (await this.hibernateShell(shellId, shell, this.lastUsedAt.get(shellId) ?? this.now())) return true
+    }
+    return false
+  }
+
+  private async performCleanup(now: number): Promise<string[]> {
+    if (this.closed) return []
+
+    this.removeExpiredCachedStates(now)
+    if (this.idleTimeoutMs === 0) return []
 
     const evicted: string[] = []
-    const closes: Promise<void>[] = []
-    for (const [shellId, shell] of this.sessions) {
+    for (const [shellId, shell] of [...this.sessions]) {
       if (shellId === DEFAULT_SHELL_ID) continue
       const lastUsedAt = this.lastUsedAt.get(shellId) ?? now
       if (now - lastUsedAt < this.idleTimeoutMs) continue
-      if (shell.hasActiveWork) {
+      if (shell.hasActiveWork || (this.leases.get(shellId) ?? 0) > 0) {
         this.lastUsedAt.set(shellId, now)
         continue
       }
-
-      this.sessions.delete(shellId)
-      this.lastUsedAt.delete(shellId)
-      evicted.push(shellId)
-      closes.push(this.beginClose(shellId, shell))
+      if (await this.hibernateShell(shellId, shell, lastUsedAt)) evicted.push(shellId)
     }
-
-    await Promise.allSettled(closes)
     return evicted
   }
 
-  private beginClose(shellId: string, shell: PersistentShellSession): Promise<void> {
-    const close = shell.close().finally(() => {
-      if (this.closingShells.get(shellId) === close) {
-        this.closingShells.delete(shellId)
-      }
+  private async hibernateShell(shellId: string, shell: PersistentShellSession, lastUsedAt: number): Promise<boolean> {
+    let state: ShellRecoverableState
+    try {
+      state = await shell.captureRecoverableState()
+    } catch {
+      return false
+    }
+
+    if (this.sessions.get(shellId) !== shell || shell.hasActiveWork || (this.leases.get(shellId) ?? 0) > 0) return false
+    this.cachedStates.set(shellId, { state, lastUsedAt })
+    this.sessions.delete(shellId)
+    this.lastUsedAt.delete(shellId)
+    this.leases.delete(shellId)
+    await shell.close()
+    return true
+  }
+
+  private removeExpiredCachedStates(now: number): void {
+    for (const [shellId, cached] of this.cachedStates) {
+      if (now - cached.lastUsedAt >= this.cacheTimeoutMs) this.cachedStates.delete(shellId)
+    }
+  }
+
+  private async withLifecycleLock<T>(operation: () => Promise<T>): Promise<T> {
+    let release!: () => void
+    const previous = this.lifecycleTail
+    this.lifecycleTail = new Promise<void>((resolve) => {
+      release = resolve
     })
-    this.closingShells.set(shellId, close)
-    return close
+    await previous
+    try {
+      return await operation()
+    } finally {
+      release()
+    }
   }
 }
 
@@ -231,6 +340,7 @@ function validateShellId(shellId: string): void {
   }
 }
 
-function cleanupInterval(idleTimeoutMs: number): number {
-  return Math.max(1_000, Math.min(DEFAULT_CLEANUP_INTERVAL_MS, Math.floor(idleTimeoutMs / 2)))
+function cleanupInterval(idleTimeoutMs: number, cacheTimeoutMs: number): number {
+  const shortestTimeout = idleTimeoutMs === 0 ? cacheTimeoutMs : Math.min(idleTimeoutMs, cacheTimeoutMs)
+  return Math.max(1_000, Math.min(DEFAULT_CLEANUP_INTERVAL_MS, Math.floor(shortestTimeout / 2)))
 }

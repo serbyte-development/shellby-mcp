@@ -1,6 +1,6 @@
 # Persistent Shell Runtime
 
-Verified 2026-08-14.
+Verified 2026-08-16.
 
 ## What This Is
 
@@ -31,6 +31,16 @@ The wrapper clears `errexit` before and after evaluation so a prior `set -e` doe
 ## Concurrency
 
 Each named shell accepts one foreground command. Different shell IDs run independently. Direct `apply_patch` processes bypass shell locks, transcripts, and request records (`src/tools/shell/session.ts`, `src/tools/shell/shell-tools.ts`, `test/mcp-integration.test.ts`).
+
+## Live Shells, Hibernation, and Restoration
+
+The manager keeps at most **16 live shells including protected `default`**. Named live shells form an LRU working set. When a new live slot is needed, the least-recently-used non-busy named shell is hibernated; busy shells and `default` are never pressure-evicted. If every available slot is busy or protected, creation fails with `shell_limit_reached` instead of killing active work (`src/config.ts`, `src/tools/shell/session-manager.ts`).
+
+Named shells normally hibernate after **5 minutes idle**. Hibernation captures only current cwd and exported environment, closes the live shell/process group, and drops command records, transcript state, functions, aliases, and running/background processes. Reusing the same `shell_id` within **24 hours since last use** transparently creates a fresh shell restored from cached cwd/environment. Cache expiry is handled by the manager's shared lifecycle sweep rather than one timer per cached shell (`src/tools/shell/session-manager.ts`, `src/tools/shell/session.ts`).
+
+Cached state is process-local and disappears on MCP restart. If a cached cwd no longer exists when restoration is attempted, that cached state is discarded and the shell starts from its configured baseline instead of entering a failed restart loop (`src/tools/shell/session.ts`, `test/shell-session-manager.test.ts`).
+
+`shell_close` is intentionally destructive: it terminates a non-default live shell, removes any cached state for that ID, and frees its live slot. Automatic idle/LRU hibernation is the only path that preserves cwd/exported environment. `shell_poll` cannot continue old command records after hibernation or close because those records belong to the destroyed live process. `shell_reset` deliberately discards any live or cached recoverable state and starts clean. The `default` shell remains live and protected from explicit close and automatic eviction (`src/tools/shell/session-manager.ts`, `src/tools/shell/shell-tools.ts`).
 
 ### Parallel command envelope
 
