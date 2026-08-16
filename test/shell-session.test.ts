@@ -1,5 +1,5 @@
 import assert from "node:assert/strict"
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises"
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import test from "node:test"
@@ -43,6 +43,25 @@ test("starts in an explicit cwd, reports it, and retains it", { timeout: 10_000 
   assert.equal(second.snapshot.cwd, directory)
 })
 
+test("resolves relative explicit cwd from the retained shell cwd", { timeout: 10_000 }, async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), "shell-mcp-relative-cwd-"))
+  const childDirectory = join(directory, "child")
+  await mkdir(childDirectory)
+  const shell = new PersistentShellSession({ cwd: directory })
+  t.after(async () => {
+    await shell.close()
+    await rm(directory, { recursive: true, force: true })
+  })
+
+  const child = await runToCompletion(shell, "relative-child", `printf '%s' "$PWD"`, { cwd: "./child" })
+  assert.equal(child.output, childDirectory)
+  assert.equal(child.snapshot.cwd, childDirectory)
+
+  const parent = await runToCompletion(shell, "relative-parent", `printf '%s' "$PWD"`, { cwd: ".." })
+  assert.equal(parent.output, directory)
+  assert.equal(parent.snapshot.cwd, directory)
+})
+
 test("rejects invalid explicit working directories", { timeout: 10_000 }, async (t) => {
   const directory = await mkdtemp(join(tmpdir(), "shell-mcp-invalid-cwd-"))
   const file = join(directory, "file.txt")
@@ -55,11 +74,11 @@ test("rejects invalid explicit working directories", { timeout: 10_000 }, async 
 
   await assert.rejects(
     shell.runCommand({
-      requestId: "relative-cwd",
+      requestId: "missing-cwd",
       command: "printf blocked",
-      cwd: "relative/path",
+      cwd: "missing/path",
     }),
-    (error: unknown) => error instanceof ShellSessionError && error.code === "invalid_command" && /absolute path/.test(error.message)
+    (error: unknown) => error instanceof ShellSessionError && error.code === "invalid_command" && /not accessible/.test(error.message)
   )
 
   await assert.rejects(

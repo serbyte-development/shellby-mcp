@@ -410,11 +410,12 @@ export class PersistentShellSession {
     if (!this.child || !this.ready) {
       throw new ShellSessionError("shell_unavailable", "The shell process is not ready.")
     }
-    validateWorkingDirectory(input.cwd)
+    const commandCwd = input.cwd === undefined ? undefined : resolve(this.currentCwd, input.cwd)
+    validateWorkingDirectory(commandCwd)
 
     if (parallelCommands) {
       return this.runParallelCommands({
-        input,
+        input: commandCwd === input.cwd ? input : { ...input, cwd: commandCwd },
         commands: parallelCommands,
         commandHash,
         waitMs,
@@ -428,7 +429,7 @@ export class PersistentShellSession {
     const record: CommandRecord = {
       requestId: input.requestId,
       commandHash,
-      cwd: input.cwd ?? this.currentCwd,
+      cwd: commandCwd ?? this.currentCwd,
       startCursor: this.transcript.end,
       endCursor: null,
       status: "running",
@@ -442,7 +443,7 @@ export class PersistentShellSession {
     this.records.set(record.requestId, record)
     this.active = record
     try {
-      await writeToStdin(child, buildCommandScript(input.command, token, input.cwd))
+      await writeToStdin(child, buildCommandScript(input.command, token, commandCwd))
     } catch (error) {
       record.endCursor = this.transcript.end
       record.status = this.stopReasons.get(child) === "reset" ? "reset" : "shell_exited"

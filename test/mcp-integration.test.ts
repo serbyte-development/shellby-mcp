@@ -1130,6 +1130,22 @@ test("isolates named shell state and allows foreground commands in parallel", { 
   assert.equal(explicitResult.output, explicitCwd)
   assert.equal(explicitResult.cwd, explicitCwd)
 
+  const relativeResult = snapshotFromResult(
+    await connected.client.callTool({
+      name: "shell_run",
+      arguments: {
+        shell_id: "cwd-shell",
+        request_id: "cwd-relative",
+        cwd: ".",
+        command: `printf '%s' "$PWD"`,
+        wait_ms: 1_000,
+      },
+    })
+  )
+  assert.equal(relativeResult.status, "completed")
+  assert.equal(relativeResult.output, explicitCwd)
+  assert.equal(relativeResult.cwd, explicitCwd)
+
   const retainedCwd = await callUntilComplete(connected.client, "cwd002", "printf '%s' \"$PWD\"", "cwd-shell")
   assert.equal(retainedCwd.output, explicitCwd)
   assert.equal(retainedCwd.cwd, explicitCwd)

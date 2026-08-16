@@ -9,13 +9,13 @@ import { isProcessAlive, pollToCompletion, quote, runToCompletion, waitForProces
 import { tempDir } from "./helpers/temp.js"
 
 test("runs parallel command batches from one root with relative paths and retained exported environment", { timeout: 10_000 }, async (t) => {
-  const directory = await tempDir(t, "shell-mcp-parallel-root-")
+  const directory = await realpath(await tempDir(t, "shell-mcp-parallel-root-"))
   const repoDirectory = join(directory, "workspace", "repo")
   const apiDirectory = join(repoDirectory, "packages", "api")
   const sharedDirectory = join(directory, "shared")
   await mkdir(apiDirectory, { recursive: true })
   await mkdir(sharedDirectory, { recursive: true })
-  const shell = new PersistentShellSession({ parallelScheduler: new ParallelCommandScheduler(4) })
+  const shell = new PersistentShellSession({ cwd: directory, parallelScheduler: new ParallelCommandScheduler(4) })
   t.after(() => shell.close())
 
   await runToCompletion(shell, "parallel-env", "export MCP_PARALLEL_RETAINED=present")
@@ -30,7 +30,7 @@ test("runs parallel command batches from one root with relative paths and retain
       "*** Run: ../../shared",
       `printf 'shared:%s:%s' "$PWD" "$MCP_PARALLEL_RETAINED"`,
     ].join("\n"),
-    { cwd: repoDirectory }
+    { cwd: "workspace/repo" }
   )
 
   assert.equal(batch.snapshot.status, "completed")

@@ -79,7 +79,7 @@ export function registerShellExecutionTools(server: McpServer, shells: ShellSess
           .string()
           .min(1)
           .optional()
-          .describe("Optional absolute directory switch. It persists for normal commands and becomes the anchor for relative paths in a parallel batch."),
+          .describe("Optional directory switch. Relative paths resolve from the shell's current working directory. It persists for normal commands and becomes the anchor for relative paths in a parallel batch."),
         command: z
           .string()
           .min(1)
