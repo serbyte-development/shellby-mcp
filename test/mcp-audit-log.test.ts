@@ -39,7 +39,7 @@ test("writes one compact YAML document for a shell command", async (t) => {
   assert.equal(characterCount("🙂a"), 2)
   assert.equal(
     await readFile(file, "utf8"),
-    ["--- # 20:58:30 - shell_run - 275ms - 23 in", 'shell: "api-audit/scan-1"', "command: |-", "  rg -n foo src", "", ""].join("\n")
+    ['shell: "api-audit/scan-1"', "command: |-", "  rg -n foo src", "--- # 20:58:30 - shell_run - 275ms - 23 in", "", ""].join("\n")
   )
 })
 
@@ -175,7 +175,7 @@ test("logs apply_patch bodies only when the tool fails", async (t) => {
   call.finish({ httpStatus: 200, state: "finished", responseBody: '{"result":{"isError":false}}' })
 
   let log = await readFile(file, "utf8")
-  assert.equal(log, `--- # 21:12:03 - apply_patch - 51ms - 33 in\ncwd: "/workspace/project"\npatch_chars: ${characterCount(patch)}\n\n`)
+  assert.equal(log, `cwd: "/workspace/project"\npatch_chars: ${characterCount(patch)}\n--- # 21:12:03 - apply_patch - 51ms - 33 in\n\n`)
   assert.doesNotMatch(log, /Begin Patch|Update File|old|new/)
 
   const [failedCall] = logger.startToolCalls({
@@ -244,7 +244,7 @@ test("logs shell tool errors with their MCP failure reason", async (t) => {
     responseBody: `event: message\ndata: ${JSON.stringify({
       result: {
         isError: true,
-        content: [{ type: "text", text: "invalid_command: Expected '*** Run: <directory-or-relative-path>' on line 1." }],
+        content: [{ type: "text", text: "invalid_command: Expected '*** Run:' or '*** Run: <directory>' on line 1." }],
       },
     })}\n\n`,
   })
@@ -268,7 +268,7 @@ test("logs shell tool errors with their MCP failure reason", async (t) => {
 
   const log = await readFile(file, "utf8")
   assert.match(log, /--- # ! 22:50:00 - shell_run/)
-  assert.match(log, /message: "invalid_command: Expected '\*\*\* Run: <directory-or-relative-path>' on line 1\."/)
+  assert.match(log, /message: "invalid_command: Expected '\*\*\* Run:' or '\*\*\* Run: <directory>' on line 1\."/)
   assert.match(log, /--- # ! 22:50:00 - shell_poll/)
   assert.match(log, /shell: "parallel\/missing"\ncursor: 0\nmessage: "unknown_request: No retained command for request_id missing\."/)
 
@@ -296,8 +296,8 @@ test("logs shell tool errors with their MCP failure reason", async (t) => {
   })
 
   const finalLog = await readFile(file, "utf8")
-  assert.match(finalLog, /--- # 22:50:00 - shell_run - 0ms - \d+ in \/ \d+ out\nshell: "parallel\/child-nonzero"/)
-  assert.doesNotMatch(finalLog, /--- # ! 22:50:00 - shell_run - 0ms - \d+ in \/ \d+ out\nshell: "parallel\/child-nonzero"/)
+  assert.match(finalLog, /shell: "parallel\/child-nonzero"\ncommand: \|-\n {2}\*\*\* Run: \.\n {2}false\n--- # 22:50:00 - shell_run - 0ms - \d+ in \/ \d+ out/)
+  assert.doesNotMatch(finalLog, /shell: "parallel\/child-nonzero"[\s\S]*--- # ! 22:50:00 - shell_run - 0ms - \d+ in \/ \d+ out/)
 })
 
 test("caps large ordinary tool arguments", async (t) => {
@@ -316,7 +316,8 @@ test("caps large ordinary tool arguments", async (t) => {
   call.finish({ httpStatus: 200, state: "finished" })
 
   const log = await readFile(file, "utf8")
-  assert.match(log, /^--- # 22:00:00 - skill_load - 0ms - \d+ in\nargs: "/)
+  assert.match(log, /^args: "/)
+  assert.match(log, /--- # 22:00:00 - skill_load - 0ms - \d+ in\n\n$/)
   assert.match(log, /chars omitted/)
   assert.ok(log.length < 800)
 })

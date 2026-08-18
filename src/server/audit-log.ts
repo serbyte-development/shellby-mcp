@@ -119,7 +119,7 @@ function formatEntry(input: {
   const tagPrefix = tag ? `${tag} ` : ""
   const heading = `--- # ${tagPrefix}${formatAuditTime(input.time)} - ${input.toolName} - ${input.durationMs}ms${tokenCounts}${invocationMarkers}${abnormal}`
   const details = formatArguments(input.toolName, input.argumentsValue, input.toolFailed, input.failureMessage)
-  return details ? `${heading}\n${details}\n\n` : `${heading}\n\n`
+  return details ? `${details}\n${heading}\n\n` : `${heading}\n\n`
 }
 
 function formatInvocationMarkers(value: unknown): string {
