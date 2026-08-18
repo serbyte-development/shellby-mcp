@@ -17,9 +17,13 @@ Start with [Project Overview](pages/Project%20Overview.md), then open only the p
 - [MCP Tool Surface](pages/MCP%20Tool%20Surface.md) — published shell, webpage, skill, patch, subagent, and Computer Use contracts.
 - [Tool Naming and Schema Design](pages/Tool%20Naming%20and%20Schema%20Design.md) — model-facing conventions for tool names, routing descriptions, schemas, parameters, and outputs.
 - [Persistent Shell Runtime](pages/Persistent%20Shell%20Runtime.md) — shell protocol, output bounds, retries, concurrency, and recovery.
-- [Workspace Tooling](pages/Workspace%20Tooling.md) — workspace conventions, dynamic skills, and vendored `apply_patch`.
+- [Workspace Tooling](pages/Workspace%20Tooling.md) — workspace conventions, dynamic skills, and generated-tool conventions.
 - [Browser ChatGPT Subagents](pages/Browser%20ChatGPT%20Subagents.md) — CDP-backed delegation, completion events, result reconciliation, recovery, and browser ownership.
 - [iOS Shell](pages/iOS%20Shell.md) — deferred experimental iPhone command bridge retained in source but not registered with MCP.
+
+## Tool Reference
+
+- [`apply_patch`](tools/apply_patch.md) — grammar, execution/atomicity, partial failures, result summaries, native quirks, limits, and tests.
 
 ## Active and Possible Work
 

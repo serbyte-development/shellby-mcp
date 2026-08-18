@@ -1,10 +1,10 @@
 # Workspace Tooling
 
-Verified 2026-08-15.
+Verified 2026-08-18.
 
 ## What This Is
 
-This page documents the configured coding workspace, direct patch runtime, dynamic skill catalog, and prompt-only generated-tool conventions.
+This page documents the configured coding workspace, dynamic skill catalog, and prompt-only generated-tool conventions.
 
 ## Default Workspace
 
@@ -12,17 +12,7 @@ This page documents the configured coding workspace, direct patch runtime, dynam
 
 ## `apply_patch`
 
-The MCP registers `apply_patch` as a first-class core tool and resolves the checked-in macOS Universal 2 executable directly from `vendor/apply-patch/apply_patch`. There is no workspace symlink, shell `PATH` injection, or runtime binary override. Shell callers do not need `apply_patch`; agents use the MCP tool directly (`src/tools/apply-patch/apply-patch.ts`, `vendor/apply-patch/apply_patch`).
-
-The handler requires an absolute patch root, spawns the vendored executable directly in that directory, writes the patch to stdin, and caps combined failure diagnostics internally at 1,024 `o200k_base` tokens; callers cannot raise that limit through the tool schema. On POSIX the child owns a detached process group; request abort sends the group `SIGTERM`, waits 500 ms, escalates to `SIGKILL`, and force-settles after one further bounded grace period if process close never arrives. Windows uses direct child signaling. `apply_patch` remains independent of persistent-shell state and serialization (`src/tokenizer.ts`, `src/server/http-server.ts`, `src/tools/apply-patch/apply-patch.ts`, `test/mcp-integration.test.ts`).
-
-Direct MCP probes on 2026-08-11 against the vendored binary pinned in `vendor/apply-patch/provenance.json` verified `Add File`, `Update File`, `Delete File`, `Move to`, multiple file operations, multiple ordinary hunks, `@@ <context>` search anchors, and `*** End of File`. A single `@@` anchor can scope a later matching change within that region. Consecutive `@@` anchors are rejected as an invalid update hunk, despite the copied Codex prompt example that describes nested `@@` anchors. Hunk body lines must begin with space, `-`, or `+`; malformed envelopes and hunks return specific parser diagnostics (`vendor/apply-patch/apply_patch`).
-
-Two parser behaviors are intentionally treated as implementation quirks rather than the MCP contract: `*** Add File` overwrites an existing path, and an absolute path inside a patch is accepted by the vendored binary and can escape `cwd`. The public tool schema and agent instructions still require patch file references to be relative. The wrapper mechanically validates only that `cwd` itself is absolute; it does not parse or sandbox patch-internal paths (`src/tools/apply-patch/apply-patch.ts`, `vendor/apply-patch/apply_patch`).
-
-On failure, `structuredContent` returns `status: failed`, the native exit code, and up to 1,024 `o200k_base` tokens of combined stdout/stderr in `output`; `output_dropped` marks diagnostics discarded beyond that ceiling. The text `content` also includes the same bounded native diagnostic after the compact `apply_patch failed, exit=...` summary so clients that primarily surface text still receive actionable parser errors. The audit logger records a bounded failure message and up to 32,000 characters of the failed patch alongside cwd and patch size in `agent-commands.yaml`; successful patch calls omit the patch body. Wrapper/startup failures that have no structured output use the returned text error, so the reason is still logged. Actual parser failures include useful diagnostics such as missing envelope markers, missing files, unmatched context, and invalid hunk lines. Successful calls intentionally omit native output and return only compact status/exit metadata (`src/tokenizer.ts`, `src/tools/apply-patch/apply-patch.ts`, `src/server/audit-log.ts`, `test/mcp-audit-log.test.ts`, `test/mcp-integration.test.ts`).
-
-The vendored binary, provenance, license, and notice live together under `vendor/apply-patch/`. `scripts/build-apply-patch.sh` builds the pinned Codex source for `aarch64-apple-darwin` and `x86_64-apple-darwin`, strips both slices, merges them with `lipo`, verifies both architectures are present, and records both targets in `provenance.json`. Future non-macOS support should add the minimum platform-specific artifact needed rather than copying a partial Rust source tree into this repository (`scripts/build-apply-patch.sh`, `vendor/apply-patch/provenance.json`).
+`apply_patch` is a first-class MCP tool backed directly by the checked-in Codex binary, independent of persistent shells. Syntax, execution order, partial-failure semantics, result format, native quirks, diagnostics, audit behavior, build provenance, and tests are centralized in [[tools/apply_patch]] (`src/tools/apply-patch/apply-patch.ts`, `vendor/apply-patch/`).
 
 ## Workspace Skills
 
@@ -42,3 +32,4 @@ MCP instructions refer to `<workspace>/tools`, `<workspace>/TOOLS.md`, per-tool 
 - [[pages/Configuration and Startup]]
 - [[pages/MCP Tool Surface]]
 - [[pages/Persistent Shell Runtime]]
+- [[tools/apply_patch]]

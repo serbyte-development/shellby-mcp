@@ -1,6 +1,6 @@
 # MCP Tool Surface
 
-Verified 2026-08-15.
+Verified 2026-08-18.
 
 ## What This Is
 
@@ -22,7 +22,7 @@ The registration boundary removes annotation values that equal MCP defaults befo
 | `image_view`      | View one local image path as native MCP image content plus compact filename, dimensions, and encoded size. Relative paths resolve from the workspace. A shared Sharp encoder preserves dimensions, starts at JPEG quality 65, lowers quality only when required by the 4 MiB response budget, and fails rather than resizing if the image still cannot fit (`src/tools/image/image-tools.ts`, `src/tools/image/image-encoding.ts`).                                                                                     |
 | `subagent_run`    | Execute one task or a parallel task batch in caller-named persistent ChatGPT subagents. Reusing `agent_id` retains conversation context, analogous to reusing `shell_id` for shell state; returned `turn_id` values identify the individual submitted operations for `subagent_result`. Up to three generations run concurrently, with 0/5/7-second staggered submission (`src/tools/subagent/subagent-tools.ts`, `src/tools/subagent/chatgpt-subagent.ts`). |
 | `subagent_result` | Retrieve 1-3 detached turns concurrently without resubmission. A definitive passive network completion may already have finished the local turn; any still-running result is reconciled against the real ChatGPT page. One bad turn is isolated from valid siblings. Running results expose coarse activity/age, completed results expose `response`, and failures expose one `error` string (`src/tools/subagent/subagent-tools.ts`, `src/tools/subagent/chatgpt-subagent.ts`). |
-| `apply_patch`     | Run a Codex patch in required absolute `cwd` using the checked-in vendored binary directly. No shell ID, request ID, polling, workspace installation, or caller-controlled output limit. Failure diagnostics are capped internally at 1,024 `o200k_base` tokens (`src/tokenizer.ts`, `src/tools/apply-patch/apply-patch.ts`, `vendor/apply-patch/apply_patch`).                                                                                                                 |
+| `apply_patch`     | Run a Codex patch in required absolute `cwd` using the checked-in vendored binary directly. No shell state or polling. Returns `completed`, `failed`, or `partial` plus compact changed/failed summaries; full semantics live in [[tools/apply_patch]] (`src/tools/apply-patch/apply-patch.ts`).                                                                                                                                                                            |
 | `shell_run`       | Run one persistent-shell command or a batch beginning with repeated `*** Run:` sections. Runs inherit the batch cwd unless their marker supplies a directory; relative overrides anchor at batch `cwd`, while absolute values are used directly. Batches inherit the shell's exported environment, run at most four children process-wide, and keep child state/output independent (`src/tools/shell/shell-tools.ts`, `src/tools/shell/session.ts`, `src/tools/shell/parallel-runner.ts`). |
 | `shell_poll`      | Continue the same outer live shell/request from `next_cursor` for either normal output or batch progress. Batch results include each run number, a command preview capped at 20 characters, status, exit code, and any cwd override alongside the labeled output stream. Polling cannot revive command records after hibernation or close; an expired cursor is a tool error (`src/tools/shell/shell-tools.ts`, `src/tools/shell/session.ts`). |
 | `shell_reset`     | Replace one shell generation, discard live/cached cwd/environment state, and deduplicate exact retries by request ID plus reason. The `default` shell may be reset (`src/tools/shell/session.ts`, `src/tools/shell/session-manager.ts`).                                                                                                                                                                                                                                            |
@@ -75,3 +75,4 @@ Published instructions tell clients to read `<workspace>/AGENTS.md`, conserve ou
 - [[pages/Persistent Shell Runtime]]
 - [[pages/Browser ChatGPT Subagents]]
 - [[pages/Workspace Tooling]]
+- [[tools/apply_patch]]

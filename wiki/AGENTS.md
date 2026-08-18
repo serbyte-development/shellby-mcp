@@ -15,6 +15,7 @@ The vault lives at `wiki/`.
 
 - `raw/`: supporting source documents and `source-manifest.md`. Treat source material as read-only evidence.
 - `pages/`: maintained synthesis. Update existing pages when project facts change.
+- `tools/`: canonical maintained behavior notes for individual MCP tools.
 - `ops/`: maintained operational rules that cut across technical pages.
 - `templates/`: templates for future wiki pages and source notes.
 - `index.md`: the content map and primary entry point. Update it when pages are added, removed, or renamed.

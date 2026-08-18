@@ -1023,3 +1023,9 @@
 - Reworked `shell_run` and `shell_poll` descriptions around how to use the tools, including cwd inheritance, stateful shell reuse, polling, and output continuation.
 - Updated focused tests and shell documentation for the simpler batch grammar.
 - Exposed compact per-command status and exit codes in batch `shell_run` and `shell_poll` results; inherited cwd is omitted while explicit directory overrides remain visible.
+
+## [2026-08-18] wiki | Centralize apply_patch tool semantics
+
+- Established `tools/` for canonical per-tool references and added `tools/apply_patch.md` covering grammar, native execution order, update atomicity, partial failures, changed/failed reporting, parser quirks, runtime limits, audit behavior, provenance, and tests.
+- Replaced duplicated `apply_patch` detail in maintained workspace/test/risk/tool-surface pages with focused links to the tool reference.
+- Corrected stale test notes: real-binary MCP integration now covers partial application, failed-hunk reporting, and move+edit alongside fake-executable cap/abort tests.

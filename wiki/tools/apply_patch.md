@@ -1,0 +1,141 @@
+# `apply_patch`
+
+Verified 2026-08-18.
+
+## What This Is
+
+Canonical behavior notes for the first-class `apply_patch` MCP tool and vendored Codex patch binary.
+
+## Runtime
+
+- MCP tool. No shell ID, request ID, polling, or shell lock.
+- Requires absolute `cwd`; patch goes to native stdin.
+- Binary: `vendor/apply-patch/apply_patch`, macOS Universal 2, built from pinned Codex source (`vendor/apply-patch/provenance.json`, `scripts/build-apply-patch.sh`).
+- Failure stdout+stderr share a hard 1,024 `o200k_base` token cap. Extra diagnostic text is dropped.
+- Abort: detached POSIX process group, `SIGTERM`, 500 ms, `SIGKILL`, then one more bounded grace before forced settlement. Windows signals child directly (`src/tools/apply-patch/apply-patch.ts`).
+
+## Supported Patch Surface
+
+Envelope:
+
+```text
+*** Begin Patch
+...
+*** End Patch
+```
+
+File sections:
+
+```text
+*** Add File: path
++new line
+
+*** Update File: path
+*** Move to: new/path
+@@ unique context
+ old context
+-old line
++new line
+*** End of File
+
+*** Delete File: path
+```
+
+Facts:
+
+- One patch may mix add/update/delete and contain many file sections.
+- One update may contain many hunks.
+- `*** Move to:` is an `Update File` modifier. Rename+edit works. Pure rename also works with a context-only update.
+- `@@ <context>` scopes search to a unique class/function/section/line. Bare `@@` starts an ordinary hunk.
+- `*** End of File` targets the file tail.
+- Update hunk body lines start with space, `-`, or `+`.
+- Add/move can create destination parent directories.
+
+Treat the explicit surface above as the contract. Do not advertise parser tolerance as syntax.
+
+## Execution Semantics
+
+Verified against the vendored binary:
+
+- File sections run in order.
+- Native execution stops at the first failing file section.
+- Successful earlier sections stay applied.
+- Later sections are not attempted.
+- Whole patch is therefore not atomic.
+- One `Update File` section is atomic across its hunks: if a later hunk fails, earlier hunks from that same update do not remain applied.
+- Native diagnostics report the first failure only; no multi-error collection.
+
+Example:
+
+```text
+a.txt  succeeds  -> changed
+b.txt  hunk 2 fails -> unchanged
+c.txt  not reached -> unchanged
+```
+
+## Results
+
+Statuses:
+
+- `completed`: native exit 0.
+- `failed`: failure with no confidently inferred prior changes.
+- `partial`: one or more earlier sections completed before a recognized later failure.
+
+Native failure and partial results are MCP errors (`isError: true`). Compact model-facing form:
+
+```text
+status=partial exit_code=1
+
+changed:
+src/foo.ts +14 -3
+src/dead.ts deleted
+src/old.ts -> src/new.ts +4 -2
+
+failed:
+src/bar.ts hunk 2
+
+output:
+
+Failed to find expected lines ...
+```
+
+Change forms:
+
+- add: `path +N`
+- update: `path +N -M`
+- delete: `path deleted`
+- move: `old -> new`
+- move+edit: `old -> new +N -M`
+
+`+N/-M` come from patch lines, not a post-write filesystem diff. Reporting relies on verified native ordering: on success summarize all sections; on recognized failure summarize sections before the failed section. The wrapper does not reread files before/after.
+
+Failure mapping is conservative. It matches the first native diagnostic line to the longest patch path, then identifies update context/hunk from the diagnostic when possible. If the failure cannot be mapped, it does not claim prior changes. `output_dropped: true` means the native diagnostic exceeded the 1,024-token cap (`src/tools/apply-patch/apply-patch.ts`, `src/server/tool-registration-boundary.ts`).
+
+## Native Quirks / Boundaries
+
+- Patch-internal paths are not sandboxed. Native parser accepts absolute paths, so `cwd` is not a filesystem boundary.
+- `*** Add File` can overwrite an existing path.
+- Destination directories may be created automatically.
+- Parser has undocumented tolerance for some omitted anchors and whitespace/Unicode drift. Do not depend on it.
+- Consecutive `@@` anchors fail even though older/copied Codex prompt material described nested anchors.
+
+These are implementation observations, not model-facing promises.
+
+## Diagnostics and Audit
+
+Common native failures name the failing path and expected text/context, for example missing expected lines, missing delete target, or missing context. Wrapper/startup failures without structured native output return `apply_patch_failed: ...` text.
+
+Audit log behavior: successful calls retain cwd + patch character count, not patch body. Failed calls also retain bounded failure message + up to 32,000 patch characters. The audit heading is written after entry details (`src/server/audit-log.ts`).
+
+## Tests
+
+- `test/apply-patch-vendor.test.ts`: vendored binary executes on host architecture.
+- `test/mcp-integration.test.ts`: wrapper, caps, independent shell execution, abort cleanup, real-binary partial application, failed-hunk reporting, move+edit, compact output.
+- Direct probes also established multi-file/multi-hunk/context/tail syntax and parser quirks recorded above.
+
+## Related
+
+- [[pages/MCP Tool Surface]]
+- [[pages/Workspace Tooling]]
+- [[pages/Build and Test]]
+- [[pages/Open Questions and Risks]]

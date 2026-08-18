@@ -1,6 +1,6 @@
 # Open Questions and Risks
 
-Verified 2026-08-15.
+Verified 2026-08-18.
 
 ## What This Is
 
@@ -16,7 +16,7 @@ This page is the maintenance lint target for current trust, resource, external-i
 - **Website fetching is open-world:** `fetch_website` can navigate to HTTP or HTTPS resources reachable from the host, including local or private-network services. Cached documents are count-, TTL-, and byte-bounded, but concurrent fetches can still cause temporary CPU or memory spikes (`src/tools/web/web-tool.ts`, `src/tools/web/web-open.ts`).
 - **Best-effort descendant cleanup:** process-group signaling errors are swallowed to keep the server alive. A process the local user cannot signal may outlive reset or shutdown (`src/tools/shell/session.ts`).
 - **Rolling-output loss:** global eviction is reported through `cursor_expired`; per-command capture loss is reported through `dropped_output_bytes`. Those bytes are unrecoverable. `output_truncated` is intentionally different: it only means the current response hit its read limit and can be continued with `next_cursor` (`src/index.ts`, `src/tools/shell/session.ts`, `src/tools/shell/shell-tools.ts`).
-- **`apply_patch` path rules are a caller contract, not a sandbox:** the vendored Codex binary accepts absolute patch file paths and `Add File` overwrites an existing path. The MCP validates that `cwd` is absolute but does not parse patch-internal paths, so the relative-path rule is enforced only by the published schema/instructions and the process retains the local user's filesystem permissions (`src/tools/apply-patch/apply-patch.ts`, `vendor/apply-patch/apply_patch`).
+- **`apply_patch` paths are not sandboxed:** the wrapper validates absolute `cwd` but does not constrain patch-internal paths; the native parser accepts absolute paths and retains the local user's filesystem permissions. See [[tools/apply_patch]] for parser quirks and execution semantics (`src/tools/apply-patch/apply-patch.ts`, `vendor/apply-patch/apply_patch`).
 - **MCP audit logging can disclose values:** bounded `tools/call` inputs are stored in the gitignored repository-local `agent-commands.yaml`, including shell commands, prompt prefixes, URLs, and other tool arguments. Ordinary arguments are capped at 600 characters and shell commands at 2,000 characters. Successful `apply_patch` calls retain only cwd and patch size, while failed patches also retain a bounded failure message and up to 32,000 characters of patch text. Ordinary tool output is not persisted; the logger records model-facing token counts when a complete bounded response body is available (`src/index.ts`, `src/server/http-server.ts`, `src/server/audit-log.ts`).
 - **Peekaboo and permission drift:** the eleven Computer Use schemas are stable at server startup, but the installed Peekaboo CLI version, JSON fields, daemon/Bridge selection, Screen Recording, Accessibility, and Event Synthesizing permissions can change independently. Calls surface the resulting error and are never retried (`src/tools/computer/peekaboo.ts`, `src/tools/computer/computer-tools.ts`).
 - **Ephemeral observation targets:** screenshot IDs and their capture-target mappings live only in process memory, are capped at 64, and disappear on restart or eviction. Coordinate actions fail closed when the mapping is unavailable, so callers must observe again (`src/tools/computer/peekaboo.ts`, `src/tools/computer/computer-tools.ts`).
@@ -37,3 +37,4 @@ This page is the maintenance lint target for current trust, resource, external-i
 - [[pages/Configuration and Startup]]
 - [[pages/Build and Test]]
 - [[pages/ROADMAP]]
+- [[tools/apply_patch]]
