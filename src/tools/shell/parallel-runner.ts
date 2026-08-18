@@ -114,7 +114,7 @@ export function parseParallelCommandBatch(value: string): ParallelCommandSpec[] 
   while (index < lines.length) {
     const marker = parseRunMarker(lines[index]!)
     if (!marker) {
-      throw new Error(`Expected '*** Run: <directory-or-relative-path>' on line ${index + 1}.`)
+      throw new Error(`Expected '*** Run:' or '*** Run: <directory>' on line ${index + 1}.`)
     }
     index += 1
 
@@ -218,10 +218,10 @@ export function executeParallelCommand(input: ExecuteParallelCommandInput): Prom
 }
 
 function parseRunMarker(line: string): { path: string } | null {
+  if (line === "*** Run:") return { path: "." }
   if (!line.startsWith("*** Run: ")) return null
   const path = line.slice("*** Run: ".length).trim()
-  if (path.length === 0) throw new Error("A '*** Run:' path cannot be empty.")
-  return { path }
+  return { path: path || "." }
 }
 
 function isRunDirective(line: string): boolean {

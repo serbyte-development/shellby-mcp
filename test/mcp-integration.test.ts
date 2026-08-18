@@ -91,6 +91,7 @@ test("serves shell tools through Streamable HTTP and retains state across MCP se
     required?: string[]
   }
   assert.deepEqual(Object.keys(outputSchema.properties ?? {}).sort(), [
+    "commands",
     "cursor_expired",
     "cwd",
     "dropped_output_bytes",
@@ -108,7 +109,7 @@ test("serves shell tools through Streamable HTTP and retains state across MCP se
     properties?: Record<string, unknown>
     required?: string[]
   }
-  assert.deepEqual(Object.keys(pollOutputSchema.properties ?? {}).sort(), ["dropped_output_bytes", "exit_code", "next_cursor", "output", "status"])
+  assert.deepEqual(Object.keys(pollOutputSchema.properties ?? {}).sort(), ["commands", "dropped_output_bytes", "exit_code", "next_cursor", "output", "status"])
   assert.deepEqual(pollOutputSchema.required?.sort(), ["output", "status"])
   const applyPatchTool = tools.tools.find((tool) => tool.name === "apply_patch")
   assert.deepEqual(applyPatchTool?.annotations, { openWorldHint: false })
@@ -273,7 +274,10 @@ test("serves shell tools through Streamable HTTP and retains state across MCP se
   const parallelResult = await callUntilComplete(second.client, "parallel-http", ["*** Run: .", "printf first", "*** Run: /tmp", "false"].join("\n"))
   assert.equal(parallelResult.status, "completed")
   assert.equal(parallelResult.exit_code, 1)
-  assert.equal("commands" in parallelResult, false)
+  assert.deepEqual(parallelResult.commands, [
+    { run: 1, command: "printf first", status: "completed", exit_code: 0 },
+    { run: 2, command: "false", path: "/tmp", status: "completed", exit_code: 1 },
+  ])
   assert.match(parallelResult.output, /\[run 1 path="\." exit=0\]\nfirst/)
   assert.match(parallelResult.output, /\[run 2 path="\/tmp" exit=1\]/)
 })
@@ -740,10 +744,10 @@ test("audits tool calls at the HTTP MCP boundary", { timeout: 10_000 }, async (t
   })
 
   const log = await readFile(auditPath, "utf8")
-  assert.match(log, /--- # \d{2}:\d{2}:\d{2} - shell_list - \d+ms - \d+ in \/ \d+ out\nargs: \{\}/)
+  assert.match(log, /args: \{\}\n--- # \d{2}:\d{2}:\d{2} - shell_list - \d+ms - \d+ in \/ \d+ out/)
   assert.match(
     log,
-    /--- # \d{2}:\d{2}:\d{2} - subagent_run - \d+ms - \d+ in \/ \d+ out\nargs: \{"agents":\[\{"agent_id":"audit-check","prompt":"Inspect the audit path\."\}\]\}/
+    /args: \{"agents":\[\{"agent_id":"audit-check","prompt":"Inspect the audit path\."\}\]\}\n--- # \d{2}:\d{2}:\d{2} - subagent_run - \d+ms - \d+ in \/ \d+ out/
   )
 })
 
@@ -1346,6 +1350,7 @@ test("applies patches through the native MCP tool", { timeout: 20_000 }, async (
   assert.deepEqual(result.structuredContent, {
     status: "completed",
     exit_code: 0,
+    changed: "example.txt +2",
   })
   assert.doesNotMatch(JSON.stringify(result.content), /literal \$\(\)/)
   assert.doesNotMatch(await readFile(auditPath, "utf8"), /Begin Patch|literal \$\(\)/)
@@ -1358,6 +1363,7 @@ test("applies patches through the native MCP tool", { timeout: 20_000 }, async (
   assert.deepEqual(noisyResult.structuredContent, {
     status: "completed",
     exit_code: 0,
+    changed: "noisy.txt +1",
   })
 
   const failed = await connected.client.callTool({
@@ -1748,6 +1754,13 @@ interface ToolSnapshot {
   cursor_expired?: true
   output_truncated?: true
   dropped_output_bytes?: number
+  commands?: Array<{
+    run: number
+    path?: string
+    status: "queued" | "running" | "completed" | "timed_out" | "failed" | "reset"
+    exit_code: number | null
+    dropped_output_bytes?: number
+  }>
 }
 
 async function callUntilComplete(client: Client, requestId: string, command: string, shellId?: string): Promise<ToolSnapshot> {

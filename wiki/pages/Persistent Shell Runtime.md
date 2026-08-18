@@ -44,12 +44,12 @@ Cached state is process-local and disappears on MCP restart. If a cached cwd no 
 
 ### Parallel command envelope
 
-`shell_run` supports multiple independent commands in one free-form payload without an array schema. Normal single-command input is unchanged. Parallel mode uses repeated directory-qualified run markers:
+`shell_run` supports multiple independent commands in one free-form payload without an array schema. Normal single-command input is unchanged. Parallel mode uses repeated run markers with optional directory overrides:
 
 ```text
-*** Run: .
+*** Run:
 npm run lint
-*** Run: ./
+*** Run:
 npm run type-check
 *** Run: ./packages/api
 npm test
@@ -59,13 +59,13 @@ npm run check
 pwd
 ```
 
-Starting the command with `*** Run: <directory-or-relative-path>` means "run these command blocks independently and concurrently," not "concatenate them into one shell program." Every run declares its working directory. Relative values resolve from the batch `cwd` anchor, including `.`, `./`, `../`, and `../../`; absolute values such as `/tmp` are used directly. Lines beginning with `*** Run` are reserved as batch directives and malformed forms reject the whole batch instead of becoming shell text. Shell-level backgrounding such as `command & ...; wait` is deliberately not the implementation because it collapses the work back into one opaque shell execution (`src/tools/shell/parallel-runner.ts`).
+Starting the command with `*** Run:` means "run these command blocks independently and concurrently," not "concatenate them into one shell program." A bare marker inherits the batch cwd; add a directory only to override that run's cwd. Relative values resolve from the batch `cwd` anchor, including `.`, `./`, `../`, and `../../`; absolute values such as `/tmp` are used directly. Lines beginning with `*** Run` are reserved as batch directives and malformed forms reject the whole batch instead of becoming shell text. Shell-level backgrounding such as `command & ...; wait` is deliberately not the implementation because it collapses the work back into one opaque shell execution (`src/tools/shell/parallel-runner.ts`).
 
 Execution rules:
 
 - Keep the feature entirely inside the existing `shell_run` / `shell_poll` contract. Do not add a `shell_parallel` tool and do not assign child shell IDs. One batch remains one outer `(shell_id, request_id)` operation.
 - Capture the selected persistent shell's current exported environment once when the batch starts. An explicit call-level `cwd` first becomes the persistent shell's selected directory and the batch root; otherwise the current directory is the root. Every child inherits that environment snapshot, while state changes inside a child do not mutate the persistent shell or siblings.
-- Require a directory on every `*** Run:` marker. Resolve relative paths from the batch `cwd` using normal path semantics, including `.`, `./`, `../`, and `../../`; pass absolute paths directly as the child process `cwd`. The batch `cwd` is an anchor, not a sandbox. The directory is execution metadata, not shell text, so callers do not need repeated `cd ... &&` prefixes.
+- Let a bare `*** Run:` inherit the batch `cwd`. When a marker supplies a directory, resolve relative paths from the batch `cwd` using normal path semantics, including `.`, `./`, `../`, and `../../`, and pass absolute paths directly as the child process `cwd`. The batch `cwd` is an anchor, not a sandbox. The directory is execution metadata, not shell text, so callers do not need repeated `cd ... &&` prefixes.
 - Treat the parent `shell_run` as occupying that named shell until the batch finishes, preserving the existing one-foreground-operation-per-shell mental model.
 - Submit any number of sections in one tool call, but run at most **4 child processes concurrently process-wide**. Additional sections queue inside their owning request and start as slots become available.
 - Keep one bounded output buffer per child. When a child becomes terminal, append one output block labeled with its run number, declared path, status or exit code, and dropped bytes. Blocks arrive in completion order without interleaving child streams and preserve normal cursor pagination.

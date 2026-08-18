@@ -1016,3 +1016,10 @@
 
 - Restored the shell tools' caller-facing descriptions so they explain how to use shell IDs, reset, list, and close without exposing cache/hibernation implementation details.
 - Removed `cache_ttl_ms` from the public `shell_list` result; cached state behavior remains unchanged internally.
+
+## [2026-08-18] shells | Simplify batch cwd inheritance
+
+- Made bare `*** Run:` inherit the batch cwd, matching normal persistent-shell cwd behavior; relative and absolute directory overrides remain supported.
+- Reworked `shell_run` and `shell_poll` descriptions around how to use the tools, including cwd inheritance, stateful shell reuse, polling, and output continuation.
+- Updated focused tests and shell documentation for the simpler batch grammar.
+- Exposed compact per-command status and exit codes in batch `shell_run` and `shell_poll` results; inherited cwd is omitted while explicit directory overrides remain visible.

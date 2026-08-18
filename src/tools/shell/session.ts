@@ -37,6 +37,7 @@ export interface ShellSnapshot extends Record<string, unknown> {
 
 interface ParallelCommandSnapshot extends Record<string, unknown> {
   run: number
+  command: string
   path: string
   status: ParallelCommandStatus
   exit_code: number | null
@@ -623,6 +624,7 @@ export class PersistentShellSession {
       dropped_output_bytes: droppedOutputBytes,
       commands: record.runs.map((run) => ({
         run: run.run,
+        command: batchCommandPreview(run.command),
         path: run.path,
         status: run.status,
         exit_code: run.exitCode,
@@ -1299,6 +1301,16 @@ function parseParallelCommand(command: string): ParallelCommandSpec[] | null {
 
 function isParallelTerminal(status: ParallelCommandStatus): boolean {
   return status !== "queued" && status !== "running"
+}
+
+function batchCommandPreview(command: string): string {
+  const firstLine = command
+    .split(/\r?\n/)
+    .find((line) => line.trim().length > 0)
+    ?.trim()
+    .replace(/\s+/g, " ") ?? ""
+  const characters = Array.from(firstLine)
+  return characters.length <= 20 ? firstLine : `${characters.slice(0, 19).join("")}…`
 }
 
 function formatParallelRunOutput(run: ParallelRunRecord, output: string): string {

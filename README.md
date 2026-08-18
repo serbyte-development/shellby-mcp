@@ -234,9 +234,9 @@ Each new `shell_run` command requires a `request_id`. Retrying the same request 
 Independent commands can share one `shell_run` call:
 
 ```text
-*** Run: .
+*** Run:
 npm run lint
-*** Run: ./
+*** Run:
 npm run type-check
 *** Run: ./packages/api
 npm test
@@ -246,7 +246,7 @@ npm run check
 pwd
 ```
 
-Starting `command` with `*** Run: <directory-or-relative-path>` selects batch mode; every run must declare its working directory and no outer begin/end envelope is needed. Relative paths resolve from the call's `cwd` anchor, so `.`, `./`, `../`, and `../../` work normally. Absolute paths such as `/tmp` are used directly. If `cwd` is omitted, the current persistent-shell directory is the anchor. The MCP runs at most four batch children concurrently across the process and queues extras. Each child keeps separate bounded output; nonzero exits do not cancel siblings. Parallel children time out after 10 minutes, while ordinary persistent-shell commands keep the existing no-hard-timeout behavior. `shell_poll` continues the same outer `shell_id` and `request_id`; finished children appear in the shared paged output as blocks labeled with run number, path, status or exit code, and any permanently dropped bytes.
+Starting `command` with `*** Run:` selects batch mode and no outer begin/end envelope is needed. A bare `*** Run:` uses the batch cwd. Add a path only when that command needs a different working directory. Relative paths resolve from the batch cwd, and absolute paths such as `/tmp` are used directly. The batch cwd is the call's `cwd` when provided, otherwise the current persistent-shell directory. The MCP runs at most four batch children concurrently across the process and queues extras. Each child keeps separate bounded output; nonzero exits do not cancel siblings. Parallel children time out after 10 minutes, while ordinary persistent-shell commands keep the existing no-hard-timeout behavior. `shell_poll` continues the same outer `shell_id` and `request_id`; finished children appear in the shared paged output as blocks labeled with run number, path, status or exit code, and any permanently dropped bytes.
 
 Defaults:
 

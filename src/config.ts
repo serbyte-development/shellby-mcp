@@ -136,7 +136,7 @@ export function buildMcpInstructions(workspacePath: string): string {
   return [
     `# Operating rules\n\nAt the start of each coding conversation, read ${codingInstructions} completely using \`shell_run\`. DO NOT read it again.\n\n**Default permanent workspace:** ${workspace}`,
 
-    "## Work efficiently\n\n- Reach first for `rtk` for reads and other commands. Use raw commands only for exact unfiltered output.\n- Parallelize independent shell commands in one `shell_run` batch; use different shell IDs only when independent persistent state is useful or long-running command may need to outlive the batch timeout of 10mins.\n- `shell_run.command` is exact zsh input.\n- Persistent shells are reusable state: never use a top-level `exit`, and preserve the real exit status when filtering command output.\n- Do NOT repurpose `$HOME`, `$home`, or `$CODEX_HOME`; use task-specific variable names.",
+    "## Work efficiently\n\n- Reach first for `rtk` for reads and other commands. Use raw commands only for exact unfiltered output.\n- Batch independent shell commands in one `shell_run` when useful. Use different shell IDs only when independent persistent state is useful or long-running commands longer than 10mins.\n- `shell_run.command` is exact zsh input.\n- Persistent shells are reusable state: never use a top-level `exit`, and preserve the real exit status when filtering command output.\n- Do NOT repurpose `$HOME`, `$home`, or `$CODEX_HOME`.",
 
     "## Edit files\n\nUse `apply_patch` for local file changes, including creating, editing, deleting, moving, and renaming files. Do not create or edit files with shell commands when `apply_patch` is sufficient.",
 

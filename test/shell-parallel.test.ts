@@ -134,9 +134,20 @@ test("labels permanently dropped parallel output", { timeout: 10_000 }, async (t
   assert.match(batch.output, /\[run 1 path="\." exit=0 dropped_bytes=1\]\n🙂éA/)
 })
 
-test("requires a run directory and accepts absolute paths", { timeout: 10_000 }, async (t) => {
-  const shell = new PersistentShellSession({ parallelScheduler: new ParallelCommandScheduler(4) })
+test("inherits the batch cwd when a run directory is omitted and accepts overrides", { timeout: 10_000 }, async (t) => {
+  const shell = new PersistentShellSession({ cwd: "/tmp", parallelScheduler: new ParallelCommandScheduler(4) })
   t.after(() => shell.close())
+
+  const inheritedShellCwd = await runToCompletion(shell, "parallel-inherited-shell-cwd", ["*** Run:", `printf '%s' "$PWD"`].join("\n"))
+  assert.match(inheritedShellCwd.output, new RegExp(`${escapeRegExp(await realpath("/tmp"))}\\n$`))
+  assert.equal(inheritedShellCwd.snapshot.commands?.[0]?.path, ".")
+  assert.equal(inheritedShellCwd.snapshot.commands?.[0]?.command, `printf '%s' "$PWD"`)
+
+  const inheritedExplicitCwd = await runToCompletion(shell, "parallel-inherited-explicit-cwd", ["*** Run:", `printf '%s' "$PWD"`].join("\n"), {
+    cwd: process.cwd(),
+  })
+  assert.match(inheritedExplicitCwd.output, new RegExp(`${escapeRegExp(await realpath(process.cwd()))}\\n$`))
+  assert.equal(inheritedExplicitCwd.snapshot.commands?.[0]?.path, ".")
 
   const absolute = await runToCompletion(shell, "parallel-absolute", ["*** Run: /tmp", `printf '%s' "$PWD"`].join("\n"))
   assert.match(absolute.output, new RegExp(`${escapeRegExp(await realpath("/tmp"))}\\n$`))
@@ -147,29 +158,28 @@ test("requires a run directory and accepts absolute paths", { timeout: 10_000 },
       requestId: "parallel-missing-directory",
       command: "*** Run",
     }),
-    (error: unknown) => error instanceof ShellSessionError && error.code === "invalid_command" && /directory-or-relative-path/.test(error.message)
-  )
-  await assert.rejects(
-    shell.runCommand({
-      requestId: "parallel-empty-directory",
-      command: ["*** Run: ", "printf should-not-run"].join("\n"),
-    }),
-    (error: unknown) => error instanceof ShellSessionError && error.code === "invalid_command" && /path cannot be empty/.test(error.message)
+    (error: unknown) => error instanceof ShellSessionError && error.code === "invalid_command" && /Expected '\*\*\* Run:'/.test(error.message)
   )
   await assert.rejects(
     shell.runCommand({
       requestId: "parallel-malformed-later-directory",
       command: ["*** Run: .", "printf first", "*** Run:./wiki", "printf should-not-run"].join("\n"),
     }),
-    (error: unknown) => error instanceof ShellSessionError && error.code === "invalid_command" && /directory-or-relative-path/.test(error.message)
+    (error: unknown) => error instanceof ShellSessionError && error.code === "invalid_command" && /Expected '\*\*\* Run:'/.test(error.message)
   )
-  await assert.rejects(
-    shell.runCommand({
-      requestId: "parallel-empty-later-directory",
-      command: ["*** Run: .", "printf first", "*** Run:", "printf should-not-run"].join("\n"),
-    }),
-    (error: unknown) => error instanceof ShellSessionError && error.code === "invalid_command" && /directory-or-relative-path/.test(error.message)
+  const mixed = await runToCompletion(
+    shell,
+    "parallel-mixed-directories",
+    ["*** Run:", `printf 'root:%s' "$PWD"`, "*** Run: .", `printf 'same:%s' "$PWD"`, "*** Run: /tmp", `printf 'tmp:%s' "$PWD"`].join("\n"),
+    { cwd: "/tmp" }
   )
+  assert.deepEqual(
+    mixed.snapshot.commands?.map((run) => run.path),
+    [".", ".", "/tmp"]
+  )
+
+  const preview = await runToCompletion(shell, "parallel-command-preview", ["*** Run:", "", "printf command-preview-is-longer-than-limit"].join("\n"))
+  assert.equal(preview.snapshot.commands?.[0]?.command, "printf command-prev…")
 })
 
 test("accepts leading whitespace before a parallel batch", { timeout: 10_000 }, async (t) => {

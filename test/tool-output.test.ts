@@ -112,8 +112,18 @@ const longStartError =
 const toolFamilyCases: Array<{ tool: string; structuredContent: unknown; expected: string }> = [
   {
     tool: "shell_run",
-    structuredContent: { status: "completed", cwd: "/workspace", output: "line one\nline two", exit_code: 0 },
-    expected: "status=completed cwd=/workspace exit_code=0\n\noutput:\n\nline one\nline two",
+    structuredContent: {
+      status: "completed",
+      cwd: "/workspace",
+      output: "line one\nline two",
+      exit_code: 1,
+      commands: [
+        { run: 1, command: "npm run lint", status: "completed", exit_code: 0 },
+        { run: 2, command: "npm run type-check…", path: "./api", status: "completed", exit_code: 1 },
+      ],
+    },
+    expected:
+      "status=completed cwd=/workspace exit_code=1\n\noutput:\n\nline one\nline two\n\ncommands:\n\n- run=1 command=\"npm run lint\" status=completed exit_code=0\n- run=2 command=\"npm run type-check…\" path=./api status=completed exit_code=1",
   },
   {
     tool: "shell_poll",
