@@ -1,0 +1,38 @@
+# Audit Logging
+
+Verified 2026-08-18.
+
+## What This Is
+
+Canonical behavior for the repository-local MCP `tools/call` audit log.
+
+## Storage and Scope
+
+Production injects one `McpAuditLogger` and appends completed `tools/call` activity to gitignored `agent-commands.yaml`. The file is created or repaired with owner-only `0600` permissions. Audit failures are best-effort and never change MCP dispatch (`src/index.ts`, `src/server/http-server.ts`, `src/server/audit-log.ts`).
+
+Each call is one compact YAML document containing the tool name, duration, bounded input context, and model-facing token counts when they can be derived safely. Ordinary tool output is not persisted (`src/server/audit-log.ts`).
+
+## Retention Rules
+
+- `shell_run` command text is retained as a block scalar capped at 2,000 characters.
+- Ordinary tool arguments are capped at 600 characters.
+- Successful `apply_patch` calls retain cwd and patch size, not patch text.
+- Failed `apply_patch` calls may retain the bounded failure message and up to 32,000 patch characters.
+- A bounded complete response body may be captured temporarily to calculate output tokens, then is discarded. If capture is incomplete, the output-token count is omitted rather than guessed.
+- Response byte/KB size is not logged (`src/server/audit-log.ts`, `src/server/http-server.ts`).
+
+The logger records serialized tool arguments as model-facing `in` tokens. For ordinary non-Computer tools, `out` counts the final projected text plus any structured result after compact/structured projection and completion-event injection. These are MCP I/O counts, not model-inference usage (`src/server/audit-log.ts`, `src/tokenizer.ts`, `test/mcp-audit-log.test.ts`).
+
+## Status Markers and Sensitivity
+
+Calls lasting at least five seconds use `~`; tool, HTTP, and connection failures use `!`; normal calls have no Better Comments marker (`src/server/audit-log.ts`).
+
+The log can contain shell commands, prompt prefixes, URLs, Computer Use inputs, and failed patch text. Treat the entire file as sensitive local operational data even though it is gitignored and permission-restricted. See [Secret Handling](./Secret%20Handling.md).
+
+## Related
+
+- [HTTP Transport](./HTTP%20Transport.md)
+- [Configuration and Startup](./Configuration%20and%20Startup.md)
+- [Secret Handling](./Secret%20Handling.md)
+- [Open Questions and Risks](./Open%20Questions%20and%20Risks.md)
+- [apply_patch](./tools/apply_patch.md)

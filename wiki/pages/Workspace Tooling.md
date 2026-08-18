@@ -10,10 +10,6 @@ This page documents the configured coding workspace, dynamic skill catalog, and 
 
 `MCP_CWD` defaults to `MCP_CONFIG.defaults.workspace`, currently `~/Desktop/agent-workspace`. `src/config.ts` expands `~` and resolves relative paths from the startup directory; server startup creates the resulting absolute directory recursively and uses it consistently for the initial shell cwd, advertised `AGENTS.md`, and workspace tools. First-time `npm run setup` also calls `scripts/workspace-setup.mjs`, which creates a starter workspace `AGENTS.md` only when one does not already exist. This is a convention, not a sandbox: shell commands retain the local user's filesystem permissions (`src/config.ts`, `src/index.ts`, `scripts/setup.mjs`, `scripts/workspace-setup.mjs`, `test/setup-workspace.test.ts`).
 
-## `apply_patch`
-
-`apply_patch` is a first-class MCP tool backed directly by the checked-in Codex binary, independent of persistent shells. Syntax, execution order, partial-failure semantics, result format, native quirks, diagnostics, audit behavior, build provenance, and tests are centralized in [[tools/apply_patch]] (`src/tools/apply-patch/apply-patch.ts`, `vendor/apply-patch/`).
-
 ## Workspace Skills
 
 Reusable agent workflows live under `<workspace>/skills/<name>/SKILL.md`. `skill_list` scans that directory on every call and returns the directory name plus frontmatter description when present; `skill_load` validates one returned name and returns its complete instructions plus local `SKILL.md` path. Skills are therefore dynamic data rather than MCP schema entries, so adding or removing a skill does not require rebuilding the server (`src/tools/skills.ts`, `src/server/mcp-server.ts`).
@@ -28,8 +24,8 @@ MCP instructions refer to `<workspace>/tools`, `<workspace>/TOOLS.md`, per-tool 
 
 ## Related
 
-- [[pages/Project Overview]]
-- [[pages/Configuration and Startup]]
-- [[pages/MCP Tool Surface]]
-- [[pages/Persistent Shell Runtime]]
-- [[tools/apply_patch]]
+- [Project Overview](./Project%20Overview.md)
+- [Configuration and Startup](./Configuration%20and%20Startup.md)
+- [MCP Tool Surface](./MCP%20Tool%20Surface.md)
+- [Persistent Shell Runtime](./Persistent%20Shell%20Runtime.md)
+- [apply_patch](./tools/apply_patch.md)

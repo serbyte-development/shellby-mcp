@@ -121,21 +121,20 @@ Failure mapping is conservative. It matches the first native diagnostic line to 
 
 These are implementation observations, not model-facing promises.
 
-## Diagnostics and Audit
+## Diagnostics
 
 Common native failures name the failing path and expected text/context, for example missing expected lines, missing delete target, or missing context. Wrapper/startup failures without structured native output return `apply_patch_failed: ...` text.
 
-Audit log behavior: successful calls retain cwd + patch character count, not patch body. Failed calls also retain bounded failure message + up to 32,000 patch characters. The audit heading is written after entry details (`src/server/audit-log.ts`).
+Audit retention for successful and failed patches is canonical in [Audit Logging](../Audit%20Logging.md).
 
 ## Tests
 
-- `test/apply-patch-vendor.test.ts`: vendored binary executes on host architecture.
-- `test/mcp-integration.test.ts`: wrapper, caps, independent shell execution, abort cleanup, real-binary partial application, failed-hunk reporting, move+edit, compact output.
-- Direct probes also established multi-file/multi-hunk/context/tail syntax and parser quirks recorded above.
+Validation ownership and current coverage are documented in [Build and Test](../Build%20and%20Test.md). The focused sources are `test/apply-patch-vendor.test.ts` and `test/mcp-integration.test.ts`.
 
 ## Related
 
-- [[pages/MCP Tool Surface]]
-- [[pages/Workspace Tooling]]
-- [[pages/Build and Test]]
-- [[pages/Open Questions and Risks]]
+- [MCP Tool Surface](../MCP%20Tool%20Surface.md)
+- [Workspace Tooling](../Workspace%20Tooling.md)
+- [Build and Test](../Build%20and%20Test.md)
+- [Open Questions and Risks](../Open%20Questions%20and%20Risks.md)
+- [Audit Logging](../Audit%20Logging.md)

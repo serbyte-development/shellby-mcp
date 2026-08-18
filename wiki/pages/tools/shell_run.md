@@ -2,6 +2,8 @@
 
 Verified 2026-08-18.
 
+## What This Is
+
 Persistent zsh execution. `shell_run` starts work. `shell_poll` continues running work or retained output.
 
 ## `shell_run`
@@ -124,5 +126,5 @@ Poll `wait_ms`: default 2000 ms, max 10 s.
 
 ## Related
 
-- [[pages/Persistent Shell Runtime]]
-- [[pages/MCP Tool Surface]]
+- [Persistent Shell Runtime](../Persistent%20Shell%20Runtime.md)
+- [MCP Tool Surface](../MCP%20Tool%20Surface.md)

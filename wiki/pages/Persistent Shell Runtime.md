@@ -4,7 +4,7 @@ Verified 2026-08-18.
 
 ## What This Is
 
-Implementation notes for the stateful named-shell runtime behind `shell_run` and `shell_poll`. Caller-facing behavior and syntax live in [[tools/shell_run]].
+Implementation notes for the stateful named-shell runtime behind `shell_run` and `shell_poll`. Caller-facing behavior and syntax live in [shell_run](./tools/shell_run.md).
 
 ## Process Model
 
@@ -24,7 +24,7 @@ The wrapper clears `errexit` before and after evaluation so a prior `set -e` doe
 ## Output Storage and Request Records
 
 - `TranscriptBuffer` uses absolute JavaScript-string cursors, advances a logical retained-output head as the rolling window fills, and compacts discarded backing text in batches instead of slicing the full retained string on every append. It drops whole surrogate pairs at the rolling boundary. A cursor older than retained output is clamped and returns `cursor_expired` (`src/tools/shell/session.ts`, `test/shell-session.test.ts`).
-- Response ceilings use `o200k_base` token counts. Transcript reads tokenize only a bounded local character window instead of the entire remaining transcript, so polling large retained output does not repeatedly rescan megabytes. Per-command capture remains byte-based because it protects retained memory (`src/tokenizer.ts`, `src/index.ts`, `src/tools/shell/session.ts`, `src/tools/shell/shell-tools.ts`). See [[tools/shell_run]] for caller-visible pagination/loss semantics.
+- Response ceilings use `o200k_base` token counts. Transcript reads tokenize only a bounded local character window instead of the entire remaining transcript, so polling large retained output does not repeatedly rescan megabytes. Per-command capture remains byte-based because it protects retained memory (`src/tokenizer.ts`, `src/index.ts`, `src/tools/shell/session.ts`, `src/tools/shell/shell-tools.ts`). See [shell_run](./tools/shell_run.md) for caller-visible pagination/loss semantics.
 - Run waits for completion, abort, timeout, cursor expiry, or a full response. Poll waits on a versioned update when a running command has no new output; completed polls skip that preliminary transcript read and render the result once (`src/tools/shell/session.ts`).
 - Request IDs are scoped to a shell. Exact command retries return the retained record; changed text returns `request_conflict`. Command and reset maps are bounded by the config-only `MCP_CONFIG.shell.recordLimit` (`src/config.ts`, `src/tools/shell/session.ts`, `src/tools/shell/session-manager.ts`).
 
@@ -34,9 +34,9 @@ Each named shell accepts one foreground command. Different shell IDs run indepen
 
 ## Live Shells, Hibernation, and Restoration
 
-The manager keeps at most **16 live shells including protected `default`**. Named live shells form an LRU working set. When a new live slot is needed, the least-recently-used non-busy named shell is hibernated; busy shells and `default` are never pressure-evicted. If every available slot is busy or protected, creation fails with `shell_limit_reached` instead of killing active work (`src/config.ts`, `src/tools/shell/session-manager.ts`).
+Named live shells form an LRU working set. When a live slot is needed, the least-recently-used non-busy named shell may be hibernated; busy shells and `default` are protected. If no eligible slot exists, creation fails instead of killing active work (`src/tools/shell/session-manager.ts`). Configuration values are canonical in [Configuration and Startup](./Configuration%20and%20Startup.md).
 
-Named shells normally hibernate after **5 minutes idle**. Hibernation captures only current cwd and exported environment, closes the live shell/process group, and drops command records, transcript state, functions, aliases, and running/background processes. Reusing the same `shell_id` within **24 hours since last use** transparently creates a fresh shell restored from cached cwd/environment. Cache expiry is handled by the manager's shared lifecycle sweep rather than one timer per cached shell (`src/tools/shell/session-manager.ts`, `src/tools/shell/session.ts`).
+Idle hibernation captures only current cwd and exported environment, closes the live shell/process group, and drops command records, transcript state, functions, aliases, and running/background processes. Reusing a still-cached `shell_id` transparently creates a fresh shell restored from cached cwd/environment. Cache expiry uses the manager's shared lifecycle sweep (`src/tools/shell/session-manager.ts`, `src/tools/shell/session.ts`). Caller-visible consequences are canonical in [`shell_run` / `shell_poll`](./tools/shell_run.md).
 
 Cached state is process-local and disappears on MCP restart. If a cached cwd no longer exists when restoration is attempted, that cached state is discarded and the shell starts from its configured baseline instead of entering a failed restart loop (`src/tools/shell/session.ts`, `test/shell-session-manager.test.ts`).
 
@@ -44,9 +44,9 @@ Cached state is process-local and disappears on MCP restart. If a cached cwd no 
 
 ### Batch Runtime
 
-Caller syntax and result semantics: [[tools/shell_run]].
+Caller syntax and result semantics: [shell_run](./tools/shell_run.md).
 
-Internally, one batch remains one outer `(shell_id, request_id)` record. `parallel-runner.ts` owns parsing, the process-wide four-child scheduler, bounded child output, the 10-minute child timeout, and process-group cleanup. `PersistentShellSession` captures cwd/exported environment, resolves child directories, owns grouped retained output/polling, and integrates reset. Children are short-lived processes, do not consume named-shell slots, do not mutate persistent/sibling state, and do not cancel siblings on nonzero exit (`src/tools/shell/parallel-runner.ts`, `src/tools/shell/session.ts`, `src/tools/shell/shell-tools.ts`).
+Internally, one batch remains one outer `(shell_id, request_id)` record. `parallel-runner.ts` owns parsing, bounded scheduling/output, child timeout, and process-group cleanup. `PersistentShellSession` captures cwd/exported environment, resolves child directories, owns grouped retained output/polling, and integrates reset. Children are short-lived processes, do not consume named-shell slots, do not mutate persistent/sibling state, and do not cancel siblings on nonzero exit (`src/tools/shell/parallel-runner.ts`, `src/tools/shell/session.ts`, `src/tools/shell/shell-tools.ts`). Exact caller limits are in [`shell_run` / `shell_poll`](./tools/shell_run.md).
 
 ## Reset and Recovery
 
@@ -56,8 +56,8 @@ Process-group kill failures such as macOS `EPERM` are deliberately swallowed so 
 
 ## Related
 
-- [[tools/shell_run]]
-- [[pages/MCP Tool Surface]]
-- [[pages/Architecture Map]]
-- [[pages/Workspace Tooling]]
-- [[pages/Open Questions and Risks]]
+- [shell_run](./tools/shell_run.md)
+- [MCP Tool Surface](./MCP%20Tool%20Surface.md)
+- [Architecture Map](./Architecture%20Map.md)
+- [Workspace Tooling](./Workspace%20Tooling.md)
+- [Open Questions and Risks](./Open%20Questions%20and%20Risks.md)

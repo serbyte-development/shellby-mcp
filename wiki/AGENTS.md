@@ -7,16 +7,14 @@ The vault lives at `wiki/`.
 ## Purpose
 
 - Preserve the architecture, runtime contracts, operational knowledge, risks, and decisions needed to maintain the Unhinged Agent local MCP harness.
-- Start with [[pages/Project Overview]] for the project's purpose, audience, status, workflows, boundaries, constraints, and deeper wiki entry points.
+- Start with [Project Overview](./pages/Project%20Overview.md) for the project's purpose, audience, status, workflows, boundaries, constraints, and deeper wiki entry points.
 - Keep current implementation synthesis in the vault so future agents can verify rather than rediscover how the harness works.
 - Keep end-user setup details only when they constrain an implemented server or operational contract.
 
 ## Layers
 
 - `raw/`: supporting source documents and `source-manifest.md`. Treat source material as read-only evidence.
-- `pages/`: maintained synthesis. Update existing pages when project facts change.
-- `tools/`: canonical maintained behavior notes for individual MCP tools.
-- `ops/`: maintained operational rules that cut across technical pages.
+- `pages/`: maintained synthesis. Update existing pages when project facts change. Canonical per-tool references live under `pages/tools/`.
 - `templates/`: templates for future wiki pages and source notes.
 - `index.md`: the content map and primary entry point. Update it when pages are added, removed, or renamed.
 - `log.md`: the append-only maintenance log using `## [YYYY-MM-DD] operation | description` entries.
@@ -29,8 +27,11 @@ The vault lives at `wiki/`.
 - Use current code and tests for implementation truth and approved business or upstream sources for external facts.
 - Cite repository-relative paths for implementation claims.
 - If evidence conflicts, preserve the current fact in the maintained page and record the conflict with the supporting source in `raw/source-manifest.md`.
-- Update an existing page before adding one. Keep pages direct and marked `Verified YYYY-MM-DD`.
-- Give every maintained page a short `What This Is` section and a `Related` section with Obsidian wikilinks.
+- Update an existing page before adding one. Keep every page extremely concise and marked `Verified YYYY-MM-DD`.
+- Give each page one cohesive subject or question. Keep one natural home for each fact and link to it instead of repeating the explanation elsewhere.
+- Treat `Project Overview.md` as orientation, not a compressed copy of the wiki. Architecture, routes, data, operations, tool contracts, and subsystem internals belong on dedicated pages.
+- Give every maintained page a short `What This Is` section and a `Related` section with standard relative Markdown links.
+- Resolve relative links from the file that contains them. Use `%20` for spaces in link destinations.
 - Keep roadmap and experimental work explicitly labeled as uncommitted or disabled rather than current behavior.
 - After tool schemas, descriptions, or server instructions change, remember that ChatGPT may retain previously imported metadata until the MCP app is updated on the ChatGPT website. A local rebuild or restart alone does not prove that client has refreshed metadata.
 - Never store secret values anywhere in the vault, including `_private/`.
@@ -58,6 +59,8 @@ The vault lives at `wiki/`.
 Periodically check for:
 
 - Dead `index.md` entries and orphan pages.
+- Broken relative Markdown links or leftover Obsidian wikilinks.
+- Fake/template destinations that intentionally resolve to nonexistent pages.
 - Missing `What This Is`, `Verified`, `Related`, citations, or backlinks.
 - Contradictions between maintained pages and current source.
 - Missing or nonexistent repository-path citations.

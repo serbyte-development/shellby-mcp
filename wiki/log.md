@@ -6,12 +6,12 @@
 - Ingested `README.md` as a potentially stale raw source and verified claims against `src/`, `test/`, `package.json`, `tsconfig.json`, `ngrok-traffic-policy.yml`, and recent Git history.
 - Created nine maintained pages covering transport, tools, shell lifecycle, transcript semantics, workspace integration, configuration, testing, and risks.
 - Recorded README drift around generated-tool provisioning, transcript units, best-effort process cleanup, coupled tunnel ports, and external ChatGPT instructions.
-- Assumed no feature is deliberately parked; disconnected or unenforced behavior is listed in [[pages/Open Questions and Risks]].
+- Assumed no feature is deliberately parked; disconnected or unenforced behavior is listed in [Open Questions and Risks](./pages/Open%20Questions%20and%20Risks.md).
 - Validated all wiki links and index entries, verified the private-notes ignore rule, scanned for common secret patterns, and passed the repository test suite and TypeScript check.
 
 ## [2026-07-19] reconcile | update README from verified architecture
 
-- Added a prominent maintainer link to [[index]].
+- Added a prominent maintainer link to [index](./index.md).
 - Corrected README claims about shell recovery, best-effort process-group cleanup, existing `apply_patch` reuse, generated-tool provisioning, transcript units, and tunnel port coupling.
 - Preserved external ChatGPT and ngrok UI instructions as unverified setup guidance.
 
@@ -42,7 +42,7 @@
 
 ## [2026-07-31] roadmap | add possible features page
 
-- Added [[pages/Possible Features]] as a noncommittal feature backlog for usability, output efficiency, process management, portability, optional security controls, and related improvements.
+- Added `pages/Possible Features.md` as a noncommittal feature backlog for usability, output efficiency, process management, portability, optional security controls, and related improvements.
 - Included lightweight AI-agent delegation as a possible future primitive without expanding it into an orchestration design.
 
 ## [2026-08-01] ops | run the stateful MCP in PM2 fork mode
@@ -258,7 +258,7 @@
 
 ## [2026-08-07] design | document browser-backed ChatGPT subagents
 
-- Added [[pages/Browser ChatGPT Subagents]] with the proposed CDP/Playwright architecture, process-level agent-to-page registry, same-tab continuation, stale-target recovery, and per-agent concurrency rules.
+- Added [Browser ChatGPT Subagents](./pages/Browser%20ChatGPT%20Subagents.md) with the proposed CDP/Playwright architecture, process-level agent-to-page registry, same-tab continuation, stale-target recovery, and per-agent concurrency rules.
 - Documented network-level conversation tracking using message IDs and turn/graph metadata so each delegated call returns only its new final assistant response.
 - Defined a minimal `chatgpt_subagent` MCP contract and an implementation/test plan that fits the current composition and exact tool-list contracts.
 
@@ -329,7 +329,7 @@
 
 ## [2026-08-09] document | add tool metadata design standard
 
-- Added [[pages/Tool Naming and Schema Design]] as the reusable ChatGPT-focused standard for tool names, descriptions, input schemas, parameter descriptions, and output schemas.
+- Added [Tool Naming and Schema Design](./pages/Tool%20Naming%20and%20Schema%20Design.md) as the reusable ChatGPT-focused standard for tool names, descriptions, input schemas, parameter descriptions, and output schemas.
 - Defined the core split as: name identifies, description routes, schema constrains, parameter descriptions disambiguate, output schema guides the next move, and the wiki explains implementation.
 - Made negative boundary instructions reactive rather than default: add them for observed misuse or a clear recurring tool-selection collision.
 
@@ -1034,3 +1034,18 @@
 
 - Added `tools/shell_run.md` as the compact canonical caller contract for `shell_run`/`shell_poll`: persistent state, batches, per-command results, polling, output loss, limits, and shell lifetime.
 - Removed duplicated caller-facing shell syntax/result detail from `Persistent Shell Runtime` and `MCP Tool Surface`; those pages now retain implementation/inventory context and link to the tool page.
+
+## [2026-08-18] wiki | Normalize vault structure and links
+
+- Moved canonical tool references from `tools/` to `pages/tools/` and moved `ops/Secret Handling.md` into `pages/Secret Handling.md`, leaving maintained synthesis under `pages/`.
+- Converted Obsidian wikilinks throughout the vault to standard relative Markdown links and updated the maintainer schema/template to require that style.
+- Removed the completed `Tool Output Markdown Build Plan`; its implemented output-mode behavior and validation already live in `pages/MCP Tool Surface.md` and `pages/Build and Test.md`.
+- Reduced repeated shell, patch, skill, and browser-subagent contract detail so inventory pages route to canonical subsystem/tool pages instead of restating them.
+
+## [2026-08-18] wiki | Apply duplication audit
+
+- Replaced the template's fake `Related Page` destination with instructional text and strengthened `AGENTS.md` around tiny cohesive pages, one natural home per fact, and links over repetition.
+- Added `pages/Audit Logging.md` as the canonical home for `agent-commands.yaml` retention, truncation, token accounting, status markers, and sensitivity; transport, configuration, risk, secret, and patch pages now keep only topic-specific consequences.
+- Shortened `Project Overview.md` to orientation and `Architecture Map.md` to component boundaries plus a coarse request lifecycle, routing subsystem details to dedicated pages.
+- Split browser delegation into `pages/tools/subagent.md` for the caller contract, `pages/Browser ChatGPT Subagents.md` for browser ownership/orchestration, and `pages/Subagent Completion and Recovery.md` for completion authority, events, reconciliation, and recovery.
+- Kept shell configuration values in `Configuration and Startup`, caller consequences in `pages/tools/shell_run.md`, and implementation mechanics in `Persistent Shell Runtime.md`; removed repeated numeric limits from risk/runtime summaries.

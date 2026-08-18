@@ -151,7 +151,7 @@ Verified present during this survey:
 - VS Code CLI at `/Applications/Visual Studio Code.app/Contents/Resources/app/bin/code`.
 - Screaming Frog launcher at `/Applications/Screaming Frog SEO Spider.app/Contents/MacOS/ScreamingFrogSEOSpiderLauncher`.
 
-Prior inspection recorded Craft PDF/DOCX/XLSX/PPTX/image/iCal/Markdown/diff tools, LM Studio model control, Screen Studio FFmpeg/Whisper/window/media helpers, VS Code `rg` and indexed `tgrep`, Screaming Frog headless crawling, Docker, GIMP, browsers, BBEdit, and Cursor. See [[raw/Host App Binary Survey 2026-07-20]].
+Prior inspection recorded Craft PDF/DOCX/XLSX/PPTX/image/iCal/Markdown/diff tools, LM Studio model control, Screen Studio FFmpeg/Whisper/window/media helpers, VS Code `rg` and indexed `tgrep`, Screaming Frog headless crawling, Docker, GIMP, browsers, BBEdit, and Cursor. See [Host App Binary Survey 2026-07-20](./Host%20App%20Binary%20Survey%202026-07-20.md).
 
 ## macOS-Native Surfaces
 

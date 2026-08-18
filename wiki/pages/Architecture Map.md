@@ -1,6 +1,6 @@
 # Architecture Map
 
-Verified 2026-08-15.
+Verified 2026-08-18.
 
 ## What This Is
 
@@ -29,21 +29,16 @@ This page maps the process-level components and follows one request from the HTT
 
 ## Request Lifecycle
 
-1. `src/index.ts` ensures durable authentication state under `~/.unhinged-agent/auth.json`, prepares the configured workspace, and creates the production `ShellSessionManager`, shared `ChatGptSubagentModule`, and repository-local `McpAuditLogger`. Adapters and shell runtimes consume their own centralized defaults; startup passes only the workspace-specific shell manager and production-only browser visibility hook. The HTTP boundary owns the shared `PeekabooClient` and webpage opener when they are not injected for tests (`src/index.ts`, `src/config.ts`, `src/auth/auth.ts`, `src/server/http-server.ts`).
-2. Exact `POST /mcp` serves both direct localhost clients and the ngrok tunnel. `createMcpExpressApp` provides JSON parsing plus localhost Host/Origin guards; ngrok remains the remote trust boundary and marks ChatGPT-origin-verified requests with `X-Unhinged-Agent-Remote: 1`. The first marked `tools/call` binds `X-OpenAI-Subject` before dispatch and later marked tool calls require the same subject. Discovery does not bind. Each accepted POST creates a short-lived `McpServer` and stateless `NodeStreamableHTTPServerTransport` (`src/server/http-server.ts`, `src/auth/auth.ts`, `ngrok-traffic-policy.yml`).
-3. Shell handlers acquire a short manager lease around each live-shell operation. Reusing a cached `shell_id` recreates a shell from cached cwd/exported environment; polling requires the original live shell because command records are not cached. Capacity allocation is serialized so pressure eviction cannot race a shell already acquired by a tool handler. `skill_list` and `skill_load` read `<workspace>/skills` directly on each call, so catalog changes require no server rebuild. `subagent_run` resolves caller-named `agent_id` through the shared process-level subagent module. `apply_patch` bypasses the shell manager and directly spawns the prepared Codex executable. All request-scoped Computer Use handlers share the same process-level `PeekabooClient`.
-4. The adapter serializes Computer Use calls and invokes `peekaboo` with `execFile`, exact argv, `--json`, a 30-second timeout, and a 4 MiB process-output cap. It checks the JSON `success` field and does not retry failures (`src/tools/computer/peekaboo.ts`).
-5. Each `PersistentShellSession` writes normal commands into its own child login shell and detects completion through randomized control markers. For a parallel `*** Run` batch it first captures the shell's exported environment/cwd, then `parallel-runner.ts` schedules isolated short-lived shell children under the shared four-process ceiling; the outer session retains per-run state and paged grouped output.
-6. `computer_observe` reads Peekaboo's temporary PNG and runs it through the shared same-dimension JPEG transport encoder, starting at quality 65 and lowering quality only if needed to stay within the 4 MiB response budget. `computer_inspect` reuses the retained observation target and invokes Peekaboo v4 `see --tree --no-screenshot` with bounded AX traversal limits, then renders the returned elements as compact text. The adapter retains at most 64 snapshot-to-capture-target mappings, including display index for screen observations, and coordinate actions resolve through that mapping before reaching Peekaboo (`src/tools/computer/peekaboo.ts`, `src/tools/computer/computer-tools.ts`, `src/tools/image/image-encoding.ts`).
-
-The named shell ID is the logical persistence boundary. While live, callers using the same ID share cwd, environment, transcript, command records, process-local shell state, and foreground-command lock. After automatic idle/capacity hibernation, only cwd and exported environment survive; the next `shell_run` recreates a process from that cache, while old polling records, functions/aliases, and background processes are gone. Explicit `shell_close` instead discards both live and cached state. `default` remains protected from close and automatic eviction (`src/server/http-server.ts`, `src/tools/shell/session-manager.ts`, `src/tools/shell/session.ts`, `test/mcp-integration.test.ts`).
-
-`src/config.ts` is the single static configuration surface for MCP identity, shared tool metadata, runtime defaults, and global instructions. `src/index.ts` owns production process lifecycle, `src/server/http-server.ts` owns shared runtime dependencies and stateless request transports, and `src/server/mcp-server.ts` registers the request-scoped MCP tool surface without constructing shared adapters. Each capability under `src/tools/` owns its model-facing contract and implementation helpers. Authentication is intentionally narrow: one durable ChatGPT owner for trusted tunnel tool calls, while localhost MCP remains agent-neutral. There is no database, hosted relay, login UI, OAuth flow, secret URL, or general multi-user authorization system (`src/config.ts`, `src/auth/auth.ts`, `src/server/http-server.ts`).
+1. `src/index.ts` parses configuration, prepares durable/process-level state, and composes shared runtime services (`src/index.ts`, `src/config.ts`).
+2. `src/server/http-server.ts` accepts an MCP request, applies the transport/ownership boundary, and creates a short-lived MCP server/transport around shared process services. See [HTTP Transport](./HTTP%20Transport.md).
+3. `src/server/mcp-server.ts` registers the model-facing tools; the selected capability module under `src/tools/` owns its schema, handler, result, and domain errors.
+4. Stateful capabilities retain only their intended process-level boundary: named shells in the shell manager, webpage documents in the opener cache, browser conversations in the subagent module, and Computer Use capture targets in the Peekaboo adapter. Dedicated pages document those lifecycles.
 
 ## Related
 
-- [[pages/Project Overview]]
-- [[pages/HTTP Transport]]
-- [[pages/MCP Tool Surface]]
-- [[pages/Configuration and Startup]]
-- [[pages/Browser ChatGPT Subagents]]
+- [Project Overview](./Project%20Overview.md)
+- [HTTP Transport](./HTTP%20Transport.md)
+- [MCP Tool Surface](./MCP%20Tool%20Surface.md)
+- [Configuration and Startup](./Configuration%20and%20Startup.md)
+- [Browser ChatGPT Subagents](./Browser%20ChatGPT%20Subagents.md)
+- [Audit Logging](./Audit%20Logging.md)

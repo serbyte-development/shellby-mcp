@@ -1,6 +1,6 @@
 # Configuration and Startup
 
-Verified 2026-08-16.
+Verified 2026-08-18.
 
 ## What This Is
 
@@ -28,9 +28,9 @@ This page documents the supported environment surface, first-time workspace init
 | `MCP_SHELL_IDLE_TTL_MS`     | `300000`                      | Live named-shell idle lifetime; `0` disables hibernation |
 | `MCP_SHELL_CACHE_TTL_MS`    | `86400000`                    | Cached cwd/exported-environment lifetime since last use |
 
-Shell cleanup uses one shared manager interval for both live-idle hibernation and cached-state expiry. Hibernated state contains only cwd and exported environment; it is process-local and is not durable across MCP restarts (`src/config.ts`, `src/tools/shell/session-manager.ts`).
+Shell configuration values are canonical here. Caller-visible lifetime consequences are in [`shell_run` / `shell_poll`](./tools/shell_run.md); manager mechanics are in [Persistent Shell Runtime](./Persistent%20Shell%20Runtime.md).
 
-Production HTTP always binds to `127.0.0.1:3333`; host and port are not environment-configurable. `MCP_CWD` expands `~`, resolves relative values from startup cwd, and becomes the shell/workspace/instruction root. Its `AGENTS.md` is the coding-instructions path advertised to MCP clients. Numeric values are range-checked. Production startup writes completed MCP `tools/call` activity to the gitignored repository-local `agent-commands.yaml`, creating or repairing it with owner-only `0600` permissions. Each call is one compact YAML document. Headers record model-facing input/output token counts when available, not response byte/KB size. Normal calls have no Better Comments tag; calls at least 5 seconds use `~`, and MCP tool/HTTP/connection failures use `!`. `shell_run` uses a block scalar capped at 2,000 characters, ordinary arguments are capped at 600 characters, and successful `apply_patch` calls record only cwd and patch size. Failed `apply_patch` calls also retain the patch body, capped at 32,000 characters, to make debugging failed edits practical (`src/config.ts`, `src/index.ts`, `src/server/audit-log.ts`, `src/server/http-server.ts`).
+Production HTTP always binds to `127.0.0.1:3333`; host and port are not environment-configurable. `MCP_CWD` expands `~`, resolves relative values from startup cwd, and becomes the shell/workspace/instruction root. Its `AGENTS.md` is the coding-instructions path advertised to MCP clients. Numeric values are range-checked. Audit retention and token-accounting behavior are documented in [Audit Logging](./Audit%20Logging.md).
 
 ## Startup and Shutdown
 
@@ -57,9 +57,8 @@ Normal `npm run setup` invokes `peekaboo permissions status --all-sources` when 
 - Tunnel: `tunnel` remains a low-level helper that exposes port 3333 through the checked-in ngrok policy with the ngrok agent's local HTTP inspector disabled. ngrok assigns the public URL unless `NGROK_URL` supplies the caller's own fixed domain (`package.json`, `ecosystem.config.cjs`).
 - URL discovery: `print-url` prints `https://<domain>/mcp`, using `NGROK_URL` when configured or ngrok's local tunnel API otherwise. `start` and `restart` call it after the managed runtime is healthy (`package.json`, `scripts/print-url.mjs`, `scripts/start.mjs`).
 - Authentication: `auth:reset` performs the local warning/confirmation flow and clears the bound subject. Reset does not generate or rotate an ngrok URL (`package.json`, `src/auth/reset.ts`).
-- Quality: `test`, `type-check`, `lint`, `lint:fix`, and `format` cover automated tests, TypeScript checking, ESLint, and Prettier (`package.json`, `eslint.config.js`, `.prettierrc`).
 
-The tunnel policy is the trusted-origin half of remote authentication: it allows only ngrok's ChatGPT IP category on exact `/mcp`, rewrites Host, and adds `X-Unhinged-Agent-Remote: 1`. Unhinged Agent then binds or checks `X-OpenAI-Subject` only for marked `tools/call` requests. The checked-in commands use `--inspect=false` to disable the local ngrok inspector (`ngrok-traffic-policy.yml`, `package.json`, `ecosystem.config.cjs`, `src/server/http-server.ts`, `src/auth/auth.ts`).
+Remote trust and subject binding are canonical in [HTTP Transport](./HTTP%20Transport.md).
 
 Production HTTP, health checks, the PM2 ngrok app, and the trusted Host rewrite deliberately share fixed local port 3333. The injectable HTTP server still accepts a port override for isolated tests. `NGROK_URL` changes only the optional public domain passed to ngrok (`src/config.ts`, `src/server/http-server.ts`, `scripts/start.mjs`, `package.json`, `ecosystem.config.cjs`, `ngrok-traffic-policy.yml`).
 
@@ -71,9 +70,10 @@ Production HTTP, health checks, the PM2 ngrok app, and the trusted Host rewrite 
 
 ## Related
 
-- [[pages/Project Overview]]
-- [[pages/Architecture Map]]
-- [[pages/HTTP Transport]]
-- [[pages/Workspace Tooling]]
-- [[pages/Build and Test]]
-- [[pages/Open Questions and Risks]]
+- [Project Overview](./Project%20Overview.md)
+- [Architecture Map](./Architecture%20Map.md)
+- [HTTP Transport](./HTTP%20Transport.md)
+- [Workspace Tooling](./Workspace%20Tooling.md)
+- [Build and Test](./Build%20and%20Test.md)
+- [Open Questions and Risks](./Open%20Questions%20and%20Risks.md)
+- [Audit Logging](./Audit%20Logging.md)

@@ -20,4 +20,4 @@ One sentence explaining the question this page answers.
 
 ## Related
 
-- [[pages/Related Page]]
+- Add standard relative Markdown links to the few maintained pages that directly help interpret this page.
