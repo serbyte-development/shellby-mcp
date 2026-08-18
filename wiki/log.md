@@ -1029,3 +1029,8 @@
 - Established `tools/` for canonical per-tool references and added `tools/apply_patch.md` covering grammar, native execution order, update atomicity, partial failures, changed/failed reporting, parser quirks, runtime limits, audit behavior, provenance, and tests.
 - Replaced duplicated `apply_patch` detail in maintained workspace/test/risk/tool-surface pages with focused links to the tool reference.
 - Corrected stale test notes: real-binary MCP integration now covers partial application, failed-hunk reporting, and move+edit alongside fake-executable cap/abort tests.
+
+## [2026-08-18] wiki | Canonicalize shell tool docs
+
+- Added `tools/shell_run.md` as the compact canonical caller contract for `shell_run`/`shell_poll`: persistent state, batches, per-command results, polling, output loss, limits, and shell lifetime.
+- Removed duplicated caller-facing shell syntax/result detail from `Persistent Shell Runtime` and `MCP Tool Surface`; those pages now retain implementation/inventory context and link to the tool page.

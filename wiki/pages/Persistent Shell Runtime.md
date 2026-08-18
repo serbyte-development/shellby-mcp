@@ -1,10 +1,10 @@
 # Persistent Shell Runtime
 
-Verified 2026-08-16.
+Verified 2026-08-18.
 
 ## What This Is
 
-This page explains the stateful named-shell protocol, retained output, idempotency, parallel batches, and reset behavior behind `shell_run` and `shell_poll`.
+Implementation notes for the stateful named-shell runtime behind `shell_run` and `shell_poll`. Caller-facing behavior and syntax live in [[tools/shell_run]].
 
 ## Process Model
 
@@ -21,10 +21,10 @@ Marker-safe prefix flushing preserves UTF-16 surrogate pairs before applying the
 
 The wrapper clears `errexit` before and after evaluation so a prior `set -e` does not poison later calls. An explicit `exit` or a command that terminates the shell still destroys state (`src/tools/shell/session.ts`, `test/shell-session.test.ts`).
 
-## Output, Polling, and Retries
+## Output Storage and Request Records
 
 - `TranscriptBuffer` uses absolute JavaScript-string cursors, advances a logical retained-output head as the rolling window fills, and compacts discarded backing text in batches instead of slicing the full retained string on every append. It drops whole surrogate pairs at the rolling boundary. A cursor older than retained output is clamped and returns `cursor_expired` (`src/tools/shell/session.ts`, `test/shell-session.test.ts`).
-- Response ceilings use `o200k_base` token counts. Transcript reads tokenize only a bounded local character window instead of the entire remaining transcript, so polling large retained output does not repeatedly rescan megabytes; `max_output_tokens` remains a ceiling and highly compressible text may return below it. `shell_run` uses `output_truncated` plus `next_cursor` when more retained output remains; the smaller `shell_poll` result uses `next_cursor` alone. The separate per-command capture ceiling remains byte-based because it protects retained memory; permanent capture loss is reported through `dropped_output_bytes`. An expired poll cursor is a tool error because complete output can no longer be reconstructed (`src/tokenizer.ts`, `src/index.ts`, `src/tools/shell/session.ts`, `src/tools/shell/shell-tools.ts`).
+- Response ceilings use `o200k_base` token counts. Transcript reads tokenize only a bounded local character window instead of the entire remaining transcript, so polling large retained output does not repeatedly rescan megabytes. Per-command capture remains byte-based because it protects retained memory (`src/tokenizer.ts`, `src/index.ts`, `src/tools/shell/session.ts`, `src/tools/shell/shell-tools.ts`). See [[tools/shell_run]] for caller-visible pagination/loss semantics.
 - Run waits for completion, abort, timeout, cursor expiry, or a full response. Poll waits on a versioned update when a running command has no new output; completed polls skip that preliminary transcript read and render the result once (`src/tools/shell/session.ts`).
 - Request IDs are scoped to a shell. Exact command retries return the retained record; changed text returns `request_conflict`. Command and reset maps are bounded by the config-only `MCP_CONFIG.shell.recordLimit` (`src/config.ts`, `src/tools/shell/session.ts`, `src/tools/shell/session-manager.ts`).
 
@@ -42,40 +42,11 @@ Cached state is process-local and disappears on MCP restart. If a cached cwd no 
 
 `shell_close` is intentionally destructive: it terminates a non-default live shell, removes any cached state for that ID, and frees its live slot. Automatic idle/LRU hibernation is the only path that preserves cwd/exported environment. `shell_poll` cannot continue old command records after hibernation or close because those records belong to the destroyed live process. `shell_reset` deliberately discards any live or cached recoverable state and starts clean. The `default` shell remains live and protected from explicit close and automatic eviction (`src/tools/shell/session-manager.ts`, `src/tools/shell/shell-tools.ts`).
 
-### Parallel command envelope
+### Batch Runtime
 
-`shell_run` supports multiple independent commands in one free-form payload without an array schema. Normal single-command input is unchanged. Parallel mode uses repeated run markers with optional directory overrides:
+Caller syntax and result semantics: [[tools/shell_run]].
 
-```text
-*** Run:
-npm run lint
-*** Run:
-npm run type-check
-*** Run: ./packages/api
-npm test
-*** Run: ../../shared
-npm run check
-*** Run: /tmp
-pwd
-```
-
-Starting the command with `*** Run:` means "run these command blocks independently and concurrently," not "concatenate them into one shell program." A bare marker inherits the batch cwd; add a directory only to override that run's cwd. Relative values resolve from the batch `cwd` anchor, including `.`, `./`, `../`, and `../../`; absolute values such as `/tmp` are used directly. Lines beginning with `*** Run` are reserved as batch directives and malformed forms reject the whole batch instead of becoming shell text. Shell-level backgrounding such as `command & ...; wait` is deliberately not the implementation because it collapses the work back into one opaque shell execution (`src/tools/shell/parallel-runner.ts`).
-
-Execution rules:
-
-- Keep the feature entirely inside the existing `shell_run` / `shell_poll` contract. Do not add a `shell_parallel` tool and do not assign child shell IDs. One batch remains one outer `(shell_id, request_id)` operation.
-- Capture the selected persistent shell's current exported environment once when the batch starts. An explicit call-level `cwd` first becomes the persistent shell's selected directory and the batch root; otherwise the current directory is the root. Every child inherits that environment snapshot, while state changes inside a child do not mutate the persistent shell or siblings.
-- Let a bare `*** Run:` inherit the batch `cwd`. When a marker supplies a directory, resolve relative paths from the batch `cwd` using normal path semantics, including `.`, `./`, `../`, and `../../`, and pass absolute paths directly as the child process `cwd`. The batch `cwd` is an anchor, not a sandbox. The directory is execution metadata, not shell text, so callers do not need repeated `cd ... &&` prefixes.
-- Treat the parent `shell_run` as occupying that named shell until the batch finishes, preserving the existing one-foreground-operation-per-shell mental model.
-- Submit any number of sections in one tool call, but run at most **4 child processes concurrently process-wide**. Additional sections queue inside their owning request and start as slots become available.
-- Keep one bounded output buffer per child. When a child becomes terminal, append one output block labeled with its run number, declared path, status or exit code, and dropped bytes. Blocks arrive in completion order without interleaving child streams and preserve normal cursor pagination.
-- `shell_run` and `shell_poll` expose finished child results as completed with an exit code, timed out, failed, or reset. Queued and running work is represented by the outer batch's running status. A nonzero child exit does not cancel siblings.
-- Parallel children have a **10-minute hard runtime ceiling**. A timed-out child receives `SIGTERM`, then `SIGKILL` after the same 500 ms grace used elsewhere, and its global slot is released. Ordinary persistent-shell commands still have no hard runtime ceiling.
-- `shell_reset` marks queued/running batch children reset, aborts queued scheduler entries, terminates running child process groups, and preserves already-completed output/results in the retained batch record.
-- These workers are short-lived child processes, not named persistent shells, and therefore should not consume `ShellSessionManager` shell slots.
-- Keep this deliberately below workflow-engine complexity: no DAGs, dependencies, per-command IDs, retries, or nested orchestration syntax.
-
-`src/tools/shell/parallel-runner.ts` owns the batch parser, process-wide scheduler, bounded child execution, timeout, and process-group cleanup. `PersistentShellSession` owns the outer request record, environment capture through the existing persistent shell, relative-directory resolution, polling, retained grouped output, and reset integration (`src/tools/shell/parallel-runner.ts`, `src/tools/shell/session.ts`, `src/tools/shell/shell-tools.ts`).
+Internally, one batch remains one outer `(shell_id, request_id)` record. `parallel-runner.ts` owns parsing, the process-wide four-child scheduler, bounded child output, the 10-minute child timeout, and process-group cleanup. `PersistentShellSession` captures cwd/exported environment, resolves child directories, owns grouped retained output/polling, and integrates reset. Children are short-lived processes, do not consume named-shell slots, do not mutate persistent/sibling state, and do not cancel siblings on nonzero exit (`src/tools/shell/parallel-runner.ts`, `src/tools/shell/session.ts`, `src/tools/shell/shell-tools.ts`).
 
 ## Reset and Recovery
 
@@ -85,6 +56,7 @@ Process-group kill failures such as macOS `EPERM` are deliberately swallowed so 
 
 ## Related
 
+- [[tools/shell_run]]
 - [[pages/MCP Tool Surface]]
 - [[pages/Architecture Map]]
 - [[pages/Workspace Tooling]]
