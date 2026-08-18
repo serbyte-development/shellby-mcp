@@ -122,7 +122,14 @@ test("serves shell tools through Streamable HTTP and retains state across MCP se
     properties?: Record<string, unknown>
     required?: string[]
   }
-  assert.deepEqual(Object.keys(applyPatchOutputSchema.properties ?? {}).sort(), ["exit_code", "output", "output_dropped", "status"])
+  assert.deepEqual(Object.keys(applyPatchOutputSchema.properties ?? {}).sort(), [
+    "changed",
+    "exit_code",
+    "failed",
+    "output",
+    "output_dropped",
+    "status",
+  ])
   assert.deepEqual(applyPatchOutputSchema.required?.sort(), ["exit_code", "status"])
   const shellListTool = tools.tools.find((tool) => tool.name === "shell_list")
   assert.deepEqual(shellListTool?.annotations, { readOnlyHint: true, openWorldHint: false })
@@ -1341,7 +1348,6 @@ test("applies patches through the native MCP tool", { timeout: 20_000 }, async (
     exit_code: 0,
   })
   assert.doesNotMatch(JSON.stringify(result.content), /literal \$\(\)/)
-  assert.match(JSON.stringify(result.content), /apply_patch completed, exit=0/)
   assert.doesNotMatch(await readFile(auditPath, "utf8"), /Begin Patch|literal \$\(\)/)
 
   const noisyPatch = ["*** Begin Patch", "*** Add File: noisy.txt", `+${"x".repeat(400)}`, "*** End Patch"].join("\n")
@@ -1369,9 +1375,6 @@ test("applies patches through the native MCP tool", { timeout: 20_000 }, async (
   assert.equal(failedContent.exit_code, 9)
   assert.equal(countTokens(failedContent.output), 1_024)
   assert.equal(failedContent.output_dropped, true)
-  const failedText = (failed.content?.[0] as { text?: string } | undefined)?.text ?? ""
-  assert.match(failedText, /apply_patch failed, exit=9/)
-  assert.ok(failedText.endsWith(failedContent.output))
   const failedAudit = await readFile(auditPath, "utf8")
   assert.match(failedAudit, /--- # ! \d{2}:\d{2}:\d{2} - apply_patch - \d+ms/)
   assert.match(failedAudit, /patch: \|-\n {2}\*\*\* Begin Patch/)
@@ -1399,6 +1402,112 @@ test("applies patches through the native MCP tool", { timeout: 20_000 }, async (
   assert.equal(concurrent.isError, undefined)
   assert.equal((concurrent.structuredContent as { output: string }).output, "runs-independently")
   assert.equal((await slowPatch).isError, undefined)
+})
+
+test("reports actual apply_patch changes and the first failed hunk", { timeout: 20_000 }, async (t) => {
+  const directory = await realpath(await mkdtemp(join(tmpdir(), "mcp-patch-result-")))
+  const project = join(directory, "project")
+  await mkdir(project, { recursive: true })
+  await writeFile(join(project, "a.txt"), "one\ntwo\nthree\n")
+  await writeFile(join(project, "b.txt"), "alpha\nbeta\n")
+
+  const running = await startMcpHttpServer({ port: 0 })
+  t.after(async () => {
+    await running.close()
+    await rm(directory, { recursive: true, force: true })
+  })
+  const connected = await connectClient(running.url, "patch-result-client")
+  t.after(() => connected.client.close())
+
+  const partialPatch = [
+    "*** Begin Patch",
+    "*** Update File: a.txt",
+    "@@ one",
+    "-two",
+    "+TWO",
+    "*** Update File: b.txt",
+    "@@ alpha",
+    "-beta",
+    "+BETA",
+    "@@",
+    "-missing",
+    "+MISSING",
+    "*** End Patch",
+  ].join("\n")
+  const partial = await connected.client.callTool({
+    name: "apply_patch",
+    arguments: { cwd: project, patch: partialPatch },
+  })
+  assert.equal(partial.isError, true)
+  const partialContent = partial.structuredContent as {
+    status: "partial"
+    exit_code: number
+    changed: string
+    failed: string
+    output: string
+  }
+  assert.equal(partialContent.status, "partial")
+  assert.equal(partialContent.exit_code, 1)
+  assert.equal(partialContent.changed, "a.txt +1 -1")
+  assert.equal(partialContent.failed, "b.txt hunk 2")
+  assert.match(partialContent.output, /Failed to find expected lines .*\/b\.txt:\nmissing/)
+  assert.equal(await readFile(join(project, "a.txt"), "utf8"), "one\nTWO\nthree\n")
+  assert.equal(await readFile(join(project, "b.txt"), "utf8"), "alpha\nbeta\n")
+
+  const movePatch = [
+    "*** Begin Patch",
+    "*** Update File: a.txt",
+    "*** Move to: nested/a.txt",
+    "@@ one",
+    "-TWO",
+    "+two",
+    "*** End Patch",
+  ].join("\n")
+  const moved = await connected.client.callTool({
+    name: "apply_patch",
+    arguments: { cwd: project, patch: movePatch },
+  })
+  assert.equal(moved.isError, undefined)
+  assert.deepEqual(moved.structuredContent, {
+    status: "completed",
+    exit_code: 0,
+    changed: "a.txt -> nested/a.txt +1 -1",
+  })
+  await assert.rejects(readFile(join(project, "a.txt")), { code: "ENOENT" })
+  assert.equal(await readFile(join(project, "nested/a.txt"), "utf8"), "one\ntwo\nthree\n")
+})
+
+test("renders compact apply_patch partial results without changing generic field formatting", { timeout: 20_000 }, async (t) => {
+  const directory = await realpath(await mkdtemp(join(tmpdir(), "mcp-patch-compact-")))
+  await writeFile(join(directory, "a.txt"), "one\ntwo\n")
+  await writeFile(join(directory, "b.txt"), "alpha\nbeta\n")
+
+  const running = await startMcpHttpServer({ port: 0, toolOutputStructured: "never" })
+  t.after(async () => {
+    await running.close()
+    await rm(directory, { recursive: true, force: true })
+  })
+  const connected = await connectClient(running.url, "patch-compact-client")
+  t.after(() => connected.client.close())
+
+  const patch = [
+    "*** Begin Patch",
+    "*** Update File: a.txt",
+    "@@ one",
+    "-two",
+    "+TWO",
+    "*** Update File: b.txt",
+    "@@ alpha",
+    "-missing",
+    "+MISSING",
+    "*** End Patch",
+  ].join("\n")
+  const result = await connected.client.callTool({ name: "apply_patch", arguments: { cwd: directory, patch } })
+  assert.equal(result.isError, true)
+  assert.equal(result.structuredContent, undefined)
+  const text = result.content.find((item) => item.type === "text")
+  assert.ok(text?.type === "text")
+  assert.match(text.text, /^status=partial exit_code=1\n\nchanged:\na\.txt \+1 -1\n\nfailed:\nb\.txt @@ alpha\n\noutput:\n\nFailed to find expected lines/)
 })
 
 test("force-kills a SIGTERM-resistant apply_patch after request abort", { skip: process.platform === "win32", timeout: 10_000 }, async (t) => {

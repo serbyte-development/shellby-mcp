@@ -22,6 +22,10 @@ test("renders compact scalar metadata and multiline strings without losing value
   assert.ok(countTokens(rendered) < countTokens(JSON.stringify(structured)))
 })
 
+test("does not treat changed or failed as block strings by default", () => {
+  assert.equal(renderStructuredContent({ changed: "one", failed: "two" }), "changed=one failed=two")
+})
+
 test("quotes strings that would otherwise be indistinguishable from non-string scalars", () => {
   assert.equal(
     renderStructuredContent({
