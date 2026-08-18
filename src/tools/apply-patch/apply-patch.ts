@@ -18,12 +18,12 @@ export function registerApplyPatchTool(server: McpServer, executable = DEFAULT_A
     {
       title: "Apply patch",
       description:
-        "Use the apply_patch tool to add, update, or delete files. The patch language is a stripped-down, file-oriented diff format designed to be easy to parse and safe to apply. You can think of it as a high-level envelope: *** Begin Patch [ one or more file sections ] *** End Patch.",
+        "Use `apply_patch` to create, update, delete, move, or rename files. A patch may contain multiple file operations and multiple update hunks. Use `@@ <context>` to scope an update to a class, function, section, or other unique line when needed.",
       inputSchema: z.object({
         patch: z
           .string()
           .describe(
-            "The complete patch text, beginning with *** Begin Patch and ending with *** End Patch. Prefer multiple small, focused apply_patch calls over one large patch, especially when editing files that were modified earlier in the task."
+            "A patch beginning with `*** Begin Patch` and ending with `*** End Patch`. Use `*** Add File`, `*** Update File`, or `*** Delete File` sections. Within `*** Update File`, use `*** Move to:` to move or rename a file, `@@ <context>` to scope a hunk to a unique class, function, section, or line, and `*** End of File` when an update specifically targets the file tail. A patch may contain multiple file sections and multiple hunks per file."
           ),
         cwd: z.string().refine(isAbsolute, "cwd must be an absolute path.").describe("Required absolute directory used as the patch root."),
       }),
