@@ -78,7 +78,7 @@ export function registerComputerUseTools(server: McpServer, peekaboo: PeekabooCl
       app: appInput.optional(),
       window_id: windowIdInput.optional(),
       screen_index: z.number().int().nonnegative().optional().describe("Zero-based display index. Omit to observe the frontmost window."),
-      annotate: z.boolean().optional().describe("Overlay element IDs on the returned screenshot."),
+      annotate: z.boolean().default(false).describe("Overlay element IDs on the returned screenshot."),
     })
     .superRefine((value, context) => {
       const targetCount = [value.app, value.window_id, value.screen_index].filter((item) => item !== undefined).length
@@ -117,7 +117,7 @@ export function registerComputerUseTools(server: McpServer, peekaboo: PeekabooCl
       args.push("--no-web-focus")
 
       try {
-        const observation = await peekaboo.observe(args, { annotate: annotate ?? false }, ctx.mcpReq.signal)
+        const observation = await peekaboo.observe(args, { annotate }, ctx.mcpReq.signal)
         return observationResult(observation)
       } catch (error) {
         return peekabooToolError(error)
@@ -427,11 +427,11 @@ export function registerComputerUseTools(server: McpServer, peekaboo: PeekabooCl
     .object({
       action: z.enum(["launch", "switch", "quit", "relaunch", "hide", "unhide"]),
       app: appInput,
-      open: z.array(z.string().min(1)).max(10).optional().describe("Files or URLs to open when launching."),
-      force: z.boolean().optional().describe("Force quit or relaunch without saving."),
+      open: z.array(z.string().min(1)).max(10).default([]).describe("Files or URLs to open when launching."),
+      force: z.boolean().default(false).describe("Force quit or relaunch without saving."),
     })
     .superRefine((value, context) => {
-      if (value.open && value.action !== "launch") {
+      if (value.open.length > 0 && value.action !== "launch") {
         context.addIssue({
           code: "custom",
           message: "open is valid only for launch.",
@@ -461,7 +461,7 @@ export function registerComputerUseTools(server: McpServer, peekaboo: PeekabooCl
       _meta: MCP_CONFIG.toolMeta,
     },
     async ({ action, app, open, force }, ctx) => {
-      const args = appCommandArgs(action, app, open, force ?? false)
+      const args = appCommandArgs(action, app, open, force)
       return callPeekaboo(peekaboo, args, ctx.mcpReq.signal, `Application ${action} completed.`)
     }
   )
@@ -611,12 +611,12 @@ function addObservationTargetArgs(args: string[], target: PeekabooSnapshotTarget
 function appCommandArgs(
   action: "launch" | "switch" | "quit" | "relaunch" | "hide" | "unhide",
   app: string,
-  open: string[] | undefined,
+  open: string[],
   force: boolean
 ): string[] {
   if (action === "launch") {
     const args = ["app", "launch", app, "--wait-ready"]
-    for (const item of open ?? []) args.push("--open", item)
+    for (const item of open) args.push("--open", item)
     return args
   }
   if (action === "switch") return ["app", "switch", "--to", app, "--verify"]

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict"
 import test from "node:test"
 
+import { MCP_CONFIG } from "../src/config.js"
 import { countTokens } from "../src/tokenizer.js"
 import { WebOpenError, WebPageOpener } from "../src/tools/web/web-open.js"
 
@@ -19,7 +20,11 @@ test("paginates fetched content without reopening the page", async () => {
     },
   })
 
-  let result = await opener.open({ url: "https://example.com/start" })
+  let result = await opener.open({
+    url: "https://example.com/start",
+    format: MCP_CONFIG.web.defaultFormat,
+    maxOutputTokens: opener.defaultOutputTokens,
+  })
   let content = result.content
   assert.ok(countTokens(result.content) <= 256)
   assert.equal(result.url, "https://example.com/final")
@@ -30,6 +35,8 @@ test("paginates fetched content without reopening the page", async () => {
     result = await opener.open({
       url: "https://example.com/start",
       cursor: result.next_cursor,
+      format: MCP_CONFIG.web.defaultFormat,
+      maxOutputTokens: opener.defaultOutputTokens,
     })
     content += result.content
   }
@@ -56,6 +63,7 @@ test("forwards the requested format and requires it for cursor continuation", as
   const first = await opener.open({
     url: "https://example.com",
     format: "clean_html",
+    maxOutputTokens: opener.defaultOutputTokens,
   })
   assert.equal(first.format, "clean_html")
   assert.deepEqual(formats, ["clean_html"])
@@ -66,6 +74,7 @@ test("forwards the requested format and requires it for cursor continuation", as
     url: "https://example.com",
     format: "clean_html",
     cursor: first.next_cursor,
+    maxOutputTokens: opener.defaultOutputTokens,
   })
   assert.equal(second.format, "clean_html")
   assert.equal(formats.length, 1)
@@ -75,6 +84,7 @@ test("forwards the requested format and requires it for cursor continuation", as
       url: "https://example.com",
       format: "raw_html",
       cursor: first.next_cursor,
+      maxOutputTokens: opener.defaultOutputTokens,
     }),
     (error: unknown) => error instanceof WebOpenError && error.code === "invalid_cursor"
   )
@@ -90,12 +100,18 @@ test("accepts the final redirected URL for cursor reads", async () => {
     }),
   })
 
-  const first = await opener.open({ url: "https://example.com/start" })
+  const first = await opener.open({
+    url: "https://example.com/start",
+    format: MCP_CONFIG.web.defaultFormat,
+    maxOutputTokens: opener.defaultOutputTokens,
+  })
   assert.equal(first.output_truncated, true)
   assert.ok(first.next_cursor)
   const second = await opener.open({
     url: first.url,
     cursor: first.next_cursor,
+    format: MCP_CONFIG.web.defaultFormat,
+    maxOutputTokens: opener.defaultOutputTokens,
   })
   assert.equal(first.content + second.content, "🙂".repeat(300))
 })
@@ -114,11 +130,20 @@ test("rejects invalid and expired cursors", async () => {
   })
 
   await assert.rejects(
-    opener.open({ url: "https://example.com", cursor: "not-a-cursor" }),
+    opener.open({
+      url: "https://example.com",
+      cursor: "not-a-cursor",
+      format: MCP_CONFIG.web.defaultFormat,
+      maxOutputTokens: opener.defaultOutputTokens,
+    }),
     (error: unknown) => error instanceof WebOpenError && error.code === "invalid_cursor"
   )
 
-  const first = await opener.open({ url: "https://example.com" })
+  const first = await opener.open({
+    url: "https://example.com",
+    format: MCP_CONFIG.web.defaultFormat,
+    maxOutputTokens: opener.defaultOutputTokens,
+  })
   assert.ok(first.next_cursor)
   now += 101
 
@@ -126,6 +151,8 @@ test("rejects invalid and expired cursors", async () => {
     opener.open({
       url: "https://example.com",
       cursor: first.next_cursor,
+      format: MCP_CONFIG.web.defaultFormat,
+      maxOutputTokens: opener.defaultOutputTokens,
     }),
     (error: unknown) => error instanceof WebOpenError && error.code === "cursor_expired"
   )
@@ -142,7 +169,11 @@ test("bounds cached extracted documents and reports dropped source bytes", async
     }),
   })
 
-  const first = await opener.open({ url: "https://example.com" })
+  const first = await opener.open({
+    url: "https://example.com",
+    format: MCP_CONFIG.web.defaultFormat,
+    maxOutputTokens: opener.defaultOutputTokens,
+  })
   assert.equal(first.content, "🙂".repeat(64))
   assert.equal(first.output_truncated, true)
   assert.equal(first.source_dropped, true)
@@ -152,6 +183,8 @@ test("bounds cached extracted documents and reports dropped source bytes", async
   const second = await opener.open({
     url: "https://example.com",
     cursor: first.next_cursor,
+    format: MCP_CONFIG.web.defaultFormat,
+    maxOutputTokens: opener.defaultOutputTokens,
   })
   assert.equal(second.content, "🙂".repeat(11))
   assert.equal(second.output_truncated, undefined)

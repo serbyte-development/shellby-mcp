@@ -27,7 +27,20 @@ export const DEFAULTS = {
   port: 3333,
   workspace: "~/Desktop/agent-workspace",
   peekabooExecutable: "peekaboo",
-  chatGptCdpEndpoint: "http://127.0.0.1:9222",
+  chatGpt: {
+    cdpEndpoint: "http://127.0.0.1:9222",
+    defaultOververbosity: 2,
+    defaultPollWaitMs: 0,
+    maxPollWaitMs: 270_000,
+  },
+  web: {
+    defaultFormat: "markdown" as const,
+    defaultOutputTokens: 8_192,
+    maxOutputTokens: 32_768,
+    documentByteLimit: 2 * 1024 * 1024,
+    documentTtlMs: 10 * 60 * 1_000,
+    documentLimit: 20,
+  },
   toolOutputStructured: "never" as ToolOutputStructuredMode,
   shell: {
     path: "/bin/zsh",
@@ -69,8 +82,12 @@ export function loadMcpConfig(env: NodeJS.ProcessEnv = process.env) {
       executable: env.MCP_PEEKABOO_BIN ?? DEFAULTS.peekabooExecutable,
     },
     chatGpt: {
-      cdpEndpoint: env.MCP_CHATGPT_CDP_ENDPOINT ?? DEFAULTS.chatGptCdpEndpoint,
+      cdpEndpoint: env.MCP_CHATGPT_CDP_ENDPOINT ?? DEFAULTS.chatGpt.cdpEndpoint,
+      defaultOververbosity: DEFAULTS.chatGpt.defaultOververbosity,
+      defaultPollWaitMs: DEFAULTS.chatGpt.defaultPollWaitMs,
+      maxPollWaitMs: DEFAULTS.chatGpt.maxPollWaitMs,
     },
+    web: DEFAULTS.web,
     toolOutputStructured: parseToolOutputStructured(env.MCP_TOOL_OUTPUT_STRUCTURED, DEFAULTS.toolOutputStructured),
     shell: {
       path: env.MCP_SHELL ?? DEFAULTS.shell.path,

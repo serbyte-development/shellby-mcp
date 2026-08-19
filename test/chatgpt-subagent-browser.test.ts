@@ -2,6 +2,7 @@ import assert from "node:assert/strict"
 import { readFile } from "node:fs/promises"
 import test from "node:test"
 
+import { MCP_CONFIG } from "../src/config.js"
 import {
   ChatGptConversationTracker,
   extractConversationMessages,
@@ -144,7 +145,11 @@ test("subagent start dismisses a ChatGPT modal that races with composer interact
   internals.connect = async () => undefined
   internals.agents.set(state.agentId, state)
 
-  const result = await module.ask({ agentId: state.agentId, prompt: "Review this." })
+  const result = await module.ask({
+    agentId: state.agentId,
+    prompt: "Review this.",
+    oververbosity: MCP_CONFIG.chatGpt.defaultOververbosity,
+  })
 
   assert.equal(result.status, "running")
   assert.equal(composerClicks, 2)

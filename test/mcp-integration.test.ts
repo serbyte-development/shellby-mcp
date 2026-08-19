@@ -16,7 +16,7 @@ import { McpAuditLogger } from "../src/server/audit-log.js"
 import { PeekabooClient } from "../src/tools/computer/peekaboo.js"
 import { PersistentShellSession } from "../src/tools/shell/session.js"
 import { ShellSessionManager } from "../src/tools/shell/session-manager.js"
-import { DEFAULT_WEB_OUTPUT_TOKENS, MAX_WEB_OUTPUT_TOKENS, WebPageOpener } from "../src/tools/web/web-open.js"
+import { WebPageOpener } from "../src/tools/web/web-open.js"
 import { canonicalizeJsonSchema } from "../src/server/tool-registration-boundary.js"
 
 function startMcpHttpServer(options: Parameters<typeof startMcpHttpServerRaw>[0] = {}) {
@@ -167,11 +167,11 @@ test("serves shell tools through Streamable HTTP and retains state across MCP se
   assert.ok(webMaxOutputSchema)
   assert.deepEqual(Object.keys(webMaxOutputSchema), ["type", "default", "minimum", "maximum"])
   assert.equal(webMaxOutputSchema.minimum, 1)
-  assert.equal(webMaxOutputSchema.default, DEFAULT_WEB_OUTPUT_TOKENS)
-  assert.equal(webMaxOutputSchema.maximum, MAX_WEB_OUTPUT_TOKENS)
+  assert.equal(webMaxOutputSchema.default, MCP_CONFIG.web.defaultOutputTokens)
+  assert.equal(webMaxOutputSchema.maximum, MCP_CONFIG.web.maxOutputTokens)
   const websiteFormatSchema = (fetchWebsiteTool?.inputSchema.properties as Record<string, Record<string, unknown>>).format
   assert.ok(websiteFormatSchema)
-  assert.equal(websiteFormatSchema.default, "markdown")
+  assert.equal(websiteFormatSchema.default, MCP_CONFIG.web.defaultFormat)
   const fetchWebsiteOutputSchema = fetchWebsiteTool?.outputSchema as {
     properties?: Record<string, unknown>
     required?: string[]
@@ -196,10 +196,6 @@ test("serves shell tools through Streamable HTTP and retains state across MCP se
   assert.deepEqual(skillLoadOutputSchema.required, ["path", "instructions"])
   const subagentTool = tools.tools.find((tool) => tool.name === "subagent_run")
   assert.deepEqual(subagentTool?.annotations, { destructiveHint: false })
-  assert.equal(
-    subagentTool?.description,
-    "Execute one task or a parallel task batch in named persistent ChatGPT subagents. Reuse agent_id to retain conversation context. Retrieve returned turn_ids with subagent_result."
-  )
   const subagentInputSchema = subagentTool?.inputSchema as {
     properties?: Record<string, Record<string, unknown>>
     required?: string[]
@@ -216,11 +212,7 @@ test("serves shell tools through Streamable HTTP and retains state across MCP se
   assert.deepEqual(Object.keys(subagentAgentsSchema.items?.properties ?? {}).sort(), ["agent_id", "oververbosity", "prompt"])
   assert.deepEqual(subagentAgentsSchema.items?.required?.sort(), ["agent_id", "prompt"])
   assert.equal(subagentAgentsSchema.items?.properties?.agent_id?.maxLength, 64)
-  assert.equal(
-    subagentAgentsSchema.items?.properties?.agent_id?.description,
-    "Short task or role label for a persistent subagent, such as architecture-reviewer. Use to retain conversation context, or use a different ID for concurrent work."
-  )
-  assert.equal(subagentAgentsSchema.items?.properties?.oververbosity?.default, 2)
+  assert.equal(subagentAgentsSchema.items?.properties?.oververbosity?.default, MCP_CONFIG.chatGpt.defaultOververbosity)
   assert.equal(subagentAgentsSchema.items?.properties?.oververbosity?.minimum, 1)
   assert.equal(subagentAgentsSchema.items?.properties?.oververbosity?.maximum, 5)
   const subagentOutputSchema = subagentTool?.outputSchema as {
@@ -231,10 +223,6 @@ test("serves shell tools through Streamable HTTP and retains state across MCP se
   }
   assert.deepEqual(Object.keys(subagentTurnsSchema.items?.properties ?? {}).sort(), ["agent_id", "error", "status", "turn_id"])
   assert.deepEqual(subagentTurnsSchema.items?.required?.sort(), ["agent_id", "status"])
-  assert.equal(
-    subagentTurnsSchema.items?.properties?.turn_id?.description,
-    "Short operation ID, unique within this subagent. Use with subagent_result to retrieve this exact turn."
-  )
   const subagentPollTool = tools.tools.find((tool) => tool.name === "subagent_result")
   assert.deepEqual(subagentPollTool?.annotations, { readOnlyHint: true })
   const subagentPollInputSchema = subagentPollTool?.inputSchema as {
@@ -266,8 +254,8 @@ test("serves shell tools through Streamable HTTP and retains state across MCP se
     subagentPollInputSchema.properties?.turn_ids?.description,
     "Turn IDs returned by subagent_run calls. Use to retrieve the exact submitted turns concurrently."
   )
-  assert.equal(subagentPollInputSchema.properties?.wait_ms?.default, 0)
-  assert.equal(subagentPollInputSchema.properties?.wait_ms?.maximum, 270_000)
+  assert.equal(subagentPollInputSchema.properties?.wait_ms?.default, MCP_CONFIG.chatGpt.defaultPollWaitMs)
+  assert.equal(subagentPollInputSchema.properties?.wait_ms?.maximum, MCP_CONFIG.chatGpt.maxPollWaitMs)
 
   const firstResult = await callUntilComplete(first.client, "mcp001", ["cd /tmp", "export MCP_HTTP_RETAINED=yes", "printf initialized"].join("; "))
   assert.equal(firstResult.output, "initialized")
@@ -341,6 +329,50 @@ test("lists and loads dynamic workspace skills through MCP", { timeout: 10_000 }
     path: join(skillDirectory, "SKILL.md"),
     instructions: content,
   })
+})
+
+test("rejects malformed tool inputs at the MCP schema boundary", { timeout: 10_000 }, async (t) => {
+  const running = await startMcpHttpServer({ port: 0 })
+  t.after(() => running.close())
+  const connected = await connectClient(running.url, "zod-boundary-client")
+  t.after(() => connected.client.close())
+
+  const cases = [
+    {
+      name: "shell_run",
+      arguments: { request_id: "nul-command", command: "printf bad\0command" },
+      expected: /NUL character/,
+    },
+    {
+      name: "subagent_run",
+      arguments: { agents: [{ agent_id: "reviewer", prompt: "   " }] },
+      expected: /prompt cannot be only whitespace/,
+    },
+    {
+      name: "subagent_result",
+      arguments: { turn_ids: ["   "] },
+      expected: /turn_id cannot be only whitespace/,
+    },
+    {
+      name: "fetch_website",
+      arguments: { url: "file:///tmp/secret" },
+      expected: /HTTP or HTTPS/,
+    },
+    {
+      name: "skill_load",
+      arguments: { name: "../secret" },
+      expected: /Invalid skill name/,
+    },
+  ] as const
+
+  for (const testCase of cases) {
+    const result = await connected.client.callTool({
+      name: testCase.name,
+      arguments: testCase.arguments,
+    })
+    assert.equal(result.isError, true)
+    assert.match(JSON.stringify(result.content), testCase.expected)
+  }
 })
 
 test("supports always, optional, and never model-facing tool output modes", { timeout: 20_000 }, async () => {
@@ -493,7 +525,7 @@ test("returns multiline subagent answers as readable compact Markdown", { timeou
   assert.ok(text?.type === "text")
   assert.equal(
     text.text,
-    "Retrieved 2 ChatGPT subagent turn results.\n\nturns:\n\n- turn_id=reviewer_turn_1 status=completed\n\n  response:\n    ## Review\n\n    Use the shared registration boundary.\n\n    ```ts\n    installToolRegistrationBoundary(server)\n    ```\n\n- turn_id=tester_turn_1 status=completed\n\n  response:\n    ## Tests\n\n    Add a regression test for multiline output."
+    "turns:\n\n- turn_id=reviewer_turn_1 status=completed\n\n  response:\n    ## Review\n\n    Use the shared registration boundary.\n\n    ```ts\n    installToolRegistrationBoundary(server)\n    ```\n\n- turn_id=tester_turn_1 status=completed\n\n  response:\n    ## Tests\n\n    Add a regression test for multiline output."
   )
   assert.doesNotMatch(text.text, /\{"turn_id"/)
   assert.doesNotMatch(text.text, /\\n/)
@@ -605,7 +637,7 @@ test("starts staggered subagents and polls turns concurrently across stateless M
       },
     ],
   })
-  assert.deepEqual(firstResult.content, [{ type: "text", text: "Submitted 3 ChatGPT subagent turns." }])
+  assert.deepEqual(firstResult.content, [])
   assert.equal(starts.length, 3)
   assert.ok(starts[1]!.at - starts[0]!.at >= 4_500)
   assert.ok(starts[2]!.at - starts[1]!.at >= 6_500)
@@ -614,7 +646,7 @@ test("starts staggered subagents and polls turns concurrently across stateless M
     name: "subagent_run",
     arguments: { agents: [{ agent_id: "unavailable-agent", prompt: "Try to start." }] },
   })
-  assert.deepEqual(failedStart.content, [{ type: "text", text: "Submitted 1 ChatGPT subagent turn." }])
+  assert.deepEqual(failedStart.content, [])
   assert.deepEqual(failedStart.structuredContent, {
     turns: [{ agent_id: "unavailable-agent", status: "failed", error: "subagent_failed: browser unavailable" }],
   })
@@ -648,7 +680,7 @@ test("starts staggered subagents and polls turns concurrently across stateless M
       },
     ],
   })
-  assert.deepEqual(batchPoll.content, [{ type: "text", text: "Retrieved 3 ChatGPT subagent turn results." }])
+  assert.deepEqual(batchPoll.content, [])
   assert.equal(maxActivePolls, 3)
 
   const partialFailurePoll = await second.client.callTool({

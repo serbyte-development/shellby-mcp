@@ -14,12 +14,16 @@ const subagentRequestSchema = z.object({
     .refine((value) => value.trim().length > 0, "agent_id cannot be only whitespace.")
     .transform((value) => value.trim())
     .describe("Short name for a subagent conversation. Reuse the same agent_id to continue that conversation; use a different one for independent work."),
-  prompt: z.string().min(1).describe("Task or next message to send to the subagent."),
+  prompt: z
+    .string()
+    .refine((value) => value.trim().length > 0, "prompt cannot be only whitespace.")
+    .transform((value) => value.trim())
+    .describe("Task or next message to send to the subagent."),
   oververbosity: z
     .int()
     .min(1)
     .max(5)
-    .default(2)
+    .default(MCP_CONFIG.chatGpt.defaultOververbosity)
     .describe(
       "Response verbosity for a new subagent conversation. Applied only when this agent_id is first created; later values do not change that conversation."
     ),
@@ -78,7 +82,7 @@ export function registerSubagentTools(server: McpServer, chatGptSubagents: ChatG
 
         if (index > 0) {
           try {
-            await delay(SUBAGENT_RUN_DELAYS_MS[index] ?? 0, ctx.mcpReq.signal)
+            await delay(SUBAGENT_RUN_DELAYS_MS[index]!, ctx.mcpReq.signal)
           } catch (error) {
             turns.push(runFailure(agent.agent_id, error))
             break
@@ -111,15 +115,21 @@ export function registerSubagentTools(server: McpServer, chatGptSubagents: ChatG
       description: "Turn IDs returned by subagent_run. Each identifies one specific submitted turn.",
       inputSchema: z.object({
         turn_ids: z
-          .array(z.string().min(1).max(128))
+          .array(
+            z
+              .string()
+              .max(128)
+              .refine((value) => value.trim().length > 0, "turn_id cannot be only whitespace.")
+              .transform((value) => value.trim())
+          )
           .min(1)
           .max(3)
           .describe("Turn IDs returned by subagent_run calls. Use to retrieve the exact submitted turns concurrently."),
         wait_ms: z
           .int()
           .min(0)
-          .max(270_000)
-          .default(0)
+          .max(MCP_CONFIG.chatGpt.maxPollWaitMs)
+          .default(MCP_CONFIG.chatGpt.defaultPollWaitMs)
           .describe("How long this check may wait for completion, up to 4.5 minutes. Use 0 for an immediate status check."),
       }),
       outputSchema: z.object({

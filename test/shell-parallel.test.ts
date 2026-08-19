@@ -3,6 +3,7 @@ import { mkdir, readFile, realpath, writeFile } from "node:fs/promises"
 import { join } from "node:path"
 import test from "node:test"
 
+import { MCP_CONFIG } from "../src/config.js"
 import { ParallelCommandScheduler } from "../src/tools/shell/parallel-runner.js"
 import { PersistentShellSession, ShellSessionError } from "../src/tools/shell/session.js"
 import { isProcessAlive, pollToCompletion, quote, runToCompletion, waitForProcessExit } from "./helpers/shell.js"
@@ -63,7 +64,12 @@ test("runs at most four parallel children and queues the rest", { timeout: 10_00
   const command = Array.from({ length: 6 }, (_, index) => ["*** Run: .", `while [[ ! -e ${quote(releaseFile)} ]]; do sleep 0.01; done; printf ${index + 1}`])
     .flat()
     .join("\n")
-  const first = await shell.runCommand({ requestId: "parallel-limit", command, waitMs: 50 })
+  const first = await shell.runCommand({
+    request_id: "parallel-limit",
+    command,
+    wait_ms: 50,
+    max_output_tokens: MCP_CONFIG.shell.defaultOutputTokens,
+  })
 
   assert.equal(first.status, "running")
   assert.equal(first.commands?.filter((run) => run.status === "running").length, 4)
@@ -123,12 +129,10 @@ test("labels permanently dropped parallel output", { timeout: 10_000 }, async (t
   const shell = new PersistentShellSession({
     parallelScheduler: new ParallelCommandScheduler(4),
     commandTranscriptBytes: 7,
-    defaultOutputTokens: 64,
-    maxOutputTokens: 64,
   })
   t.after(() => shell.close())
 
-  const batch = await runToCompletion(shell, "parallel-output-cap", ["*** Run: .", "printf '🙂éAB'"].join("\n"))
+  const batch = await runToCompletion(shell, "parallel-output-cap", ["*** Run: .", "printf '🙂éAB'"].join("\n"), { maxOutputTokens: 64 })
 
   assert.equal(batch.snapshot.dropped_output_bytes, 1)
   assert.match(batch.output, /\[run 1 path="\." exit=0 dropped_bytes=1\]\n🙂éA/)
@@ -155,17 +159,19 @@ test("inherits the batch cwd when a run directory is omitted and accepts overrid
 
   await assert.rejects(
     shell.runCommand({
-      requestId: "parallel-missing-directory",
+      request_id: "parallel-missing-directory",
       command: "*** Run",
-      waitMs: 0,
+      wait_ms: 0,
+      max_output_tokens: MCP_CONFIG.shell.defaultOutputTokens,
     }),
     (error: unknown) => error instanceof ShellSessionError && error.code === "invalid_command" && /Expected '\*\*\* Run:'/.test(error.message)
   )
   await assert.rejects(
     shell.runCommand({
-      requestId: "parallel-malformed-later-directory",
+      request_id: "parallel-malformed-later-directory",
       command: ["*** Run: .", "printf first", "*** Run:./wiki", "printf should-not-run"].join("\n"),
-      waitMs: 0,
+      wait_ms: 0,
+      max_output_tokens: MCP_CONFIG.shell.defaultOutputTokens,
     }),
     (error: unknown) => error instanceof ShellSessionError && error.code === "invalid_command" && /Expected '\*\*\* Run:'/.test(error.message)
   )
@@ -207,17 +213,23 @@ test("reset kills running parallel children and retains the batch as reset", { t
   t.after(() => shell.close())
 
   const running = await shell.runCommand({
-    requestId: "parallel-reset",
+    request_id: "parallel-reset",
     cwd: directory,
     command: ["*** Run: .", `printf '%s' "$$" > ${quote(pidFile)}; while :; do sleep 1; done`].join("\n"),
-    waitMs: 25,
+    wait_ms: 25,
+    max_output_tokens: MCP_CONFIG.shell.defaultOutputTokens,
   })
   assert.equal(running.status, "running")
   const pid = await readPid(pidFile)
   assert.equal(isProcessAlive(pid), true)
 
   await shell.reset({ reason: "test parallel reset" })
-  const old = await shell.pollCommand({ requestId: "parallel-reset", cursor: running.next_cursor, waitMs: 0 })
+  const old = await shell.pollCommand({
+    request_id: "parallel-reset",
+    cursor: running.next_cursor,
+    wait_ms: 0,
+    max_output_tokens: MCP_CONFIG.shell.defaultOutputTokens,
+  })
   assert.equal(old.status, "reset")
   assert.equal(old.commands?.[0]?.status, "reset")
   assert.match(old.output, /\[run 1 path="\." status=reset\]/)

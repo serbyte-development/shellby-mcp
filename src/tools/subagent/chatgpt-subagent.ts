@@ -130,10 +130,6 @@ export class ChatGptSubagentModule implements ChatGptSubagentService {
   }
 
   async ask(request: ChatGptSubagentRequest, signal?: AbortSignal): Promise<ChatGptSubagentStartResult> {
-    const prompt = request.prompt.trim()
-    if (!prompt) throw new Error("Subagent prompt cannot be empty.")
-    const oververbosity = normalizeOververbosity(request.oververbosity)
-    validateAgentId(request.agentId)
     this.beginAgentOperation(request.agentId, true)
     let state: BrowserAgentState | undefined
     let operationTransferred = false
@@ -157,7 +153,7 @@ export class ChatGptSubagentModule implements ChatGptSubagentService {
       await delay(this.interactionDelayMs, signal)
       throwIfAborted(signal)
       assertPreSubmitLocation(active)
-      const submittedPrompt = active.hasSubmittedTurn ? prompt : appendFirstTurnMode(prompt, oververbosity)
+      const submittedPrompt = active.hasSubmittedTurn ? request.prompt : appendFirstTurnMode(request.prompt, request.oververbosity)
       await enterPrompt(active.page, composer, submittedPrompt, signal)
       await delay(this.interactionDelayMs, signal)
       throwIfAborted(signal)
@@ -207,16 +203,13 @@ export class ChatGptSubagentModule implements ChatGptSubagentService {
     }
   }
 
-  async poll(turnId: string, waitMs = 0, signal?: AbortSignal): Promise<ChatGptSubagentPollResult> {
-    const normalizedTurnId = turnId.trim()
-    if (!normalizedTurnId) throw new Error("turnId cannot be empty.")
-    const turn = this.turns.get(normalizedTurnId)
+  async poll(turnId: string, waitMs: number, signal?: AbortSignal): Promise<ChatGptSubagentPollResult> {
+    const turn = this.turns.get(turnId)
     if (!turn) {
-      throw new ChatGptSubagentError("UNKNOWN_TURN", `Unknown ChatGPT subagent turn: ${normalizedTurnId}`)
+      throw new ChatGptSubagentError("UNKNOWN_TURN", `Unknown ChatGPT subagent turn: ${turnId}`)
     }
 
-    const boundedWaitMs = Math.min(Math.max(0, waitMs), 270_000)
-    const deadline = Date.now() + boundedWaitMs
+    const deadline = Date.now() + waitMs
     while (turn.status === "running") {
       await this.reconcileRunningTurn(turn, signal)
       if (turn.status !== "running" || Date.now() >= deadline) break
@@ -504,7 +497,7 @@ export class ChatGptSubagentModule implements ChatGptSubagentService {
     turn.response = response
     this.rememberConversation(state)
     this.finishTurnOperation(turn, state)
-    this.pendingEvents.push(`\n**agent_finished:${turn.agentId}:${turn.turnId}**\n`)
+    this.pendingEvents.push(`agent_finished:${turn.agentId}:${turn.turnId}`)
   }
 
   private attachTurnListeners(state: BrowserAgentState, turn: BrowserTurnState): void {
@@ -715,24 +708,10 @@ export class ChatGptSubagentModule implements ChatGptSubagentService {
   }
 }
 
-function normalizeOververbosity(value: number | undefined): number {
-  if (value === undefined) return 2
-  if (!Number.isInteger(value) || value < 1 || value > 5) {
-    throw new Error("oververbosity must be an integer from 1 to 5.")
-  }
-  return value
-}
-
 function appendFirstTurnMode(prompt: string, oververbosity: number): string {
   if (oververbosity === 5) return prompt
 
   const level = oververbosity === 1 ? "ultra" : oververbosity === 2 ? "full" : "lite"
   const qualifier = oververbosity === 4 ? " Favor completeness over terseness when useful." : ""
   return `${prompt}\n\n---\n\nSwitch to caveman ${level} mode. ${INJECTED_PROMPT}${qualifier}`
-}
-
-function validateAgentId(agentId: string): void {
-  if (agentId.length < 1 || agentId.length > 64 || agentId.trim().length === 0) {
-    throw new Error("agentId must be a non-empty string of at most 64 characters.")
-  }
 }

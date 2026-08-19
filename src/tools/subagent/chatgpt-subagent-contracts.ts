@@ -12,7 +12,7 @@ export interface ChatGptSubagentOptions {
 export interface ChatGptSubagentRequest {
   prompt: string
   agentId: string
-  oververbosity?: number
+  oververbosity: number
 }
 
 export interface ChatGptSubagentStartResult {
@@ -62,7 +62,7 @@ export class ChatGptSubagentError extends Error {
 
 export interface ChatGptSubagentService {
   ask(request: ChatGptSubagentRequest, signal?: AbortSignal): Promise<ChatGptSubagentStartResult>
-  poll(turnId: string, waitMs?: number, signal?: AbortSignal): Promise<ChatGptSubagentPollResult>
+  poll(turnId: string, waitMs: number, signal?: AbortSignal): Promise<ChatGptSubagentPollResult>
   drainEvents?(): string[]
   dispose(): Promise<void>
 }

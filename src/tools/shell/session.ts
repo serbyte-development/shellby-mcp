@@ -7,6 +7,7 @@ import { StringDecoder } from "node:string_decoder"
 import { MCP_CONFIG } from "../../config.js"
 import { tokenChunk } from "../../tokenizer.js"
 import { positiveInteger, utf8Chunk } from "../../utils.js"
+import type { ShellPollInput, ShellResetInput, ShellRunInput } from "./shell-contracts.js"
 import {
   DEFAULT_PARALLEL_COMMAND_TIMEOUT_MS,
   ParallelCommandAbortedError,
@@ -45,26 +46,9 @@ interface ParallelCommandSnapshot extends Record<string, unknown> {
   dropped_output_bytes?: number
 }
 
-export interface RunCommandInput {
-  requestId: string
-  command: string
-  cwd?: string
-  waitMs: number
-  maxOutputTokens?: number
-  signal?: AbortSignal
-}
-
-export interface PollCommandInput {
-  requestId: string
-  cursor: number
-  waitMs: number
-  maxOutputTokens?: number
-  signal?: AbortSignal
-}
-
-export interface ResetShellInput {
-  reason?: string
-}
+export type RunCommandInput = Omit<ShellRunInput, "shell_id"> & { signal?: AbortSignal }
+export type PollCommandInput = Omit<ShellPollInput, "shell_id"> & { signal?: AbortSignal }
+export type ResetShellInput = Omit<ShellResetInput, "shell_id">
 
 export interface ShellSessionOptions {
   shellPath?: string
@@ -73,8 +57,6 @@ export interface ShellSessionOptions {
   initialState?: ShellRecoverableState
   transcriptLimit?: number
   commandTranscriptBytes?: number
-  defaultOutputTokens?: number
-  maxOutputTokens?: number
   recordLimit?: number
   parallelCommandTimeoutMs?: number
   parallelScheduler?: ParallelCommandScheduler
@@ -259,8 +241,6 @@ export class PersistentShellSession {
   private readonly transcriptLimit: number
   private readonly transcript: TranscriptBuffer
   private readonly commandTranscriptBytes: number
-  private readonly defaultOutputTokens: number
-  private readonly maxOutputTokens: number
   private readonly recordLimit: number
   private readonly parallelCommandTimeoutMs: number
   private readonly parallelScheduler: ParallelCommandScheduler
@@ -296,11 +276,6 @@ export class PersistentShellSession {
     this.transcriptLimit = positiveInteger(options.transcriptLimit, MCP_CONFIG.shell.transcriptChars)
     this.transcript = new TranscriptBuffer(this.transcriptLimit)
     this.commandTranscriptBytes = positiveInteger(options.commandTranscriptBytes, MCP_CONFIG.shell.commandTranscriptBytes)
-    this.maxOutputTokens = positiveInteger(options.maxOutputTokens, MCP_CONFIG.shell.maxOutputTokens)
-    this.defaultOutputTokens = positiveInteger(options.defaultOutputTokens, MCP_CONFIG.shell.defaultOutputTokens)
-    if (this.defaultOutputTokens > this.maxOutputTokens) {
-      throw new Error("defaultOutputTokens cannot exceed maxOutputTokens.")
-    }
     this.recordLimit = positiveInteger(options.recordLimit, MCP_CONFIG.shell.recordLimit)
     this.parallelCommandTimeoutMs = positiveInteger(options.parallelCommandTimeoutMs, DEFAULT_PARALLEL_COMMAND_TIMEOUT_MS)
     this.parallelScheduler = options.parallelScheduler ?? processParallelCommandScheduler
@@ -324,8 +299,6 @@ export class PersistentShellSession {
       initialState,
       transcriptLimit: this.transcriptLimit,
       commandTranscriptBytes: this.commandTranscriptBytes,
-      defaultOutputTokens: this.defaultOutputTokens,
-      maxOutputTokens: this.maxOutputTokens,
       recordLimit: this.recordLimit,
       parallelCommandTimeoutMs: this.parallelCommandTimeoutMs,
       parallelScheduler: this.parallelScheduler,
@@ -360,31 +333,29 @@ export class PersistentShellSession {
   }
 
   async runCommand(input: RunCommandInput): Promise<ShellSnapshot> {
-    validateRequestId(input.requestId)
-    validateCommand(input.command)
-    const maxOutputTokens = this.normalizeOutputTokens(input.maxOutputTokens)
+    const maxOutputTokens = input.max_output_tokens
     const commandHash = hashCommand(input.command, input.cwd)
     const parallelCommands = parseParallelCommand(input.command)
 
     await this.start()
-    const existing = this.records.get(input.requestId)
+    const existing = this.records.get(input.request_id)
     if (existing) {
       if (existing.commandHash !== commandHash) {
-        throw new ShellSessionError("request_conflict", `request_id ${JSON.stringify(input.requestId)} was already used for a different command.`)
+        throw new ShellSessionError("request_conflict", `request_id ${JSON.stringify(input.request_id)} was already used for a different command.`)
       }
 
       if (existing.status === "running") {
-        await this.waitForCommandResult(existing, existing.startCursor, maxOutputTokens, input.waitMs, input.signal)
+        await this.waitForCommandResult(existing, existing.startCursor, maxOutputTokens, input.wait_ms, input.signal)
       }
       return this.snapshot(existing, existing.startCursor, maxOutputTokens)
     }
-    const existingParallel = this.parallelRecords.get(input.requestId)
+    const existingParallel = this.parallelRecords.get(input.request_id)
     if (existingParallel) {
       if (existingParallel.commandHash !== commandHash) {
-        throw new ShellSessionError("request_conflict", `request_id ${JSON.stringify(input.requestId)} was already used for a different command.`)
+        throw new ShellSessionError("request_conflict", `request_id ${JSON.stringify(input.request_id)} was already used for a different command.`)
       }
       if (existingParallel.status === "running") {
-        await this.waitForParallelResult(existingParallel, 0, maxOutputTokens, input.waitMs, input.signal)
+        await this.waitForParallelResult(existingParallel, 0, maxOutputTokens, input.wait_ms, input.signal)
       }
       return this.parallelSnapshot(existingParallel, 0, maxOutputTokens)
     }
@@ -417,7 +388,7 @@ export class PersistentShellSession {
 
     const token = randomUUID().replaceAll("-", "")
     const record: CommandRecord = {
-      requestId: input.requestId,
+      requestId: input.request_id,
       commandHash,
       cwd: commandCwd ?? this.currentCwd,
       startCursor: this.transcript.end,
@@ -443,43 +414,38 @@ export class PersistentShellSession {
       throw new ShellSessionError("shell_unavailable", `Could not write to the shell: ${errorMessage(error)}`)
     }
 
-    await this.waitForCommandResult(record, record.startCursor, maxOutputTokens, input.waitMs, input.signal)
+    await this.waitForCommandResult(record, record.startCursor, maxOutputTokens, input.wait_ms, input.signal)
     return this.snapshot(record, record.startCursor, maxOutputTokens)
   }
 
   async pollCommand(input: PollCommandInput): Promise<ShellSnapshot> {
-    validateRequestId(input.requestId)
-    if (!Number.isSafeInteger(input.cursor) || input.cursor < 0) {
-      throw new ShellSessionError("invalid_cursor", "cursor must be a non-negative safe integer.")
-    }
-
-    const record = this.records.get(input.requestId)
-    const parallelRecord = this.parallelRecords.get(input.requestId)
+    const record = this.records.get(input.request_id)
+    const parallelRecord = this.parallelRecords.get(input.request_id)
     if (!record && !parallelRecord) {
-      throw new ShellSessionError("request_not_found", `No command exists for request_id ${JSON.stringify(input.requestId)}.`)
+      throw new ShellSessionError("request_not_found", `No command exists for request_id ${JSON.stringify(input.request_id)}.`)
     }
     if (parallelRecord) {
-      const maxOutputTokens = this.normalizeOutputTokens(input.maxOutputTokens)
+      const maxOutputTokens = input.max_output_tokens
       if (parallelRecord.status === "running") {
         const version = this.updateVersion
         const initialRead = parallelRecord.transcript.read(input.cursor, maxOutputTokens, parallelRecord.endCursor ?? undefined)
         if (initialRead.output.length === 0 && !initialRead.cursorExpired) {
-          await this.waitForUpdate(version, input.waitMs, input.signal)
+          await this.waitForUpdate(version, input.wait_ms, input.signal)
         }
       }
       return this.parallelSnapshot(parallelRecord, input.cursor, maxOutputTokens)
     }
-    if (!record) throw new ShellSessionError("request_not_found", `No command exists for request_id ${JSON.stringify(input.requestId)}.`)
+    if (!record) throw new ShellSessionError("request_not_found", `No command exists for request_id ${JSON.stringify(input.request_id)}.`)
     if (input.cursor < record.startCursor) {
       throw new ShellSessionError("invalid_cursor", "cursor is before the requested command's output.")
     }
 
-    const maxOutputTokens = this.normalizeOutputTokens(input.maxOutputTokens)
+    const maxOutputTokens = input.max_output_tokens
     if (record.status === "running") {
       const version = this.updateVersion
       const initialRead = this.transcript.read(input.cursor, maxOutputTokens, record.endCursor ?? undefined)
       if (initialRead.output.length === 0 && !initialRead.cursorExpired) {
-        await this.waitForUpdate(version, input.waitMs, input.signal)
+        await this.waitForUpdate(version, input.wait_ms, input.signal)
       }
     }
 
@@ -509,7 +475,7 @@ export class PersistentShellSession {
     })
 
     const record: ParallelBatchRecord = {
-      requestId: options.input.requestId,
+      requestId: options.input.request_id,
       commandHash: options.commandHash,
       cwd: rootCwd,
       transcript: new TranscriptBuffer(this.transcriptLimit),
@@ -572,7 +538,7 @@ export class PersistentShellSession {
       record.tasks.push(task)
     }
 
-    await this.waitForParallelResult(record, 0, options.maxOutputTokens, options.input.waitMs, options.input.signal)
+    await this.waitForParallelResult(record, 0, options.maxOutputTokens, options.input.wait_ms, options.input.signal)
     return this.parallelSnapshot(record, 0, options.maxOutputTokens)
   }
 
@@ -695,12 +661,11 @@ export class PersistentShellSession {
       throw new ShellSessionError("closed", "The shell session is closed.")
     }
 
-    const reason = input.reason ?? "requested by MCP client"
     if (this.resetInFlight) {
       throw new ShellSessionError("busy", "The shell is already being reset.")
     }
 
-    const promise = this.performReset(reason)
+    const promise = this.performReset(input.reason)
     this.resetInFlight = promise
     void promise.then(
       () => {
@@ -713,7 +678,7 @@ export class PersistentShellSession {
     return promise
   }
 
-  private async performReset(reason: string): Promise<{
+  private async performReset(reason?: string): Promise<{
     shell_generation: number
     state_lost: true
     status: "ready"
@@ -724,12 +689,12 @@ export class PersistentShellSession {
     const child = this.child
     if (child) {
       this.stopReasons.set(child, "reset")
-      this.appendTranscript(`\n[mcp] Resetting shell: ${reason}\n`)
+      this.appendTranscript(`\n[mcp] Resetting shell${reason ? `: ${reason}` : ""}\n`)
       await this.stopChild(child)
     } else {
       this.generation += 1
       this.ready = false
-      this.appendTranscript(`\n[mcp] Resetting unavailable shell: ${reason}\n`)
+      this.appendTranscript(`\n[mcp] Resetting unavailable shell${reason ? `: ${reason}` : ""}\n`)
       if (this.active) {
         this.active.status = "reset"
         this.active.endCursor = this.transcript.end
@@ -1111,13 +1076,6 @@ export class PersistentShellSession {
     }
   }
 
-  private normalizeOutputTokens(value: number | undefined): number {
-    if (value === undefined || !Number.isFinite(value)) {
-      return this.defaultOutputTokens
-    }
-    return Math.min(Math.max(Math.trunc(value), 1), this.maxOutputTokens)
-  }
-
   private pruneCommandRecords(): void {
     while (this.records.size >= this.recordLimit) {
       const oldestCompleted = [...this.records.values()].find((record) => record.status !== "running")
@@ -1263,11 +1221,12 @@ function isParallelTerminal(status: ParallelCommandStatus): boolean {
 }
 
 function batchCommandPreview(command: string): string {
-  const firstLine = command
-    .split(/\r?\n/)
-    .find((line) => line.trim().length > 0)
-    ?.trim()
-    .replace(/\s+/g, " ") ?? ""
+  const firstLine =
+    command
+      .split(/\r?\n/)
+      .find((line) => line.trim().length > 0)
+      ?.trim()
+      .replace(/\s+/g, " ") ?? ""
   const characters = Array.from(firstLine)
   return characters.length <= 20 ? firstLine : `${characters.slice(0, 19).join("")}…`
 }
@@ -1303,21 +1262,6 @@ function validateWorkingDirectory(cwd: string | undefined): void {
   } catch (error) {
     if (error instanceof ShellSessionError) throw error
     throw new ShellSessionError("invalid_command", `cwd is not accessible: ${JSON.stringify(cwd)} (${errorMessage(error)}).`)
-  }
-}
-
-function validateRequestId(requestId: string): void {
-  if (requestId.length === 0 || requestId.length > 128) {
-    throw new ShellSessionError("invalid_command", "request_id must contain between 1 and 128 characters.")
-  }
-}
-
-function validateCommand(command: string): void {
-  if (command.length === 0) {
-    throw new ShellSessionError("invalid_command", "command cannot be empty.")
-  }
-  if (command.includes("\0")) {
-    throw new ShellSessionError("invalid_command", "command cannot contain a NUL character.")
   }
 }
 

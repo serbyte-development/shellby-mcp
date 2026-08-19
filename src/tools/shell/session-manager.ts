@@ -1,12 +1,11 @@
 import { MCP_CONFIG } from "../../config.js"
 import { nonNegativeInteger, positiveInteger } from "../../utils.js"
+import { DEFAULT_SHELL_ID } from "./shell-contracts.js"
 import { PersistentShellSession, ShellSessionError, type ShellRecoverableState } from "./session.js"
 
-export const DEFAULT_SHELL_ID = "default"
+export { DEFAULT_SHELL_ID } from "./shell-contracts.js"
 
 const DEFAULT_CLEANUP_INTERVAL_MS = 60 * 1000
-const MAX_SHELL_ID_LENGTH = 64
-
 export interface ShellSessionManagerOptions {
   createShell?: (initialState?: ShellRecoverableState) => PersistentShellSession
   defaultShell?: PersistentShellSession
@@ -89,13 +88,12 @@ export class ShellSessionManager {
     return this.sessions.get(DEFAULT_SHELL_ID)!
   }
 
-  async getOrCreate(shellId = DEFAULT_SHELL_ID, options: { restoreCached?: boolean } = {}): Promise<PersistentShellSession> {
+  async getOrCreate(shellId: string, options: { restoreCached?: boolean } = {}): Promise<PersistentShellSession> {
     return this.withLifecycleLock(() => this.getOrCreateUnlocked(shellId, options.restoreCached !== false))
   }
 
-  getExisting(shellId = DEFAULT_SHELL_ID): PersistentShellSession {
+  getExisting(shellId: string): PersistentShellSession {
     this.assertOpen()
-    validateShellId(shellId)
     const existing = this.sessions.get(shellId)
     if (!existing) {
       throw new ShellSessionError(
@@ -123,7 +121,6 @@ export class ShellSessionManager {
   async withExistingShell<T>(shellId: string, operation: (shell: PersistentShellSession) => Promise<T>): Promise<T> {
     const shell = await this.withLifecycleLock(async () => {
       this.assertOpen()
-      validateShellId(shellId)
       const existing = this.sessions.get(shellId)
       if (!existing) {
         throw new ShellSessionError(
@@ -165,7 +162,6 @@ export class ShellSessionManager {
   async closeShell(shellId: string): Promise<void> {
     return this.withLifecycleLock(async () => {
       this.assertOpen()
-      validateShellId(shellId)
       if (shellId === DEFAULT_SHELL_ID) {
         throw new ShellSessionError(
           "protected_shell",
@@ -232,7 +228,6 @@ export class ShellSessionManager {
 
   private async getOrCreateUnlocked(shellId: string, restoreCached: boolean): Promise<PersistentShellSession> {
     this.assertOpen()
-    validateShellId(shellId)
 
     const existing = this.sessions.get(shellId)
     if (existing) {
@@ -331,12 +326,6 @@ export class ShellSessionManager {
     } finally {
       release()
     }
-  }
-}
-
-function validateShellId(shellId: string): void {
-  if (shellId.length === 0 || shellId.length > MAX_SHELL_ID_LENGTH) {
-    throw new ShellSessionError("invalid_command", `shell_id must contain between 1 and ${MAX_SHELL_ID_LENGTH} characters.`)
   }
 }
 

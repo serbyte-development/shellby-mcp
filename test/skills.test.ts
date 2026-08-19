@@ -44,11 +44,10 @@ test("returns an empty catalog when the workspace has no skills directory", asyn
   assert.deepEqual(await catalog.list(), [])
 })
 
-test("rejects traversal and unknown skill names", async (t) => {
+test("rejects unknown skill names", async (t) => {
   const workspace = await tempDir(t, "mcp-skills-errors-")
   const catalog = new SkillCatalog(join(workspace, "skills"))
 
-  await assert.rejects(catalog.read("../secret"), (error: unknown) => error instanceof SkillCatalogError && error.code === "invalid_skill_name")
   await assert.rejects(catalog.read("missing"), (error: unknown) => error instanceof SkillCatalogError && error.code === "unknown_skill")
 })
 

@@ -1,16 +1,19 @@
+import { MCP_CONFIG } from "../../src/config.js"
 import type { PersistentShellSession, ShellSnapshot } from "../../src/tools/shell/session.js"
 
 export async function runToCompletion(
   shell: PersistentShellSession,
   requestId: string,
   command: string,
-  options: { cwd?: string } = {}
+  options: { cwd?: string; maxOutputTokens?: number } = {}
 ): Promise<{ output: string; snapshot: ShellSnapshot }> {
+  const maxOutputTokens = options.maxOutputTokens ?? MCP_CONFIG.shell.defaultOutputTokens
   const first = await shell.runCommand({
-    requestId,
+    request_id: requestId,
     command,
     cwd: options.cwd,
-    waitMs: 1_000,
+    wait_ms: 1_000,
+    max_output_tokens: maxOutputTokens,
   })
   let output = first.output
   let snapshot = first
@@ -20,9 +23,10 @@ export async function runToCompletion(
       return { output, snapshot }
     }
     snapshot = await shell.pollCommand({
-      requestId,
+      request_id: requestId,
       cursor: snapshot.next_cursor,
-      waitMs: 100,
+      wait_ms: 100,
+      max_output_tokens: maxOutputTokens,
     })
     output += snapshot.output
   }
@@ -30,7 +34,11 @@ export async function runToCompletion(
   throw new Error(`Command ${requestId} did not complete.`)
 }
 
-export async function pollToCompletion(shell: PersistentShellSession, first: ShellSnapshot): Promise<{ output: string; snapshot: ShellSnapshot }> {
+export async function pollToCompletion(
+  shell: PersistentShellSession,
+  first: ShellSnapshot,
+  maxOutputTokens = MCP_CONFIG.shell.defaultOutputTokens
+): Promise<{ output: string; snapshot: ShellSnapshot }> {
   let output = first.output
   let snapshot = first
 
@@ -39,9 +47,10 @@ export async function pollToCompletion(shell: PersistentShellSession, first: She
       return { output, snapshot }
     }
     snapshot = await shell.pollCommand({
-      requestId: first.request_id,
+      request_id: first.request_id,
       cursor: snapshot.next_cursor,
-      waitMs: 100,
+      wait_ms: 100,
+      max_output_tokens: maxOutputTokens,
     })
     output += snapshot.output
   }

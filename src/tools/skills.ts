@@ -22,7 +22,7 @@ export interface LoadedSkill extends Record<string, unknown> {
 
 export class SkillCatalogError extends Error {
   constructor(
-    readonly code: "invalid_skill_name" | "unknown_skill" | "skill_too_large",
+    readonly code: "unknown_skill" | "skill_too_large",
     message: string,
     options?: ErrorOptions
   ) {
@@ -71,7 +71,6 @@ export class SkillCatalog {
   }
 
   async read(name: string, signal?: AbortSignal): Promise<LoadedSkill> {
-    validateSkillName(name)
     signal?.throwIfAborted()
 
     const path = join(this.root, name, "SKILL.md")
@@ -177,14 +176,6 @@ export function registerSkillTools(server: McpServer, workspace: string): void {
         return skillToolError(error)
       }
     }
-  )
-}
-
-function validateSkillName(name: string): void {
-  if (isValidSkillName(name)) return
-  throw new SkillCatalogError(
-    "invalid_skill_name",
-    "Skill names must start with an alphanumeric character and may contain only letters, numbers, dots, underscores, and hyphens."
   )
 }
 

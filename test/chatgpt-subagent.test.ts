@@ -1,6 +1,7 @@
 import assert from "node:assert/strict"
 import test from "node:test"
 
+import { MCP_CONFIG } from "../src/config.js"
 import { ChatGptConversationTracker } from "../src/tools/subagent/chatgpt-subagent-browser.js"
 import { ChatGptSubagentError, type ChatGptSubagentOptions } from "../src/tools/subagent/chatgpt-subagent-contracts.js"
 import { ChatGptSubagentModule } from "../src/tools/subagent/chatgpt-subagent.js"
@@ -154,7 +155,7 @@ test("poll returns immediately while a turn runs and can wait for completion", a
     turn.response = "finished"
   }
 
-  const running = await module.poll(turn.turnId)
+  const running = await module.poll(turn.turnId, MCP_CONFIG.chatGpt.defaultPollWaitMs)
   assert.equal(running.turnId, "turn-test")
   assert.equal(running.status, "running")
   assert.equal(running.activity, "Searching the web")
@@ -231,15 +232,15 @@ test("poll waits for a first-turn ChatGPT URL to become a stable conversation be
   internals.agents.set(state.agentId, state)
   internals.turns.set(turn.turnId, turn)
 
-  assert.equal((await module.poll(turn.turnId)).status, "running")
+  assert.equal((await module.poll(turn.turnId, MCP_CONFIG.chatGpt.defaultPollWaitMs)).status, "running")
   assert.equal(state.conversationId, undefined)
 
   currentUrl = "https://chatgpt.com/c/WEB%3Atemporary-conversation-id"
-  assert.equal((await module.poll(turn.turnId)).status, "running")
+  assert.equal((await module.poll(turn.turnId, MCP_CONFIG.chatGpt.defaultPollWaitMs)).status, "running")
   assert.equal(state.conversationId, undefined)
 
   currentUrl = "https://chatgpt.com/c/conversation-1"
-  assert.equal((await module.poll(turn.turnId)).status, "running")
+  assert.equal((await module.poll(turn.turnId, MCP_CONFIG.chatGpt.defaultPollWaitMs)).status, "running")
   assert.equal(state.conversationId, "conversation-1")
   assert.equal(state.conversationUrl, currentUrl)
   assert.deepEqual(internals.conversationRefs.get(state.agentId), {
@@ -341,7 +342,7 @@ test("poll reconciles a completed DOM response and releases the generation slot"
   internals.activeAgentIds.add(state.agentId)
   internals.activeGenerationCount = 1
 
-  const result = await module.poll(turn.turnId)
+  const result = await module.poll(turn.turnId, MCP_CONFIG.chatGpt.defaultPollWaitMs)
 
   assert.equal(result.status, "completed")
   assert.ok(result.response?.includes("Live Fixture"))
@@ -474,7 +475,7 @@ test("poll completes when the server says complete but the managed tab is stuck 
   internals.activeAgentIds.add(state.agentId)
   internals.activeGenerationCount = 1
 
-  const result = await module.poll(turn.turnId)
+  const result = await module.poll(turn.turnId, MCP_CONFIG.chatGpt.defaultPollWaitMs)
 
   assert.equal(result.status, "completed")
   assert.equal(result.response, "server-complete answer")
@@ -553,7 +554,7 @@ test("poll keeps waiting when the server is streaming even if the stop button is
   internals.activeAgentIds.add(state.agentId)
   internals.activeGenerationCount = 1
 
-  const result = await module.poll(turn.turnId)
+  const result = await module.poll(turn.turnId, MCP_CONFIG.chatGpt.defaultPollWaitMs)
 
   assert.equal(result.status, "running")
   assert.equal(internals.activeTurnsByAgent.get(state.agentId), turn.turnId)
@@ -634,8 +635,8 @@ test("poll keeps waiting when completion state is unknown even if rendered DOM s
   internals.activeAgentIds.add(state.agentId)
   internals.activeGenerationCount = 1
 
-  assert.equal((await module.poll(turn.turnId)).status, "running")
-  assert.equal((await module.poll(turn.turnId)).status, "running")
+  assert.equal((await module.poll(turn.turnId, MCP_CONFIG.chatGpt.defaultPollWaitMs)).status, "running")
+  assert.equal((await module.poll(turn.turnId, MCP_CONFIG.chatGpt.defaultPollWaitMs)).status, "running")
   assert.equal(reloadCalls, 0)
   assert.equal(internals.activeTurnsByAgent.get(state.agentId), turn.turnId)
   assert.equal(internals.activeGenerationCount, 1)
@@ -716,8 +717,8 @@ test("poll ignores stale COMPLETE while the current follow-up is visibly generat
   internals.activeAgentIds.add(state.agentId)
   internals.activeGenerationCount = 1
 
-  assert.equal((await module.poll(turn.turnId)).status, "running")
-  assert.equal((await module.poll(turn.turnId)).status, "running")
+  assert.equal((await module.poll(turn.turnId, MCP_CONFIG.chatGpt.defaultPollWaitMs)).status, "running")
+  assert.equal((await module.poll(turn.turnId, MCP_CONFIG.chatGpt.defaultPollWaitMs)).status, "running")
   assert.equal(reloadCalls, 0)
   assert.equal((turn as typeof turn & { uiGeneratingObserved?: boolean }).uiGeneratingObserved, true)
   assert.deepEqual(module.drainEvents(), [])

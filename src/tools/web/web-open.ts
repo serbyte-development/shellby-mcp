@@ -5,22 +5,16 @@ import { Defuddle } from "defuddle/node"
 import { parseHTML } from "linkedom"
 
 import { tokenChunk } from "../../tokenizer.js"
-import { positiveInteger, utf8Prefix } from "../../utils.js"
-
-export const DEFAULT_WEB_OUTPUT_TOKENS = 8_192
-export const MAX_WEB_OUTPUT_TOKENS = 32_768
-const MAX_CACHED_WEB_DOCUMENT_BYTES = 2 * 1024 * 1024 // 2 MiB
-
-const DEFAULT_DOCUMENT_TTL_MS = 10 * 60 * 1_000
-const DEFAULT_DOCUMENT_LIMIT = 20
+import { MCP_CONFIG } from "../../config.js"
+import { utf8Prefix } from "../../utils.js"
 
 type WebsiteContentFormat = "markdown" | "clean_html" | "raw_html"
 
 export interface WebOpenInput {
   url: string
-  format?: WebsiteContentFormat
+  format: WebsiteContentFormat
   cursor?: string
-  maxOutputTokens?: number
+  maxOutputTokens: number
   signal?: AbortSignal
 }
 
@@ -77,24 +71,19 @@ export class WebPageOpener {
   private readonly documents = new Map<string, CachedDocument>()
 
   constructor(options: WebPageOpenerOptions = {}) {
-    this.defaultOutputTokens = positiveInteger(options.defaultOutputTokens, DEFAULT_WEB_OUTPUT_TOKENS)
-    this.maximumOutputTokens = positiveInteger(options.maxOutputTokens, MAX_WEB_OUTPUT_TOKENS)
-    if (this.defaultOutputTokens > this.maximumOutputTokens) {
-      throw new Error("defaultOutputTokens cannot exceed maxOutputTokens.")
-    }
-
-    this.documentByteLimit = positiveInteger(options.documentByteLimit, MAX_CACHED_WEB_DOCUMENT_BYTES)
-
-    this.documentTtlMs = positiveInteger(options.documentTtlMs, DEFAULT_DOCUMENT_TTL_MS)
-    this.documentLimit = positiveInteger(options.documentLimit, DEFAULT_DOCUMENT_LIMIT)
+    this.defaultOutputTokens = options.defaultOutputTokens ?? MCP_CONFIG.web.defaultOutputTokens
+    this.maximumOutputTokens = options.maxOutputTokens ?? MCP_CONFIG.web.maxOutputTokens
+    this.documentByteLimit = options.documentByteLimit ?? MCP_CONFIG.web.documentByteLimit
+    this.documentTtlMs = options.documentTtlMs ?? MCP_CONFIG.web.documentTtlMs
+    this.documentLimit = options.documentLimit ?? MCP_CONFIG.web.documentLimit
     this.renderPage = options.renderPage ?? renderWithCloakBrowser
     this.now = options.now ?? Date.now
   }
 
   async open(input: WebOpenInput): Promise<WebOpenResult> {
-    const requestedUrl = normalizeWebUrl(input.url)
-    const format = input.format ?? "markdown"
-    const maxOutputTokens = this.resolveOutputTokens(input.maxOutputTokens)
+    const requestedUrl = input.url
+    const format = input.format
+    const maxOutputTokens = input.maxOutputTokens
     this.removeExpiredDocuments()
 
     let document: CachedDocument
@@ -152,14 +141,6 @@ export class WebPageOpener {
     return result
   }
 
-  private resolveOutputTokens(value: number | undefined): number {
-    const resolved = value ?? this.defaultOutputTokens
-    if (!Number.isSafeInteger(resolved) || resolved < 1 || resolved > this.maximumOutputTokens) {
-      throw new WebOpenError("invalid_output_limit", `max_output_tokens must be an integer from 1 to ${this.maximumOutputTokens}.`)
-    }
-    return resolved
-  }
-
   private getDocument(id: string): CachedDocument {
     const document = this.documents.get(id)
     if (!document || document.expiresAt <= this.now()) {
@@ -191,7 +172,7 @@ export class WebPageOpener {
 
 export class WebOpenError extends Error {
   constructor(
-    readonly code: "invalid_url" | "invalid_cursor" | "cursor_expired" | "invalid_output_limit" | "open_failed",
+    readonly code: "invalid_url" | "invalid_cursor" | "cursor_expired" | "open_failed",
     message: string
   ) {
     super(message)

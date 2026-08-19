@@ -1065,3 +1065,12 @@
 
 - Removed the shell runtime's duplicate `wait_ms` defaulting, integer coercion, and max clamping.
 - Made `waitMs` required for internal run/poll calls so validated MCP arguments flow directly from the tool schema into the session runtime.
+
+## [2026-08-18] tools | Make Zod the tool input boundary
+
+- Removed duplicate MCP-input defaulting, normalization, clamping, and shape validation from shell, subagent, web, skill, and Computer Use runtime paths; internal services now consume required typed values produced by their Zod schemas.
+- Moved shell input contracts into `src/tools/shell/shell-contracts.ts` and infer the session input types directly from those Zod schemas, eliminating the parallel hand-written run/poll/reset interfaces and field-name translation layer.
+- Centralized shell, subagent, and webpage caller defaults/limits in `config.ts`; schema tests compare published defaults and limits to `MCP_CONFIG` rather than duplicating policy literals.
+- Kept runtime validation only for facts discovered after parsing, including cwd/filesystem state, retained cursor semantics, browser/process state, webpage redirects, decoded cursors, and external tool responses.
+- Added MCP integration coverage proving malformed shell, subagent, webpage, and skill inputs fail at the schema boundary before runtime work.
+- Restored raw internal subagent completion events so model-facing event formatting remains owned by the shared output boundary, and removed stale exact-prose assertions from integration coverage.

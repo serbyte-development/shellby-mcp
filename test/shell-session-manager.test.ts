@@ -22,19 +22,22 @@ test("creates named shells lazily and keeps their state isolated", async (t) => 
   assert.deepEqual(manager.listShellIds(), [DEFAULT_SHELL_ID, "alpha", "beta"])
 
   await alpha.runCommand({
-    requestId: "state1",
+    request_id: "state1",
     command: "cd /tmp && export NAMED_SHELL_STATE=alpha",
-    waitMs: MCP_CONFIG.shell.defaultWaitMs,
+    wait_ms: MCP_CONFIG.shell.defaultWaitMs,
+    max_output_tokens: MCP_CONFIG.shell.defaultOutputTokens,
   })
   const alphaState = await alpha.runCommand({
-    requestId: "state2",
+    request_id: "state2",
     command: `printf '%s|%s' "$PWD" "$NAMED_SHELL_STATE"`,
-    waitMs: MCP_CONFIG.shell.defaultWaitMs,
+    wait_ms: MCP_CONFIG.shell.defaultWaitMs,
+    max_output_tokens: MCP_CONFIG.shell.defaultOutputTokens,
   })
   const betaState = await beta.runCommand({
-    requestId: "state2",
+    request_id: "state2",
     command: `printf '%s|%s' "$PWD" "\${NAMED_SHELL_STATE-unset}"`,
-    waitMs: MCP_CONFIG.shell.defaultWaitMs,
+    wait_ms: MCP_CONFIG.shell.defaultWaitMs,
+    max_output_tokens: MCP_CONFIG.shell.defaultOutputTokens,
   })
 
   assert.equal(alphaState.output, "/tmp|alpha")
@@ -114,7 +117,7 @@ test("protects the default shell from close while allowing reset", async (t) => 
     (error: unknown) => error instanceof Error && error.message.includes("cannot be closed") && error.message.includes("shell_reset")
   )
 
-  const reset = await manager.defaultShell.reset({})
+  const reset = await manager.defaultShell.reset({ reason: "test default reset" })
   assert.equal(reset.status, "ready")
   assert.equal(await manager.getOrCreate(DEFAULT_SHELL_ID), manager.defaultShell)
 })
@@ -125,9 +128,10 @@ test("closing a named shell terminates its active foreground command", async (t)
   const alpha = await manager.getOrCreate("alpha")
 
   const running = await alpha.runCommand({
-    requestId: "long-running",
+    request_id: "long-running",
     command: "sleep 5; printf should-not-complete",
-    waitMs: 0,
+    wait_ms: 0,
+    max_output_tokens: MCP_CONFIG.shell.defaultOutputTokens,
   })
   assert.equal(running.status, "running")
 
@@ -172,9 +176,10 @@ test("does not evict a named shell while it has active work", async (t) => {
 
   const alpha = await manager.getOrCreate("alpha")
   const running = await alpha.runCommand({
-    requestId: "active",
+    request_id: "active",
     command: "sleep 0.15; printf done",
-    waitMs: 0,
+    wait_ms: 0,
+    max_output_tokens: MCP_CONFIG.shell.defaultOutputTokens,
   })
   assert.equal(running.status, "running")
 
@@ -185,9 +190,10 @@ test("does not evict a named shell while it has active work", async (t) => {
   let snapshot = running
   for (let attempt = 0; attempt < 20 && snapshot.status === "running"; attempt += 1) {
     snapshot = await alpha.pollCommand({
-      requestId: "active",
+      request_id: "active",
       cursor: snapshot.next_cursor,
-      waitMs: 100,
+      wait_ms: 100,
+      max_output_tokens: MCP_CONFIG.shell.defaultOutputTokens,
     })
   }
   assert.equal(snapshot.status, "completed")
@@ -273,7 +279,12 @@ test("never pressure-evicts busy shells and blocks when no evictable slot exists
   const manager = new ShellSessionManager({ maxShells: 2 })
   t.after(() => manager.close())
   const alpha = await manager.getOrCreate("alpha")
-  const running = await alpha.runCommand({ requestId: "busy-capacity", command: "sleep 0.2", waitMs: 0 })
+  const running = await alpha.runCommand({
+    request_id: "busy-capacity",
+    command: "sleep 0.2",
+    wait_ms: 0,
+    max_output_tokens: MCP_CONFIG.shell.defaultOutputTokens,
+  })
   assert.equal(running.status, "running")
 
   await assert.rejects(
@@ -290,7 +301,12 @@ test("pressure eviction skips a busy older shell and evicts the next LRU shell",
   const alpha = await manager.getOrCreate("alpha")
   now = 10
   await manager.getOrCreate("beta")
-  const running = await alpha.runCommand({ requestId: "busy-lru", command: "sleep 0.2", waitMs: 0 })
+  const running = await alpha.runCommand({
+    request_id: "busy-lru",
+    command: "sleep 0.2",
+    wait_ms: 0,
+    max_output_tokens: MCP_CONFIG.shell.defaultOutputTokens,
+  })
   assert.equal(running.status, "running")
 
   now = 20
@@ -335,7 +351,7 @@ test("resetting a cached shell discards cached cwd and environment", async (t) =
   await manager.cleanupIdle()
   assert.deepEqual(manager.listCachedShellIds(), ["alpha"])
 
-  await manager.withShell("alpha", (shell) => shell.reset({}), { restoreCached: false })
+  await manager.withShell("alpha", (shell) => shell.reset({ reason: "test cached reset" }), { restoreCached: false })
   const live = manager.getExisting("alpha")
   const state = await runToCompletion(live, "after-reset-cache", `printf '%s|%s' "$PWD" "\${RESET_CACHE_VALUE-unset}"`)
   assert.match(state.output, /\|unset$/)

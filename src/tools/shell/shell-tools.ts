@@ -2,25 +2,9 @@ import { McpServer } from "@modelcontextprotocol/server"
 import { z } from "zod"
 
 import { MCP_CONFIG } from "../../config.js"
+import { DEFAULT_SHELL_ID, shellCloseInputSchema, shellPollInputSchema, shellResetInputSchema, shellRunInputSchema } from "./shell-contracts.js"
 import { ShellSessionError, type ShellSnapshot } from "./session.js"
-import { DEFAULT_SHELL_ID, ShellSessionManager } from "./session-manager.js"
-
-const requestIdInput = z.string().min(3).max(128).describe("Short operation label, unique within this shell. Reuse only to retry the exact same operation.")
-
-const shellIdInput = z
-  .string()
-  .min(3)
-  .max(64)
-  .default(DEFAULT_SHELL_ID)
-  .describe(
-    "Unique persistent shell label such as api-audit. Reuse for sequential commands that should share cwd or environment. Use another ID only for concurrent stateful work."
-  )
-
-const closableShellIdInput = z
-  .string()
-  .min(3)
-  .max(64)
-  .describe(`Named shell to close. \`${DEFAULT_SHELL_ID}\` shell is protected and cannot be closed; use shell_reset instead.`)
+import { ShellSessionManager } from "./session-manager.js"
 
 const exitCodeSchema = z.int().min(0).max(255)
 const batchCommandSchema = z.object({
@@ -31,13 +15,6 @@ const batchCommandSchema = z.object({
   exit_code: exitCodeSchema.nullable(),
   dropped_output_bytes: z.int().positive().optional(),
 })
-const maxOutputTokensInput = z
-  .int()
-  .min(1)
-  .max(MCP_CONFIG.shell.maxOutputTokens)
-  .default(MCP_CONFIG.shell.defaultOutputTokens)
-  .describe("Usually omit. Increase only when you need more output in one response; continue retained output with shell_poll.")
-
 const shellSnapshotSchema = z.object({
   shell_id: z.string().optional(),
   status: z.enum(["running", "completed", "shell_exited", "reset"]),
@@ -69,26 +46,7 @@ export function registerShellExecutionTools(server: McpServer, shells: ShellSess
     {
       title: "Run a local shell command",
       description: `Run zsh in a persistent shell. Reuse shell_id to keep cwd or environment. For independent commands, use a batch; batch commands run concurrently and inherit cwd and exported environment variables. Use *** Run: <directory> only to change cwd for that command. Relative directories resolve from cwd; absolute paths are allowed. New shells start in ${workspaceDescription}.`,
-      inputSchema: z.object({
-        shell_id: shellIdInput,
-        request_id: requestIdInput.describe(
-          "Short command or step label, unique within this shell, such as scan-routes-1. Reuse only to retry the exact same command."
-        ),
-        cwd: z.string().min(1).optional().describe("Optional cwd change. Omit it to keep the current cwd. Batch commands inherit current cwd."),
-        command: z
-          .string()
-          .min(1)
-          .describe(
-            "Exact zsh command or multiline script. For a batch, prefix each command with `*** Run:`. Example: `*** Run:\nnpm test\n*** Run: ./api\nnpm run check`."
-          ),
-        wait_ms: z
-          .int()
-          .min(0)
-          .max(MCP_CONFIG.shell.maxWaitMs)
-          .default(MCP_CONFIG.shell.defaultWaitMs)
-          .describe("How long to wait before returning. Running commands continue; use shell_poll."),
-        max_output_tokens: maxOutputTokensInput,
-      }),
+      inputSchema: shellRunInputSchema,
       outputSchema: shellSnapshotSchema,
       annotations: {
         readOnlyHint: false,
@@ -98,18 +56,10 @@ export function registerShellExecutionTools(server: McpServer, shells: ShellSess
       },
       _meta: MCP_CONFIG.toolMeta,
     },
-    async ({ shell_id, request_id, cwd, command, wait_ms, max_output_tokens }, ctx) => {
+    async (input, ctx) => {
       try {
-        const snapshot = await shells.withShell(shell_id, (shell) =>
-          shell.runCommand({
-            requestId: request_id,
-            command,
-            cwd,
-            waitMs: wait_ms,
-            maxOutputTokens: max_output_tokens,
-            signal: ctx.mcpReq.signal,
-          })
-        )
+        const { shell_id, ...commandInput } = input
+        const snapshot = await shells.withShell(shell_id, (shell) => shell.runCommand({ ...commandInput, signal: ctx.mcpReq.signal }))
         return snapshotResult(snapshot, shell_id)
       } catch (error) {
         return toolError(error)
@@ -123,18 +73,7 @@ export function registerShellExecutionTools(server: McpServer, shells: ShellSess
       title: "Poll local shell output",
       description:
         "Continue a shell_run that is still running or has retained output. Reuse the same shell_id and request_id and pass the previous next_cursor. Repeat while status is running, or while next_cursor is present and more output is needed.",
-      inputSchema: z.object({
-        shell_id: shellIdInput.describe("The same shell_id used for the original shell_run call."),
-        request_id: requestIdInput.describe("The same request_id used for the original shell_run call."),
-        cursor: z.int().nonnegative().describe("Pass the next_cursor returned by the previous shell_run or shell_poll."),
-        wait_ms: z
-          .int()
-          .min(0)
-          .max(MCP_CONFIG.shell.maxPollWaitMs)
-          .default(MCP_CONFIG.shell.defaultPollWaitMs)
-          .describe("How long to wait for more output before returning."),
-        max_output_tokens: maxOutputTokensInput,
-      }),
+      inputSchema: shellPollInputSchema,
       outputSchema: shellPollSnapshotSchema,
       annotations: {
         readOnlyHint: true,
@@ -144,17 +83,10 @@ export function registerShellExecutionTools(server: McpServer, shells: ShellSess
       },
       _meta: MCP_CONFIG.toolMeta,
     },
-    async ({ shell_id, request_id, cursor, wait_ms, max_output_tokens }, ctx) => {
+    async (input, ctx) => {
       try {
-        const snapshot = await shells.withExistingShell(shell_id, (shell) =>
-          shell.pollCommand({
-            requestId: request_id,
-            cursor,
-            waitMs: wait_ms,
-            maxOutputTokens: max_output_tokens,
-            signal: ctx.mcpReq.signal,
-          })
-        )
+        const { shell_id, ...pollInput } = input
+        const snapshot = await shells.withExistingShell(shell_id, (shell) => shell.pollCommand({ ...pollInput, signal: ctx.mcpReq.signal }))
         return pollSnapshotResult(snapshot)
       } catch (error) {
         return toolError(error)
@@ -170,10 +102,7 @@ export function registerShellManagementTools(server: McpServer, shells: ShellSes
       title: "Reset the local shell",
       description:
         "Attempt to terminate the persistent shell process group, discard its working directory and environment state, and start a clean shell. Use this to recover from a stuck foreground command. Process-group cleanup is best effort if signaling is denied.",
-      inputSchema: z.object({
-        shell_id: shellIdInput,
-        reason: z.string().max(256).optional(),
-      }),
+      inputSchema: shellResetInputSchema,
       outputSchema: z.object({
         shell_generation: z.int().positive(),
         state_lost: z.literal(true),
@@ -187,9 +116,10 @@ export function registerShellManagementTools(server: McpServer, shells: ShellSes
       },
       _meta: MCP_CONFIG.toolMeta,
     },
-    async ({ shell_id, reason }) => {
+    async (input) => {
       try {
-        const result = await shells.withShell(shell_id, (shell) => shell.reset({ reason }), { restoreCached: false })
+        const { shell_id, ...resetInput } = input
+        const result = await shells.withShell(shell_id, (shell) => shell.reset(resetInput), { restoreCached: false })
         return {
           structuredContent: result,
           content: [],
@@ -250,9 +180,7 @@ export function registerShellManagementTools(server: McpServer, shells: ShellSes
     {
       title: "Close a local shell",
       description: `Terminate a named shell, discard its state and retained records, and immediately free its slot. The ${DEFAULT_SHELL_ID} shell is protected; use shell_reset if it freezes.`,
-      inputSchema: z.object({
-        shell_id: closableShellIdInput,
-      }),
+      inputSchema: shellCloseInputSchema,
       outputSchema: z.object({
         shell_id: z.string(),
         closed: z.literal(true),
