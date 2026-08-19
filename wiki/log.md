@@ -1059,4 +1059,9 @@
 ## [2026-08-18] shells | Allow long shell polls
 
 - Kept `shell_run.wait_ms` capped at 10 seconds while raising only `shell_poll.wait_ms` to 270 seconds for deliberate long-polling of slow commands.
-- Added a separate `maxPollWaitMs` runtime/config limit so the shell implementation and published schema enforce the same bound.
+- Added separate poll wait defaults and limits in `config.ts`; the published schemas consume those values directly.
+
+## [2026-08-18] shells | Remove wait normalization
+
+- Removed the shell runtime's duplicate `wait_ms` defaulting, integer coercion, and max clamping.
+- Made `waitMs` required for internal run/poll calls so validated MCP arguments flow directly from the tool schema into the session runtime.

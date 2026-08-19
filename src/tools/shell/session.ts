@@ -49,7 +49,7 @@ export interface RunCommandInput {
   requestId: string
   command: string
   cwd?: string
-  waitMs?: number
+  waitMs: number
   maxOutputTokens?: number
   signal?: AbortSignal
 }
@@ -57,7 +57,7 @@ export interface RunCommandInput {
 export interface PollCommandInput {
   requestId: string
   cursor: number
-  waitMs?: number
+  waitMs: number
   maxOutputTokens?: number
   signal?: AbortSignal
 }
@@ -362,7 +362,6 @@ export class PersistentShellSession {
   async runCommand(input: RunCommandInput): Promise<ShellSnapshot> {
     validateRequestId(input.requestId)
     validateCommand(input.command)
-    const waitMs = normalizeWaitMs(input.waitMs)
     const maxOutputTokens = this.normalizeOutputTokens(input.maxOutputTokens)
     const commandHash = hashCommand(input.command, input.cwd)
     const parallelCommands = parseParallelCommand(input.command)
@@ -375,7 +374,7 @@ export class PersistentShellSession {
       }
 
       if (existing.status === "running") {
-        await this.waitForCommandResult(existing, existing.startCursor, maxOutputTokens, waitMs, input.signal)
+        await this.waitForCommandResult(existing, existing.startCursor, maxOutputTokens, input.waitMs, input.signal)
       }
       return this.snapshot(existing, existing.startCursor, maxOutputTokens)
     }
@@ -385,7 +384,7 @@ export class PersistentShellSession {
         throw new ShellSessionError("request_conflict", `request_id ${JSON.stringify(input.requestId)} was already used for a different command.`)
       }
       if (existingParallel.status === "running") {
-        await this.waitForParallelResult(existingParallel, 0, maxOutputTokens, waitMs, input.signal)
+        await this.waitForParallelResult(existingParallel, 0, maxOutputTokens, input.waitMs, input.signal)
       }
       return this.parallelSnapshot(existingParallel, 0, maxOutputTokens)
     }
@@ -410,7 +409,6 @@ export class PersistentShellSession {
         input: commandCwd === input.cwd ? input : { ...input, cwd: commandCwd },
         commands: parallelCommands,
         commandHash,
-        waitMs,
         maxOutputTokens,
       })
     }
@@ -445,7 +443,7 @@ export class PersistentShellSession {
       throw new ShellSessionError("shell_unavailable", `Could not write to the shell: ${errorMessage(error)}`)
     }
 
-    await this.waitForCommandResult(record, record.startCursor, maxOutputTokens, waitMs, input.signal)
+    await this.waitForCommandResult(record, record.startCursor, maxOutputTokens, input.waitMs, input.signal)
     return this.snapshot(record, record.startCursor, maxOutputTokens)
   }
 
@@ -461,13 +459,12 @@ export class PersistentShellSession {
       throw new ShellSessionError("request_not_found", `No command exists for request_id ${JSON.stringify(input.requestId)}.`)
     }
     if (parallelRecord) {
-      const waitMs = normalizeWaitMs(input.waitMs, MCP_CONFIG.shell.maxPollWaitMs)
       const maxOutputTokens = this.normalizeOutputTokens(input.maxOutputTokens)
       if (parallelRecord.status === "running") {
         const version = this.updateVersion
         const initialRead = parallelRecord.transcript.read(input.cursor, maxOutputTokens, parallelRecord.endCursor ?? undefined)
         if (initialRead.output.length === 0 && !initialRead.cursorExpired) {
-          await this.waitForUpdate(version, waitMs, input.signal)
+          await this.waitForUpdate(version, input.waitMs, input.signal)
         }
       }
       return this.parallelSnapshot(parallelRecord, input.cursor, maxOutputTokens)
@@ -477,13 +474,12 @@ export class PersistentShellSession {
       throw new ShellSessionError("invalid_cursor", "cursor is before the requested command's output.")
     }
 
-    const waitMs = normalizeWaitMs(input.waitMs, MCP_CONFIG.shell.maxPollWaitMs)
     const maxOutputTokens = this.normalizeOutputTokens(input.maxOutputTokens)
     if (record.status === "running") {
       const version = this.updateVersion
       const initialRead = this.transcript.read(input.cursor, maxOutputTokens, record.endCursor ?? undefined)
       if (initialRead.output.length === 0 && !initialRead.cursorExpired) {
-        await this.waitForUpdate(version, waitMs, input.signal)
+        await this.waitForUpdate(version, input.waitMs, input.signal)
       }
     }
 
@@ -494,7 +490,6 @@ export class PersistentShellSession {
     input: RunCommandInput
     commands: ParallelCommandSpec[]
     commandHash: string
-    waitMs: number
     maxOutputTokens: number
   }): Promise<ShellSnapshot> {
     const rootCwd = options.input.cwd ?? this.currentCwd
@@ -577,7 +572,7 @@ export class PersistentShellSession {
       record.tasks.push(task)
     }
 
-    await this.waitForParallelResult(record, 0, options.maxOutputTokens, options.waitMs, options.input.signal)
+    await this.waitForParallelResult(record, 0, options.maxOutputTokens, options.input.waitMs, options.input.signal)
     return this.parallelSnapshot(record, 0, options.maxOutputTokens)
   }
 
@@ -1324,12 +1319,6 @@ function validateCommand(command: string): void {
   if (command.includes("\0")) {
     throw new ShellSessionError("invalid_command", "command cannot contain a NUL character.")
   }
-}
-
-function normalizeWaitMs(waitMs: number | undefined, maxWaitMs = MCP_CONFIG.shell.maxWaitMs): number {
-  const value = waitMs ?? MCP_CONFIG.shell.defaultWaitMs
-  if (!Number.isFinite(value)) return MCP_CONFIG.shell.defaultWaitMs
-  return Math.min(Math.max(Math.trunc(value), 0), maxWaitMs)
 }
 
 function writeToStdin(child: ChildProcessWithoutNullStreams, value: string): Promise<void> {

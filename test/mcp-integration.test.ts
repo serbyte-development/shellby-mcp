@@ -111,7 +111,7 @@ test("serves shell tools through Streamable HTTP and retains state across MCP se
   const pollTool = tools.tools.find((tool) => tool.name === "shell_poll")
   const pollWaitSchema = (pollTool?.inputSchema.properties as Record<string, Record<string, unknown>>).wait_ms
   assert.ok(pollWaitSchema)
-  assert.equal(pollWaitSchema.default, 2_000)
+  assert.equal(pollWaitSchema.default, MCP_CONFIG.shell.defaultPollWaitMs)
   assert.equal(pollWaitSchema.maximum, MCP_CONFIG.shell.maxPollWaitMs)
   const pollOutputSchema = pollTool?.outputSchema as {
     properties?: Record<string, unknown>

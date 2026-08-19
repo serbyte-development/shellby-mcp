@@ -77,6 +77,7 @@ test("rejects invalid explicit working directories", { timeout: 10_000 }, async 
       requestId: "missing-cwd",
       command: "printf blocked",
       cwd: "missing/path",
+      waitMs: 0,
     }),
     (error: unknown) => error instanceof ShellSessionError && error.code === "invalid_command" && /not accessible/.test(error.message)
   )
@@ -86,6 +87,7 @@ test("rejects invalid explicit working directories", { timeout: 10_000 }, async 
       requestId: "file-cwd",
       command: "printf blocked",
       cwd: file,
+      waitMs: 0,
     }),
     (error: unknown) => error instanceof ShellSessionError && error.code === "invalid_command" && /not a directory/.test(error.message)
   )

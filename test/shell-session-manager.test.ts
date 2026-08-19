@@ -4,6 +4,7 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import test from "node:test"
 
+import { MCP_CONFIG } from "../src/config.js"
 import { PersistentShellSession } from "../src/tools/shell/session.js"
 import { DEFAULT_SHELL_ID, ShellSessionManager } from "../src/tools/shell/session-manager.js"
 import { runToCompletion, waitForProcessExit } from "./helpers/shell.js"
@@ -23,14 +24,17 @@ test("creates named shells lazily and keeps their state isolated", async (t) => 
   await alpha.runCommand({
     requestId: "state1",
     command: "cd /tmp && export NAMED_SHELL_STATE=alpha",
+    waitMs: MCP_CONFIG.shell.defaultWaitMs,
   })
   const alphaState = await alpha.runCommand({
     requestId: "state2",
     command: `printf '%s|%s' "$PWD" "$NAMED_SHELL_STATE"`,
+    waitMs: MCP_CONFIG.shell.defaultWaitMs,
   })
   const betaState = await beta.runCommand({
     requestId: "state2",
     command: `printf '%s|%s' "$PWD" "\${NAMED_SHELL_STATE-unset}"`,
+    waitMs: MCP_CONFIG.shell.defaultWaitMs,
   })
 
   assert.equal(alphaState.output, "/tmp|alpha")

@@ -157,6 +157,7 @@ test("inherits the batch cwd when a run directory is omitted and accepts overrid
     shell.runCommand({
       requestId: "parallel-missing-directory",
       command: "*** Run",
+      waitMs: 0,
     }),
     (error: unknown) => error instanceof ShellSessionError && error.code === "invalid_command" && /Expected '\*\*\* Run:'/.test(error.message)
   )
@@ -164,6 +165,7 @@ test("inherits the batch cwd when a run directory is omitted and accepts overrid
     shell.runCommand({
       requestId: "parallel-malformed-later-directory",
       command: ["*** Run: .", "printf first", "*** Run:./wiki", "printf should-not-run"].join("\n"),
+      waitMs: 0,
     }),
     (error: unknown) => error instanceof ShellSessionError && error.code === "invalid_command" && /Expected '\*\*\* Run:'/.test(error.message)
   )

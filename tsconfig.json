@@ -8,7 +8,7 @@
     "noUncheckedIndexedAccess": true,
     "esModuleInterop": true,
     "types": [
-      "node"
+      "node",
     ],
     "skipLibCheck": true,
     "declaration": true,
