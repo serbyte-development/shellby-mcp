@@ -1,6 +1,6 @@
 {
   "source_repository": "https://github.com/openai/codex.git",
-  "source_commit": "5c0e582c59892dbec89af78ae62c784d3da6c9cb",
+  "source_commit": "3929c99a97d1aa0fb8000903a4b57b24fbabe742",
   "crate": "codex-apply-patch",
   "binary": "apply_patch",
   "targets": [
@@ -12,8 +12,8 @@
     "CARGO_TARGET_DIR": "<temporary>",
     "RUSTFLAGS": "--remap-path-prefix=$HOME=/build/home --remap-path-prefix=$SOURCE_WORKTREE=/build/codex"
   },
-  "sha256": "bd50e68244eb756189fe2139889170d67f41569c4d69fa68cbe7bedf76471d30",
-  "size_bytes": 24908152,
+  "sha256": "0c5e76588bbd50cee6a94482c83cda2b0073369dd9eab16e2454486bfc764b92",
+  "size_bytes": 36463368,
   "rustc": "rustc 1.97.1 (8bab26f4f 2026-07-14)",
   "cargo": "cargo 1.97.1 (c980f4866 2026-06-30)"
 }

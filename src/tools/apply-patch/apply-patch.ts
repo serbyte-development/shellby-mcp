@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process"
+import { stat } from "node:fs/promises"
 import { isAbsolute } from "node:path"
 import { StringDecoder } from "node:string_decoder"
 import { fileURLToPath } from "node:url"
@@ -106,12 +107,29 @@ function toToolResult(result: ApplyPatchResult): CompactApplyPatchResult {
 async function applyPatch(input: ApplyPatchInput): Promise<ApplyPatchResult> {
   input.signal?.throwIfAborted()
 
+  let cwdStat
+  try {
+    cwdStat = await stat(input.cwd)
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+      throw new Error(`cwd does not exist: ${input.cwd}`, { cause: error })
+    }
+    throw error
+  }
+  if (!cwdStat.isDirectory()) {
+    throw new Error(`cwd is not a directory: ${input.cwd}`)
+  }
+
   const sections = parsePatchSections(input.patch)
 
   const processResult = await new Promise<Omit<ApplyPatchResult, "changed" | "failed">>((resolve, reject) => {
     const child = spawn(input.executable, [], {
       cwd: input.cwd,
       detached: process.platform !== "win32",
+      env: {
+        ...process.env,
+        CODEX_APPLY_PATCH_PRESERVE_LINE_ENDINGS: "1",
+      },
       stdio: ["pipe", "pipe", "pipe"],
     })
     const stdoutDecoder = new StringDecoder("utf8")

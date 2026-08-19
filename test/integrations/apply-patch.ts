@@ -68,6 +68,21 @@ test("applies real patches and reports partial native changes through MCP", { ti
   assert.equal(await readFile(join(project, "nested/a.txt"), "utf8"), "one\ntwo\nthree\n")
 })
 
+test("rejects a nonexistent apply_patch cwd clearly", { timeout: 10_000 }, async (t) => {
+  const running = await startMcpHttpServer({ port: 0 })
+  t.after(() => running.close())
+  const connected = await connectClient(running.url, "patch-missing-cwd-client")
+  t.after(() => connected.client.close())
+
+  const result = await connected.client.callTool({
+    name: "apply_patch",
+    arguments: { cwd: "/definitely/missing/apply-patch-cwd", patch: "*** Begin Patch\n*** End Patch" },
+  })
+
+  assert.equal(result.isError, true)
+  assert.match(result.content[0]?.type === "text" ? result.content[0].text : "", /cwd does not exist:/)
+})
+
 test("aborting an MCP request force-kills a SIGTERM-resistant apply_patch", { skip: process.platform === "win32", timeout: 10_000 }, async (t) => {
   const directory = await realpath(await mkdtemp(join(tmpdir(), "mcp-aborted-patch-")))
   const project = join(directory, "project")
