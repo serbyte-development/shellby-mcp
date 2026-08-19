@@ -1,9 +1,5 @@
 import { randomUUID } from "node:crypto"
 
-import { launch } from "cloakbrowser"
-import { Defuddle } from "defuddle/node"
-import { parseHTML } from "linkedom"
-
 import { tokenChunk } from "../../tokenizer.js"
 import { MCP_CONFIG } from "../../config.js"
 import { utf8Prefix } from "../../utils.js"
@@ -185,6 +181,8 @@ async function renderWithCloakBrowser(url: string, format: WebsiteContentFormat,
     throw new WebOpenError("open_failed", "The web request was aborted.")
   }
 
+  const { launch } = await import("cloakbrowser")
+
   // Deliberately launch per fetch: web reads are infrequent, and startup cost is preferable to keeping a background Chromium process alive.
   const browser = await launch({ headless: true })
   try {
@@ -219,6 +217,7 @@ async function renderWithCloakBrowser(url: string, format: WebsiteContentFormat,
       }
     }
 
+    const [{ Defuddle }, { parseHTML }] = await Promise.all([import("defuddle/node"), import("linkedom")])
     const { document } = parseHTML(html)
     const parsed = await Defuddle(document as unknown as Document, finalUrl, {
       markdown: format === "markdown",

@@ -40,7 +40,7 @@ export class McpAuditLogger {
     const requests = Array.isArray(payload) ? payload : [payload]
     return requests.flatMap((request) => {
       if (isToolListRequest(request)) {
-        this.append(`--- # tools/list -${formatAuditTime(this.now())}\n`)
+        this.append(`--- # tools/list - ${formatAuditTime(this.now())}\n`)
         return []
       }
 
@@ -115,7 +115,7 @@ function formatEntry(input: {
   const invocationMarkers = formatInvocationMarkers(input.argumentsValue)
   const tag = auditTag(input)
   const tagPrefix = tag ? `${tag} ` : ""
-  const heading = `--- # ${tagPrefix}${input.toolName} - ${input.durationMs}ms${tokenCounts}${invocationMarkers}${abnormal} -${formatAuditTime(input.time)}`
+  const heading = `--- # ${tagPrefix}${input.toolName} - ${input.durationMs}ms${tokenCounts}${invocationMarkers}${abnormal} - ${formatAuditTime(input.time)}`
   const details = formatArguments(input.toolName, input.argumentsValue, input.toolFailed, input.failureMessage)
   return details ? `${heading}\n${details}\n\n` : `${heading}\n\n`
 }

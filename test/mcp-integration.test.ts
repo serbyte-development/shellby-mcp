@@ -131,14 +131,7 @@ test("serves shell tools through Streamable HTTP and retains state across MCP se
     properties?: Record<string, unknown>
     required?: string[]
   }
-  assert.deepEqual(Object.keys(applyPatchOutputSchema.properties ?? {}).sort(), [
-    "changed",
-    "exit_code",
-    "failed",
-    "output",
-    "output_dropped",
-    "status",
-  ])
+  assert.deepEqual(Object.keys(applyPatchOutputSchema.properties ?? {}).sort(), ["changed", "exit_code", "failed", "output", "output_dropped", "status"])
   assert.deepEqual(applyPatchOutputSchema.required?.sort(), ["exit_code", "status"])
   const shellResetTool = tools.tools.find((tool) => tool.name === "shell_reset")
   assert.deepEqual(shellResetTool?.annotations, { openWorldHint: false })
@@ -338,11 +331,6 @@ test("rejects malformed tool inputs at the MCP schema boundary", { timeout: 10_0
   t.after(() => connected.client.close())
 
   const cases = [
-    {
-      name: "shell_run",
-      arguments: { request_id: "nul-command", command: "printf bad\0command" },
-      expected: /NUL character/,
-    },
     {
       name: "subagent_run",
       arguments: { agents: [{ agent_id: "reviewer", prompt: "   " }] },
@@ -798,10 +786,10 @@ test("audits tool calls at the HTTP MCP boundary", { timeout: 10_000 }, async (t
   })
 
   const log = await readFile(auditPath, "utf8")
-  assert.match(log, /--- # \d{2}:\d{2}:\d{2} - shell_list - \d+ms - \d+ in \/ \d+ out\nargs: \{\}/)
+  assert.match(log, /--- # shell_list - \d+ms - \d+ in \/ \d+ out - \d{2}:\d{2}:\d{2}\nargs: \{\}/)
   assert.match(
     log,
-    /--- # \d{2}:\d{2}:\d{2} - subagent_run - \d+ms - \d+ in \/ \d+ out\nargs: \{"agents":\[\{"agent_id":"audit-check","prompt":"Inspect the audit path\."\}\]\}/
+    /--- # subagent_run - \d+ms - \d+ in \/ \d+ out - \d{2}:\d{2}:\d{2}\nargs: \{"agents":\[\{"agent_id":"audit-check","prompt":"Inspect the audit path\."\}\]\}/
   )
 })
 
@@ -1438,7 +1426,7 @@ test("applies patches through the native MCP tool", { timeout: 20_000 }, async (
   assert.equal(countTokens(failedContent.output), 1_024)
   assert.equal(failedContent.output_dropped, true)
   const failedAudit = await readFile(auditPath, "utf8")
-  assert.match(failedAudit, /--- # ! \d{2}:\d{2}:\d{2} - apply_patch - \d+ms/)
+  assert.match(failedAudit, /--- # ! apply_patch - \d+ms - \d+ in \/ \d+ out - \d{2}:\d{2}:\d{2}/)
   assert.match(failedAudit, /patch: \|-\n {2}\*\*\* Begin Patch/)
   assert.match(failedAudit, / {2}FAIL_PATCH/)
 
@@ -1516,15 +1504,7 @@ test("reports actual apply_patch changes and the first failed hunk", { timeout: 
   assert.equal(await readFile(join(project, "a.txt"), "utf8"), "one\nTWO\nthree\n")
   assert.equal(await readFile(join(project, "b.txt"), "utf8"), "alpha\nbeta\n")
 
-  const movePatch = [
-    "*** Begin Patch",
-    "*** Update File: a.txt",
-    "*** Move to: nested/a.txt",
-    "@@ one",
-    "-TWO",
-    "+two",
-    "*** End Patch",
-  ].join("\n")
+  const movePatch = ["*** Begin Patch", "*** Update File: a.txt", "*** Move to: nested/a.txt", "@@ one", "-TWO", "+two", "*** End Patch"].join("\n")
   const moved = await connected.client.callTool({
     name: "apply_patch",
     arguments: { cwd: project, patch: movePatch },

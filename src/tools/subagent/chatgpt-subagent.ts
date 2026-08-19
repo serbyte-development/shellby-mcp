@@ -1,4 +1,4 @@
-import { chromium, type Browser, type BrowserContext, type Page } from "playwright-core"
+import type { Browser, BrowserContext, Page } from "playwright-core"
 
 import { MCP_CONFIG } from "../../config.js"
 import { nonNegativeInteger, positiveInteger } from "../../utils.js"
@@ -250,6 +250,7 @@ export class ChatGptSubagentModule implements ChatGptSubagentService {
 
   private async connectOnce(): Promise<void> {
     try {
+      const { chromium } = await import("playwright-core")
       this.browser = await chromium.connectOverCDP(this.cdpEndpoint, { timeout: this.connectTimeoutMs })
     } catch (error) {
       this.browser = undefined
