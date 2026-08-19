@@ -3,7 +3,7 @@ import { homedir, tmpdir } from "node:os"
 import { join, resolve } from "node:path"
 import test from "node:test"
 
-import { loadMcpConfig, resolveWorkspacePath } from "../src/config.js"
+import { DEFAULTS, loadMcpConfig, resolveWorkspacePath } from "../src/config.js"
 
 test("resolves configured workspace paths to absolute paths", () => {
   assert.equal(resolveWorkspacePath("~"), homedir())
@@ -24,7 +24,7 @@ test("loads runtime configuration from one environment boundary", () => {
   assert.equal(defaults.shell.maxShells, 8)
   assert.equal(defaults.shell.idleTimeoutMs, 5 * 60 * 1000)
   assert.equal(defaults.shell.cacheTimeoutMs, 24 * 60 * 60 * 1000)
-  assert.equal(defaults.toolOutputStructured, "optional")
+  assert.equal(defaults.toolOutputStructured, DEFAULTS.toolOutputStructured)
 
   const configured = loadMcpConfig({
     HOST: "0.0.0.0",

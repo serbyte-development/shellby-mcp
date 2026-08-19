@@ -110,9 +110,7 @@ test("protects the default shell from close while allowing reset", async (t) => 
     (error: unknown) => error instanceof Error && error.message.includes("cannot be closed") && error.message.includes("shell_reset")
   )
 
-  const reset = await manager.defaultShell.reset({
-    requestId: "reset-default",
-  })
+  const reset = await manager.defaultShell.reset({})
   assert.equal(reset.status, "ready")
   assert.equal(await manager.getOrCreate(DEFAULT_SHELL_ID), manager.defaultShell)
 })
@@ -333,7 +331,7 @@ test("resetting a cached shell discards cached cwd and environment", async (t) =
   await manager.cleanupIdle()
   assert.deepEqual(manager.listCachedShellIds(), ["alpha"])
 
-  await manager.withShell("alpha", (shell) => shell.reset({ requestId: "reset-cached" }), { restoreCached: false })
+  await manager.withShell("alpha", (shell) => shell.reset({}), { restoreCached: false })
   const live = manager.getExisting("alpha")
   const state = await runToCompletion(live, "after-reset-cache", `printf '%s|%s' "$PWD" "\${RESET_CACHE_VALUE-unset}"`)
   assert.match(state.output, /\|unset$/)

@@ -214,7 +214,7 @@ test("reset kills running parallel children and retains the batch as reset", { t
   const pid = await readPid(pidFile)
   assert.equal(isProcessAlive(pid), true)
 
-  await shell.reset({ requestId: "reset-parallel", reason: "test parallel reset" })
+  await shell.reset({ reason: "test parallel reset" })
   const old = await shell.pollCommand({ requestId: "parallel-reset", cursor: running.next_cursor, waitMs: 0 })
   assert.equal(old.status, "reset")
   assert.equal(old.commands?.[0]?.status, "reset")

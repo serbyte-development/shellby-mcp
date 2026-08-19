@@ -137,8 +137,8 @@ const toolFamilyCases: Array<{ tool: string; structuredContent: unknown; expecte
   },
   {
     tool: "shell_reset",
-    structuredContent: { request_id: "reset-1", shell_generation: 2, state_lost: true, status: "ready" },
-    expected: "request_id=reset-1 shell_generation=2 state_lost=true status=ready",
+    structuredContent: { shell_generation: 2, state_lost: true, status: "ready" },
+    expected: "shell_generation=2 state_lost=true status=ready",
   },
   {
     tool: "shell_list",

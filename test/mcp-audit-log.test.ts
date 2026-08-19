@@ -39,7 +39,7 @@ test("writes one compact YAML document for a shell command", async (t) => {
   assert.equal(characterCount("🙂a"), 2)
   assert.equal(
     await readFile(file, "utf8"),
-    ['shell: "api-audit/scan-1"', "command: |-", "  rg -n foo src", "--- # 20:58:30 - shell_run - 275ms - 23 in", "", ""].join("\n")
+    ["--- # 20:58:30 - shell_run - 275ms - 23 in", 'shell: "api-audit/scan-1"', "command: |-", "  rg -n foo src", "", ""].join("\n")
   )
 })
 
@@ -76,6 +76,20 @@ test("logs shell output token count", async (t) => {
   const inputTokens = countTokens(JSON.stringify({ shell_id: "default", request_id: "tokens", command: "printf 'hello world'" }))
   const outputTokens = countTokens(JSON.stringify(structuredContent))
   assert.match(log, new RegExp(`--- # 19:13:46 - shell_run - 0ms - ${inputTokens} in / ${outputTokens} out`))
+})
+
+test("puts audit time first in headings", async (t) => {
+  const file = await auditFile(t)
+  const logger = new McpAuditLogger(
+    file,
+    () => new Date(2026, 7, 18, 18, 25, 0),
+    () => 0
+  )
+  const [call] = logger.startToolCalls({ method: "tools/call", params: { name: "shell_list", arguments: {} } })
+  assert.ok(call)
+  call.finish({ httpStatus: 200, state: "finished" })
+
+  assert.equal(await readFile(file, "utf8"), "--- # 18:25:00 - shell_list - 0ms - 1 in\nargs: {}\n\n")
 })
 
 test("marks explicit structured and max_output_tokens tool arguments in the heading", async (t) => {
@@ -128,7 +142,7 @@ test("matches batched tool responses by JSON-RPC id", async (t) => {
   for (const call of calls) call.finish({ httpStatus: 200, state: "finished", responseBody })
 
   const log = await readFile(file, "utf8")
-  assert.match(log, new RegExp(`shell_list - 0ms - ${countTokens(JSON.stringify({ first: true }))} in / ${countTokens(firstOutput)} out`))
+  assert.match(log, new RegExp(`00:30:00 - shell_list - 0ms - ${countTokens(JSON.stringify({ first: true }))} in / ${countTokens(firstOutput)} out`))
   assert.match(
     log,
     new RegExp(`! 00:30:00 - skill_load - 0ms - ${countTokens(JSON.stringify({ name: "second" }))} in / ${countTokens(secondOutput)} out`)
@@ -175,7 +189,7 @@ test("logs apply_patch bodies only when the tool fails", async (t) => {
   call.finish({ httpStatus: 200, state: "finished", responseBody: '{"result":{"isError":false}}' })
 
   let log = await readFile(file, "utf8")
-  assert.equal(log, `cwd: "/workspace/project"\npatch_chars: ${characterCount(patch)}\n--- # 21:12:03 - apply_patch - 51ms - 33 in\n\n`)
+  assert.equal(log, `--- # 21:12:03 - apply_patch - 51ms - 33 in\ncwd: "/workspace/project"\npatch_chars: ${characterCount(patch)}\n\n`)
   assert.doesNotMatch(log, /Begin Patch|Update File|old|new/)
 
   const [failedCall] = logger.startToolCalls({
@@ -296,8 +310,8 @@ test("logs shell tool errors with their MCP failure reason", async (t) => {
   })
 
   const finalLog = await readFile(file, "utf8")
-  assert.match(finalLog, /shell: "parallel\/child-nonzero"\ncommand: \|-\n {2}\*\*\* Run: \.\n {2}false\n--- # 22:50:00 - shell_run - 0ms - \d+ in \/ \d+ out/)
-  assert.doesNotMatch(finalLog, /shell: "parallel\/child-nonzero"[\s\S]*--- # ! 22:50:00 - shell_run - 0ms - \d+ in \/ \d+ out/)
+  assert.match(finalLog, /--- # 22:50:00 - shell_run - 0ms - \d+ in \/ \d+ out\nshell: "parallel\/child-nonzero"\ncommand: \|-\n {2}\*\*\* Run: \.\n {2}false/)
+  assert.doesNotMatch(finalLog, /--- # ! 22:50:00 - shell_run - 0ms - \d+ in \/ \d+ out\nshell: "parallel\/child-nonzero"/)
 })
 
 test("caps large ordinary tool arguments", async (t) => {
@@ -316,8 +330,7 @@ test("caps large ordinary tool arguments", async (t) => {
   call.finish({ httpStatus: 200, state: "finished" })
 
   const log = await readFile(file, "utf8")
-  assert.match(log, /^args: "/)
-  assert.match(log, /--- # 22:00:00 - skill_load - 0ms - \d+ in\n\n$/)
+  assert.match(log, /^--- # 22:00:00 - skill_load - 0ms - \d+ in\nargs: "/)
   assert.match(log, /chars omitted/)
   assert.ok(log.length < 800)
 })

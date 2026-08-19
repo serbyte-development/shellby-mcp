@@ -167,11 +167,9 @@ export function registerShellManagementTools(server: McpServer, shells: ShellSes
         "Attempt to terminate the persistent shell process group, discard its working directory and environment state, and start a clean shell. Use this to recover from a stuck foreground command. Process-group cleanup is best effort if signaling is denied.",
       inputSchema: z.object({
         shell_id: shellIdInput,
-        request_id: requestIdInput,
         reason: z.string().max(256).optional(),
       }),
       outputSchema: z.object({
-        request_id: z.string(),
         shell_generation: z.int().positive(),
         state_lost: z.literal(true),
         status: z.literal("ready"),
@@ -179,22 +177,17 @@ export function registerShellManagementTools(server: McpServer, shells: ShellSes
       annotations: {
         readOnlyHint: false,
         destructiveHint: true,
-        idempotentHint: true,
+        idempotentHint: false,
         openWorldHint: false,
       },
       _meta: MCP_CONFIG.toolMeta,
     },
-    async ({ shell_id, request_id, reason }) => {
+    async ({ shell_id, reason }) => {
       try {
-        const result = await shells.withShell(shell_id, (shell) => shell.reset({ requestId: request_id, reason }), { restoreCached: false })
+        const result = await shells.withShell(shell_id, (shell) => shell.reset({ reason }), { restoreCached: false })
         return {
           structuredContent: result,
-          content: [
-            {
-              type: "text" as const,
-              text: `Shell ${shell_id} reset ${result.request_id} complete. Generation ${result.shell_generation} is ready; previous shell state was lost.`,
-            },
-          ],
+          content: [],
         }
       } catch (error) {
         return toolError(error)
@@ -239,12 +232,7 @@ export function registerShellManagementTools(server: McpServer, shells: ShellSes
         }
         return {
           structuredContent: result,
-          content: [
-            {
-              type: "text" as const,
-              text: `${result.count} shell${result.count === 1 ? "" : "s"} open; limit ${result.limit}.`,
-            },
-          ],
+          content: [],
         }
       } catch (error) {
         return toolError(error)
@@ -278,12 +266,7 @@ export function registerShellManagementTools(server: McpServer, shells: ShellSes
         const result = { shell_id, closed: true as const }
         return {
           structuredContent: result,
-          content: [
-            {
-              type: "text" as const,
-              text: `Shell ${shell_id} closed and its state was discarded; its live slot was released.`,
-            },
-          ],
+          content: [],
         }
       } catch (error) {
         return toolError(error)
@@ -296,12 +279,7 @@ function snapshotResult(snapshot: ShellSnapshot, shellId: string) {
   const structuredContent = compactShellSnapshot(snapshot, shellId)
   return {
     structuredContent,
-    content: [
-      {
-        type: "text" as const,
-        text: shellResultSummary(snapshot),
-      },
-    ],
+    content: [],
   }
 }
 
@@ -329,7 +307,7 @@ function pollSnapshotResult(snapshot: ShellSnapshot) {
 
   return {
     structuredContent,
-    content: [{ type: "text" as const, text: shellResultSummary(snapshot) }],
+    content: [],
   }
 }
 
@@ -393,27 +371,6 @@ function compactShellSnapshot(snapshot: ShellSnapshot, shellId: string): Compact
   if (snapshot.dropped_output_bytes > 0) compact.dropped_output_bytes = snapshot.dropped_output_bytes
   if (snapshot.commands) compact.commands = compactBatchCommands(snapshot.commands)
   return compact
-}
-
-function shellResultSummary(snapshot: ShellSnapshot): string {
-  if (snapshot.commands) {
-    const finished = snapshot.commands.filter((command) => command.status !== "queued" && command.status !== "running").length
-    const issues = snapshot.commands.filter(
-      (command) => command.status === "timed_out" || command.status === "failed" || (command.status === "completed" && command.exit_code !== 0)
-    ).length
-    if (snapshot.status === "running") {
-      return `shell batch running; ${finished}/${snapshot.commands.length} finished; poll request=${snapshot.request_id} cursor=${snapshot.next_cursor}`
-    }
-    if (snapshot.output_truncated) {
-      return `shell batch ${snapshot.status}; ${issues} issue${issues === 1 ? "" : "s"}; response output truncated; cursor=${snapshot.next_cursor}`
-    }
-    return `shell batch ${snapshot.status}; ${issues} issue${issues === 1 ? "" : "s"}`
-  }
-  const exit = snapshot.exit_code ?? "n/a"
-  if (snapshot.status === "running") return `shell running; poll request=${snapshot.request_id} cursor=${snapshot.next_cursor}`
-  if (snapshot.output_truncated) return `shell ${snapshot.status}, exit=${exit}; response output truncated; cursor=${snapshot.next_cursor}`
-  if (snapshot.dropped_output_bytes) return `shell ${snapshot.status}, exit=${exit}; dropped=${snapshot.dropped_output_bytes} bytes`
-  return `shell ${snapshot.status}, exit=${exit}`
 }
 
 function toolError(error: unknown) {

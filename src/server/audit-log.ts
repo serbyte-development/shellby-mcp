@@ -60,8 +60,6 @@ export class McpAuditLogger {
             if (finished) return
             finished = true
             const toolResponse = parseToolResponse(responseBody, parsed.id)
-            const completeResponseBody = captureOutput ? responseBody : undefined
-            const modelOutput = completeResponseBody ? parseToolResponse(completeResponseBody, parsed.id).modelOutput : undefined
             this.append(
               formatEntry({
                 time: startedTime,
@@ -71,7 +69,7 @@ export class McpAuditLogger {
                 httpStatus,
                 state,
                 inputTokens,
-                outputTokens: modelOutput !== undefined ? countTokens(modelOutput) : undefined,
+                outputTokens: captureOutput && toolResponse.modelOutput !== undefined ? countTokens(toolResponse.modelOutput) : undefined,
                 toolFailed: toolResponse.failed,
                 failureMessage: toolResponse.failureMessage,
               })
@@ -119,7 +117,7 @@ function formatEntry(input: {
   const tagPrefix = tag ? `${tag} ` : ""
   const heading = `--- # ${tagPrefix}${formatAuditTime(input.time)} - ${input.toolName} - ${input.durationMs}ms${tokenCounts}${invocationMarkers}${abnormal}`
   const details = formatArguments(input.toolName, input.argumentsValue, input.toolFailed, input.failureMessage)
-  return details ? `${details}\n${heading}\n\n` : `${heading}\n\n`
+  return details ? `${heading}\n${details}\n\n` : `${heading}\n\n`
 }
 
 function formatInvocationMarkers(value: unknown): string {
@@ -184,16 +182,17 @@ function parseToolResponse(responseBody: string | undefined, responseId?: unknow
   for (const payload of payloads) {
     const responses = Array.isArray(payload) ? payload : [payload]
     for (const response of responses) {
-      if (!response || typeof response !== "object" || Array.isArray(response)) continue
-      if (responseId !== undefined && (response as { id?: unknown }).id !== responseId) continue
-      const result = (response as { result?: unknown }).result
-      if (!result || typeof result !== "object" || Array.isArray(result)) continue
+      const responseRecord = asRecord(response)
+      if (!responseRecord) continue
+      if (responseId !== undefined && responseRecord.id !== responseId) continue
+      const result = asRecord(responseRecord.result)
+      if (!result) continue
       if (modelOutput === undefined) modelOutput = serializeModelFacingToolResult(result)
-      const structuredContent = asRecord((result as { structuredContent?: unknown }).structuredContent)
+      const structuredContent = asRecord(result.structuredContent)
       const resultOutput = structuredContent && typeof structuredContent.output === "string" ? structuredContent.output : undefined
-      if ((result as { isError?: unknown }).isError !== true) continue
+      if (result.isError !== true) continue
       if (resultOutput) return { failed: true, failureMessage: resultOutput, modelOutput }
-      const content = (result as { content?: unknown }).content
+      const content = result.content
       if (Array.isArray(content)) {
         const message = content
           .map((item) => asRecord(item))
@@ -209,8 +208,7 @@ function parseToolResponse(responseBody: string | undefined, responseId?: unknow
   return { failed: responseBody.includes('"isError":true'), modelOutput }
 }
 
-function serializeModelFacingToolResult(result: object): string | undefined {
-  const value = result as { content?: unknown; structuredContent?: unknown }
+function serializeModelFacingToolResult(value: Record<string, unknown>): string | undefined {
   const parts: string[] = []
   if (Array.isArray(value.content)) {
     for (const item of value.content) {

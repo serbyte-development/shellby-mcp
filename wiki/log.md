@@ -1049,3 +1049,9 @@
 - Shortened `Project Overview.md` to orientation and `Architecture Map.md` to component boundaries plus a coarse request lifecycle, routing subsystem details to dedicated pages.
 - Split browser delegation into `pages/tools/subagent.md` for the caller contract, `pages/Browser ChatGPT Subagents.md` for browser ownership/orchestration, and `pages/Subagent Completion and Recovery.md` for completion authority, events, reconciliation, and recovery.
 - Kept shell configuration values in `Configuration and Startup`, caller consequences in `pages/tools/shell_run.md`, and implementation mechanics in `Persistent Shell Runtime.md`; removed repeated numeric limits from risk/runtime summaries.
+
+## [2026-08-18] shells | Remove reset request IDs
+
+- Removed `request_id` from `shell_reset` input/output and deleted reset-specific retry records/deduplication from the shell runtime.
+- Kept optional `reason`, default `shell_id`, destructive reset behavior, and concurrent-reset rejection; reset is now explicitly non-idempotent.
+- Updated shell schema, compact-output, runtime, integration, and maintainer documentation coverage.

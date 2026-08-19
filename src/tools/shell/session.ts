@@ -63,7 +63,6 @@ export interface PollCommandInput {
 }
 
 export interface ResetShellInput {
-  requestId: string
   reason?: string
 }
 
@@ -117,14 +116,7 @@ interface ParallelBatchRecord {
   tasks: Promise<void>[]
 }
 
-interface ResetRecord {
-  requestId: string
-  reason: string
-  promise: Promise<ResetResult>
-}
-
 export interface ResetResult extends Record<string, unknown> {
-  request_id: string
   shell_generation: number
   state_lost: true
   status: "ready"
@@ -274,7 +266,6 @@ export class PersistentShellSession {
   private readonly parallelScheduler: ParallelCommandScheduler
   private readonly records = new Map<string, CommandRecord>()
   private readonly parallelRecords = new Map<string, ParallelBatchRecord>()
-  private readonly resetRecords = new Map<string, ResetRecord>()
   private readonly stopReasons = new WeakMap<ChildProcessWithoutNullStreams, StopReason>()
   private readonly handledChildren = new WeakSet<ChildProcessWithoutNullStreams>()
   private readonly updateWaiters = new Set<() => void>()
@@ -294,7 +285,7 @@ export class PersistentShellSession {
   private updateVersion = 0
   private ready = false
   private closed = false
-  private resetInFlight: ResetRecord | null = null
+  private resetInFlight: Promise<ResetResult> | null = null
 
   constructor(options: ShellSessionOptions = {}) {
     this.shellPath = options.shellPath ?? MCP_CONFIG.shell.path
@@ -400,7 +391,7 @@ export class PersistentShellSession {
     }
 
     if (this.resetInFlight) {
-      throw new ShellSessionError("busy", `The shell is being reset by request_id ${JSON.stringify(this.resetInFlight.requestId)}.`)
+      throw new ShellSessionError("busy", "The shell is being reset.")
     }
 
     if (this.active || this.activeParallel || this.contextCaptureState) {
@@ -705,42 +696,23 @@ export class PersistentShellSession {
   }
 
   async reset(input: ResetShellInput): Promise<ResetResult> {
-    validateRequestId(input.requestId)
     if (this.closed) {
       throw new ShellSessionError("closed", "The shell session is closed.")
     }
 
     const reason = input.reason ?? "requested by MCP client"
-    const existing = this.resetRecords.get(input.requestId)
-    if (existing) {
-      if (existing.reason !== reason) {
-        throw new ShellSessionError("request_conflict", `request_id ${JSON.stringify(input.requestId)} was already used for a reset with a different reason.`)
-      }
-      return existing.promise
-    }
-
     if (this.resetInFlight) {
-      throw new ShellSessionError("busy", `The shell is already being reset by request_id ${JSON.stringify(this.resetInFlight.requestId)}.`)
+      throw new ShellSessionError("busy", "The shell is already being reset.")
     }
 
-    this.pruneResetRecords()
-    const promise = this.performReset(reason).then((result) => ({
-      request_id: input.requestId,
-      ...result,
-    }))
-    const record: ResetRecord = {
-      requestId: input.requestId,
-      reason,
-      promise,
-    }
-    this.resetRecords.set(record.requestId, record)
-    this.resetInFlight = record
+    const promise = this.performReset(reason)
+    this.resetInFlight = promise
     void promise.then(
       () => {
-        if (this.resetInFlight === record) this.resetInFlight = null
+        if (this.resetInFlight === promise) this.resetInFlight = null
       },
       () => {
-        if (this.resetInFlight === record) this.resetInFlight = null
+        if (this.resetInFlight === promise) this.resetInFlight = null
       }
     )
     return promise
@@ -1164,14 +1136,6 @@ export class PersistentShellSession {
       const oldestCompleted = [...this.parallelRecords.values()].find((record) => record.status !== "running")
       if (!oldestCompleted) return
       this.parallelRecords.delete(oldestCompleted.requestId)
-    }
-  }
-
-  private pruneResetRecords(): void {
-    while (this.resetRecords.size >= this.recordLimit) {
-      const oldestCompleted = [...this.resetRecords.values()].find((record) => record !== this.resetInFlight)
-      if (!oldestCompleted) return
-      this.resetRecords.delete(oldestCompleted.requestId)
     }
   }
 

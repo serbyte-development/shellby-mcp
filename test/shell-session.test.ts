@@ -479,22 +479,8 @@ test("reset cancels a stuck command and creates a clean shell", { timeout: 10_00
   })
   assert.equal(running.status, "running")
 
-  const reset = await shell.reset({
-    requestId: "reset-stuck",
-    reason: "test reset",
-  })
+  const reset = await shell.reset({ reason: "test reset" })
   assert.equal(reset.status, "ready")
-
-  const retriedReset = await shell.reset({
-    requestId: "reset-stuck",
-    reason: "test reset",
-  })
-  assert.deepEqual(retriedReset, reset)
-
-  await assert.rejects(
-    shell.reset({ requestId: "reset-stuck", reason: "different reset" }),
-    (error: unknown) => error instanceof ShellSessionError && error.code === "request_conflict"
-  )
 
   const old = await shell.pollCommand({
     requestId: "stuck",
@@ -548,10 +534,7 @@ test("reset kills a TERM-resistant background descendant", { timeout: 10_000 }, 
   assert.equal(isProcessAlive(descendantPid), true)
   assert.equal(isProcessAlive(-oldProcessGroup), true)
 
-  await shell.reset({
-    requestId: "reset-resistant-background",
-    reason: "kill resistant descendant",
-  })
+  await shell.reset({ reason: "kill resistant descendant" })
 
   assert.equal(await waitForProcessExit(descendantPid), true)
   assert.equal(await waitForProcessExit(-oldProcessGroup), true)

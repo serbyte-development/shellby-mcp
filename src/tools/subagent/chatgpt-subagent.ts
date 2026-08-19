@@ -462,11 +462,7 @@ export class ChatGptSubagentModule implements ChatGptSubagentService {
     })?.message.text
   }
 
-  private hasCurrentTurnCompletionEvidence(
-    turn: BrowserTurnState,
-    streamStatus: string | undefined,
-    uiGenerating: boolean
-  ): boolean {
+  private hasCurrentTurnCompletionEvidence(turn: BrowserTurnState, streamStatus: string | undefined, uiGenerating: boolean): boolean {
     if (streamStatus === "IS_STREAMING") turn.serverStreamingObserved = true
     if (uiGenerating) turn.uiGeneratingObserved = true
     if (streamStatus !== "COMPLETE") return false
@@ -474,12 +470,7 @@ export class ChatGptSubagentModule implements ChatGptSubagentService {
     return turn.uiGeneratingObserved === true && !uiGenerating
   }
 
-  private async completeDetectedTurn(
-    turn: BrowserTurnState,
-    state: BrowserAgentState,
-    domFallback?: string,
-    signal?: AbortSignal
-  ): Promise<boolean> {
+  private async completeDetectedTurn(turn: BrowserTurnState, state: BrowserAgentState, domFallback?: string, signal?: AbortSignal): Promise<boolean> {
     if (turn.status !== "running") return true
 
     const networkResponse = this.trackedFinalResponse(turn, state)
@@ -513,7 +504,7 @@ export class ChatGptSubagentModule implements ChatGptSubagentService {
     turn.response = response
     this.rememberConversation(state)
     this.finishTurnOperation(turn, state)
-    this.pendingEvents.push(`agent_finished:${turn.agentId}:${turn.turnId}`)
+    this.pendingEvents.push(`\n**agent_finished:${turn.agentId}:${turn.turnId}**\n`)
   }
 
   private attachTurnListeners(state: BrowserAgentState, turn: BrowserTurnState): void {

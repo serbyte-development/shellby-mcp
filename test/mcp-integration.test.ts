@@ -132,6 +132,20 @@ test("serves shell tools through Streamable HTTP and retains state across MCP se
     "status",
   ])
   assert.deepEqual(applyPatchOutputSchema.required?.sort(), ["exit_code", "status"])
+  const shellResetTool = tools.tools.find((tool) => tool.name === "shell_reset")
+  assert.deepEqual(shellResetTool?.annotations, { openWorldHint: false })
+  const shellResetInputSchema = shellResetTool?.inputSchema as {
+    properties?: Record<string, unknown>
+    required?: string[]
+  }
+  assert.deepEqual(Object.keys(shellResetInputSchema.properties ?? {}).sort(), ["reason", "shell_id"])
+  assert.deepEqual(shellResetInputSchema.required ?? [], [])
+  const shellResetOutputSchema = shellResetTool?.outputSchema as {
+    properties?: Record<string, unknown>
+    required?: string[]
+  }
+  assert.deepEqual(Object.keys(shellResetOutputSchema.properties ?? {}).sort(), ["shell_generation", "state_lost", "status"])
+  assert.deepEqual(shellResetOutputSchema.required?.sort(), ["shell_generation", "state_lost", "status"])
   const shellListTool = tools.tools.find((tool) => tool.name === "shell_list")
   assert.deepEqual(shellListTool?.annotations, { readOnlyHint: true, openWorldHint: false })
   const shellCloseTool = tools.tools.find((tool) => tool.name === "shell_close")
@@ -744,10 +758,10 @@ test("audits tool calls at the HTTP MCP boundary", { timeout: 10_000 }, async (t
   })
 
   const log = await readFile(auditPath, "utf8")
-  assert.match(log, /args: \{\}\n--- # \d{2}:\d{2}:\d{2} - shell_list - \d+ms - \d+ in \/ \d+ out/)
+  assert.match(log, /--- # \d{2}:\d{2}:\d{2} - shell_list - \d+ms - \d+ in \/ \d+ out\nargs: \{\}/)
   assert.match(
     log,
-    /args: \{"agents":\[\{"agent_id":"audit-check","prompt":"Inspect the audit path\."\}\]\}\n--- # \d{2}:\d{2}:\d{2} - subagent_run - \d+ms - \d+ in \/ \d+ out/
+    /--- # \d{2}:\d{2}:\d{2} - subagent_run - \d+ms - \d+ in \/ \d+ out\nargs: \{"agents":\[\{"agent_id":"audit-check","prompt":"Inspect the audit path\."\}\]\}/
   )
 })
 
@@ -1233,7 +1247,6 @@ test("isolates named shell state and allows foreground commands in parallel", { 
     name: "shell_reset",
     arguments: {
       shell_id: "alpha",
-      request_id: "reset1",
       reason: "test reset isolation",
     },
   })
@@ -1291,14 +1304,17 @@ test("isolates named shell state and allows foreground commands in parallel", { 
 
   const resetDefault = await connected.client.callTool({
     name: "shell_reset",
-    arguments: {
-      shell_id: "default",
-      request_id: "default-reset",
-      reason: "prove protected shell remains resettable",
-    },
+    arguments: {},
   })
   assert.equal(resetDefault.isError, undefined)
-  assert.equal((resetDefault.structuredContent as { status: string }).status, "ready")
+  const resetDefaultContent = resetDefault.structuredContent as {
+    shell_generation: number
+    state_lost: true
+    status: "ready"
+  }
+  assert.equal(resetDefaultContent.status, "ready")
+  assert.equal(resetDefaultContent.state_lost, true)
+  assert.equal(typeof resetDefaultContent.shell_generation, "number")
 
   const afterClose = await connected.client.callTool({ name: "shell_list" })
   assert.deepEqual(

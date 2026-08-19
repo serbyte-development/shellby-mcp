@@ -135,15 +135,7 @@ export function registerSkillTools(server: McpServer, workspace: string): void {
         const available = await skills.list(ctx.mcpReq.signal)
         return {
           structuredContent: { skills: available },
-          content: [
-            {
-              type: "text" as const,
-              text:
-                available.length === 0
-                  ? "No workspace skills are available."
-                  : `Available workspace skills: ${available.map((skill) => skill.name).join(", ")}`,
-            },
-          ],
+          content: [],
         }
       } catch (error) {
         return skillToolError(error)
@@ -179,7 +171,7 @@ export function registerSkillTools(server: McpServer, workspace: string): void {
             path: loaded.path,
             instructions: loaded.content,
           },
-          content: [{ type: "text" as const, text: `Loaded skill ${loaded.name}.` }],
+          content: [],
         }
       } catch (error) {
         return skillToolError(error)
