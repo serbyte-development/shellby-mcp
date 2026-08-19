@@ -303,6 +303,7 @@ Copy `.env.example` to `.env` to override the defaults below. Internal safety li
 | `MCP_CWD`                   | `~/Desktop/agent-workspace` | Initial/default workspace                          |
 | `MCP_PEEKABOO_BIN`          | `peekaboo`                  | Peekaboo executable                                |
 | `MCP_CHATGPT_CDP_ENDPOINT`  | `http://127.0.0.1:9222`     | Chrome CDP endpoint for browser subagents          |
+| `MCP_CHATGPT_PROJECT_URL`   | configured project URL      | Project start URL; blank uses normal ChatGPT       |
 | `CHROME_BIN`                | normal macOS Chrome path    | Optional dedicated Chrome executable override      |
 | `MCP_DEFAULT_OUTPUT_TOKENS` | `1024`                      | Default `max_output_tokens` when omitted           |
 | `MCP_MAX_OUTPUT_TOKENS`     | `16384`                     | Largest allowed `max_output_tokens` override       |
@@ -324,7 +325,7 @@ npm test
 npm run build
 ```
 
-The real ChatGPT browser contract has two separate manual-only compatibility tests. Both are intentionally excluded from `npm test` and CI. The read-only fixture test reopens one permanent saved conversation, captures its current conversation JSON from Chrome's network stream, and verifies it against a frozen sanitized copy without generating a new turn:
+The real ChatGPT browser contract has two separate manual-only compatibility tests. Both are intentionally excluded from `npm test` and CI. The read-only fixture test reopens permanent saved normal and project conversations, captures their current conversation JSON from Chrome's network stream, and verifies them against frozen sanitized copies without generating a new turn:
 
 ```bash
 npm run chatgpt
@@ -338,7 +339,7 @@ npm run chatgpt
 npm run test:live:subagent
 ```
 
-`test:live:fixture` never submits a prompt. It verifies the current ChatGPT conversation endpoint, deliberately reloads only its disposable fixture tab to prove the saved conversation still emits exact `content.parts` Markdown, checks active-branch parsing, and validates recognizable rendered DOM structure against `test/fixtures/chatgpt-live-fixture/conversation.json`. `test:live:subagent` is a black-box MCP canary: it starts the normal MCP server, uses only public `subagent_run`/`subagent_result` calls, and reuses one `agent_id` for two sequential generated turns. It does not inspect module internals, tracker state, DOM, Page objects, or conversation IDs. Turn 2 proves persistent context by recalling a random key supplied only in Turn 1. Sanitized evidence from the most recent generative run is written under ignored `test/live/artifacts/`.
+`test:live:fixture` never submits a prompt. It runs the same endpoint, reload, parser, exact `content.parts` Markdown, and rendered DOM contract against `test/fixtures/chatgpt-live-fixture/conversation.json` and `test/fixtures/chatgpt-project-live-fixture/conversation.json`. The project fixture is skipped until that second frozen file exists; its conversation ID is read directly from the frozen payload. `test:live:subagent` is a black-box MCP canary: it starts the normal MCP server, uses only public `subagent_run`/`subagent_result` calls, and reuses one `agent_id` for two sequential generated turns. It does not inspect module internals, tracker state, DOM, Page objects, or conversation IDs. Turn 2 proves persistent context by recalling a random key supplied only in Turn 1. Sanitized evidence from the most recent generative run is written under ignored `test/live/artifacts/`.
 
 Format code with:
 

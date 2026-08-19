@@ -638,7 +638,7 @@ async function retryAfterDismissingBlockingOverlay<T>(page: Page, action: () => 
 }
 
 function extractConversationId(url: string): string | undefined {
-  const match = new URL(url).pathname.match(/^\/c\/([^/?#]+)/)
+  const match = new URL(url).pathname.match(/(?:^|\/)c\/([^/?#]+)/)
   if (!match) return undefined
 
   const rawConversationId = match[1]

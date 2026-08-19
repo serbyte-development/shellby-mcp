@@ -110,7 +110,7 @@ export class ChatGptSubagentModule implements ChatGptSubagentService {
   constructor(private readonly options: ChatGptSubagentOptions = {}) {
     this.cdpEndpoint = options.cdpEndpoint ?? MCP_CONFIG.chatGpt.cdpEndpoint
     this.connectTimeoutMs = options.connectTimeoutMs ?? 3_000
-    this.chatGptUrl = options.chatGptUrl ?? "https://chatgpt.com/"
+    this.chatGptUrl = options.chatGptUrl ?? MCP_CONFIG.chatGpt.projectUrl
     this.maxConcurrentAgents = Math.min(positiveInteger(options.maxConcurrentAgents, MAX_CONCURRENT_AGENTS), MAX_CONCURRENT_AGENTS)
     this.minInterTurnDelayMs = nonNegativeInteger(options.minInterTurnDelayMs, 1_500)
     this.interactionDelayMs = nonNegativeInteger(options.interactionDelayMs, 300)

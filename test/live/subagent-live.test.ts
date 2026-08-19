@@ -72,6 +72,7 @@ test(
     try {
       const running = await startMcpHttpServer({
         port: 0,
+        toolOutputStructured: "optional",
       })
       t.after(() => running.close().catch(() => undefined))
 
@@ -81,66 +82,66 @@ test(
 
       t.diagnostic("Production MCP server started")
 
-    const firstRun = await client.callTool({
-      name: "subagent_run",
-      arguments: {
-        agents: [{ agent_id: LIVE_AGENT_ID, prompt: firstPrompt, oververbosity: 5 }],
-        structured: true,
-      },
-    })
-    const firstRunTurn = getRunTurn(firstRun.structuredContent)
-    assert.equal(firstRunTurn.agent_id, LIVE_AGENT_ID)
-    assert.equal(firstRunTurn.status, "running", firstRunTurn.error ?? "subagent_run did not start turn 1")
-    assert.ok(firstRunTurn.turn_id)
-    t.diagnostic(`Turn 1 submitted: ${firstRunTurn.turn_id}`)
+      const firstRun = await client.callTool({
+        name: "subagent_run",
+        arguments: {
+          agents: [{ agent_id: LIVE_AGENT_ID, prompt: firstPrompt, oververbosity: 5 }],
+          structured: true,
+        },
+      })
+      const firstRunTurn = getRunTurn(firstRun.structuredContent)
+      assert.equal(firstRunTurn.agent_id, LIVE_AGENT_ID)
+      assert.equal(firstRunTurn.status, "running", firstRunTurn.error ?? "subagent_run did not start turn 1")
+      assert.ok(firstRunTurn.turn_id)
+      t.diagnostic(`Turn 1 submitted: ${firstRunTurn.turn_id}`)
 
-    const firstCompletion = await waitForCompletedTurn(client, firstRunTurn.turn_id, (entry) => {
-      ;(pollTimeline.turn_1 ??= []).push(entry)
-      t.diagnostic(formatPollDiagnostic("Turn 1", entry))
-    })
-    const firstResponse = firstCompletion.turn.response ?? ""
-    assert.ok(firstResponse.trim(), "Turn 1 must return a non-empty response")
-    assert.ok(firstResponse.includes(contextKey), "Turn 1 must include the supplied context key")
-    t.diagnostic("Turn 1 completed with a non-empty response containing the supplied context key")
+      const firstCompletion = await waitForCompletedTurn(client, firstRunTurn.turn_id, (entry) => {
+        ;(pollTimeline.turn_1 ??= []).push(entry)
+        t.diagnostic(formatPollDiagnostic("Turn 1", entry))
+      })
+      const firstResponse = firstCompletion.turn.response ?? ""
+      assert.ok(firstResponse.trim(), "Turn 1 must return a non-empty response")
+      assert.ok(firstResponse.includes(contextKey), "Turn 1 must include the supplied context key")
+      t.diagnostic("Turn 1 completed with a non-empty response containing the supplied context key")
 
-    artifact.turn_1 = {
-      turn_id: firstRunTurn.turn_id,
-      mcp_response: firstResponse,
-    }
+      artifact.turn_1 = {
+        turn_id: firstRunTurn.turn_id,
+        mcp_response: firstResponse,
+      }
 
-    const secondPrompt = "What exact context key did I ask you to remember in my immediately previous message? Include that key in your response."
-    const secondRun = await client.callTool({
-      name: "subagent_run",
-      arguments: {
-        agents: [{ agent_id: LIVE_AGENT_ID, prompt: secondPrompt, oververbosity: 5 }],
-        structured: true,
-      },
-    })
-    const secondRunTurn = getRunTurn(secondRun.structuredContent)
-    assert.equal(secondRunTurn.agent_id, LIVE_AGENT_ID)
-    assert.equal(secondRunTurn.status, "running", secondRunTurn.error ?? "subagent_run did not start turn 2")
-    assert.ok(secondRunTurn.turn_id)
-    t.diagnostic(`Turn 2 submitted on same agent: ${secondRunTurn.turn_id}`)
+      const secondPrompt = "What exact context key did I ask you to remember in my immediately previous message? Include that key in your response."
+      const secondRun = await client.callTool({
+        name: "subagent_run",
+        arguments: {
+          agents: [{ agent_id: LIVE_AGENT_ID, prompt: secondPrompt, oververbosity: 5 }],
+          structured: true,
+        },
+      })
+      const secondRunTurn = getRunTurn(secondRun.structuredContent)
+      assert.equal(secondRunTurn.agent_id, LIVE_AGENT_ID)
+      assert.equal(secondRunTurn.status, "running", secondRunTurn.error ?? "subagent_run did not start turn 2")
+      assert.ok(secondRunTurn.turn_id)
+      t.diagnostic(`Turn 2 submitted on same agent: ${secondRunTurn.turn_id}`)
 
-    const secondCompletion = await waitForCompletedTurn(client, secondRunTurn.turn_id, (entry) => {
-      ;(pollTimeline.turn_2 ??= []).push(entry)
-      t.diagnostic(formatPollDiagnostic("Turn 2", entry))
-    })
-    const secondResponse = secondCompletion.turn.response?.trim()
-    assert.ok(secondResponse, "Turn 2 must return a non-empty response")
-    assert.ok(secondResponse.includes(contextKey), "Turn 2 must recover context that was only supplied in Turn 1")
+      const secondCompletion = await waitForCompletedTurn(client, secondRunTurn.turn_id, (entry) => {
+        ;(pollTimeline.turn_2 ??= []).push(entry)
+        t.diagnostic(formatPollDiagnostic("Turn 2", entry))
+      })
+      const secondResponse = secondCompletion.turn.response?.trim()
+      assert.ok(secondResponse, "Turn 2 must return a non-empty response")
+      assert.ok(secondResponse.includes(contextKey), "Turn 2 must recover context that was only supplied in Turn 1")
 
-    t.diagnostic("Turn 2 recovered context supplied only through Turn 1 using the same public agent_id")
+      t.diagnostic("Turn 2 recovered context supplied only through Turn 1 using the same public agent_id")
 
-    artifact.turn_2 = {
-      turn_id: secondRunTurn.turn_id,
-      mcp_response: secondResponse,
-      recovered_turn_1_context: true,
-    }
-    artifact.result = "pass"
+      artifact.turn_2 = {
+        turn_id: secondRunTurn.turn_id,
+        mcp_response: secondResponse,
+        recovered_turn_1_context: true,
+      }
+      artifact.result = "pass"
 
-    t.diagnostic("LIVE SUBAGENT INTEGRATION: PASS")
-    t.diagnostic(`Sanitized evidence: ${join(new URL(ARTIFACT_DIR).pathname, "subagent-live-last.json")}`)
+      t.diagnostic("LIVE SUBAGENT INTEGRATION: PASS")
+      t.diagnostic(`Sanitized evidence: ${join(new URL(ARTIFACT_DIR).pathname, "subagent-live-last.json")}`)
     } catch (error) {
       artifact.result = "fail"
       artifact.failure = serializeError(error)

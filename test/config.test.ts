@@ -14,6 +14,7 @@ test("resolves configured workspace paths to absolute paths", () => {
 
 test("loads supported environment overrides", () => {
   const configured = loadMcpConfig({
+    MCP_CHATGPT_PROJECT_URL: "https://chatgpt.com/g/example/project",
     MCP_DEFAULT_OUTPUT_TOKENS: "2048",
     MCP_MAX_OUTPUT_TOKENS: "4096",
     MCP_MAX_SHELLS: "12",
@@ -21,12 +22,18 @@ test("loads supported environment overrides", () => {
     MCP_SHELL_CACHE_TTL_MS: "5678",
     MCP_TOOL_OUTPUT_STRUCTURED: "optional",
   })
+  assert.equal(configured.chatGpt.projectUrl, "https://chatgpt.com/g/example/project")
   assert.equal(configured.shell.defaultOutputTokens, 2_048)
   assert.equal(configured.shell.maxOutputTokens, 4_096)
   assert.equal(configured.shell.maxShells, 12)
   assert.equal(configured.shell.idleTimeoutMs, 1_234)
   assert.equal(configured.shell.cacheTimeoutMs, 5_678)
   assert.equal(configured.toolOutputStructured, "optional")
+})
+
+test("blank ChatGPT project URL falls back to normal ChatGPT", () => {
+  assert.equal(loadMcpConfig({ MCP_CHATGPT_PROJECT_URL: "" }).chatGpt.projectUrl, "https://chatgpt.com/")
+  assert.equal(loadMcpConfig({ MCP_CHATGPT_PROJECT_URL: "   " }).chatGpt.projectUrl, "https://chatgpt.com/")
 })
 
 test("ignores unsupported environment overrides", () => {

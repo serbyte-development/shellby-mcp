@@ -29,6 +29,7 @@ const DEFAULTS = {
   peekabooExecutable: "peekaboo",
   chatGpt: {
     cdpEndpoint: "http://127.0.0.1:9222",
+    projectUrl: "https://chatgpt.com/g/g-p-6a863444b7d08191bffa3e468da73458/project",
     defaultOververbosity: 2,
     defaultPollWaitMs: 0,
     maxPollWaitMs: 270_000,
@@ -83,6 +84,7 @@ export function loadMcpConfig(env: NodeJS.ProcessEnv = process.env) {
     },
     chatGpt: {
       cdpEndpoint: env.MCP_CHATGPT_CDP_ENDPOINT ?? DEFAULTS.chatGpt.cdpEndpoint,
+      projectUrl: env.MCP_CHATGPT_PROJECT_URL === undefined ? DEFAULTS.chatGpt.projectUrl : env.MCP_CHATGPT_PROJECT_URL.trim() || "https://chatgpt.com/",
       defaultOververbosity: DEFAULTS.chatGpt.defaultOververbosity,
       defaultPollWaitMs: DEFAULTS.chatGpt.defaultPollWaitMs,
       maxPollWaitMs: DEFAULTS.chatGpt.maxPollWaitMs,

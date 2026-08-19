@@ -1,4 +1,5 @@
 import assert from "node:assert/strict"
+import { existsSync } from "node:fs"
 import { readFile } from "node:fs/promises"
 import test from "node:test"
 
@@ -6,10 +7,31 @@ import { MCP_CONFIG } from "../../src/config.js"
 import { extractConversationMessages } from "../../src/tools/subagent/chatgpt-subagent-browser.js"
 
 const LIVE_FIXTURE_ENABLED = process.env.RUN_LIVE_CHATGPT_FIXTURE_TESTS === "1" && !process.env.CI
-const FIXTURE_CONVERSATION_ID = "6a80cfdd-8428-83e8-86ba-13f3d302d179"
-const FIXTURE_URL = `https://chatgpt.com/c/${FIXTURE_CONVERSATION_ID}`
-const FIXTURE_API_URL = `https://chatgpt.com/backend-api/conversation/${FIXTURE_CONVERSATION_ID}`
-const LIVE_TIMEOUT_MS = 30_000
+const LIVE_TIMEOUT_MS = 60_000
+const NORMAL_FIXTURE_FILE = new URL("../fixtures/chatgpt-live-fixture/conversation.json", import.meta.url)
+const PROJECT_FIXTURE_FILE = new URL("../fixtures/chatgpt-project-live-fixture/conversation.json", import.meta.url)
+
+interface LiveFixture {
+  name: string
+  file: URL
+  conversationUrl: (conversationId: string) => string
+  projectScoped: boolean
+}
+
+const LIVE_FIXTURES: LiveFixture[] = [
+  {
+    name: "normal conversation",
+    file: NORMAL_FIXTURE_FILE,
+    conversationUrl: (conversationId) => `https://chatgpt.com/c/${conversationId}`,
+    projectScoped: false,
+  },
+  {
+    name: "project conversation",
+    file: PROJECT_FIXTURE_FILE,
+    conversationUrl: projectConversationUrl,
+    projectScoped: true,
+  },
+]
 
 interface CdpTarget {
   id: string
@@ -39,96 +61,127 @@ interface DomSnapshot {
 }
 
 test(
-  "live saved ChatGPT fixture still matches server JSON, parser, and rendered DOM contracts",
+  "live saved ChatGPT fixtures behave the same for normal and project conversations",
   { skip: !LIVE_FIXTURE_ENABLED, timeout: LIVE_TIMEOUT_MS },
   async (t) => {
-    const frozenPayload = JSON.parse(await readFile(new URL("../fixtures/chatgpt-live-fixture/conversation.json", import.meta.url), "utf8")) as unknown
-    const frozenMessages = extractConversationMessages(frozenPayload)
-    assert.equal(frozenMessages.length, 2)
-    const expectedResponse = frozenMessages.at(-1)?.text
-    assert.ok(expectedResponse)
+    for (const fixture of LIVE_FIXTURES) {
+      await t.test(fixture.name, async (fixtureTest) => {
+        if (!existsSync(fixture.file)) {
+          fixtureTest.skip(`Create ${fixture.file.pathname} before running the project fixture contract.`)
+          return
+        }
 
-    const endpoint = MCP_CONFIG.chatGpt.cdpEndpoint.replace(/\/$/, "")
-    const target = await createTarget(endpoint)
-    const session = await CdpSession.connect(target.webSocketDebuggerUrl)
+        const frozenPayload = JSON.parse(await readFile(fixture.file, "utf8")) as unknown
+        const frozenRecord = asRecord(frozenPayload)
+        const conversationId = stringValue(frozenRecord?.conversation_id)
+        assert.ok(conversationId, "frozen fixture must contain conversation_id")
+        const fixtureUrl = fixture.conversationUrl(conversationId)
+        const fixtureApiUrl = `https://chatgpt.com/backend-api/conversation/${conversationId}`
+        const frozenMessages = extractConversationMessages(frozenPayload)
+        assert.equal(frozenMessages.length, 2)
+        const expectedResponse = frozenMessages.at(-1)?.text
+        assert.ok(expectedResponse)
 
-    t.after(async () => {
-      session.close()
-      await closeTargetAndWait(endpoint, target.id).catch(() => undefined)
-    })
+        const endpoint = MCP_CONFIG.chatGpt.cdpEndpoint.replace(/\/$/, "")
+        const target = await createTarget(endpoint)
+        const session = await CdpSession.connect(target.webSocketDebuggerUrl)
 
-    await session.call("Network.enable")
-    await session.call("Page.enable")
-    await session.call("Runtime.enable")
+        fixtureTest.after(async () => {
+          session.close()
+          await closeTargetAndWait(endpoint, target.id).catch(() => undefined)
+        })
 
-    const conversationResponse = session.waitForEvent<CdpResponseReceived>(
-      "Network.responseReceived",
-      (params) => params.response.url === FIXTURE_API_URL && params.response.status === 200,
-      15_000
-    )
+        await session.call("Network.enable")
+        await session.call("Page.enable")
+        await session.call("Runtime.enable")
 
-    await session.call("Page.navigate", { url: FIXTURE_URL })
-    const responseReceived = await conversationResponse
-    const responseBody = await getResponseBodyWithRetry(session, responseReceived.requestId)
-    const bodyText = responseBody.base64Encoded ? Buffer.from(responseBody.body, "base64").toString("utf8") : responseBody.body
-    const livePayload = JSON.parse(bodyText) as unknown
-    const liveRecord = asRecord(livePayload)
-    assert.equal(liveRecord?.conversation_id, FIXTURE_CONVERSATION_ID)
-    assert.equal(liveRecord?.title, "Live Fixture Response")
+        const conversationResponse = session.waitForEvent<CdpResponseReceived>(
+          "Network.responseReceived",
+          (params) => params.response.url === fixtureApiUrl && params.response.status === 200,
+          15_000
+        )
 
-    const liveMessages = extractConversationMessages(livePayload)
-    assert.deepEqual(liveMessages, frozenMessages, "live conversation branch must still match the frozen compatibility fixture")
-    assert.equal(liveMessages.at(-1)?.text, expectedResponse)
-    assert.ok(rawServerContentParts(livePayload).includes(expectedResponse), "live content.parts must contain the exact Markdown response")
-    t.diagnostic("Live extracted conversation messages match the frozen parser fixture exactly")
+        await session.call("Page.navigate", { url: fixtureUrl })
+        const responseReceived = await conversationResponse
+        const responseBody = await getResponseBodyWithRetry(session, responseReceived.requestId)
+        const bodyText = responseBody.base64Encoded ? Buffer.from(responseBody.body, "base64").toString("utf8") : responseBody.body
+        const livePayload = JSON.parse(bodyText) as unknown
+        const liveRecord = asRecord(livePayload)
+        assert.equal(liveRecord?.conversation_id, conversationId)
+        assert.equal(liveRecord?.title, frozenRecord?.title)
 
-    const reloadConversationResponse = session.waitForEvent<CdpResponseReceived>(
-      "Network.responseReceived",
-      (params) => params.response.url === FIXTURE_API_URL && params.response.status === 200,
-      10_000
-    )
-    await session.call("Page.reload")
-    const reloadResponseReceived = await reloadConversationResponse
-    const reloadResponseBody = await getResponseBodyWithRetry(session, reloadResponseReceived.requestId)
-    const reloadBodyText = reloadResponseBody.base64Encoded
-      ? Buffer.from(reloadResponseBody.body, "base64").toString("utf8")
-      : reloadResponseBody.body
-    const reloadPayload = JSON.parse(reloadBodyText) as unknown
-    assert.deepEqual(
-      extractConversationMessages(reloadPayload),
-      frozenMessages,
-      "ChatGPT reload must emit the same exact conversation branch used by recovery"
-    )
-    assert.ok(rawServerContentParts(reloadPayload).includes(expectedResponse), "reload content.parts must preserve the exact Markdown response")
-    t.diagnostic("ChatGPT reload emits a successful conversation JSON response with exact Markdown content.parts")
+        const liveMessages = extractConversationMessages(livePayload)
+        assert.deepEqual(liveMessages, frozenMessages, "live conversation branch must still match the frozen compatibility fixture")
+        assert.equal(liveMessages.at(-1)?.text, expectedResponse)
+        assert.ok(rawServerContentParts(livePayload).includes(expectedResponse), "live content.parts must contain the exact Markdown response")
 
-    await waitForFixtureDom(session)
-    const dom = await session.evaluate<DomSnapshot>(`(() => {
-      const messages = Array.from(document.querySelectorAll('[data-message-author-role="assistant"]'));
-      const element = messages.find((item) => (item.textContent ?? '').includes('LIVE_SUBAGENT_FIXTURE_BEGIN'));
-      if (!element) return null;
-      return {
-        url: location.href,
-        rawText: (element.textContent ?? '').trim(),
-        heading: (element.querySelector('h2')?.textContent ?? '').trim(),
-        listItems: Array.from(element.querySelectorAll('li')).map((item) => (item.textContent ?? '').trim()),
-        tableText: (element.querySelector('table')?.textContent ?? '').trim(),
-        preBlocks: Array.from(element.querySelectorAll('pre')).map((item) => (item.textContent ?? '').trim()),
-      };
-    })()`)
+        const reloadConversationResponse = session.waitForEvent<CdpResponseReceived>(
+          "Network.responseReceived",
+          (params) => params.response.url === fixtureApiUrl && params.response.status === 200,
+          10_000
+        )
+        await session.call("Page.reload")
+        const reloadResponseReceived = await reloadConversationResponse
+        const reloadResponseBody = await getResponseBodyWithRetry(session, reloadResponseReceived.requestId)
+        const reloadBodyText = reloadResponseBody.base64Encoded ? Buffer.from(reloadResponseBody.body, "base64").toString("utf8") : reloadResponseBody.body
+        const reloadPayload = JSON.parse(reloadBodyText) as unknown
+        assert.deepEqual(
+          extractConversationMessages(reloadPayload),
+          frozenMessages,
+          "ChatGPT reload must emit the same exact conversation branch used by recovery"
+        )
+        assert.ok(rawServerContentParts(reloadPayload).includes(expectedResponse), "reload content.parts must preserve the exact Markdown response")
 
-    assert.ok(dom, "saved fixture assistant message must render in the current ChatGPT DOM")
-    assert.equal(dom.url, FIXTURE_URL)
-    assert.ok(dom.rawText.includes("LIVE_SUBAGENT_FIXTURE_BEGIN"))
-    assert.ok(dom.rawText.includes("LIVE_CTX_b9536da73e8e"))
-    assert.equal(dom.heading, "Live Fixture")
-    assert.deepEqual(dom.listItems, ["alpha", "beta"])
-    assert.match(dom.tableText.replace(/\s+/g, ""), /keyvaluefixtureok/)
-    assert.ok(dom.preBlocks.some((block) => block.includes("### Nested Markdown") && block.includes("LIVE_CTX_b9536da73e8e")))
-    assert.ok(dom.preBlocks.some((block) => block.includes("const answer: number = 42;")))
-    t.diagnostic("Current ChatGPT DOM still renders the saved fixture with recognizable heading/list/table/code structure")
+        await waitForFixtureDom(session)
+        const dom = await session.evaluate<DomSnapshot>(`(() => {
+          const messages = Array.from(document.querySelectorAll('[data-message-author-role="assistant"]'));
+          const element = messages.find((item) => (item.textContent ?? '').includes('LIVE_SUBAGENT_FIXTURE_BEGIN'));
+          if (!element) return null;
+          return {
+            url: location.href,
+            rawText: (element.textContent ?? '').trim(),
+            heading: (element.querySelector('h2')?.textContent ?? '').trim(),
+            listItems: Array.from(element.querySelectorAll('li')).map((item) => (item.textContent ?? '').trim()),
+            tableText: (element.querySelector('table')?.textContent ?? '').trim(),
+            preBlocks: Array.from(element.querySelectorAll('pre')).map((item) => (item.textContent ?? '').trim()),
+          };
+        })()`)
+
+        assert.ok(dom, "saved fixture assistant message must render in the current ChatGPT DOM")
+        assertConversationUrl(dom.url, conversationId, fixture.projectScoped)
+        assert.ok(dom.rawText.includes("LIVE_SUBAGENT_FIXTURE_BEGIN"))
+        assert.ok(dom.rawText.includes("LIVE_CTX_b9536da73e8e"))
+        assert.equal(dom.heading, "Live Fixture")
+        assert.deepEqual(dom.listItems, ["alpha", "beta"])
+        assert.match(dom.tableText.replace(/\s+/g, ""), /keyvaluefixtureok/)
+        assert.ok(dom.preBlocks.some((block) => block.includes("### Nested Markdown") && block.includes("LIVE_CTX_b9536da73e8e")))
+        assert.ok(dom.preBlocks.some((block) => block.includes("const answer: number = 42;")))
+      })
+    }
   }
 )
+
+function projectConversationUrl(conversationId: string): string {
+  const projectUrl = new URL(MCP_CONFIG.chatGpt.projectUrl)
+  if (projectUrl.pathname === "/") {
+    throw new Error("Project fixture requires MCP_CHATGPT_PROJECT_URL to point at a ChatGPT project.")
+  }
+  projectUrl.pathname = `${projectUrl.pathname.replace(/\/project\/?$/, "")}/c/${conversationId}`
+  projectUrl.search = ""
+  projectUrl.hash = ""
+  return projectUrl.toString()
+}
+
+function assertConversationUrl(url: string, conversationId: string, projectScoped: boolean): void {
+  const parsed = new URL(url)
+  assert.equal(parsed.hostname, "chatgpt.com")
+  assert.match(parsed.pathname, new RegExp(`/c/${escapeRegExp(conversationId)}$`))
+  if (projectScoped) assert.match(parsed.pathname, /^\/g\/g-p-[^/]+(?:-[^/]+)?\/c\//)
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+}
 
 class CdpSession {
   private nextId = 1
@@ -289,6 +342,10 @@ function rawServerContentParts(value: unknown): string[] {
 
 function asRecord(value: unknown): Record<string, unknown> | undefined {
   return value !== null && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : undefined
+}
+
+function stringValue(value: unknown): string | undefined {
+  return typeof value === "string" && value.length > 0 ? value : undefined
 }
 
 function delay(ms: number): Promise<void> {

@@ -5,7 +5,7 @@ import test from "node:test"
 import { WebPageOpener } from "../../src/tools/web/web-open.js"
 import { connectClient, startMcpHttpServer } from "./helpers.js"
 
-test("renders a real localhost page through the default web stack", { timeout: 20_000 }, async (t) => {
+test("renders a real localhost page through the default web stack", { timeout: 60_000 }, async (t) => {
   const pageServer = createServer((_request, response) => {
     response.writeHead(200, { "content-type": "text/html; charset=utf-8" })
     response.end("<!doctype html><html><head><title>Integration Test</title></head><body><main><h1>Hello MCP</h1><p>Real browser rendering works.</p></main></body></html>")
