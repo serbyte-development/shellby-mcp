@@ -4,8 +4,8 @@ import { join } from "node:path"
 import test from "node:test"
 
 import { MCP_CONFIG } from "../src/config.js"
-import { ParallelCommandScheduler } from "../src/tools/shell/parallel-runner.js"
-import { PersistentShellSession, ShellSessionError } from "../src/tools/shell/session.js"
+import { createParallelCommandScheduler } from "../src/tools/shell/parallel-runner.js"
+import { createShellSession, ShellSessionError } from "../src/tools/shell/session.js"
 import { isProcessAlive, pollToCompletion, quote, runToCompletion, waitForProcessExit } from "./helpers/shell.js"
 import { tempDir } from "./helpers/temp.js"
 
@@ -16,7 +16,7 @@ test("runs parallel command batches from one root with relative paths and retain
   const sharedDirectory = join(directory, "shared")
   await mkdir(apiDirectory, { recursive: true })
   await mkdir(sharedDirectory, { recursive: true })
-  const shell = new PersistentShellSession({ cwd: directory, parallelScheduler: new ParallelCommandScheduler(4) })
+  const shell = createShellSession({ cwd: directory, parallelScheduler: createParallelCommandScheduler(4) })
   t.after(() => shell.close())
 
   await runToCompletion(shell, "parallel-env", "export MCP_PARALLEL_RETAINED=present")
@@ -58,7 +58,7 @@ test("runs parallel command batches from one root with relative paths and retain
 test("runs at most four parallel children and queues the rest", { timeout: 10_000 }, async (t) => {
   const directory = await tempDir(t, "shell-mcp-parallel-limit-")
   const releaseFile = join(directory, "release")
-  const shell = new PersistentShellSession({ parallelScheduler: new ParallelCommandScheduler(4) })
+  const shell = createShellSession({ parallelScheduler: createParallelCommandScheduler(4) })
   t.after(() => shell.close())
 
   const command = Array.from({ length: 6 }, (_, index) => ["*** Run: .", `while [[ ! -e ${quote(releaseFile)} ]]; do sleep 0.01; done; printf ${index + 1}`])
@@ -85,7 +85,7 @@ test("runs at most four parallel children and queues the rest", { timeout: 10_00
 })
 
 test("keeps parallel siblings running when one command exits nonzero", { timeout: 10_000 }, async (t) => {
-  const shell = new PersistentShellSession({ parallelScheduler: new ParallelCommandScheduler(4) })
+  const shell = createShellSession({ parallelScheduler: createParallelCommandScheduler(4) })
   t.after(() => shell.close())
 
   const batch = await runToCompletion(shell, "parallel-nonzero", ["*** Run: .", "false", "*** Run: ./", "printf survived"].join("\n"))
@@ -103,8 +103,8 @@ test("keeps parallel siblings running when one command exits nonzero", { timeout
 })
 
 test("times out a hung parallel child without blocking its siblings", { timeout: 10_000 }, async (t) => {
-  const shell = new PersistentShellSession({
-    parallelScheduler: new ParallelCommandScheduler(4),
+  const shell = createShellSession({
+    parallelScheduler: createParallelCommandScheduler(4),
     parallelCommandTimeoutMs: 100,
   })
   t.after(() => shell.close())
@@ -126,8 +126,8 @@ test("times out a hung parallel child without blocking its siblings", { timeout:
 })
 
 test("labels permanently dropped parallel output", { timeout: 10_000 }, async (t) => {
-  const shell = new PersistentShellSession({
-    parallelScheduler: new ParallelCommandScheduler(4),
+  const shell = createShellSession({
+    parallelScheduler: createParallelCommandScheduler(4),
     commandTranscriptBytes: 7,
   })
   t.after(() => shell.close())
@@ -139,7 +139,7 @@ test("labels permanently dropped parallel output", { timeout: 10_000 }, async (t
 })
 
 test("inherits the batch cwd when a run directory is omitted and accepts overrides", { timeout: 10_000 }, async (t) => {
-  const shell = new PersistentShellSession({ cwd: "/tmp", parallelScheduler: new ParallelCommandScheduler(4) })
+  const shell = createShellSession({ cwd: "/tmp", parallelScheduler: createParallelCommandScheduler(4) })
   t.after(() => shell.close())
 
   const inheritedShellCwd = await runToCompletion(shell, "parallel-inherited-shell-cwd", ["*** Run:", `printf '%s' "$PWD"`].join("\n"))
@@ -175,6 +175,15 @@ test("inherits the batch cwd when a run directory is omitted and accepts overrid
     }),
     (error: unknown) => error instanceof ShellSessionError && error.code === "invalid_command" && /Expected '\*\*\* Run:'/.test(error.message)
   )
+  await assert.rejects(
+    shell.runCommand({
+      request_id: "parallel-marker-after-command",
+      command: ["pwd", "*** Run:", "printf should-not-run"].join("\n"),
+      wait_ms: 0,
+      max_output_tokens: MCP_CONFIG.shell.defaultOutputTokens,
+    }),
+    (error: unknown) => error instanceof ShellSessionError && error.code === "invalid_command" && /Batch syntax must start with '\*\*\* Run:'/.test(error.message)
+  )
   const mixed = await runToCompletion(
     shell,
     "parallel-mixed-directories",
@@ -191,7 +200,7 @@ test("inherits the batch cwd when a run directory is omitted and accepts overrid
 })
 
 test("accepts leading whitespace before a parallel batch", { timeout: 10_000 }, async (t) => {
-  const shell = new PersistentShellSession({ parallelScheduler: new ParallelCommandScheduler(4) })
+  const shell = createShellSession({ parallelScheduler: createParallelCommandScheduler(4) })
   t.after(() => shell.close())
 
   const batch = await runToCompletion(shell, "parallel-leading-whitespace", ["", "  *** Run: .", "printf first", "*** Run: ./", "printf second"].join("\n"))
@@ -209,7 +218,7 @@ test("accepts leading whitespace before a parallel batch", { timeout: 10_000 }, 
 test("reset kills running parallel children and retains the batch as reset", { timeout: 10_000 }, async (t) => {
   const directory = await tempDir(t, "shell-mcp-parallel-reset-")
   const pidFile = join(directory, "pid")
-  const shell = new PersistentShellSession({ parallelScheduler: new ParallelCommandScheduler(4) })
+  const shell = createShellSession({ parallelScheduler: createParallelCommandScheduler(4) })
   t.after(() => shell.close())
 
   const running = await shell.runCommand({
@@ -239,7 +248,7 @@ test("reset kills running parallel children and retains the batch as reset", { t
 test("does not let background descendants escape a completed parallel run", { timeout: 10_000 }, async (t) => {
   const directory = await tempDir(t, "shell-mcp-parallel-background-")
   const pidFile = join(directory, "pid")
-  const shell = new PersistentShellSession({ parallelScheduler: new ParallelCommandScheduler(4) })
+  const shell = createShellSession({ parallelScheduler: createParallelCommandScheduler(4) })
   t.after(() => shell.close())
 
   const batch = await runToCompletion(

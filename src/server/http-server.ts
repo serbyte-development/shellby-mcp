@@ -10,7 +10,7 @@ import type { ChatGptSubagentService } from "../tools/subagent/chatgpt-subagent-
 import { createMcpServer } from "./mcp-server.js"
 import { McpAuditLogger } from "./audit-log.js"
 import { PeekabooClient } from "../tools/computer/peekaboo.js"
-import { ShellSessionManager } from "../tools/shell/session-manager.js"
+import { createShellSessionManager, type ShellSessionManager } from "../tools/shell/session-manager.js"
 import { WebPageOpener } from "../tools/web/web-open.js"
 
 const MAX_AUDIT_RESPONSE_BODY_BYTES = 64 * 1024
@@ -44,7 +44,7 @@ export interface StartMcpServerOptions {
 export async function startMcpHttpServer(options: StartMcpServerOptions = {}): Promise<RunningMcpServer> {
   const host = options.host ?? MCP_CONFIG.host
   const port = options.port ?? MCP_CONFIG.port
-  const shells = options.shellManager ?? new ShellSessionManager()
+  const shells = options.shellManager ?? createShellSessionManager()
   const peekaboo = options.peekaboo ?? new PeekabooClient()
   const chatGptSubagents = options.chatGptSubagents ?? new ChatGptSubagentModule()
   const auditLogger = options.auditLogger

@@ -1,8 +1,8 @@
 import { MCP_CONFIG } from "../../src/config.js"
-import type { PersistentShellSession, ShellSnapshot } from "../../src/tools/shell/session.js"
+import type { ShellSession, ShellSnapshot } from "../../src/tools/shell/session.js"
 
 export async function runToCompletion(
-  shell: PersistentShellSession,
+  shell: ShellSession,
   requestId: string,
   command: string,
   options: { cwd?: string; maxOutputTokens?: number } = {}
@@ -35,7 +35,7 @@ export async function runToCompletion(
 }
 
 export async function pollToCompletion(
-  shell: PersistentShellSession,
+  shell: ShellSession,
   first: ShellSnapshot,
   maxOutputTokens = MCP_CONFIG.shell.defaultOutputTokens
 ): Promise<{ output: string; snapshot: ShellSnapshot }> {

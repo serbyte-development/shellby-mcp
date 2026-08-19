@@ -2,6 +2,9 @@ import { spawn, type ChildProcess } from "node:child_process"
 import { StringDecoder } from "node:string_decoder"
 
 import { utf8Chunk } from "../../utils.js"
+import type { ParallelCommandStatus } from "./shell-contracts.js"
+
+export type { ParallelCommandStatus } from "./shell-contracts.js"
 
 const DEFAULT_PARALLEL_COMMAND_LIMIT = 4
 export const DEFAULT_PARALLEL_COMMAND_TIMEOUT_MS = 10 * 60 * 1000
@@ -12,8 +15,6 @@ export interface ParallelCommandSpec {
   command: string
   path: string
 }
-
-export type ParallelCommandStatus = "queued" | "running" | "completed" | "timed_out" | "failed" | "reset"
 
 export interface ParallelCommandExecutionResult {
   status: Extract<ParallelCommandStatus, "completed" | "timed_out" | "failed" | "reset">
@@ -40,17 +41,20 @@ interface QueuedTask<T> {
   onAbort?: () => void
 }
 
-export class ParallelCommandScheduler {
-  private active = 0
-  private readonly queue: QueuedTask<unknown>[] = []
+export interface ParallelCommandScheduler {
+  readonly maximumConcurrency: number
+  run<T>(task: () => Promise<T>, signal?: AbortSignal): Promise<T>
+}
 
-  constructor(readonly maximumConcurrency = DEFAULT_PARALLEL_COMMAND_LIMIT) {
-    if (!Number.isSafeInteger(maximumConcurrency) || maximumConcurrency < 1) {
-      throw new Error("maximumConcurrency must be a positive safe integer.")
-    }
+export function createParallelCommandScheduler(maximumConcurrency = DEFAULT_PARALLEL_COMMAND_LIMIT): ParallelCommandScheduler {
+  if (!Number.isSafeInteger(maximumConcurrency) || maximumConcurrency < 1) {
+    throw new Error("maximumConcurrency must be a positive safe integer.")
   }
 
-  run<T>(task: () => Promise<T>, signal?: AbortSignal): Promise<T> {
+  let active = 0
+  const queue: QueuedTask<unknown>[] = []
+
+  function run<T>(task: () => Promise<T>, signal?: AbortSignal): Promise<T> {
     if (signal?.aborted) return Promise.reject(new ParallelCommandAbortedError())
 
     return new Promise<T>((resolve, reject) => {
@@ -62,40 +66,42 @@ export class ParallelCommandScheduler {
       }
       if (signal) {
         queued.onAbort = () => {
-          const index = this.queue.indexOf(queued as QueuedTask<unknown>)
+          const index = queue.indexOf(queued as QueuedTask<unknown>)
           if (index < 0) return
-          this.queue.splice(index, 1)
+          queue.splice(index, 1)
           reject(new ParallelCommandAbortedError())
         }
         signal.addEventListener("abort", queued.onAbort, { once: true })
       }
-      this.queue.push(queued as QueuedTask<unknown>)
-      this.pump()
+      queue.push(queued as QueuedTask<unknown>)
+      pump()
     })
   }
 
-  private pump(): void {
-    while (this.active < this.maximumConcurrency && this.queue.length > 0) {
-      const queued = this.queue.shift()!
+  function pump(): void {
+    while (active < maximumConcurrency && queue.length > 0) {
+      const queued = queue.shift()!
       if (queued.onAbort) queued.signal?.removeEventListener("abort", queued.onAbort)
       if (queued.signal?.aborted) {
         queued.reject(new ParallelCommandAbortedError())
         continue
       }
 
-      this.active += 1
+      active += 1
       void queued
         .task()
         .then(queued.resolve, queued.reject)
         .finally(() => {
-          this.active -= 1
-          this.pump()
+          active -= 1
+          pump()
         })
     }
   }
+
+  return { maximumConcurrency, run }
 }
 
-export const processParallelCommandScheduler = new ParallelCommandScheduler()
+export const processParallelCommandScheduler = createParallelCommandScheduler()
 
 export class ParallelCommandAbortedError extends Error {
   constructor() {
@@ -106,8 +112,14 @@ export class ParallelCommandAbortedError extends Error {
 
 export function parseParallelCommandBatch(value: string): ParallelCommandSpec[] | null {
   const normalized = value.replaceAll("\r\n", "\n").trimStart()
-  if (!normalized.startsWith("*** Run")) return null
   const lines = normalized.split("\n")
+  if (!normalized.startsWith("*** Run")) {
+    const directiveIndex = lines.findIndex((line) => parseRunMarker(line) !== null)
+    if (directiveIndex >= 0) {
+      throw new Error(`Batch syntax must start with '*** Run:'. Found a batch directive on line ${directiveIndex + 1}.`)
+    }
+    return null
+  }
 
   const commands: ParallelCommandSpec[] = []
   let index = 0
@@ -136,7 +148,7 @@ export function executeParallelCommand(input: ExecuteParallelCommandInput): Prom
   }
 
   return new Promise((resolve) => {
-    const output = new BoundedOutput(input.outputLimitBytes)
+    const output = createBoundedOutput(input.outputLimitBytes)
     const stdoutDecoder = new StringDecoder("utf8")
     const stderrDecoder = new StringDecoder("utf8")
     let child: ChildProcess
@@ -228,26 +240,34 @@ function isRunDirective(line: string): boolean {
   return line.startsWith("*** Run")
 }
 
-class BoundedOutput {
-  value = ""
-  capturedBytes = 0
-  droppedBytes = 0
+function createBoundedOutput(maxBytes: number) {
+  let value = ""
+  let capturedBytes = 0
+  let droppedBytes = 0
 
-  constructor(private readonly maxBytes: number) {}
-
-  append(chunk: string): void {
+  function append(chunk: string): void {
     if (chunk.length === 0) return
-    const remaining = Math.max(0, this.maxBytes - this.capturedBytes)
+    const remaining = Math.max(0, maxBytes - capturedBytes)
     const bounded = utf8Chunk(chunk, 0, remaining)
     const captured = bounded.value
     const dropped = chunk.slice(bounded.nextOffset)
     if (captured.length > 0) {
-      this.value += captured
-      this.capturedBytes += Buffer.byteLength(captured, "utf8")
+      value += captured
+      capturedBytes += Buffer.byteLength(captured, "utf8")
     }
     if (dropped.length > 0) {
-      this.droppedBytes = Math.min(Number.MAX_SAFE_INTEGER, this.droppedBytes + Buffer.byteLength(dropped, "utf8"))
+      droppedBytes = Math.min(Number.MAX_SAFE_INTEGER, droppedBytes + Buffer.byteLength(dropped, "utf8"))
     }
+  }
+
+  return {
+    append,
+    get value() {
+      return value
+    },
+    get droppedBytes() {
+      return droppedBytes
+    },
   }
 }
 

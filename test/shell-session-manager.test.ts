@@ -5,12 +5,12 @@ import { join } from "node:path"
 import test from "node:test"
 
 import { MCP_CONFIG } from "../src/config.js"
-import { PersistentShellSession } from "../src/tools/shell/session.js"
-import { DEFAULT_SHELL_ID, ShellSessionManager } from "../src/tools/shell/session-manager.js"
+import { createShellSession, type ShellSession } from "../src/tools/shell/session.js"
+import { DEFAULT_SHELL_ID, createShellSessionManager } from "../src/tools/shell/session-manager.js"
 import { runToCompletion, waitForProcessExit } from "./helpers/shell.js"
 
 test("creates named shells lazily and keeps their state isolated", async (t) => {
-  const manager = new ShellSessionManager()
+  const manager = createShellSessionManager()
   t.after(() => manager.close())
 
   assert.deepEqual(manager.listShellIds(), [DEFAULT_SHELL_ID])
@@ -46,7 +46,7 @@ test("creates named shells lazily and keeps their state isolated", async (t) => 
 
 test("pressure-evicts the least recently used non-busy named shell", async (t) => {
   let now = 0
-  const manager = new ShellSessionManager({ maxShells: 3, now: () => now })
+  const manager = createShellSessionManager({ maxShells: 3, now: () => now })
   t.after(() => manager.close())
 
   await manager.getOrCreate("alpha")
@@ -63,7 +63,7 @@ test("pressure-evicts the least recently used non-busy named shell", async (t) =
 
 test("lists shells without refreshing their idle timers", async (t) => {
   let now = 0
-  const manager = new ShellSessionManager({
+  const manager = createShellSessionManager({
     idleTimeoutMs: 100,
     now: () => now,
   })
@@ -93,7 +93,7 @@ test("lists shells without refreshing their idle timers", async (t) => {
 })
 
 test("closes named shells and immediately releases their slot", async (t) => {
-  const manager = new ShellSessionManager({ maxShells: 2 })
+  const manager = createShellSessionManager({ maxShells: 2 })
   t.after(() => manager.close())
 
   const alpha = await manager.getOrCreate("alpha")
@@ -109,7 +109,7 @@ test("closes named shells and immediately releases their slot", async (t) => {
 })
 
 test("protects the default shell from close while allowing reset", async (t) => {
-  const manager = new ShellSessionManager()
+  const manager = createShellSessionManager()
   t.after(() => manager.close())
 
   await assert.rejects(
@@ -123,7 +123,7 @@ test("protects the default shell from close while allowing reset", async (t) => 
 })
 
 test("closing a named shell terminates its active foreground command", async (t) => {
-  const manager = new ShellSessionManager()
+  const manager = createShellSessionManager()
   t.after(() => manager.close())
   const alpha = await manager.getOrCreate("alpha")
 
@@ -145,7 +145,7 @@ test("closing a named shell terminates its active foreground command", async (t)
 
 test("evicts idle named shells while keeping the default shell", async (t) => {
   let now = 0
-  const manager = new ShellSessionManager({
+  const manager = createShellSessionManager({
     idleTimeoutMs: 100,
     now: () => now,
   })
@@ -168,7 +168,7 @@ test("evicts idle named shells while keeping the default shell", async (t) => {
 
 test("does not evict a named shell while it has active work", async (t) => {
   let now = 0
-  const manager = new ShellSessionManager({
+  const manager = createShellSessionManager({
     idleTimeoutMs: 100,
     now: () => now,
   })
@@ -204,10 +204,10 @@ test("does not evict a named shell while it has active work", async (t) => {
 })
 
 test("closes every created shell", async () => {
-  const created: PersistentShellSession[] = []
-  const manager = new ShellSessionManager({
+  const created: ShellSession[] = []
+  const manager = createShellSessionManager({
     createShell: () => {
-      const shell = new PersistentShellSession()
+      const shell = createShellSession()
       created.push(shell)
       return shell
     },
@@ -227,7 +227,7 @@ test("closes every created shell", async () => {
 
 test("restores cwd and exported environment after idle hibernation", async (t) => {
   let now = 0
-  const manager = new ShellSessionManager({ idleTimeoutMs: 100, cacheTimeoutMs: 10_000, now: () => now })
+  const manager = createShellSessionManager({ idleTimeoutMs: 100, cacheTimeoutMs: 10_000, now: () => now })
   t.after(() => manager.close())
 
   const first = await manager.getOrCreate("alpha")
@@ -242,7 +242,7 @@ test("restores cwd and exported environment after idle hibernation", async (t) =
 })
 
 test("shell_close discards live and cached state", async (t) => {
-  const manager = new ShellSessionManager({ cacheTimeoutMs: 10_000 })
+  const manager = createShellSessionManager({ cacheTimeoutMs: 10_000 })
   t.after(() => manager.close())
 
   const first = await manager.getOrCreate("alpha")
@@ -258,7 +258,7 @@ test("shell_close discards live and cached state", async (t) => {
 
 test("expires cached logical shell state after cache TTL", async (t) => {
   let now = 0
-  const manager = new ShellSessionManager({ idleTimeoutMs: 100, cacheTimeoutMs: 1_000, now: () => now })
+  const manager = createShellSessionManager({ idleTimeoutMs: 100, cacheTimeoutMs: 1_000, now: () => now })
   t.after(() => manager.close())
 
   const alpha = await manager.getOrCreate("alpha")
@@ -276,7 +276,7 @@ test("expires cached logical shell state after cache TTL", async (t) => {
 })
 
 test("never pressure-evicts busy shells and blocks when no evictable slot exists", async (t) => {
-  const manager = new ShellSessionManager({ maxShells: 2 })
+  const manager = createShellSessionManager({ maxShells: 2 })
   t.after(() => manager.close())
   const alpha = await manager.getOrCreate("alpha")
   const running = await alpha.runCommand({
@@ -296,7 +296,7 @@ test("never pressure-evicts busy shells and blocks when no evictable slot exists
 
 test("pressure eviction skips a busy older shell and evicts the next LRU shell", async (t) => {
   let now = 0
-  const manager = new ShellSessionManager({ maxShells: 3, now: () => now })
+  const manager = createShellSessionManager({ maxShells: 3, now: () => now })
   t.after(() => manager.close())
   const alpha = await manager.getOrCreate("alpha")
   now = 10
@@ -317,7 +317,7 @@ test("pressure eviction skips a busy older shell and evicts the next LRU shell",
 
 test("hibernation restores only cwd and exported environment and terminates background processes", async (t) => {
   let now = 0
-  const manager = new ShellSessionManager({ idleTimeoutMs: 100, cacheTimeoutMs: 10_000, now: () => now })
+  const manager = createShellSessionManager({ idleTimeoutMs: 100, cacheTimeoutMs: 10_000, now: () => now })
   t.after(() => manager.close())
   const alpha = await manager.getOrCreate("alpha")
   const prepared = await runToCompletion(
@@ -343,7 +343,7 @@ test("hibernation restores only cwd and exported environment and terminates back
 
 test("resetting a cached shell discards cached cwd and environment", async (t) => {
   let now = 0
-  const manager = new ShellSessionManager({ idleTimeoutMs: 100, cacheTimeoutMs: 10_000, now: () => now })
+  const manager = createShellSessionManager({ idleTimeoutMs: 100, cacheTimeoutMs: 10_000, now: () => now })
   t.after(() => manager.close())
   const alpha = await manager.getOrCreate("alpha")
   await runToCompletion(alpha, "prepare-reset-cache", "cd /tmp && export RESET_CACHE_VALUE=kept")
@@ -361,7 +361,7 @@ test("resetting a cached shell discards cached cwd and environment", async (t) =
 test("invalid cached cwd falls back to a clean baseline instead of restart-looping", async (t) => {
   let now = 0
   const temporaryCwd = await mkdtemp(join(tmpdir(), "mcp-cached-cwd-"))
-  const manager = new ShellSessionManager({ idleTimeoutMs: 100, cacheTimeoutMs: 10_000, now: () => now })
+  const manager = createShellSessionManager({ idleTimeoutMs: 100, cacheTimeoutMs: 10_000, now: () => now })
   t.after(() => manager.close())
   const alpha = await manager.getOrCreate("alpha")
   await runToCompletion(alpha, "prepare-missing-cwd", `cd ${JSON.stringify(temporaryCwd)} && export MISSING_CWD_VALUE=kept`)
@@ -376,15 +376,15 @@ test("invalid cached cwd falls back to a clean baseline instead of restart-loopi
 })
 
 test("keeps a live shell when recoverable-state capture fails during pressure eviction", async (t) => {
-  class CaptureFailureShell extends PersistentShellSession {
-    override async captureRecoverableState(): Promise<never> {
-      throw new Error("capture failed")
-    }
-  }
-
-  const manager = new ShellSessionManager({
+  const manager = createShellSessionManager({
     maxShells: 2,
-    createShell: () => new CaptureFailureShell(),
+    createShell: () => {
+      const shell = createShellSession()
+      shell.captureRecoverableState = async () => {
+        throw new Error("capture failed")
+      }
+      return shell
+    },
   })
   t.after(() => manager.close())
 

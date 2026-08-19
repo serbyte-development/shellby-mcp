@@ -7,8 +7,8 @@ import test from "node:test"
 
 import { LATEST_PROTOCOL_VERSION } from "@modelcontextprotocol/client"
 
-import { PersistentShellSession } from "../../src/tools/shell/session.js"
-import { ShellSessionManager } from "../../src/tools/shell/session-manager.js"
+import { createShellSession } from "../../src/tools/shell/session.js"
+import { createShellSessionManager } from "../../src/tools/shell/session-manager.js"
 import { connectClient, startMcpHttpServer } from "./helpers.js"
 
 test("applies real patches and reports partial native changes through MCP", { timeout: 20_000 }, async (t) => {
@@ -78,10 +78,10 @@ test("aborting an MCP request force-kills a SIGTERM-resistant apply_patch", { sk
   await writeFile(executable, "#!/bin/sh\ntrap '' TERM\nprintf '%s\\n' \"$$\" > \"$PWD/patch.pid\"\ncat >/dev/null\nwhile :; do sleep 1; done\n")
   await import("node:fs/promises").then(({ chmod }) => chmod(executable, 0o755))
 
-  const shell = new PersistentShellSession({ cwd: directory })
+  const shell = createShellSession({ cwd: directory })
   const running = await startMcpHttpServer({
     port: 0,
-    shellManager: new ShellSessionManager({ defaultShell: shell }),
+    shellManager: createShellSessionManager({ defaultShell: shell }),
     applyPatchExecutable: executable,
   })
   let patchPid: number | undefined

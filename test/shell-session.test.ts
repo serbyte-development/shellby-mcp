@@ -6,12 +6,12 @@ import test from "node:test"
 
 import { MCP_CONFIG } from "../src/config.js"
 import { countTokens } from "../src/tokenizer.js"
-import { PersistentShellSession, ShellSessionError, type ShellSnapshot } from "../src/tools/shell/session.js"
+import { createShellSession, ShellSessionError, type ShellSnapshot } from "../src/tools/shell/session.js"
 import { isProcessAlive, pollToCompletion, quote, runToCompletion, waitForProcessExit } from "./helpers/shell.js"
 
 test("retains cwd and environment across commands", { timeout: 10_000 }, async (t) => {
   const directory = await mkdtemp(join(tmpdir(), "shell-mcp-state-"))
-  const shell = new PersistentShellSession()
+  const shell = createShellSession()
   t.after(async () => {
     await shell.close()
     await rm(directory, { recursive: true, force: true })
@@ -27,7 +27,7 @@ test("retains cwd and environment across commands", { timeout: 10_000 }, async (
 
 test("starts in an explicit cwd, reports it, and retains it", { timeout: 10_000 }, async (t) => {
   const directory = await mkdtemp(join(tmpdir(), "shell-mcp-explicit-cwd-"))
-  const shell = new PersistentShellSession()
+  const shell = createShellSession()
   t.after(async () => {
     await shell.close()
     await rm(directory, { recursive: true, force: true })
@@ -48,7 +48,7 @@ test("resolves relative explicit cwd from the retained shell cwd", { timeout: 10
   const directory = await mkdtemp(join(tmpdir(), "shell-mcp-relative-cwd-"))
   const childDirectory = join(directory, "child")
   await mkdir(childDirectory)
-  const shell = new PersistentShellSession({ cwd: directory })
+  const shell = createShellSession({ cwd: directory })
   t.after(async () => {
     await shell.close()
     await rm(directory, { recursive: true, force: true })
@@ -67,7 +67,7 @@ test("rejects invalid explicit working directories", { timeout: 10_000 }, async 
   const directory = await mkdtemp(join(tmpdir(), "shell-mcp-invalid-cwd-"))
   const file = join(directory, "file.txt")
   await writeFile(file, "not a directory")
-  const shell = new PersistentShellSession()
+  const shell = createShellSession()
   t.after(async () => {
     await shell.close()
     await rm(directory, { recursive: true, force: true })
@@ -99,7 +99,7 @@ test("rejects invalid explicit working directories", { timeout: 10_000 }, async 
 test("isolates protocol stdin and restores redirected descriptors", { timeout: 10_000 }, async (t) => {
   const directory = await mkdtemp(join(tmpdir(), "shell-mcp-fds-"))
   const redirected = join(directory, "redirected.txt")
-  const shell = new PersistentShellSession()
+  const shell = createShellSession()
   t.after(async () => {
     await shell.close()
     await rm(directory, { recursive: true, force: true })
@@ -119,7 +119,7 @@ test("isolates protocol stdin and restores redirected descriptors", { timeout: 1
 test("deduplicates retries and rejects request id conflicts", { timeout: 10_000 }, async (t) => {
   const directory = await mkdtemp(join(tmpdir(), "shell-mcp-dedupe-"))
   const outputFile = join(directory, "count.txt")
-  const shell = new PersistentShellSession()
+  const shell = createShellSession()
   t.after(async () => {
     await shell.close()
     await rm(directory, { recursive: true, force: true })
@@ -142,7 +142,7 @@ test("deduplicates retries and rejects request id conflicts", { timeout: 10_000 
 })
 
 test("does not leak errexit into later commands", { timeout: 10_000 }, async (t) => {
-  const shell = new PersistentShellSession()
+  const shell = createShellSession()
   t.after(() => shell.close())
 
   await runToCompletion(shell, "enable-errexit", "set -e")
@@ -153,7 +153,7 @@ test("does not leak errexit into later commands", { timeout: 10_000 }, async (t)
 })
 
 test("keeps a completed retry bounded after later commands", { timeout: 10_000 }, async (t) => {
-  const shell = new PersistentShellSession()
+  const shell = createShellSession()
   t.after(() => shell.close())
 
   const first = await runToCompletion(shell, "bounded-retry", "printf first")
@@ -171,7 +171,7 @@ test("keeps a completed retry bounded after later commands", { timeout: 10_000 }
 })
 
 test("admits only one concurrent command without corrupting the active record", { timeout: 10_000 }, async (t) => {
-  const shell = new PersistentShellSession()
+  const shell = createShellSession()
   t.after(() => shell.close())
 
   const commands = new Map([
@@ -204,7 +204,7 @@ test("admits only one concurrent command without corrupting the active record", 
 })
 
 test("polls bounded output without duplicates", { timeout: 10_000 }, async (t) => {
-  const shell = new PersistentShellSession()
+  const shell = createShellSession()
   t.after(() => shell.close())
 
   const expected = "0".repeat(2_000)
@@ -215,7 +215,7 @@ test("polls bounded output without duplicates", { timeout: 10_000 }, async (t) =
 })
 
 test("caps o200k tokens without splitting characters and allows an override", { timeout: 10_000 }, async (t) => {
-  const shell = new PersistentShellSession()
+  const shell = createShellSession()
   t.after(() => shell.close())
 
   const expected = "🙂éA".repeat(100)
@@ -248,7 +248,7 @@ test("caps o200k tokens without splitting characters and allows an override", { 
 })
 
 test("drops output beyond the per-command transcript ceiling", { timeout: 10_000 }, async (t) => {
-  const shell = new PersistentShellSession({
+  const shell = createShellSession({
     commandTranscriptBytes: 7,
   })
   t.after(() => shell.close())
@@ -265,7 +265,7 @@ test("drops output beyond the per-command transcript ceiling", { timeout: 10_000
 })
 
 test("keeps surrogate pairs intact while scanning for a delayed marker", { timeout: 10_000 }, async (t) => {
-  const shell = new PersistentShellSession({
+  const shell = createShellSession({
     commandTranscriptBytes: 4,
   })
   t.after(() => shell.close())
@@ -278,7 +278,7 @@ test("keeps surrogate pairs intact while scanning for a delayed marker", { timeo
 })
 
 test("drops a whole surrogate pair at the rolling transcript boundary", { timeout: 10_000 }, async (t) => {
-  const shell = new PersistentShellSession({
+  const shell = createShellSession({
     transcriptLimit: 1,
   })
   t.after(() => shell.close())
@@ -292,7 +292,7 @@ test("drops a whole surrogate pair at the rolling transcript boundary", { timeou
 })
 
 test("preserves rolling transcript cursors across repeated overflow", { timeout: 10_000 }, async (t) => {
-  const shell = new PersistentShellSession({
+  const shell = createShellSession({
     transcriptLimit: 64,
     commandTranscriptBytes: 512,
   })
@@ -319,7 +319,7 @@ test("preserves rolling transcript cursors across repeated overflow", { timeout:
 })
 
 test("contains readonly wrapper variables to one command", { timeout: 10_000 }, async (t) => {
-  const shell = new PersistentShellSession()
+  const shell = createShellSession()
   t.after(() => shell.close())
 
   const poisoned = await runToCompletion(shell, "readonly-wrapper-variable", "readonly __mcp_command; printf contained")
@@ -331,7 +331,7 @@ test("contains readonly wrapper variables to one command", { timeout: 10_000 }, 
 })
 
 test("waits for a quick command to complete instead of returning on its first output", { timeout: 10_000 }, async (t) => {
-  const shell = new PersistentShellSession()
+  const shell = createShellSession()
   t.after(() => shell.close())
 
   const result = await shell.runCommand({
@@ -347,7 +347,7 @@ test("waits for a quick command to complete instead of returning on its first ou
 })
 
 test("keeps completed command polling bounded after later commands", { timeout: 10_000 }, async (t) => {
-  const shell = new PersistentShellSession()
+  const shell = createShellSession()
   t.after(() => shell.close())
 
   const first = await runToCompletion(shell, "poll-boundary-first", "printf first")
@@ -365,7 +365,7 @@ test("keeps completed command polling bounded after later commands", { timeout: 
 })
 
 test("rejects poll cursors before the requested command", { timeout: 10_000 }, async (t) => {
-  const shell = new PersistentShellSession()
+  const shell = createShellSession()
   t.after(() => shell.close())
 
   await runToCompletion(shell, "poll-before-first", "printf first-secret")
@@ -383,7 +383,7 @@ test("rejects poll cursors before the requested command", { timeout: 10_000 }, a
 })
 
 test("wakes a foreground long-poll when delayed output arrives", { timeout: 10_000 }, async (t) => {
-  const shell = new PersistentShellSession()
+  const shell = createShellSession()
   t.after(() => shell.close())
 
   const running = await shell.runCommand({
@@ -409,7 +409,7 @@ test("wakes a foreground long-poll when delayed output arrives", { timeout: 10_0
 })
 
 test("handles multiline commands, quotes, and redirected background output", { timeout: 10_000 }, async (t) => {
-  const shell = new PersistentShellSession()
+  const shell = createShellSession()
   t.after(() => shell.close())
 
   const quoted = await runToCompletion(shell, "quoted", ["value=$(cat <<'VALUE_EOF'", "a'b", "VALUE_EOF", ")", `printf '%s' "$value"`].join("\n"))
@@ -432,7 +432,7 @@ test("handles multiline commands, quotes, and redirected background output", { t
 })
 
 test("reports shell loss and automatically starts a clean generation", { timeout: 10_000 }, async (t) => {
-  const shell = new PersistentShellSession()
+  const shell = createShellSession()
   t.after(() => shell.close())
 
   await runToCompletion(shell, "before-exit", "printf initial")
@@ -445,7 +445,7 @@ test("reports shell loss and automatically starts a clean generation", { timeout
 })
 
 test("recovers when process-group cleanup is denied", { timeout: 10_000 }, async (t) => {
-  const shell = new PersistentShellSession()
+  const shell = createShellSession()
   t.after(() => shell.close())
 
   const originalKill = process.kill
@@ -474,7 +474,7 @@ test("recovers when process-group cleanup is denied", { timeout: 10_000 }, async
 })
 
 test("reset cancels a stuck command and creates a clean shell", { timeout: 10_000 }, async (t) => {
-  const shell = new PersistentShellSession()
+  const shell = createShellSession()
   t.after(() => shell.close())
 
   const running = await shell.runCommand({
@@ -508,7 +508,7 @@ test("reset kills a TERM-resistant background descendant", { timeout: 10_000 }, 
 
   const directory = await mkdtemp(join(tmpdir(), "shell-mcp-resistant-"))
   const readyFile = join(directory, "ready")
-  const shell = new PersistentShellSession()
+  const shell = createShellSession()
   let descendantPid: number | undefined
   // eslint-disable-next-line prefer-const -- assigned after cleanup registration so early failures can still clean up the old process group.
   let oldProcessGroup: number | undefined

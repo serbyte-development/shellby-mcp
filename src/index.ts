@@ -7,8 +7,8 @@ import { UnhingedAgentAuthStore } from "./auth/auth.js"
 import { MCP_CONFIG } from "./config.js"
 import { ChatGptSubagentModule } from "./tools/subagent/chatgpt-subagent.js"
 import { McpAuditLogger } from "./server/audit-log.js"
-import { PersistentShellSession } from "./tools/shell/session.js"
-import { ShellSessionManager } from "./tools/shell/session-manager.js"
+import { createShellSession } from "./tools/shell/session.js"
+import { createShellSessionManager } from "./tools/shell/session-manager.js"
 import { startMcpHttpServer } from "./server/http-server.js"
 
 const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..")
@@ -28,8 +28,8 @@ const chatGptSubagents = new ChatGptSubagentModule({
   },
 })
 
-const shells = new ShellSessionManager({
-  createShell: (initialState) => new PersistentShellSession({ cwd, initialState }),
+const shells = createShellSessionManager({
+  createShell: (initialState) => createShellSession({ cwd, initialState }),
 })
 
 const running = await startMcpHttpServer({

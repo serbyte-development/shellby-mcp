@@ -1,13 +1,10 @@
-import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process"
-import { createHash, randomUUID } from "node:crypto"
+import { createHash } from "node:crypto"
 import { statSync } from "node:fs"
 import { isAbsolute, resolve } from "node:path"
-import { StringDecoder } from "node:string_decoder"
 
 import { MCP_CONFIG } from "../../config.js"
-import { tokenChunk } from "../../tokenizer.js"
 import { positiveInteger, utf8Chunk } from "../../utils.js"
-import type { ShellPollInput, ShellResetInput, ShellRunInput } from "./shell-contracts.js"
+import { type ShellCommandStatus, type ShellPollInput, type ShellResetInput, type ShellResetOutput, type ShellRunInput } from "./shell-contracts.js"
 import {
   DEFAULT_PARALLEL_COMMAND_TIMEOUT_MS,
   ParallelCommandAbortedError,
@@ -19,12 +16,15 @@ import {
   parseParallelCommandBatch,
   processParallelCommandScheduler,
 } from "./parallel-runner.js"
+import { createShellProcess, type ShellProcessCommandResult, type ShellProcessContext, type ShellRecoverableState } from "./shell-process.js"
+import { createTranscriptBuffer, type TranscriptBuffer } from "./transcript.js"
+import { createUpdateSignal } from "./update-signal.js"
 
-type CommandStatus = "running" | "completed" | "shell_exited" | "reset"
+export type { ShellRecoverableState } from "./shell-process.js"
 
 export interface ShellSnapshot extends Record<string, unknown> {
   request_id: string
-  status: CommandStatus
+  status: ShellCommandStatus
   exit_code: number | null
   cwd: string
   output: string
@@ -68,9 +68,8 @@ interface CommandRecord {
   cwd: string
   startCursor: number
   endCursor: number | null
-  status: CommandStatus
+  status: ShellCommandStatus
   exitCode: number | null
-  markerPrefix: string
   capturedOutputBytes: number
   droppedOutputBytes: number
 }
@@ -91,49 +90,14 @@ interface ParallelBatchRecord {
   cwd: string
   transcript: TranscriptBuffer
   endCursor: number | null
-  status: Extract<CommandStatus, "running" | "completed" | "reset">
+  status: Extract<ShellCommandStatus, "running" | "completed" | "reset">
   runs: ParallelRunRecord[]
   remainingRuns: number
   abortController: AbortController
   tasks: Promise<void>[]
 }
 
-export interface ResetResult extends Record<string, unknown> {
-  shell_generation: number
-  state_lost: true
-  status: "ready"
-}
-
-interface ReadyState {
-  child: ChildProcessWithoutNullStreams
-  marker: string
-  resolve: () => void
-  reject: (error: Error) => void
-  timer: NodeJS.Timeout
-}
-
-interface ContextCaptureState {
-  child: ChildProcessWithoutNullStreams
-  startMarker: string
-  endMarker: string
-  started: boolean
-  value: string
-  resolve: (context: ShellContext) => void
-  reject: (error: Error) => void
-  timer: NodeJS.Timeout
-}
-
-interface ShellContext {
-  cwd: string
-  env: NodeJS.ProcessEnv
-}
-
-export interface ShellRecoverableState {
-  cwd: string
-  env: NodeJS.ProcessEnv
-}
-
-type StopReason = "reset" | "close"
+export type ResetResult = ShellResetOutput
 
 export class ShellSessionError extends Error {
   constructor(
@@ -154,229 +118,94 @@ export class ShellSessionError extends Error {
   }
 }
 
-class TranscriptBuffer {
-  private static readonly COMPACT_THRESHOLD = 64 * 1024
-  private value = ""
-  private baseOffset = 0
-  private retainedStart = 0
-  private readonly compactThreshold: number
-
-  constructor(private readonly maxLength: number) {
-    this.compactThreshold = Math.min(maxLength, TranscriptBuffer.COMPACT_THRESHOLD)
-  }
-
-  get start(): number {
-    return this.baseOffset + this.retainedStart
-  }
-
-  get end(): number {
-    return this.baseOffset + this.value.length
-  }
-
-  append(chunk: string): void {
-    if (chunk.length === 0) return
-
-    this.value += chunk
-    const overflow = this.value.length - this.retainedStart - this.maxLength
-    if (overflow > 0) {
-      let nextStart = this.retainedStart + overflow
-      if (nextStart < this.value.length && isHighSurrogate(this.value.charCodeAt(nextStart - 1)) && isLowSurrogate(this.value.charCodeAt(nextStart))) {
-        nextStart += 1
-      }
-      this.retainedStart = nextStart
-    }
-
-    if (this.retainedStart >= this.compactThreshold) {
-      this.value = this.value.slice(this.retainedStart)
-      this.baseOffset += this.retainedStart
-      this.retainedStart = 0
-    }
-  }
-
-  read(
-    cursor: number,
-    maxTokens: number,
-    upperBound?: number
-  ): {
-    output: string
-    tokenCount: number
-    nextCursor: number
-    hasMore: boolean
-    cursorExpired: boolean
-  } {
-    const availableEnd = Math.min(upperBound ?? this.end, this.end)
-    const cursorExpired = cursor < this.start
-
-    if (availableEnd <= this.start) {
-      return {
-        output: "",
-        tokenCount: 0,
-        nextCursor: availableEnd,
-        hasMore: false,
-        cursorExpired,
-      }
-    }
-
-    const effectiveCursor = Math.min(Math.max(cursor, this.start), availableEnd)
-    const localStart = effectiveCursor - this.baseOffset
-    const localEnd = availableEnd - this.baseOffset
-    const bounded = tokenChunk(this.value, localStart, maxTokens, localEnd)
-    const output = bounded.value
-    const nextCursor = this.baseOffset + bounded.nextOffset
-
-    return {
-      output,
-      tokenCount: bounded.tokenCount,
-      nextCursor,
-      hasMore: bounded.hasMore,
-      cursorExpired,
-    }
-  }
+export interface ShellSession {
+  readonly initialCwd: string
+  readonly hasActiveWork: boolean
+  start(): Promise<void>
+  captureRecoverableState(): Promise<ShellRecoverableState>
+  runCommand(input: RunCommandInput): Promise<ShellSnapshot>
+  pollCommand(input: PollCommandInput): Promise<ShellSnapshot>
+  reset(input: ResetShellInput): Promise<ResetResult>
+  close(): Promise<void>
 }
 
-export class PersistentShellSession {
-  private readonly shellPath: string
-  private readonly cwd: string
-  private readonly env: NodeJS.ProcessEnv
-  private readonly transcriptLimit: number
-  private readonly transcript: TranscriptBuffer
-  private readonly commandTranscriptBytes: number
-  private readonly recordLimit: number
-  private readonly parallelCommandTimeoutMs: number
-  private readonly parallelScheduler: ParallelCommandScheduler
-  private readonly records = new Map<string, CommandRecord>()
-  private readonly parallelRecords = new Map<string, ParallelBatchRecord>()
-  private readonly stopReasons = new WeakMap<ChildProcessWithoutNullStreams, StopReason>()
-  private readonly handledChildren = new WeakSet<ChildProcessWithoutNullStreams>()
-  private readonly updateWaiters = new Set<() => void>()
+export function createShellSession(options: ShellSessionOptions = {}): ShellSession {
+  const transcriptLimit = positiveInteger(options.transcriptLimit, MCP_CONFIG.shell.transcriptChars)
+  const transcript = createTranscriptBuffer(transcriptLimit)
+  const commandTranscriptBytes = positiveInteger(options.commandTranscriptBytes, MCP_CONFIG.shell.commandTranscriptBytes)
+  const recordLimit = positiveInteger(options.recordLimit, MCP_CONFIG.shell.recordLimit)
+  const parallelCommandTimeoutMs = positiveInteger(options.parallelCommandTimeoutMs, DEFAULT_PARALLEL_COMMAND_TIMEOUT_MS)
+  const parallelScheduler = options.parallelScheduler ?? processParallelCommandScheduler
+  const records = new Map<string, CommandRecord>()
+  const parallelRecords = new Map<string, ParallelBatchRecord>()
+  const updates = createUpdateSignal()
 
-  private child: ChildProcessWithoutNullStreams | null = null
-  private active: CommandRecord | null = null
-  private activeParallel: ParallelBatchRecord | null = null
-  private readyState: ReadyState | null = null
-  private contextCaptureState: ContextCaptureState | null = null
-  private startPromise: Promise<void> | null = null
-  private parserBuffer = ""
-  private stdoutDecoder = new StringDecoder("utf8")
-  private stderrDecoder = new StringDecoder("utf8")
-  private generation = 1
-  private currentCwd: string
-  private initialState: ShellRecoverableState | null
-  private updateVersion = 0
-  private ready = false
-  private closed = false
-  private resetInFlight: Promise<ResetResult> | null = null
+  let active: CommandRecord | null = null
+  let activeParallel: ParallelBatchRecord | null = null
+  let resetInFlight: Promise<ResetResult> | null = null
 
-  constructor(options: ShellSessionOptions = {}) {
-    this.shellPath = options.shellPath ?? MCP_CONFIG.shell.path
-    this.cwd = options.cwd ?? process.cwd()
-    this.env = cloneEnvironment(options.env ?? process.env)
-    this.initialState = options.initialState ? cloneRecoverableState(options.initialState) : null
-    this.currentCwd = this.initialState?.cwd ?? this.cwd
-    this.transcriptLimit = positiveInteger(options.transcriptLimit, MCP_CONFIG.shell.transcriptChars)
-    this.transcript = new TranscriptBuffer(this.transcriptLimit)
-    this.commandTranscriptBytes = positiveInteger(options.commandTranscriptBytes, MCP_CONFIG.shell.commandTranscriptBytes)
-    this.recordLimit = positiveInteger(options.recordLimit, MCP_CONFIG.shell.recordLimit)
-    this.parallelCommandTimeoutMs = positiveInteger(options.parallelCommandTimeoutMs, DEFAULT_PARALLEL_COMMAND_TIMEOUT_MS)
-    this.parallelScheduler = options.parallelScheduler ?? processParallelCommandScheduler
+  const processController = createShellProcess({
+    shellPath: options.shellPath ?? MCP_CONFIG.shell.path,
+    cwd: options.cwd ?? process.cwd(),
+    env: options.env ?? process.env,
+    initialState: options.initialState,
+    onIdleOutput: appendTranscript,
+    onUpdate: updates.notify,
+  })
+
+  function hasActiveWork(): boolean {
+    return active !== null || activeParallel !== null || resetInFlight !== null || processController.hasActiveOperation
   }
 
-  get initialCwd(): string {
-    return this.cwd
+  async function start(): Promise<void> {
+    if (processController.closed) throw new ShellSessionError("closed", "The shell session is closed.")
+    await processController.start()
   }
 
-  get hasActiveWork(): boolean {
-    return (
-      this.active !== null || this.activeParallel !== null || this.contextCaptureState !== null || this.resetInFlight !== null || this.startPromise !== null
-    )
+  async function captureRecoverableState(): Promise<ShellRecoverableState> {
+    if (processController.closed) throw new ShellSessionError("closed", "The shell session is closed.")
+    if (hasActiveWork()) throw new ShellSessionError("busy", "The shell is busy and cannot capture recoverable state.")
+    return processController.captureRecoverableState()
   }
 
-  fork(initialState?: ShellRecoverableState): PersistentShellSession {
-    return new PersistentShellSession({
-      shellPath: this.shellPath,
-      cwd: this.cwd,
-      env: this.env,
-      initialState,
-      transcriptLimit: this.transcriptLimit,
-      commandTranscriptBytes: this.commandTranscriptBytes,
-      recordLimit: this.recordLimit,
-      parallelCommandTimeoutMs: this.parallelCommandTimeoutMs,
-      parallelScheduler: this.parallelScheduler,
-    })
-  }
-
-  async start(): Promise<void> {
-    if (this.closed) {
-      throw new ShellSessionError("closed", "The shell session is closed.")
-    }
-    if (this.ready && this.child) return
-    if (this.startPromise) return this.startPromise
-
-    this.startPromise = this.spawnShell().finally(() => {
-      this.startPromise = null
-    })
-    return this.startPromise
-  }
-
-  async captureRecoverableState(): Promise<ShellRecoverableState> {
-    if (this.closed) {
-      throw new ShellSessionError("closed", "The shell session is closed.")
-    }
-    if (this.hasActiveWork) {
-      throw new ShellSessionError("busy", "The shell is busy and cannot capture recoverable state.")
-    }
-    if (!this.child || !this.ready) {
-      return cloneRecoverableState(this.initialState ?? { cwd: this.currentCwd, env: this.env })
-    }
-    const context = await this.captureShellContext()
-    return cloneRecoverableState(context)
-  }
-
-  async runCommand(input: RunCommandInput): Promise<ShellSnapshot> {
+  async function runCommand(input: RunCommandInput): Promise<ShellSnapshot> {
     const maxOutputTokens = input.max_output_tokens
     const commandHash = hashCommand(input.command, input.cwd)
     const parallelCommands = parseParallelCommand(input.command)
 
-    await this.start()
-    const existing = this.records.get(input.request_id)
+    await start()
+    const existing = records.get(input.request_id)
     if (existing) {
       if (existing.commandHash !== commandHash) {
         throw new ShellSessionError("request_conflict", `request_id ${JSON.stringify(input.request_id)} was already used for a different command.`)
       }
-
-      if (existing.status === "running") {
-        await this.waitForCommandResult(existing, existing.startCursor, maxOutputTokens, input.wait_ms, input.signal)
-      }
-      return this.snapshot(existing, existing.startCursor, maxOutputTokens)
+      if (existing.status === "running") await waitForCommandResult(existing, existing.startCursor, maxOutputTokens, input.wait_ms, input.signal)
+      return snapshot(existing, existing.startCursor, maxOutputTokens)
     }
-    const existingParallel = this.parallelRecords.get(input.request_id)
+
+    const existingParallel = parallelRecords.get(input.request_id)
     if (existingParallel) {
       if (existingParallel.commandHash !== commandHash) {
         throw new ShellSessionError("request_conflict", `request_id ${JSON.stringify(input.request_id)} was already used for a different command.`)
       }
       if (existingParallel.status === "running") {
-        await this.waitForParallelResult(existingParallel, 0, maxOutputTokens, input.wait_ms, input.signal)
+        await waitForParallelResult(existingParallel, 0, maxOutputTokens, input.wait_ms, input.signal)
       }
-      return this.parallelSnapshot(existingParallel, 0, maxOutputTokens)
+      return parallelSnapshot(existingParallel, 0, maxOutputTokens)
     }
 
-    if (this.resetInFlight) {
-      throw new ShellSessionError("busy", "The shell is being reset.")
-    }
-
-    if (this.active || this.activeParallel || this.contextCaptureState) {
-      const requestId = this.active?.requestId ?? this.activeParallel?.requestId ?? "an internal shell operation"
+    if (resetInFlight) throw new ShellSessionError("busy", "The shell is being reset.")
+    if (active || activeParallel || processController.hasActiveOperation) {
+      const requestId = active?.requestId ?? activeParallel?.requestId ?? "an internal shell operation"
       throw new ShellSessionError("busy", `The shell is busy with request_id ${JSON.stringify(requestId)}. Poll that request or reset the shell.`)
     }
+    if (!processController.ready) throw new ShellSessionError("shell_unavailable", "The shell process is not ready.")
 
-    if (!this.child || !this.ready) {
-      throw new ShellSessionError("shell_unavailable", "The shell process is not ready.")
-    }
-    const commandCwd = input.cwd === undefined ? undefined : resolve(this.currentCwd, input.cwd)
+    const commandCwd = input.cwd === undefined ? undefined : resolve(processController.currentCwd, input.cwd)
     validateWorkingDirectory(commandCwd)
 
     if (parallelCommands) {
-      return this.runParallelCommands({
+      return runParallelCommands({
         input: commandCwd === input.cwd ? input : { ...input, cwd: commandCwd },
         commands: parallelCommands,
         commandHash,
@@ -384,81 +213,72 @@ export class PersistentShellSession {
       })
     }
 
-    const child = this.child
-
-    const token = randomUUID().replaceAll("-", "")
     const record: CommandRecord = {
       requestId: input.request_id,
       commandHash,
-      cwd: commandCwd ?? this.currentCwd,
-      startCursor: this.transcript.end,
+      cwd: commandCwd ?? processController.currentCwd,
+      startCursor: transcript.end,
       endCursor: null,
       status: "running",
       exitCode: null,
-      markerPrefix: `\u001e__MCP_DONE_${token}__:`,
       capturedOutputBytes: 0,
       droppedOutputBytes: 0,
     }
 
-    this.pruneCommandRecords()
-    this.records.set(record.requestId, record)
-    this.active = record
+    pruneCommandRecords()
+    records.set(record.requestId, record)
+    active = record
     try {
-      await writeToStdin(child, buildCommandScript(input.command, token, commandCwd))
+      const running = await processController.beginCommand(input.command, commandCwd, (chunk) => appendCommandOutput(record, chunk))
+      void running.completion.then((result) => finishCommand(record, result))
     } catch (error) {
-      record.endCursor = this.transcript.end
-      record.status = this.stopReasons.get(child) === "reset" ? "reset" : "shell_exited"
-      if (this.active === record) this.active = null
-      this.notifyUpdate()
-      this.killProcessGroup(child, "SIGKILL")
+      record.endCursor = transcript.end
+      record.status = resetInFlight ? "reset" : "shell_exited"
+      if (active === record) active = null
+      updates.notify()
       throw new ShellSessionError("shell_unavailable", `Could not write to the shell: ${errorMessage(error)}`)
     }
 
-    await this.waitForCommandResult(record, record.startCursor, maxOutputTokens, input.wait_ms, input.signal)
-    return this.snapshot(record, record.startCursor, maxOutputTokens)
+    await waitForCommandResult(record, record.startCursor, maxOutputTokens, input.wait_ms, input.signal)
+    return snapshot(record, record.startCursor, maxOutputTokens)
   }
 
-  async pollCommand(input: PollCommandInput): Promise<ShellSnapshot> {
-    const record = this.records.get(input.request_id)
-    const parallelRecord = this.parallelRecords.get(input.request_id)
+  async function pollCommand(input: PollCommandInput): Promise<ShellSnapshot> {
+    const record = records.get(input.request_id)
+    const parallelRecord = parallelRecords.get(input.request_id)
     if (!record && !parallelRecord) {
       throw new ShellSessionError("request_not_found", `No command exists for request_id ${JSON.stringify(input.request_id)}.`)
     }
+
     if (parallelRecord) {
       const maxOutputTokens = input.max_output_tokens
       if (parallelRecord.status === "running") {
-        const version = this.updateVersion
+        const version = updates.version
         const initialRead = parallelRecord.transcript.read(input.cursor, maxOutputTokens, parallelRecord.endCursor ?? undefined)
-        if (initialRead.output.length === 0 && !initialRead.cursorExpired) {
-          await this.waitForUpdate(version, input.wait_ms, input.signal)
-        }
+        if (initialRead.output.length === 0 && !initialRead.cursorExpired) await updates.wait(version, input.wait_ms, input.signal)
       }
-      return this.parallelSnapshot(parallelRecord, input.cursor, maxOutputTokens)
+      return parallelSnapshot(parallelRecord, input.cursor, maxOutputTokens)
     }
+
     if (!record) throw new ShellSessionError("request_not_found", `No command exists for request_id ${JSON.stringify(input.request_id)}.`)
-    if (input.cursor < record.startCursor) {
-      throw new ShellSessionError("invalid_cursor", "cursor is before the requested command's output.")
-    }
+    if (input.cursor < record.startCursor) throw new ShellSessionError("invalid_cursor", "cursor is before the requested command's output.")
 
     const maxOutputTokens = input.max_output_tokens
     if (record.status === "running") {
-      const version = this.updateVersion
-      const initialRead = this.transcript.read(input.cursor, maxOutputTokens, record.endCursor ?? undefined)
-      if (initialRead.output.length === 0 && !initialRead.cursorExpired) {
-        await this.waitForUpdate(version, input.wait_ms, input.signal)
-      }
+      const version = updates.version
+      const initialRead = transcript.read(input.cursor, maxOutputTokens, record.endCursor ?? undefined)
+      if (initialRead.output.length === 0 && !initialRead.cursorExpired) await updates.wait(version, input.wait_ms, input.signal)
     }
-
-    return this.snapshot(record, input.cursor, maxOutputTokens)
+    return snapshot(record, input.cursor, maxOutputTokens)
   }
 
-  private async runParallelCommands(options: {
+  async function runParallelCommands(options: {
     input: RunCommandInput
     commands: ParallelCommandSpec[]
     commandHash: string
     maxOutputTokens: number
   }): Promise<ShellSnapshot> {
-    const rootCwd = options.input.cwd ?? this.currentCwd
+    const rootCwd = options.input.cwd ?? processController.currentCwd
     validateWorkingDirectory(rootCwd)
     const runs: ParallelRunRecord[] = options.commands.map((command, index) => {
       const cwd = resolve(rootCwd, command.path)
@@ -478,7 +298,7 @@ export class PersistentShellSession {
       requestId: options.input.request_id,
       commandHash: options.commandHash,
       cwd: rootCwd,
-      transcript: new TranscriptBuffer(this.transcriptLimit),
+      transcript: createTranscriptBuffer(transcriptLimit),
       endCursor: null,
       status: "running",
       runs,
@@ -487,48 +307,44 @@ export class PersistentShellSession {
       tasks: [],
     }
 
-    this.pruneParallelRecords()
-    this.parallelRecords.set(record.requestId, record)
-    this.activeParallel = record
+    pruneParallelRecords()
+    parallelRecords.set(record.requestId, record)
+    activeParallel = record
 
-    let context: ShellContext
+    let context: ShellProcessContext
     try {
-      context = await this.captureShellContext(options.input.cwd)
+      context = await processController.captureContext(options.input.cwd)
     } catch (error) {
-      if (record.status === "reset") {
-        return this.parallelSnapshot(record, 0, options.maxOutputTokens)
-      }
-      this.parallelRecords.delete(record.requestId)
-      if (this.activeParallel === record) this.activeParallel = null
-      this.notifyUpdate()
+      if (record.status === "reset") return parallelSnapshot(record, 0, options.maxOutputTokens)
+      parallelRecords.delete(record.requestId)
+      if (activeParallel === record) activeParallel = null
+      updates.notify()
       throw new ShellSessionError("shell_unavailable", `Could not capture the shell environment: ${errorMessage(error)}`)
     }
 
     record.cwd = context.cwd
-    for (const run of record.runs) {
-      run.cwd = resolve(context.cwd, run.path)
-    }
+    for (const run of record.runs) run.cwd = resolve(context.cwd, run.path)
 
     for (const run of record.runs) {
-      const task = this.parallelScheduler
+      const task = parallelScheduler
         .run(async () => {
           if (record.status !== "running") throw new ParallelCommandAbortedError()
           run.status = "running"
-          this.notifyUpdate()
+          updates.notify()
           return executeParallelCommand({
-            shellPath: this.shellPath,
+            shellPath: processController.shellPath,
             command: run.command,
             cwd: run.cwd,
             env: context.env,
-            outputLimitBytes: this.commandTranscriptBytes,
-            timeoutMs: this.parallelCommandTimeoutMs,
+            outputLimitBytes: commandTranscriptBytes,
+            timeoutMs: parallelCommandTimeoutMs,
             signal: record.abortController.signal,
           })
         }, record.abortController.signal)
         .then(
-          (result) => this.finishParallelRun(record, run, result),
+          (result) => finishParallelRun(record, run, result),
           (error) =>
-            this.finishParallelRun(record, run, {
+            finishParallelRun(record, run, {
               status: error instanceof ParallelCommandAbortedError || record.abortController.signal.aborted ? "reset" : "failed",
               exitCode: null,
               output: error instanceof ParallelCommandAbortedError ? "" : errorMessage(error),
@@ -538,11 +354,21 @@ export class PersistentShellSession {
       record.tasks.push(task)
     }
 
-    await this.waitForParallelResult(record, 0, options.maxOutputTokens, options.input.wait_ms, options.input.signal)
-    return this.parallelSnapshot(record, 0, options.maxOutputTokens)
+    await waitForParallelResult(record, 0, options.maxOutputTokens, options.input.wait_ms, options.input.signal)
+    return parallelSnapshot(record, 0, options.maxOutputTokens)
   }
 
-  private finishParallelRun(record: ParallelBatchRecord, run: ParallelRunRecord, result: ParallelCommandExecutionResult): void {
+  function finishCommand(record: CommandRecord, result: ShellProcessCommandResult): void {
+    if (record.status !== "running") return
+    record.endCursor = transcript.end
+    record.exitCode = result.exitCode
+    record.cwd = result.cwd
+    record.status = result.status
+    if (active === record) active = null
+    updates.notify()
+  }
+
+  function finishParallelRun(record: ParallelBatchRecord, run: ParallelRunRecord, result: ParallelCommandExecutionResult): void {
     if (record.status === "reset" || run.status === "reset") return
 
     run.status = result.status
@@ -554,12 +380,12 @@ export class PersistentShellSession {
     if (record.remainingRuns === 0) {
       record.status = "completed"
       record.endCursor = record.transcript.end
-      if (this.activeParallel === record) this.activeParallel = null
+      if (activeParallel === record) activeParallel = null
     }
-    this.notifyUpdate()
+    updates.notify()
   }
 
-  private parallelSnapshot(record: ParallelBatchRecord, cursor: number, maxOutputTokens: number): ShellSnapshot {
+  function parallelSnapshot(record: ParallelBatchRecord, cursor: number, maxOutputTokens: number): ShellSnapshot {
     const read = record.transcript.read(cursor, maxOutputTokens, record.endCursor ?? undefined)
     const droppedOutputBytes = record.runs.reduce((total, run) => Math.min(Number.MAX_SAFE_INTEGER, total + run.droppedOutputBytes), 0)
     const exitCode = record.status === "completed" ? (record.runs.every((run) => run.status === "completed" && run.exitCode === 0) ? 0 : 1) : null
@@ -585,7 +411,7 @@ export class PersistentShellSession {
     }
   }
 
-  private async waitForParallelResult(
+  async function waitForParallelResult(
     record: ParallelBatchRecord,
     cursor: number,
     maxOutputTokens: number,
@@ -598,48 +424,12 @@ export class PersistentShellSession {
       if (read.cursorExpired || read.hasMore || read.tokenCount >= maxOutputTokens) return
       const remainingMs = deadline - Date.now()
       if (remainingMs <= 0) return
-      const version = this.updateVersion
-      await this.waitForUpdate(version, remainingMs, signal)
+      await updates.wait(updates.version, remainingMs, signal)
     }
   }
 
-  private async captureShellContext(cwd?: string): Promise<ShellContext> {
-    if (!this.child || !this.ready) throw new Error("The shell process is not ready.")
-    if (this.contextCaptureState) throw new Error("A shell context capture is already running.")
-    const child = this.child
-    const token = randomUUID().replaceAll("-", "")
-    const startMarker = `\u001e__MCP_CONTEXT_${token}__\u001f`
-    const endMarker = `\u001e__MCP_CONTEXT_END_${token}__\u001f`
-
-    return new Promise<ShellContext>((resolveContext, rejectContext) => {
-      const timer = setTimeout(() => {
-        if (this.contextCaptureState?.child === child) this.contextCaptureState = null
-        this.killProcessGroup(child, "SIGKILL")
-        rejectContext(new Error(`Shell context capture did not complete within ${MCP_CONFIG.shell.readyTimeoutMs}ms.`))
-      }, MCP_CONFIG.shell.readyTimeoutMs)
-      this.contextCaptureState = {
-        child,
-        startMarker,
-        endMarker,
-        started: false,
-        value: "",
-        resolve: (context) => {
-          this.currentCwd = context.cwd
-          resolveContext(context)
-        },
-        reject: rejectContext,
-        timer,
-      }
-      void writeToStdin(child, buildContextCaptureScript(token, cwd)).catch((error) => {
-        clearTimeout(timer)
-        if (this.contextCaptureState?.child === child) this.contextCaptureState = null
-        rejectContext(error instanceof Error ? error : new Error(String(error)))
-      })
-    })
-  }
-
-  private async cancelActiveParallelBatch(): Promise<void> {
-    const record = this.activeParallel
+  async function cancelActiveParallelBatch(): Promise<void> {
+    const record = activeParallel
     if (!record || record.status !== "running") return
     record.status = "reset"
     for (const run of record.runs) {
@@ -651,400 +441,43 @@ export class PersistentShellSession {
     }
     record.endCursor = record.transcript.end
     record.abortController.abort()
-    if (this.activeParallel === record) this.activeParallel = null
-    this.notifyUpdate()
+    if (activeParallel === record) activeParallel = null
+    updates.notify()
     await Promise.allSettled(record.tasks)
   }
 
-  async reset(input: ResetShellInput): Promise<ResetResult> {
-    if (this.closed) {
-      throw new ShellSessionError("closed", "The shell session is closed.")
-    }
+  async function reset(input: ResetShellInput): Promise<ResetResult> {
+    if (processController.closed) throw new ShellSessionError("closed", "The shell session is closed.")
+    if (resetInFlight) throw new ShellSessionError("busy", "The shell is already being reset.")
 
-    if (this.resetInFlight) {
-      throw new ShellSessionError("busy", "The shell is already being reset.")
-    }
-
-    const promise = this.performReset(input.reason)
-    this.resetInFlight = promise
+    const promise = performReset(input.reason)
+    resetInFlight = promise
     void promise.then(
       () => {
-        if (this.resetInFlight === promise) this.resetInFlight = null
+        if (resetInFlight === promise) resetInFlight = null
       },
       () => {
-        if (this.resetInFlight === promise) this.resetInFlight = null
+        if (resetInFlight === promise) resetInFlight = null
       }
     )
     return promise
   }
 
-  private async performReset(reason?: string): Promise<{
-    shell_generation: number
-    state_lost: true
-    status: "ready"
-  }> {
-    this.initialState = null
-    this.currentCwd = this.cwd
-    await this.cancelActiveParallelBatch()
-    const child = this.child
-    if (child) {
-      this.stopReasons.set(child, "reset")
-      this.appendTranscript(`\n[mcp] Resetting shell${reason ? `: ${reason}` : ""}\n`)
-      await this.stopChild(child)
-    } else {
-      this.generation += 1
-      this.ready = false
-      this.appendTranscript(`\n[mcp] Resetting unavailable shell${reason ? `: ${reason}` : ""}\n`)
-      if (this.active) {
-        this.active.status = "reset"
-        this.active.endCursor = this.transcript.end
-        this.active = null
-      }
-      this.notifyUpdate()
-    }
-
-    await this.start()
-    return {
-      shell_generation: this.generation,
-      state_lost: true,
-      status: "ready",
-    }
+  async function performReset(reason?: string): Promise<ResetResult> {
+    await cancelActiveParallelBatch()
+    const generation = await processController.reset(reason)
+    return { shell_generation: generation, state_lost: true, status: "ready" }
   }
 
-  async close(): Promise<void> {
-    if (this.closed) return
-    this.closed = true
-
-    await this.cancelActiveParallelBatch()
-
-    const child = this.child
-    if (child) {
-      this.stopReasons.set(child, "close")
-      await this.stopChild(child)
-    }
-
-    for (const resolve of this.updateWaiters) resolve()
-    this.updateWaiters.clear()
+  async function close(): Promise<void> {
+    if (processController.closed) return
+    await cancelActiveParallelBatch()
+    await processController.close()
+    updates.notify()
   }
 
-  private async spawnShell(): Promise<void> {
-    this.parserBuffer = ""
-    this.stdoutDecoder = new StringDecoder("utf8")
-    this.stderrDecoder = new StringDecoder("utf8")
-    this.ready = false
-    let restoreState = this.initialState
-    if (restoreState) {
-      try {
-        validateWorkingDirectory(restoreState.cwd)
-      } catch {
-        restoreState = null
-        this.initialState = null
-        this.currentCwd = this.cwd
-      }
-    }
-    const spawnCwd = restoreState?.cwd ?? this.cwd
-    const spawnEnv = restoreState?.env ?? this.env
-    this.currentCwd = spawnCwd
-
-    const child = spawn("/bin/sh", ["-c", 'exec "$1" -l 2>&1', "mcp-shell", this.shellPath], {
-      cwd: spawnCwd,
-      env: spawnEnv,
-      detached: process.platform !== "win32",
-      stdio: ["pipe", "pipe", "pipe"],
-    })
-    this.child = child
-
-    child.stdout.on("data", (chunk: Buffer) => {
-      if (this.child !== child) return
-      this.handleDecodedOutput(this.stdoutDecoder.write(chunk))
-    })
-    child.stderr.on("data", (chunk: Buffer) => {
-      if (this.child !== child) return
-      this.handleDecodedOutput(this.stderrDecoder.write(chunk))
-    })
-
-    let terminationDescription = "unknown termination"
-    let finalizeTimer: NodeJS.Timeout | null = null
-    const scheduleForcedFinalization = (description: string) => {
-      terminationDescription = description
-      if (finalizeTimer) return
-      finalizeTimer = setTimeout(() => {
-        this.finalizeChild(child, terminationDescription)
-      }, MCP_CONFIG.shell.stopGraceMs)
-    }
-
-    child.once("error", (error) => {
-      scheduleForcedFinalization(`spawn error: ${error.message}`)
-    })
-    child.once("exit", (code, signal) => {
-      scheduleForcedFinalization(signal ? `signal ${signal}` : `exit code ${code ?? "unknown"}`)
-      if (!this.stopReasons.has(child)) {
-        this.killProcessGroup(child, "SIGKILL")
-      }
-    })
-    child.once("close", (code, signal) => {
-      if (finalizeTimer) clearTimeout(finalizeTimer)
-      const description =
-        terminationDescription === "unknown termination" ? (signal ? `signal ${signal}` : `exit code ${code ?? "unknown"}`) : terminationDescription
-      this.finalizeChild(child, description)
-    })
-
-    const token = randomUUID().replaceAll("-", "")
-    const marker = `\u001e__MCP_READY_${token}__\u001f`
-
-    await new Promise<void>((resolve, reject) => {
-      const timer = setTimeout(() => {
-        reject(new Error(`Shell did not become ready within ${MCP_CONFIG.shell.readyTimeoutMs}ms.`))
-        this.killProcessGroup(child, "SIGKILL")
-      }, MCP_CONFIG.shell.readyTimeoutMs)
-
-      this.readyState = { child, marker, resolve, reject, timer }
-      writeToStdin(child, [`builtin printf '\\036__MCP_READY_${token}__\\037'`, ""].join("\n")).catch((error) => {
-        clearTimeout(timer)
-        this.readyState = null
-        reject(error instanceof Error ? error : new Error(String(error)))
-        this.killProcessGroup(child, "SIGKILL")
-      })
-    })
-    if (this.initialState === restoreState) this.initialState = null
-  }
-
-  private handleDecodedOutput(chunk: string): void {
-    if (chunk.length === 0) return
-    this.parserBuffer += chunk
-
-    while (this.parserBuffer.length > 0) {
-      const readyState = this.readyState
-      if (readyState) {
-        const markerIndex = this.parserBuffer.indexOf(readyState.marker)
-        if (markerIndex < 0) {
-          this.flushSafePrefix(readyState.marker)
-          return
-        }
-
-        this.appendTranscript(this.parserBuffer.slice(0, markerIndex))
-        this.parserBuffer = this.parserBuffer.slice(markerIndex + readyState.marker.length)
-        clearTimeout(readyState.timer)
-        this.readyState = null
-        this.ready = true
-        readyState.resolve()
-        this.notifyUpdate()
-        continue
-      }
-
-      const contextState = this.contextCaptureState
-      if (contextState) {
-        if (!contextState.started) {
-          const markerIndex = this.parserBuffer.indexOf(contextState.startMarker)
-          if (markerIndex < 0) {
-            this.flushSafePrefix(contextState.startMarker)
-            return
-          }
-          this.appendTranscript(this.parserBuffer.slice(0, markerIndex))
-          this.parserBuffer = this.parserBuffer.slice(markerIndex + contextState.startMarker.length)
-          contextState.started = true
-        }
-
-        const markerIndex = this.parserBuffer.indexOf(contextState.endMarker)
-        if (markerIndex < 0) {
-          this.flushContextCapturePrefix(contextState)
-          return
-        }
-
-        contextState.value += this.parserBuffer.slice(0, markerIndex)
-        this.parserBuffer = this.parserBuffer.slice(markerIndex + contextState.endMarker.length)
-        clearTimeout(contextState.timer)
-        this.contextCaptureState = null
-        try {
-          contextState.resolve(parseShellContext(contextState.value))
-        } catch (error) {
-          contextState.reject(error instanceof Error ? error : new Error(String(error)))
-        }
-        this.notifyUpdate()
-        continue
-      }
-
-      const active = this.active
-      if (!active) {
-        this.appendTranscript(this.parserBuffer)
-        this.parserBuffer = ""
-        return
-      }
-
-      const markerIndex = this.parserBuffer.indexOf(active.markerPrefix)
-      if (markerIndex < 0) {
-        this.flushSafePrefix(active.markerPrefix, active)
-        return
-      }
-
-      const markerEnd = this.parserBuffer.indexOf("\u001f", markerIndex + active.markerPrefix.length)
-      if (markerEnd < 0) {
-        this.appendCommandOutput(active, this.parserBuffer.slice(0, markerIndex))
-        this.parserBuffer = this.parserBuffer.slice(markerIndex)
-        return
-      }
-
-      const markerPayload = this.parserBuffer.slice(markerIndex + active.markerPrefix.length, markerEnd)
-      const cwdSeparator = markerPayload.indexOf("\0")
-      const statusText = markerPayload.slice(0, cwdSeparator)
-      const parsedCwd = markerPayload.slice(cwdSeparator + 1)
-      const parsedStatus = Number.parseInt(statusText, 10)
-      if (cwdSeparator < 1 || !/^-?\d+$/.test(statusText) || !Number.isSafeInteger(parsedStatus) || !isAbsolute(parsedCwd)) {
-        const falsePrefixEnd = markerIndex + active.markerPrefix.length
-        this.appendCommandOutput(active, this.parserBuffer.slice(0, falsePrefixEnd))
-        this.parserBuffer = this.parserBuffer.slice(falsePrefixEnd)
-        continue
-      }
-
-      this.appendCommandOutput(active, this.parserBuffer.slice(0, markerIndex))
-      this.parserBuffer = this.parserBuffer.slice(markerEnd + 1)
-      active.endCursor = this.transcript.end
-      active.exitCode = parsedStatus
-      active.cwd = parsedCwd
-      active.status = "completed"
-      this.currentCwd = parsedCwd
-      this.active = null
-      this.notifyUpdate()
-    }
-  }
-
-  private flushSafePrefix(marker: string, record?: CommandRecord): void {
-    let safeLength = Math.max(0, this.parserBuffer.length - marker.length + 1)
-    if (
-      safeLength > 0 &&
-      safeLength < this.parserBuffer.length &&
-      isHighSurrogate(this.parserBuffer.charCodeAt(safeLength - 1)) &&
-      isLowSurrogate(this.parserBuffer.charCodeAt(safeLength))
-    ) {
-      safeLength -= 1
-    }
-    if (safeLength === 0) return
-    const output = this.parserBuffer.slice(0, safeLength)
-    if (record) this.appendCommandOutput(record, output)
-    else this.appendTranscript(output)
-    this.parserBuffer = this.parserBuffer.slice(safeLength)
-  }
-
-  private flushContextCapturePrefix(state: ContextCaptureState): void {
-    let safeLength = Math.max(0, this.parserBuffer.length - state.endMarker.length + 1)
-    if (
-      safeLength > 0 &&
-      safeLength < this.parserBuffer.length &&
-      isHighSurrogate(this.parserBuffer.charCodeAt(safeLength - 1)) &&
-      isLowSurrogate(this.parserBuffer.charCodeAt(safeLength))
-    ) {
-      safeLength -= 1
-    }
-    if (safeLength === 0) return
-    state.value += this.parserBuffer.slice(0, safeLength)
-    this.parserBuffer = this.parserBuffer.slice(safeLength)
-  }
-
-  private finalizeChild(child: ChildProcessWithoutNullStreams, description: string): void {
-    if (this.handledChildren.has(child)) return
-    this.handledChildren.add(child)
-
-    const reason = this.stopReasons.get(child)
-    if (this.child === child) {
-      const stdoutTail = this.stdoutDecoder.end()
-      const stderrTail = this.stderrDecoder.end()
-      if (stdoutTail) this.handleDecodedOutput(stdoutTail)
-      if (stderrTail) this.handleDecodedOutput(stderrTail)
-      if (this.parserBuffer) {
-        if (this.active) this.appendCommandOutput(this.active, this.parserBuffer)
-        else this.appendTranscript(this.parserBuffer)
-        this.parserBuffer = ""
-      }
-
-      child.stdout.removeAllListeners()
-      child.stderr.removeAllListeners()
-      child.stdout.destroy()
-      child.stderr.destroy()
-
-      if (this.readyState?.child === child) {
-        clearTimeout(this.readyState.timer)
-        this.readyState.reject(new Error(`Shell exited before becoming ready (${description}).`))
-        this.readyState = null
-      }
-
-      if (this.contextCaptureState?.child === child) {
-        clearTimeout(this.contextCaptureState.timer)
-        this.contextCaptureState.reject(new Error(`Shell exited during context capture (${description}).`))
-        this.contextCaptureState = null
-      }
-
-      if (this.active) {
-        this.active.endCursor = this.transcript.end
-        this.active.status = reason === "reset" ? "reset" : "shell_exited"
-        this.active.exitCode = null
-        this.active = null
-      }
-
-      this.child = null
-      this.ready = false
-
-      if (reason !== "close") {
-        this.generation += 1
-        if (reason !== "reset") {
-          this.currentCwd = this.cwd
-        }
-        this.appendTranscript(`\n[mcp] Shell state lost (${reason ?? "unexpected"}: ${description}). Starting generation ${this.generation}.\n`)
-      }
-      this.notifyUpdate()
-    }
-
-    if (!reason) {
-      this.killProcessGroup(child, "SIGKILL")
-      if (!this.closed) {
-        queueMicrotask(() => {
-          if (this.closed) return
-          void this.start().catch((error) => {
-            this.appendTranscript(`\n[mcp] Shell restart failed: ${errorMessage(error)}\n`)
-          })
-        })
-      }
-    }
-  }
-
-  private async stopChild(child: ChildProcessWithoutNullStreams): Promise<void> {
-    this.killProcessGroup(child, "SIGTERM")
-    await waitForExit(child, MCP_CONFIG.shell.stopGraceMs)
-    this.killProcessGroup(child, "SIGKILL")
-    if (!(await this.waitForChildClose(child, MCP_CONFIG.shell.stopGraceMs))) {
-      this.finalizeChild(child, "forced shutdown timeout")
-    }
-  }
-
-  private waitForChildClose(child: ChildProcessWithoutNullStreams, timeoutMs: number): Promise<boolean> {
-    if (this.handledChildren.has(child)) return Promise.resolve(true)
-
-    return new Promise((resolve) => {
-      const timer = setTimeout(() => {
-        child.off("close", onClose)
-        resolve(false)
-      }, timeoutMs)
-      const onClose = () => {
-        clearTimeout(timer)
-        resolve(true)
-      }
-      child.once("close", onClose)
-    })
-  }
-
-  private killProcessGroup(child: ChildProcessWithoutNullStreams, signal: NodeJS.Signals): void {
-    if (!child.pid) return
-    try {
-      if (process.platform === "win32") child.kill(signal)
-      else process.kill(-child.pid, signal)
-    } catch {
-      // Process-group cleanup is best effort. A descendant with a different
-      // effective user can make killpg return EPERM on macOS; cleanup must not
-      // escape a child-process callback and crash the MCP server.
-    }
-  }
-
-  private snapshot(record: CommandRecord, cursor: number, maxOutputTokens: number): ShellSnapshot {
-    const read = this.transcript.read(cursor, maxOutputTokens, record.endCursor ?? undefined)
+  function snapshot(record: CommandRecord, cursor: number, maxOutputTokens: number): ShellSnapshot {
+    const read = transcript.read(cursor, maxOutputTokens, record.endCursor ?? undefined)
     return {
       request_id: record.requestId,
       status: record.status,
@@ -1059,153 +492,72 @@ export class PersistentShellSession {
     }
   }
 
-  private async waitForCommandResult(record: CommandRecord, cursor: number, maxOutputTokens: number, waitMs: number, signal?: AbortSignal): Promise<void> {
+  async function waitForCommandResult(record: CommandRecord, cursor: number, maxOutputTokens: number, waitMs: number, signal?: AbortSignal): Promise<void> {
     const deadline = Date.now() + waitMs
-
     while (record.status === "running" && !signal?.aborted) {
-      const read = this.transcript.read(cursor, maxOutputTokens, record.endCursor ?? undefined)
-      if (read.cursorExpired || read.hasMore || read.tokenCount >= maxOutputTokens) {
-        return
-      }
-
+      const read = transcript.read(cursor, maxOutputTokens, record.endCursor ?? undefined)
+      if (read.cursorExpired || read.hasMore || read.tokenCount >= maxOutputTokens) return
       const remainingMs = deadline - Date.now()
       if (remainingMs <= 0) return
-
-      const version = this.updateVersion
-      await this.waitForUpdate(version, remainingMs, signal)
+      await updates.wait(updates.version, remainingMs, signal)
     }
   }
 
-  private pruneCommandRecords(): void {
-    while (this.records.size >= this.recordLimit) {
-      const oldestCompleted = [...this.records.values()].find((record) => record.status !== "running")
+  function pruneCommandRecords(): void {
+    while (records.size >= recordLimit) {
+      const oldestCompleted = [...records.values()].find((record) => record.status !== "running")
       if (!oldestCompleted) return
-      this.records.delete(oldestCompleted.requestId)
+      records.delete(oldestCompleted.requestId)
     }
   }
 
-  private pruneParallelRecords(): void {
-    while (this.parallelRecords.size >= this.recordLimit) {
-      const oldestCompleted = [...this.parallelRecords.values()].find((record) => record.status !== "running")
+  function pruneParallelRecords(): void {
+    while (parallelRecords.size >= recordLimit) {
+      const oldestCompleted = [...parallelRecords.values()].find((record) => record.status !== "running")
       if (!oldestCompleted) return
-      this.parallelRecords.delete(oldestCompleted.requestId)
+      parallelRecords.delete(oldestCompleted.requestId)
     }
   }
 
-  private appendTranscript(chunk: string): void {
+  function appendTranscript(chunk: string): void {
     if (chunk.length === 0) return
-    this.transcript.append(chunk)
-    this.notifyUpdate()
+    transcript.append(chunk)
+    updates.notify()
   }
 
-  private appendCommandOutput(record: CommandRecord, chunk: string): void {
+  function appendCommandOutput(record: CommandRecord, chunk: string): void {
     if (chunk.length === 0) return
 
-    const remaining = Math.max(0, this.commandTranscriptBytes - record.capturedOutputBytes)
+    const remaining = Math.max(0, commandTranscriptBytes - record.capturedOutputBytes)
     const bounded = utf8Chunk(chunk, 0, remaining)
     const captured = bounded.value
     const dropped = chunk.slice(bounded.nextOffset)
 
     if (captured.length > 0) {
       record.capturedOutputBytes += Buffer.byteLength(captured, "utf8")
-      this.appendTranscript(captured)
+      appendTranscript(captured)
     }
     if (dropped.length > 0) {
       const wasTruncated = record.droppedOutputBytes > 0
       record.droppedOutputBytes = Math.min(Number.MAX_SAFE_INTEGER, record.droppedOutputBytes + Buffer.byteLength(dropped, "utf8"))
-      if (!wasTruncated && captured.length === 0) this.notifyUpdate()
+      if (!wasTruncated && captured.length === 0) updates.notify()
     }
   }
 
-  private notifyUpdate(): void {
-    this.updateVersion += 1
-    const waiters = [...this.updateWaiters]
-    this.updateWaiters.clear()
-    for (const resolve of waiters) resolve()
-  }
-
-  private async waitForUpdate(version: number, waitMs: number, signal?: AbortSignal): Promise<void> {
-    if (waitMs === 0 || this.updateVersion !== version || signal?.aborted) {
-      return
-    }
-
-    await new Promise<void>((resolve) => {
-      let settled = false
-      const done = () => {
-        if (settled) return
-        settled = true
-        clearTimeout(timer)
-        this.updateWaiters.delete(done)
-        signal?.removeEventListener("abort", done)
-        resolve()
-      }
-      const timer = setTimeout(done, waitMs)
-      this.updateWaiters.add(done)
-      signal?.addEventListener("abort", done, { once: true })
-      if (this.updateVersion !== version || signal?.aborted) done()
-    })
-  }
-}
-
-function buildCommandScript(command: string, token: string, cwd?: string): string {
-  return [
-    "function __mcp_eval_command {",
-    '  local __mcp_command="$1"',
-    '  if (( $# > 1 )); then builtin cd -- "$2" || return $?; fi',
-    '  builtin eval -- "$__mcp_command" </dev/null 1>&1 2>&1',
-    "}",
-    "set +e",
-    `__mcp_eval_command ${singleQuote(command)}${cwd === undefined ? "" : ` ${singleQuote(cwd)}`}`,
-    `builtin printf '\\036__MCP_DONE_${token}__:%s\\000%s\\037' "$?" "$PWD"`,
-    "unfunction __mcp_eval_command 2>/dev/null",
-    "set +e",
-    "",
-  ].join("\n")
-}
-
-function buildContextCaptureScript(token: string, cwd?: string): string {
-  const functionName = `__mcp_capture_context_${token}`
-  return [
-    `function ${functionName} {`,
-    '  if (( $# > 0 )); then builtin cd -- "$1" || return $?; fi',
-    `  builtin printf '\\036__MCP_CONTEXT_${token}__\\037%s\\000' "$PWD"`,
-    "  /usr/bin/env -0",
-    `  builtin printf '\\036__MCP_CONTEXT_END_${token}__\\037'`,
-    "}",
-    "set +e",
-    `${functionName}${cwd === undefined ? "" : ` ${singleQuote(cwd)}`}`,
-    `unfunction ${functionName} 2>/dev/null`,
-    "set +e",
-    "",
-  ].join("\n")
-}
-
-function parseShellContext(value: string): ShellContext {
-  const cwdEnd = value.indexOf("\0")
-  if (cwdEnd < 1) throw new Error("Shell context did not include a working directory.")
-  const cwd = value.slice(0, cwdEnd)
-  if (!isAbsolute(cwd)) throw new Error(`Shell context returned a non-absolute cwd: ${JSON.stringify(cwd)}.`)
-
-  const env: NodeJS.ProcessEnv = {}
-  for (const entry of value.slice(cwdEnd + 1).split("\0")) {
-    if (entry.length === 0) continue
-    const separator = entry.indexOf("=")
-    if (separator < 1) continue
-    env[entry.slice(0, separator)] = entry.slice(separator + 1)
-  }
-  env.PWD = cwd
-  return { cwd, env }
-}
-
-function cloneRecoverableState(state: ShellRecoverableState): ShellRecoverableState {
   return {
-    cwd: state.cwd,
-    env: cloneEnvironment(state.env),
+    get initialCwd() {
+      return processController.initialCwd
+    },
+    get hasActiveWork() {
+      return hasActiveWork()
+    },
+    start,
+    captureRecoverableState,
+    runCommand,
+    pollCommand,
+    reset,
+    close,
   }
-}
-
-function cloneEnvironment(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
-  return { ...env }
 }
 
 function parseParallelCommand(command: string): ParallelCommandSpec[] | null {
@@ -1238,10 +590,6 @@ function formatParallelRunOutput(run: ParallelRunRecord, output: string): string
   return `[run ${run.run} path=${JSON.stringify(run.path)} ${result}${dropped}]\n${body}`
 }
 
-function singleQuote(value: string): string {
-  return `'${value.replaceAll("'", `'\\''`)}'`
-}
-
 function hashCommand(command: string, cwd?: string): string {
   return createHash("sha256")
     .update(JSON.stringify([cwd ?? null, command]))
@@ -1250,56 +598,17 @@ function hashCommand(command: string, cwd?: string): string {
 
 function validateWorkingDirectory(cwd: string | undefined): void {
   if (cwd === undefined) return
-  if (!isAbsolute(cwd)) {
-    throw new ShellSessionError("invalid_command", "cwd must be an absolute path.")
-  }
+  if (!isAbsolute(cwd)) throw new ShellSessionError("invalid_command", "cwd must be an absolute path.")
 
   try {
     const entry = statSync(cwd)
-    if (!entry.isDirectory()) {
-      throw new ShellSessionError("invalid_command", `cwd is not a directory: ${JSON.stringify(cwd)}.`)
-    }
+    if (!entry.isDirectory()) throw new ShellSessionError("invalid_command", `cwd is not a directory: ${JSON.stringify(cwd)}.`)
   } catch (error) {
     if (error instanceof ShellSessionError) throw error
     throw new ShellSessionError("invalid_command", `cwd is not accessible: ${JSON.stringify(cwd)} (${errorMessage(error)}).`)
   }
 }
 
-function writeToStdin(child: ChildProcessWithoutNullStreams, value: string): Promise<void> {
-  return new Promise((resolve, reject) => {
-    child.stdin.write(value, "utf8", (error) => {
-      if (error) reject(error)
-      else resolve()
-    })
-  })
-}
-
-function waitForExit(child: ChildProcessWithoutNullStreams, timeoutMs: number): Promise<boolean> {
-  if (child.exitCode !== null || child.signalCode !== null) {
-    return Promise.resolve(true)
-  }
-
-  return new Promise((resolve) => {
-    const timer = setTimeout(() => {
-      child.off("exit", onExit)
-      resolve(false)
-    }, timeoutMs)
-    const onExit = () => {
-      clearTimeout(timer)
-      resolve(true)
-    }
-    child.once("exit", onExit)
-  })
-}
-
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
-}
-
-function isHighSurrogate(value: number): boolean {
-  return value >= 0xd800 && value <= 0xdbff
-}
-
-function isLowSurrogate(value: number): boolean {
-  return value >= 0xdc00 && value <= 0xdfff
 }

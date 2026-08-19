@@ -4,8 +4,8 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import test from "node:test"
 
-import { PersistentShellSession } from "../../src/tools/shell/session.js"
-import { ShellSessionManager } from "../../src/tools/shell/session-manager.js"
+import { createShellSession } from "../../src/tools/shell/session.js"
+import { createShellSessionManager } from "../../src/tools/shell/session-manager.js"
 import { callUntilComplete, connectClient, snapshotFromResult, startMcpHttpServer } from "./helpers.js"
 
 test("retains default shell state across MCP client sessions", { timeout: 20_000 }, async (t) => {
@@ -70,10 +70,10 @@ test("isolates named shells and allows independent foreground work", { timeout: 
 test("maps an expired shell cursor to an MCP tool error", { timeout: 10_000 }, async (t) => {
   const workspace = await mkdtemp(join(tmpdir(), "mcp-expired-poll-"))
   t.after(() => rm(workspace, { recursive: true, force: true }))
-  const shell = new PersistentShellSession({ cwd: workspace, transcriptLimit: 1 })
+  const shell = createShellSession({ cwd: workspace, transcriptLimit: 1 })
   const running = await startMcpHttpServer({
     port: 0,
-    shellManager: new ShellSessionManager({ defaultShell: shell }),
+    shellManager: createShellSessionManager({ defaultShell: shell }),
   })
   t.after(() => running.close())
   const connected = await connectClient(running.url, "expired-poll-client")
