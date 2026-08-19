@@ -6,7 +6,7 @@ export const DEFAULT_SHELL_ID = "default"
 
 const requestIdInput = z.string().min(3).max(128).describe("Short operation label, unique within this shell. Reuse only to retry the exact same operation.")
 
-export const shellIdInput = z
+const shellIdInput = z
   .string()
   .min(3)
   .max(64)
@@ -15,7 +15,7 @@ export const shellIdInput = z
     "Unique persistent shell label such as api-audit. Reuse for sequential commands that should share cwd or environment. Use another ID only for concurrent stateful work."
   )
 
-export const closableShellIdInput = z
+const closableShellIdInput = z
   .string()
   .min(3)
   .max(64)
@@ -77,17 +77,15 @@ export const shellCloseInputSchema = z.object({
   shell_id: closableShellIdInput,
 })
 
-export type ShellCloseInput = z.infer<typeof shellCloseInputSchema>
-
-export const shellCommandStatusSchema = z.enum(["running", "completed", "shell_exited", "reset"])
-export const parallelCommandStatusSchema = z.enum(["queued", "running", "completed", "timed_out", "failed", "reset"])
+const shellCommandStatusSchema = z.enum(["running", "completed", "shell_exited", "reset"])
+const parallelCommandStatusSchema = z.enum(["queued", "running", "completed", "timed_out", "failed", "reset"])
 
 export type ShellCommandStatus = z.infer<typeof shellCommandStatusSchema>
 export type ParallelCommandStatus = z.infer<typeof parallelCommandStatusSchema>
 
 const exitCodeSchema = z.int().min(0).max(255)
 
-export const shellBatchCommandOutputSchema = z.object({
+const shellBatchCommandOutputSchema = z.object({
   run: z.int().positive(),
   command: z.string().describe("First command line, truncated to 20 characters."),
   path: z.string().optional().describe("Present only when this command overrides the inherited cwd."),
@@ -154,5 +152,3 @@ export const shellCloseOutputSchema = z.object({
   shell_id: z.string(),
   closed: z.literal(true),
 })
-
-export type ShellCloseOutput = z.infer<typeof shellCloseOutputSchema>

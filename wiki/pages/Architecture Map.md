@@ -21,7 +21,7 @@ This page maps the process-level components and follows one request from the HTT
 | Peekaboo adapter      | Invoke the CLI without a shell, serialize calls, parse bounded JSON, and retain snapshot targets                                    | `src/tools/computer/peekaboo.ts`         |
 | Shell manager         | Lazily create/restore named shells, manage live LRU capacity, hibernate idle shells, and expire cached recoverable state              | `src/tools/shell/session-manager.ts`     |
 | Shell runtime         | Own the persistent child shell, marker protocol, transcripts, command/batch records, context capture, reset, and recovery           | `src/tools/shell/session.ts`             |
-| Parallel shell runner | Parse `*** Run` batches, enforce four process-wide children, run isolated shell jobs, cap output, timeout, and clean process groups | `src/tools/shell/parallel-runner.ts`     |
+| Parallel shell runner | Parse `*** Run` batches, enforce four children per shell, run isolated shell jobs, cap output, timeout, and clean process groups | `src/tools/shell/parallel-runner.ts`     |
 | Apply Patch           | Publish the first-class patch tool and execute the checked-in vendored binary directly                                              | `src/tools/apply-patch/apply-patch.ts`   |
 | Skill catalog         | Discover and load reusable workspace `SKILL.md` files dynamically                                                                   | `src/tools/skills.ts`                    |
 | Website fetching      | Produce Markdown, cleaned HTML, or raw rendered HTML and retain bounded cursor-addressed documents                                  | `src/tools/web/web-open.ts`              |

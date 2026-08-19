@@ -22,7 +22,7 @@ const TOOL_META = {
   securitySchemes: [{ type: "noauth" }],
 }
 
-export const DEFAULTS = {
+const DEFAULTS = {
   host: "127.0.0.1",
   port: 3333,
   workspace: "~/Desktop/agent-workspace",
@@ -157,7 +157,7 @@ export function buildMcpInstructions(workspacePath: string): string {
   return [
     `# Operating rules\n\nAt the start of each coding conversation, read ${codingInstructions} completely using \`shell_run\`. DO NOT read it again.\n**Default permanent workspace:** ${workspace}`,
 
-    "## Work efficiently\n\n-When you search for text or files, reach first for `rtk rg`, `rtk read` or `rtk find`. They are much faster than alternatives like `grep`. \n- Prefer batch shell commands in one `shell_run` call. Use different shell IDs when you need independent persistent state or for long-running commands (over 10 minutes).\n- Do NOT repurpose `$HOME`, `$home`, or `$CODEX_HOME`.",
+    "## Work efficiently\n\n-When you search for text or files, reach first for `rtk rg`, `rtk read` or `rtk find`. They are much faster than alternatives like `grep`. \n- Prefer batch shell commands in one `shell_run` call. Use different shell IDs when you need independent persistent state.\n- Do NOT repurpose `$HOME`, `$home`, or `$CODEX_HOME`.",
 
     "## Edit files\n\nUse `apply_patch` for local file changes, including creating, editing, deleting, moving, and renaming files. Do not create or edit files with `cat` or other shell write tricks. Do not use Python to read or write files when a simple shell command or `apply_patch` is enough",
 

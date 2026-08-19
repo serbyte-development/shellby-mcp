@@ -15,7 +15,7 @@ export interface ShellSessionManagerOptions {
   now?: () => number
 }
 
-export type ManagedShellInfo = ShellListOutput["shells"][number]
+type ManagedShellInfo = ShellListOutput["shells"][number]
 
 interface CachedShellState {
   state: ShellRecoverableState

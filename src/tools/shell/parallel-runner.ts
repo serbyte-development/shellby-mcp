@@ -6,8 +6,8 @@ import type { ParallelCommandStatus } from "./shell-contracts.js"
 
 export type { ParallelCommandStatus } from "./shell-contracts.js"
 
-const DEFAULT_PARALLEL_COMMAND_LIMIT = 4
-export const DEFAULT_PARALLEL_COMMAND_TIMEOUT_MS = 10 * 60 * 1000
+const PARALLEL_COMMAND_LIMIT = 4
+export const DEFAULT_PARALLEL_COMMAND_TIMEOUT_MS = 30 * 60 * 1000
 
 const STOP_GRACE_MS = 500
 
@@ -41,16 +41,7 @@ interface QueuedTask<T> {
   onAbort?: () => void
 }
 
-export interface ParallelCommandScheduler {
-  readonly maximumConcurrency: number
-  run<T>(task: () => Promise<T>, signal?: AbortSignal): Promise<T>
-}
-
-export function createParallelCommandScheduler(maximumConcurrency = DEFAULT_PARALLEL_COMMAND_LIMIT): ParallelCommandScheduler {
-  if (!Number.isSafeInteger(maximumConcurrency) || maximumConcurrency < 1) {
-    throw new Error("maximumConcurrency must be a positive safe integer.")
-  }
-
+export function createParallelCommandScheduler() {
   let active = 0
   const queue: QueuedTask<unknown>[] = []
 
@@ -79,7 +70,7 @@ export function createParallelCommandScheduler(maximumConcurrency = DEFAULT_PARA
   }
 
   function pump(): void {
-    while (active < maximumConcurrency && queue.length > 0) {
+    while (active < PARALLEL_COMMAND_LIMIT && queue.length > 0) {
       const queued = queue.shift()!
       if (queued.onAbort) queued.signal?.removeEventListener("abort", queued.onAbort)
       if (queued.signal?.aborted) {
@@ -98,10 +89,8 @@ export function createParallelCommandScheduler(maximumConcurrency = DEFAULT_PARA
     }
   }
 
-  return { maximumConcurrency, run }
+  return { run }
 }
-
-export const processParallelCommandScheduler = createParallelCommandScheduler()
 
 export class ParallelCommandAbortedError extends Error {
   constructor() {

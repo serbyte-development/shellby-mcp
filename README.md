@@ -246,7 +246,7 @@ npm run check
 pwd
 ```
 
-Starting `command` with `*** Run:` selects batch mode and no outer begin/end envelope is needed. A bare `*** Run:` uses the batch cwd. Add a path only when that command needs a different working directory. Relative paths resolve from the batch cwd, and absolute paths such as `/tmp` are used directly. The batch cwd is the call's `cwd` when provided, otherwise the current persistent-shell directory. The MCP runs at most four batch children concurrently across the process and queues extras. Each child keeps separate bounded output; nonzero exits do not cancel siblings. Parallel children time out after 10 minutes, while ordinary persistent-shell commands keep the existing no-hard-timeout behavior. `shell_poll` continues the same outer `shell_id` and `request_id`; finished children appear in the shared paged output as blocks labeled with run number, path, status or exit code, and any permanently dropped bytes.
+Starting `command` with `*** Run:` selects batch mode and no outer begin/end envelope is needed. A bare `*** Run:` uses the batch cwd. Add a path only when that command needs a different working directory. Relative paths resolve from the batch cwd, and absolute paths such as `/tmp` are used directly. The batch cwd is the call's `cwd` when provided, otherwise the current persistent-shell directory. Each shell runs at most four batch children concurrently and queues extras. Each child keeps separate bounded output; nonzero exits do not cancel siblings. Batch children time out after 30 minutes. `shell_poll` continues the same outer `shell_id` and `request_id`; finished children appear in the shared paged output as blocks labeled with run number, path, status or exit code, and any permanently dropped bytes.
 
 Defaults:
 
@@ -257,8 +257,8 @@ Defaults:
 - 16,384-token maximum response override
 - 256 KiB retained output per command
 - 1 MiB rolling shell transcript
-- 4 concurrent parallel child commands process-wide
-- 10-minute timeout per parallel child
+- 4 concurrent parallel child commands per shell
+- 30-minute timeout per parallel child
 
 The workspace defaults to:
 

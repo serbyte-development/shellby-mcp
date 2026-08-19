@@ -47,8 +47,8 @@ Rules:
 - Absolute directory override is allowed.
 - Batch inherits cwd + exported env from the persistent shell.
 - Child state changes do not affect the persistent shell or siblings.
-- Up to 4 batch children run concurrently process-wide. Extra children queue.
-- Each batch child has a 10-minute runtime limit.
+- Up to 4 batch children run concurrently per shell. Extra children queue within that shell.
+- Each batch child has a 30-minute runtime limit.
 - One child failing does not stop siblings.
 - Batch `exit_code=0` only when every child succeeds; otherwise `1`.
 

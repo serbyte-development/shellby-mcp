@@ -24,7 +24,7 @@ export interface ShellProcessCommandResult {
   cwd: string
 }
 
-export interface RunningShellCommand {
+interface RunningShellCommand {
   completion: Promise<ShellProcessCommandResult>
 }
 

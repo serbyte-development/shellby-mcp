@@ -9,12 +9,11 @@ import {
   DEFAULT_PARALLEL_COMMAND_TIMEOUT_MS,
   ParallelCommandAbortedError,
   type ParallelCommandExecutionResult,
-  type ParallelCommandScheduler,
   type ParallelCommandSpec,
   type ParallelCommandStatus,
+  createParallelCommandScheduler,
   executeParallelCommand,
   parseParallelCommandBatch,
-  processParallelCommandScheduler,
 } from "./parallel-runner.js"
 import { createShellProcess, type ShellProcessCommandResult, type ShellProcessContext, type ShellRecoverableState } from "./shell-process.js"
 import { createTranscriptBuffer, type TranscriptBuffer } from "./transcript.js"
@@ -46,9 +45,9 @@ interface ParallelCommandSnapshot extends Record<string, unknown> {
   dropped_output_bytes?: number
 }
 
-export type RunCommandInput = Omit<ShellRunInput, "shell_id"> & { signal?: AbortSignal }
-export type PollCommandInput = Omit<ShellPollInput, "shell_id"> & { signal?: AbortSignal }
-export type ResetShellInput = Omit<ShellResetInput, "shell_id">
+type RunCommandInput = Omit<ShellRunInput, "shell_id"> & { signal?: AbortSignal }
+type PollCommandInput = Omit<ShellPollInput, "shell_id"> & { signal?: AbortSignal }
+type ResetShellInput = Omit<ShellResetInput, "shell_id">
 
 export interface ShellSessionOptions {
   shellPath?: string
@@ -59,7 +58,6 @@ export interface ShellSessionOptions {
   commandTranscriptBytes?: number
   recordLimit?: number
   parallelCommandTimeoutMs?: number
-  parallelScheduler?: ParallelCommandScheduler
 }
 
 interface CommandRecord {
@@ -97,7 +95,7 @@ interface ParallelBatchRecord {
   tasks: Promise<void>[]
 }
 
-export type ResetResult = ShellResetOutput
+type ResetResult = ShellResetOutput
 
 export class ShellSessionError extends Error {
   constructor(
@@ -135,7 +133,7 @@ export function createShellSession(options: ShellSessionOptions = {}): ShellSess
   const commandTranscriptBytes = positiveInteger(options.commandTranscriptBytes, MCP_CONFIG.shell.commandTranscriptBytes)
   const recordLimit = positiveInteger(options.recordLimit, MCP_CONFIG.shell.recordLimit)
   const parallelCommandTimeoutMs = positiveInteger(options.parallelCommandTimeoutMs, DEFAULT_PARALLEL_COMMAND_TIMEOUT_MS)
-  const parallelScheduler = options.parallelScheduler ?? processParallelCommandScheduler
+  const parallelScheduler = createParallelCommandScheduler()
   const records = new Map<string, CommandRecord>()
   const parallelRecords = new Map<string, ParallelBatchRecord>()
   const updates = createUpdateSignal()

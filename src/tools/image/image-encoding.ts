@@ -1,6 +1,6 @@
 import sharp from "sharp"
 
-export const MAX_MCP_IMAGE_RESPONSE_BYTES = 4 * 1024 * 1024
+const MAX_MCP_IMAGE_RESPONSE_BYTES = 4 * 1024 * 1024
 
 const RESPONSE_HEADROOM_BYTES = 64 * 1024
 const JPEG_QUALITIES = [65, 55, 45, 35] as const
@@ -61,10 +61,7 @@ export async function encodeImageForMcp(input: Buffer, options: EncodeImageOptio
     throw new ImageEncodingError("IMAGE_ENCODE_FAILED", error instanceof Error ? error.message : String(error), { cause: error })
   }
 
-  throw new ImageEncodingError(
-    "IMAGE_TOO_LARGE",
-    `Image cannot fit within the ${formatBytes(maxResponseBytes)} response limit without resizing.`
-  )
+  throw new ImageEncodingError("IMAGE_TOO_LARGE", `Image cannot fit within the ${formatBytes(maxResponseBytes)} response limit without resizing.`)
 }
 
 export function formatBytes(bytes: number): string {
