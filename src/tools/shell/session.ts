@@ -133,7 +133,7 @@ export function createShellSession(options: ShellSessionOptions = {}): ShellSess
   const commandTranscriptBytes = positiveInteger(options.commandTranscriptBytes, MCP_CONFIG.shell.commandTranscriptBytes)
   const recordLimit = positiveInteger(options.recordLimit, MCP_CONFIG.shell.recordLimit)
   const parallelCommandTimeoutMs = positiveInteger(options.parallelCommandTimeoutMs, DEFAULT_PARALLEL_COMMAND_TIMEOUT_MS)
-  const parallelScheduler = createParallelCommandScheduler()
+  const scheduleParallelCommand = createParallelCommandScheduler()
   const records = new Map<string, CommandRecord>()
   const parallelRecords = new Map<string, ParallelBatchRecord>()
   const updates = createUpdateSignal()
@@ -324,31 +324,29 @@ export function createShellSession(options: ShellSessionOptions = {}): ShellSess
     for (const run of record.runs) run.cwd = resolve(context.cwd, run.path)
 
     for (const run of record.runs) {
-      const task = parallelScheduler
-        .run(async () => {
-          if (record.status !== "running") throw new ParallelCommandAbortedError()
-          run.status = "running"
-          updates.notify()
-          return executeParallelCommand({
-            shellPath: processController.shellPath,
-            command: run.command,
-            cwd: run.cwd,
-            env: context.env,
-            outputLimitBytes: commandTranscriptBytes,
-            timeoutMs: parallelCommandTimeoutMs,
-            signal: record.abortController.signal,
+      const task = scheduleParallelCommand(async () => {
+        if (record.status !== "running") throw new ParallelCommandAbortedError()
+        run.status = "running"
+        updates.notify()
+        return executeParallelCommand({
+          shellPath: processController.shellPath,
+          command: run.command,
+          cwd: run.cwd,
+          env: context.env,
+          outputLimitBytes: commandTranscriptBytes,
+          timeoutMs: parallelCommandTimeoutMs,
+          signal: record.abortController.signal,
+        })
+      }, record.abortController.signal).then(
+        (result) => finishParallelRun(record, run, result),
+        (error) =>
+          finishParallelRun(record, run, {
+            status: error instanceof ParallelCommandAbortedError || record.abortController.signal.aborted ? "reset" : "failed",
+            exitCode: null,
+            output: error instanceof ParallelCommandAbortedError ? "" : errorMessage(error),
+            droppedOutputBytes: 0,
           })
-        }, record.abortController.signal)
-        .then(
-          (result) => finishParallelRun(record, run, result),
-          (error) =>
-            finishParallelRun(record, run, {
-              status: error instanceof ParallelCommandAbortedError || record.abortController.signal.aborted ? "reset" : "failed",
-              exitCode: null,
-              output: error instanceof ParallelCommandAbortedError ? "" : errorMessage(error),
-              droppedOutputBytes: 0,
-            })
-        )
+      )
       record.tasks.push(task)
     }
 

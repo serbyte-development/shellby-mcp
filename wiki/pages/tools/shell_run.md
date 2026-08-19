@@ -108,7 +108,7 @@ Poll `wait_ms`: default 2000 ms, max 270 s (4.5 minutes).
 
 ## Shell Lifetime
 
-- Up to 16 live shells including protected `default`.
+- Up to 8 live shells including protected `default`.
 - Named shells normally hibernate after 5 minutes idle or under live-shell pressure.
 - Hibernation keeps cwd + exported env for up to 24 hours since last use.
 - Hibernation loses functions, aliases, transcripts/request records, and live/background processes.

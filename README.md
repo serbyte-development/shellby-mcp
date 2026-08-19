@@ -250,7 +250,7 @@ Starting `command` with `*** Run:` selects batch mode and no outer begin/end env
 
 Defaults:
 
-- 16 live shells including `default`
+- 8 live shells including `default`
 - 5-minute idle hibernation for non-default named shells
 - 24-hour cached cwd/exported-environment lifetime since last use
 - 1,024-token response output (`o200k_base`)
@@ -306,7 +306,7 @@ Copy `.env.example` to `.env` to override the defaults below. Internal safety li
 | `CHROME_BIN`                | normal macOS Chrome path    | Optional dedicated Chrome executable override      |
 | `MCP_DEFAULT_OUTPUT_TOKENS` | `1024`                      | Default `max_output_tokens` when omitted           |
 | `MCP_MAX_OUTPUT_TOKENS`     | `16384`                     | Largest allowed `max_output_tokens` override       |
-| `MCP_MAX_SHELLS`            | `16`                        | Maximum live shells including `default`            |
+| `MCP_MAX_SHELLS`            | `8`                         | Maximum live shells including `default`            |
 | `MCP_SHELL_IDLE_TTL_MS`     | `300000`                    | Idle hibernation; `0` disables idle hibernation    |
 | `MCP_SHELL_CACHE_TTL_MS`    | `86400000`                  | Hibernated cwd/environment lifetime since last use |
 

@@ -12,21 +12,21 @@ This page documents the supported environment surface, first-time workspace init
 
 ## Environment Inputs
 
-| Name                        | Default                       | Consumer                                               |
-| --------------------------- | ----------------------------- | ------------------------------------------------------ |
-| `NGROK_URL`                 | unset                         | Optional fixed domain for the npm/PM2 ngrok helpers    |
-| `NGROK_BIN`                 | `ngrok` from `PATH`           | Optional ngrok executable override                     |
-| `NGROK_AUTHTOKEN`           | unset                         | Optional ngrok auth token                              |
-| `MCP_SHELL`                 | `/bin/zsh`                    | Login shell executable                                 |
-| `MCP_CWD`                   | `~/Desktop/agent-workspace` | Absolute-resolved workspace and initial cwd            |
-| `MCP_PEEKABOO_BIN`          | `peekaboo`                    | Peekaboo executable name or absolute path              |
-| `MCP_CHATGPT_CDP_ENDPOINT`  | `http://127.0.0.1:9222`       | Already-running Chrome DevTools endpoint for subagents |
-| `CHROME_BIN`                | normal macOS Chrome path      | Optional dedicated-browser executable override         |
-| `MCP_DEFAULT_OUTPUT_TOKENS` | `1024`                        | Default `max_output_tokens` when omitted               |
-| `MCP_MAX_OUTPUT_TOKENS`     | `16384`                       | Largest allowed `max_output_tokens` override           |
-| `MCP_MAX_SHELLS`            | `16`                          | Maximum live shells including protected `default`      |
-| `MCP_SHELL_IDLE_TTL_MS`     | `300000`                      | Live named-shell idle lifetime; `0` disables hibernation |
-| `MCP_SHELL_CACHE_TTL_MS`    | `86400000`                    | Cached cwd/exported-environment lifetime since last use |
+| Name                        | Default                     | Consumer                                                 |
+| --------------------------- | --------------------------- | -------------------------------------------------------- |
+| `NGROK_URL`                 | unset                       | Optional fixed domain for the npm/PM2 ngrok helpers      |
+| `NGROK_BIN`                 | `ngrok` from `PATH`         | Optional ngrok executable override                       |
+| `NGROK_AUTHTOKEN`           | unset                       | Optional ngrok auth token                                |
+| `MCP_SHELL`                 | `/bin/zsh`                  | Login shell executable                                   |
+| `MCP_CWD`                   | `~/Desktop/agent-workspace` | Absolute-resolved workspace and initial cwd              |
+| `MCP_PEEKABOO_BIN`          | `peekaboo`                  | Peekaboo executable name or absolute path                |
+| `MCP_CHATGPT_CDP_ENDPOINT`  | `http://127.0.0.1:9222`     | Already-running Chrome DevTools endpoint for subagents   |
+| `CHROME_BIN`                | normal macOS Chrome path    | Optional dedicated-browser executable override           |
+| `MCP_DEFAULT_OUTPUT_TOKENS` | `1024`                      | Default `max_output_tokens` when omitted                 |
+| `MCP_MAX_OUTPUT_TOKENS`     | `16384`                     | Largest allowed `max_output_tokens` override             |
+| `MCP_MAX_SHELLS`            | `8`                         | Maximum live shells including protected `default`        |
+| `MCP_SHELL_IDLE_TTL_MS`     | `300000`                    | Live named-shell idle lifetime; `0` disables hibernation |
+| `MCP_SHELL_CACHE_TTL_MS`    | `86400000`                  | Cached cwd/exported-environment lifetime since last use  |
 
 Shell configuration values are canonical here. Caller-visible lifetime consequences are in [`shell_run` / `shell_poll`](./tools/shell_run.md); manager mechanics are in [Persistent Shell Runtime](./Persistent%20Shell%20Runtime.md).
 

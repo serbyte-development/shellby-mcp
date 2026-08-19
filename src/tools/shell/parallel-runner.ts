@@ -45,7 +45,7 @@ export function createParallelCommandScheduler() {
   let active = 0
   const queue: QueuedTask<unknown>[] = []
 
-  function run<T>(task: () => Promise<T>, signal?: AbortSignal): Promise<T> {
+  function schedule<T>(task: () => Promise<T>, signal?: AbortSignal): Promise<T> {
     if (signal?.aborted) return Promise.reject(new ParallelCommandAbortedError())
 
     return new Promise<T>((resolve, reject) => {
@@ -89,7 +89,7 @@ export function createParallelCommandScheduler() {
     }
   }
 
-  return { run }
+  return schedule
 }
 
 export class ParallelCommandAbortedError extends Error {
