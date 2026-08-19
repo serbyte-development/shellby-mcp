@@ -33,11 +33,10 @@ export const shellRunInputSchema = z.object({
   request_id: requestIdInput.describe(
     "Short command or step label, unique within this shell, such as scan-routes-1. Reuse only to retry the exact same command."
   ),
-  cwd: z.string().min(1).optional().describe("Optional cwd change. Omit it to keep the current cwd. Batch commands inherit current cwd."),
+  cwd: z.string().min(1).optional().describe("Omit to keep the current cwd. Batch commands inherit current cwd."),
   command: z
     .string()
     .min(1)
-    .refine((value) => !value.includes("\0"), "command cannot contain a NUL character.")
     .describe(
       "Exact zsh command or multiline script. For a batch, prefix each command with `*** Run:`. Example: `*** Run:\nnpm test\n*** Run: ./api\nnpm run check`."
     ),

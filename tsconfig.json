@@ -8,13 +8,9 @@
     "noUncheckedIndexedAccess": true,
     "esModuleInterop": true,
     "types": [
-      "node",
+      "node"
     ],
-    "skipLibCheck": true,
-    "declaration": true,
-    "sourceMap": true,
-    "noImplicitAny": true,
-    "strictNullChecks": true,
+    "skipLibCheck": true
   },
   "include": [
     "src/**/*.ts",

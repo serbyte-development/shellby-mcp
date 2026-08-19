@@ -2,7 +2,7 @@
   "name": "unhinged-agent",
   "version": "0.1.0",
   "description": "Context-optimized agent harness that gives ChatGPT Web full computer access, persistent tools, and multi-agent capabilities.",
-  "private": true,
+  "private": false,
   "license": "MIT",
   "type": "module",
   "repository": {
