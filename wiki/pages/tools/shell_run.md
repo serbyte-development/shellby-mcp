@@ -104,7 +104,7 @@ Pass:
 
 Repeat with each returned `next_cursor`. `wait_ms` controls how long the poll waits; it does not stop the command. Batch polls return the same per-command `commands` summary.
 
-Poll `wait_ms`: default 2000 ms, max 10 s.
+Poll `wait_ms`: default 2000 ms, max 270 s (4.5 minutes).
 
 ## Shell Lifetime
 

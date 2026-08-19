@@ -127,7 +127,7 @@ export function registerShellExecutionTools(server: McpServer, shells: ShellSess
         shell_id: shellIdInput.describe("The same shell_id used for the original shell_run call."),
         request_id: requestIdInput.describe("The same request_id used for the original shell_run call."),
         cursor: z.int().nonnegative().describe("Pass the next_cursor returned by the previous shell_run or shell_poll."),
-        wait_ms: z.int().min(0).max(MCP_CONFIG.shell.maxWaitMs).optional().default(2_000).describe("How long to wait for more output before returning."),
+        wait_ms: z.int().min(0).max(MCP_CONFIG.shell.maxPollWaitMs).optional().default(2_000).describe("How long to wait for more output before returning."),
         max_output_tokens: maxOutputTokensInput,
       }),
       outputSchema: shellPollSnapshotSchema,

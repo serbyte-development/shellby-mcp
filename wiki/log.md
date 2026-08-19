@@ -1055,3 +1055,8 @@
 - Removed `request_id` from `shell_reset` input/output and deleted reset-specific retry records/deduplication from the shell runtime.
 - Kept optional `reason`, default `shell_id`, destructive reset behavior, and concurrent-reset rejection; reset is now explicitly non-idempotent.
 - Updated shell schema, compact-output, runtime, integration, and maintainer documentation coverage.
+
+## [2026-08-18] shells | Allow long shell polls
+
+- Kept `shell_run.wait_ms` capped at 10 seconds while raising only `shell_poll.wait_ms` to 270 seconds for deliberate long-polling of slow commands.
+- Added a separate `maxPollWaitMs` runtime/config limit so the shell implementation and published schema enforce the same bound.

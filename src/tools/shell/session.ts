@@ -461,7 +461,7 @@ export class PersistentShellSession {
       throw new ShellSessionError("request_not_found", `No command exists for request_id ${JSON.stringify(input.requestId)}.`)
     }
     if (parallelRecord) {
-      const waitMs = normalizeWaitMs(input.waitMs)
+      const waitMs = normalizeWaitMs(input.waitMs, MCP_CONFIG.shell.maxPollWaitMs)
       const maxOutputTokens = this.normalizeOutputTokens(input.maxOutputTokens)
       if (parallelRecord.status === "running") {
         const version = this.updateVersion
@@ -477,7 +477,7 @@ export class PersistentShellSession {
       throw new ShellSessionError("invalid_cursor", "cursor is before the requested command's output.")
     }
 
-    const waitMs = normalizeWaitMs(input.waitMs)
+    const waitMs = normalizeWaitMs(input.waitMs, MCP_CONFIG.shell.maxPollWaitMs)
     const maxOutputTokens = this.normalizeOutputTokens(input.maxOutputTokens)
     if (record.status === "running") {
       const version = this.updateVersion
@@ -1326,10 +1326,10 @@ function validateCommand(command: string): void {
   }
 }
 
-function normalizeWaitMs(waitMs: number | undefined): number {
+function normalizeWaitMs(waitMs: number | undefined, maxWaitMs = MCP_CONFIG.shell.maxWaitMs): number {
   const value = waitMs ?? MCP_CONFIG.shell.defaultWaitMs
   if (!Number.isFinite(value)) return MCP_CONFIG.shell.defaultWaitMs
-  return Math.min(Math.max(Math.trunc(value), 0), MCP_CONFIG.shell.maxWaitMs)
+  return Math.min(Math.max(Math.trunc(value), 0), maxWaitMs)
 }
 
 function writeToStdin(child: ChildProcessWithoutNullStreams, value: string): Promise<void> {

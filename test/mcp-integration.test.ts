@@ -86,6 +86,10 @@ test("serves shell tools through Streamable HTTP and retains state across MCP se
   assert.equal(requestIdSchema.pattern, undefined)
   assert.equal(requestIdSchema.minLength, 3)
   assert.equal(requestIdSchema.maxLength, 128)
+  const runWaitSchema = (runTool?.inputSchema.properties as Record<string, Record<string, unknown>>).wait_ms
+  assert.ok(runWaitSchema)
+  assert.equal(runWaitSchema.default, MCP_CONFIG.shell.defaultWaitMs)
+  assert.equal(runWaitSchema.maximum, MCP_CONFIG.shell.maxWaitMs)
   const outputSchema = runTool?.outputSchema as {
     properties?: Record<string, unknown>
     required?: string[]
@@ -105,6 +109,10 @@ test("serves shell tools through Streamable HTTP and retains state across MCP se
   ])
   assert.deepEqual(outputSchema.required?.sort(), ["cwd", "output", "status"])
   const pollTool = tools.tools.find((tool) => tool.name === "shell_poll")
+  const pollWaitSchema = (pollTool?.inputSchema.properties as Record<string, Record<string, unknown>>).wait_ms
+  assert.ok(pollWaitSchema)
+  assert.equal(pollWaitSchema.default, 2_000)
+  assert.equal(pollWaitSchema.maximum, MCP_CONFIG.shell.maxPollWaitMs)
   const pollOutputSchema = pollTool?.outputSchema as {
     properties?: Record<string, unknown>
     required?: string[]
