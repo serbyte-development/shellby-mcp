@@ -46,3 +46,12 @@
 - Observed: `X-OpenAI-Subject` and `X-OpenAI-Session` were present as HTTP headers; `openai/subject`, `openai/session`, and `openai/organization` were present in MCP tool-call `_meta`. Subject stayed stable across sampled conversations while session changed. Actual identifier values were not stored in the wiki.
 - OpenAI semantics: subject is an anonymized user ID for rate limiting and identification; session is an anonymized conversation ID; organization is an anonymized organization ID when available.
 - Feeds: [HTTP Transport](../pages/HTTP%20Transport.md).
+
+### ChatGPT Web CDP transport probe, 2026-08-20
+
+- Role: direct live inspection of one authenticated ChatGPT Web generation through Playwright and raw Chrome DevTools Protocol network/WebSocket events, plus a browser DOM `MutationObserver`.
+- Reliability: point-in-time evidence for private ChatGPT Web behavior. Endpoint names, WebSocket schemas, topic structure, DOM selectors, and event ordering may change without notice.
+- Observed: `/backend-api/f/conversation` handed the turn to a WebSocket topic; that topic carried assistant deltas and explicit completion items including `message_stream_complete`, `[DONE]`, and a turn-level `done`. The broader `conversations` topic emitted `conversation-turn-complete`.
+- Rate-limit evidence: after the current completion recovery reloaded the managed conversation page, two `/backend-api/conversations` history requests returned HTTP 429 with `{"detail":"Too many requests"}`, followed by the visible conversation-history rate-limit modal. Sampled `stream_status` requests remained HTTP 200.
+- Feeds: [ChatGPT CDP Transport](../pages/ChatGPT%20CDP%20Transport.md), [Browser ChatGPT Subagents](../pages/Browser%20ChatGPT%20Subagents.md), and [Subagent Completion and Recovery](../pages/Subagent%20Completion%20and%20Recovery.md).
+- Secret handling: raw WebSocket frames contained authenticated tokens and account/conversation identifiers during the live probe. Those values are not stored in the wiki; only sanitized protocol shapes and behavior are retained.

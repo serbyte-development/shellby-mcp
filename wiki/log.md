@@ -1074,3 +1074,10 @@
 - Kept runtime validation only for facts discovered after parsing, including cwd/filesystem state, retained cursor semantics, browser/process state, webpage redirects, decoded cursors, and external tool responses.
 - Added MCP integration coverage proving malformed shell, subagent, webpage, and skill inputs fail at the schema boundary before runtime work.
 - Restored raw internal subagent completion events so model-facing event formatting remains owned by the shared output boundary, and removed stale exact-prose assertions from integration coverage.
+
+## [2026-08-20] research | Document live ChatGPT CDP transport and rate-limit behavior
+
+- Added `pages/ChatGPT CDP Transport.md` from one live authenticated CDP probe, documenting the HTTP-to-WebSocket generation handoff, exact assistant deltas, explicit WebSocket completion events, raw CDP streaming coverage, and working DOM MutationObserver signals.
+- Recorded that the sampled `stream_status` requests stayed HTTP 200 while a post-completion recovery reload triggered `/backend-api/conversations` HTTP 429 responses and the conversation-history rate-limit modal.
+- Kept the observed upstream behavior separate from the current production completion contract and documented WebSocket-driven completion as an implementation direction rather than an implemented change.
+- Added index/backlinks and a sanitized source-manifest entry; no captured authentication tokens, conversation IDs, topic IDs, or account identifiers were retained in the wiki.

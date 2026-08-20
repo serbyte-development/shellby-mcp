@@ -6,6 +6,8 @@ Verified 2026-08-18 against current source and tests.
 
 Implementation overview for the process-level browser runtime behind `subagent_run` and `subagent_result`. Caller behavior is canonical in [`subagent_run` / `subagent_result`](./tools/subagent.md); completion and recovery rules are canonical in [Subagent Completion and Recovery](./Subagent%20Completion%20and%20Recovery.md).
 
+Point-in-time upstream ChatGPT HTTP/WebSocket behavior observed through raw CDP is documented separately in [ChatGPT CDP Transport](./ChatGPT%20CDP%20Transport.md); that page is evidence about ChatGPT Web, not a statement that production currently consumes those WebSocket frames.
+
 The runtime attaches through Playwright-over-CDP to an already-running authenticated Chrome instance. Production browser setup/start/hide behavior belongs to `scripts/chatgpt-browser.mjs` and `scripts/start.mjs`; the CDP endpoint comes from `MCP_CONFIG.chatGpt.cdpEndpoint` (`src/config.ts`, `src/tools/subagent/chatgpt-subagent.ts`).
 
 ## Runtime State
@@ -71,6 +73,7 @@ Test ownership and live compatibility coverage are maintained in [Build and Test
 
 - [`subagent_run` / `subagent_result`](./tools/subagent.md)
 - [Subagent Completion and Recovery](./Subagent%20Completion%20and%20Recovery.md)
+- [ChatGPT CDP Transport](./ChatGPT%20CDP%20Transport.md)
 - [MCP Tool Surface](./MCP%20Tool%20Surface.md)
 - [Configuration and Startup](./Configuration%20and%20Startup.md)
 - [Build and Test](./Build%20and%20Test.md)

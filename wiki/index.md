@@ -21,6 +21,7 @@ Start with [Project Overview](pages/Project%20Overview.md), then open only the p
 - [Workspace Tooling](pages/Workspace%20Tooling.md) — workspace conventions, dynamic skills, and generated-tool conventions.
 - [Browser ChatGPT Subagents](pages/Browser%20ChatGPT%20Subagents.md) — CDP-backed orchestration, runtime state, conversation binding, prompt submission, and browser ownership.
 - [Subagent Completion and Recovery](pages/Subagent%20Completion%20and%20Recovery.md) — authoritative completion signals, event delivery, reconciliation, and one-shot recovery.
+- [ChatGPT CDP Transport](pages/ChatGPT%20CDP%20Transport.md) — live-observed ChatGPT HTTP/WebSocket handoff, passive completion signals, DOM observation, and conversation-history rate limiting.
 - [iOS Shell](pages/iOS%20Shell.md) — deferred experimental iPhone command bridge retained in source but not registered with MCP.
 
 ## Tool Reference

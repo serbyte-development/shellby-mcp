@@ -6,6 +6,8 @@ Verified 2026-08-18 against current source and tests.
 
 Canonical completion, event-delivery, reconciliation, and recovery rules for browser-backed subagent turns.
 
+The current implementation below still uses passive Playwright response tracking plus server/UI reconciliation. A 2026-08-20 live probe found that current ChatGPT Web can hand generation to a WebSocket topic containing exact assistant deltas and explicit completion events; that upstream evidence and its implications are documented in [ChatGPT CDP Transport](./ChatGPT%20CDP%20Transport.md).
+
 ## Completion Authority
 
 Detached turns must complete autonomously without requiring `subagent_result` polling. All successful paths converge on `completeTurn()`, whose running-state guard makes the transition race-safe. The winning completion stores the answer, releases per-agent/global generation capacity, preserves the conversation reference when available, and queues exactly one `agent_finished:<agent_id>:<turn_id>` event (`src/tools/subagent/chatgpt-subagent.ts`).
@@ -51,6 +53,7 @@ A successfully submitted prompt is never automatically submitted twice. When bro
 ## Related
 
 - [Browser ChatGPT Subagents](./Browser%20ChatGPT%20Subagents.md)
+- [ChatGPT CDP Transport](./ChatGPT%20CDP%20Transport.md)
 - [`subagent_run` / `subagent_result`](./tools/subagent.md)
 - [Build and Test](./Build%20and%20Test.md)
 - [Open Questions and Risks](./Open%20Questions%20and%20Risks.md)
