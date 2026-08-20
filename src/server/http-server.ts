@@ -5,7 +5,7 @@ import type { Request, Response } from "express"
 
 import { UnhingedAgentAuthError, type UnhingedAgentAuthStore } from "../auth/auth.js"
 import { MCP_CONFIG, type ToolOutputStructuredMode } from "../config.js"
-import { ChatGptSubagentModule } from "../tools/subagent/chatgpt-subagent.js"
+import { createChatGptSubagentService } from "../tools/subagent/chatgpt-subagent.js"
 import type { ChatGptSubagentService } from "../tools/subagent/chatgpt-subagent-contracts.js"
 import { createMcpServer } from "./mcp-server.js"
 import { McpAuditLogger } from "./audit-log.js"
@@ -46,7 +46,7 @@ export async function startMcpHttpServer(options: StartMcpServerOptions = {}): P
   const port = options.port ?? MCP_CONFIG.port
   const shells = options.shellManager ?? createShellSessionManager()
   const peekaboo = options.peekaboo ?? new PeekabooClient()
-  const chatGptSubagents = options.chatGptSubagents ?? new ChatGptSubagentModule()
+  const chatGptSubagents = options.chatGptSubagents ?? createChatGptSubagentService()
   const auditLogger = options.auditLogger
   const authStore = options.authStore
   const webPageOpener = options.webPageOpener ?? new WebPageOpener()

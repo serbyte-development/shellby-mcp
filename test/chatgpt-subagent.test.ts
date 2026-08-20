@@ -3,10 +3,29 @@ import test from "node:test"
 
 import { MCP_CONFIG } from "../src/config.js"
 import { ChatGptSubagentError, type ChatGptSubagentOptions } from "../src/tools/subagent/chatgpt-subagent-contracts.js"
-import { ChatGptSubagentModule } from "../src/tools/subagent/chatgpt-subagent.js"
+import {
+  afterPageCreated,
+  askSubagent,
+  beginAgentOperation,
+  cleanupIdleAgents,
+  clearExpiredRateLimit,
+  createAgent,
+  createChatGptSubagentRuntimeState,
+  createChatGptSubagentService,
+  disposeSubagents,
+  endAgentOperation,
+  ensureActivePage,
+  failOrRecoverSubmittedTurn,
+  pollSubagent,
+  recoverSubmittedTurn,
+  waitForTurnResponse,
+  type BrowserAgentState,
+  type BrowserTurnState,
+  type ChatGptSubagentRuntimeState,
+} from "../src/tools/subagent/chatgpt-subagent.js"
 
-function createModule(options: ChatGptSubagentOptions = {}): ChatGptSubagentModule {
-  return new ChatGptSubagentModule({ cdpEndpoint: "http://127.0.0.1:1", ...options })
+function createRuntime(options: ChatGptSubagentOptions = {}): ChatGptSubagentRuntimeState {
+  return createChatGptSubagentRuntimeState({ cdpEndpoint: "http://127.0.0.1:1", ...options })
 }
 
 function deferred(): { promise: Promise<void>; resolve: () => void } {
@@ -17,34 +36,47 @@ function deferred(): { promise: Promise<void>; resolve: () => void } {
   return { promise, resolve }
 }
 
-test("module fails clearly when the expected Chrome CDP endpoint is unavailable", async () => {
-  const module = createModule({ connectTimeoutMs: 250 })
-  await assert.rejects(module.connect(), /already-running debuggable Chrome instance.*attach-only.*will not launch Chrome/i)
+function runningTurn(agentId: string, overrides: Partial<BrowserTurnState> = {}): BrowserTurnState {
+  const settlement = deferred()
+  return {
+    turnId: `${agentId}_turn_1`,
+    agentId,
+    status: "running",
+    recoveryAttempted: false,
+    activity: "Generating response",
+    lastActivityAt: Date.now(),
+    prompt: "review",
+    settled: settlement.promise,
+    settle: settlement.resolve,
+    ...overrides,
+  }
+}
+
+test("service fails clearly when the expected Chrome CDP endpoint is unavailable", async () => {
+  const service = createChatGptSubagentService({ cdpEndpoint: "http://127.0.0.1:1", connectTimeoutMs: 250 })
+  await assert.rejects(service.connect(), /already-running debuggable Chrome instance.*attach-only.*will not launch Chrome/i)
+  await service.dispose()
 })
 
-test("hard caps concurrent generations at three", async () => {
-  const module = createModule({ maxConcurrentAgents: 99 })
-  const internals = module as unknown as {
-    beginAgentOperation(agentId: string, generation: boolean): void
-    endAgentOperation(agentId: string, generation: boolean): void
-  }
+test("hard caps concurrent generations at three", () => {
+  const runtime = createRuntime({ maxConcurrentAgents: 99 })
 
-  internals.beginAgentOperation("agent-a", true)
-  internals.beginAgentOperation("agent-b", true)
-  internals.beginAgentOperation("agent-c", true)
+  beginAgentOperation(runtime, "agent-a")
+  beginAgentOperation(runtime, "agent-b")
+  beginAgentOperation(runtime, "agent-c")
   assert.throws(
-    () => internals.beginAgentOperation("agent-d", true),
+    () => beginAgentOperation(runtime, "agent-d"),
     (error: unknown) => error instanceof ChatGptSubagentError && error.code === "SUBAGENT_CAPACITY_REACHED" && /capacity is 3/.test(error.message)
   )
 
-  internals.endAgentOperation("agent-a", true)
-  internals.endAgentOperation("agent-b", true)
-  internals.endAgentOperation("agent-c", true)
-  await module.dispose()
+  endAgentOperation(runtime, "agent-a")
+  endAgentOperation(runtime, "agent-b")
+  endAgentOperation(runtime, "agent-c")
+  assert.equal(runtime.activeOperations.size, 0)
 })
 
 test("rate limit modal starts a 15-minute cooldown for new subagent turns", async () => {
-  const module = createModule()
+  const runtime = createRuntime()
   let modalVisible = true
   let pageCreates = 0
   const page = {
@@ -55,67 +87,54 @@ test("rate limit modal starts a 15-minute cooldown for new subagent turns", asyn
       }),
     }),
   }
-  const context = {
+  runtime.context = {
     pages: () => [page],
     newPage: async () => {
       pageCreates += 1
       throw new Error("should not create a page while rate limited")
     },
-  }
-  const internals = module as unknown as {
-    context: typeof context
-    connect(): Promise<void>
-    rateLimitedUntil: number
-  }
-  internals.context = context
-  internals.connect = async () => undefined
+  } as never
+  runtime.browser = { isConnected: () => true, close: async () => undefined } as never
 
   const startedAt = Date.now()
   await assert.rejects(
-    module.ask({ agentId: "rate-limited", prompt: "Review this.", oververbosity: MCP_CONFIG.chatGpt.defaultOververbosity }),
+    askSubagent(runtime, { agentId: "rate-limited", prompt: "Review this.", oververbosity: MCP_CONFIG.chatGpt.defaultOververbosity }),
     (error: unknown) =>
       error instanceof ChatGptSubagentError &&
       error.code === "SUBAGENT_RATE_LIMITED" &&
       /15-minute cooldown/.test(error.message) &&
       /subagent_result/.test(error.message)
   )
-  assert.ok(internals.rateLimitedUntil >= startedAt + 15 * 60_000)
+  assert.ok(runtime.rateLimitedUntil >= startedAt + 15 * 60_000)
   assert.equal(pageCreates, 0)
+  assert.equal(runtime.activeOperations.size, 0)
 
   modalVisible = false
   await assert.rejects(
-    module.ask({ agentId: "still-rate-limited", prompt: "Review this too.", oververbosity: MCP_CONFIG.chatGpt.defaultOververbosity }),
+    askSubagent(runtime, { agentId: "still-rate-limited", prompt: "Review this too.", oververbosity: MCP_CONFIG.chatGpt.defaultOververbosity }),
     (error: unknown) => error instanceof ChatGptSubagentError && error.code === "SUBAGENT_RATE_LIMITED"
   )
   assert.equal(pageCreates, 0)
-  await module.dispose()
+  await disposeSubagents(runtime)
 })
 
 test("rate limit cooldown does not block retrieving an existing turn", async () => {
-  const module = createModule()
-  const turn = {
+  const runtime = createRuntime()
+  const turn = runningTurn("rate-limit-existing-agent", {
     turnId: "rate-limit-existing-turn",
-    agentId: "rate-limit-existing-agent",
-    status: "completed" as const,
-    activity: "Generating response" as const,
-    lastActivityAt: Date.now(),
+    status: "completed",
     response: "finished",
-  }
-  const internals = module as unknown as {
-    turns: Map<string, typeof turn>
-    rateLimitedUntil: number
-  }
-  internals.turns.set(turn.turnId, turn)
-  internals.rateLimitedUntil = Date.now() + 15 * 60_000
+  })
+  runtime.turns.set(turn.turnId, turn)
+  runtime.rateLimitedUntil = Date.now() + 15 * 60_000
 
-  const result = await module.poll(turn.turnId, 0)
+  const result = await pollSubagent(runtime, turn.turnId, 0)
   assert.equal(result.status, "completed")
   assert.equal(result.response, "finished")
-  await module.dispose()
 })
 
 test("expired rate limit cooldown dismisses stale modals before new subagent work", async () => {
-  const module = createModule()
+  const runtime = createRuntime()
   let modalVisible = true
   let gotItClicks = 0
   const modal = {
@@ -133,113 +152,85 @@ test("expired rate limit cooldown dismisses stale modals before new subagent wor
     url: () => "https://chatgpt.com/",
     locator: () => ({ first: () => modal }),
   }
-  const internals = module as unknown as {
-    context: { pages(): Array<typeof page> }
-    rateLimitedUntil: number
-    clearExpiredRateLimit(): Promise<void>
-  }
-  internals.context = { pages: () => [page] }
-  internals.rateLimitedUntil = Date.now() - 1
+  runtime.context = { pages: () => [page] } as never
+  runtime.rateLimitedUntil = Date.now() - 1
 
-  await internals.clearExpiredRateLimit()
+  await clearExpiredRateLimit(runtime)
 
   assert.equal(gotItClicks, 1)
   assert.equal(modalVisible, false)
-  assert.equal(internals.rateLimitedUntil, 0)
-  await module.dispose()
+  assert.equal(runtime.rateLimitedUntil, 0)
 })
 
 test("browser visibility hook is best effort", async () => {
   let calls = 0
-  const module = createModule({
+  const runtime = createRuntime({
     onPageCreated: () => {
       calls += 1
       throw new Error("hide failed")
     },
   })
-  const internals = module as unknown as { afterPageCreated(): Promise<void> }
 
-  await internals.afterPageCreated()
-
+  await afterPageCreated(runtime)
   assert.equal(calls, 1)
-  await module.dispose()
 })
 
 test("forgets an agent whose page is lost before a conversation can be recovered", async () => {
-  const module = createModule()
-  const state = {
+  const runtime = createRuntime()
+  const agent = {
     agentId: "lost-before-conversation",
     page: { isClosed: () => true },
-  }
-  const internals = module as unknown as {
-    agents: Map<string, typeof state>
-    ensureActivePage(value: typeof state): Promise<unknown>
-  }
-  internals.agents.set(state.agentId, state)
+    lastUsedAt: Date.now(),
+    turnCount: 0,
+  } as unknown as BrowserAgentState
+  runtime.agents.set(agent.agentId, agent)
 
-  await assert.rejects(internals.ensureActivePage(state), (error: unknown) => error instanceof ChatGptSubagentError && error.code === "AGENT_TARGET_LOST")
-  assert.equal(internals.agents.has(state.agentId), false)
+  await assert.rejects(ensureActivePage(runtime, agent), (error: unknown) => error instanceof ChatGptSubagentError && error.code === "AGENT_TARGET_LOST")
+  assert.equal(runtime.agents.has(agent.agentId), false)
 })
 
 test("fails explicitly when a saved ChatGPT conversation was deleted", async () => {
-  const module = createModule()
+  const runtime = createRuntime()
   let closes = 0
   const page = {
     isClosed: () => false,
     url: () => "https://chatgpt.com/",
+    setViewportSize: async () => undefined,
     goto: async () => undefined,
     close: async () => {
       closes += 1
     },
-    locator: () => ({
-      first: () => ({ isVisible: async () => false }),
-    }),
-    getByText: () => ({
-      first: () => ({ isVisible: async () => false }),
-    }),
-    context: () => context,
+    locator: () => ({ first: () => ({ isVisible: async () => false }) }),
+    getByText: () => ({ first: () => ({ isVisible: async () => false }) }),
   }
-  const context = {
-    newPage: async () => page,
-    newCDPSession: async () => ({ send: async () => undefined, detach: async () => undefined }),
-  }
-  const internals = module as unknown as {
-    context: typeof context
-    conversationRefs: Map<string, { conversationId: string; conversationUrl: string; turnCount: number }>
-    createAgent(agentId: string): Promise<unknown>
-  }
-  internals.context = context
-  internals.conversationRefs.set("deleted-agent", {
+  runtime.context = { newPage: async () => page } as never
+  runtime.conversationRefs.set("deleted-agent", {
     conversationId: "deleted-conversation",
     conversationUrl: "https://chatgpt.com/c/deleted-conversation",
     turnCount: 3,
   })
 
   await assert.rejects(
-    internals.createAgent("deleted-agent"),
+    createAgent(runtime, "deleted-agent"),
     (error: unknown) => error instanceof ChatGptSubagentError && error.code === "SUBAGENT_CONVERSATION_NOT_FOUND"
   )
   assert.equal(closes, 1)
-  assert.equal(internals.conversationRefs.has("deleted-agent"), true)
-  await module.dispose()
+  assert.equal(runtime.conversationRefs.has("deleted-agent"), true)
 })
 
 test("subagent_result waits on shared turn settlement without reconciling ChatGPT", async () => {
-  const module = createModule()
+  const runtime = createRuntime()
   const settlement = deferred()
-  const turn = {
+  const turn = runningTurn("poll-test", {
     turnId: "turn-test",
-    agentId: "poll-test",
-    status: "running" as "running" | "completed" | "failed",
-    activity: "Searching the web" as const,
+    activity: "Searching the web",
     lastActivityAt: Date.now() - 1_000,
-    response: undefined as string | undefined,
     settled: settlement.promise,
-  }
-  const internals = module as unknown as { turns: Map<string, typeof turn> }
-  internals.turns.set(turn.turnId, turn)
+    settle: settlement.resolve,
+  })
+  runtime.turns.set(turn.turnId, turn)
 
-  const running = await module.poll(turn.turnId, 0)
+  const running = await pollSubagent(runtime, turn.turnId, 0)
   assert.equal(running.status, "running")
   assert.equal(running.activity, "Searching the web")
 
@@ -249,120 +240,71 @@ test("subagent_result waits on shared turn settlement without reconciling ChatGP
     settlement.resolve()
   }, 10)
 
-  const completed = await module.poll(turn.turnId, 100)
+  const completed = await pollSubagent(runtime, turn.turnId, 100)
   assert.equal(completed.status, "completed")
   assert.equal(completed.response, "finished")
-  await module.dispose()
 })
 
 test("shared assistant response completes a detached turn and releases capacity exactly once", async () => {
-  const module = createModule()
-  const settlement = deferred()
+  const runtime = createRuntime()
   let observationDisposals = 0
-  const state = {
+  const agent = {
     agentId: "event-agent",
-    page: {
-      isClosed: () => false,
-      url: () => "https://chatgpt.com/c/conversation-1",
-    },
-    hasSubmittedTurn: true,
+    page: { isClosed: () => false, url: () => "https://chatgpt.com/c/conversation-1" },
     conversationId: "conversation-1",
     conversationUrl: "https://chatgpt.com/c/conversation-1",
     lastUsedAt: Date.now(),
     turnCount: 1,
-  }
-  const turn = {
-    turnId: "event-agent_turn_1",
-    agentId: state.agentId,
-    status: "running" as "running" | "completed" | "failed",
-    activity: "Generating response" as const,
-    lastActivityAt: Date.now(),
+  } as BrowserAgentState
+  const turn = runningTurn(agent.agentId, {
     observation: {
       response: Promise.resolve("```ts\nconst exact = true\n```"),
       dispose: async () => {
         observationDisposals += 1
       },
     },
-    settled: settlement.promise,
-    settle: settlement.resolve,
-  }
-  const internals = module as unknown as {
-    waitForTurnResponse(value: typeof turn, agent: typeof state): Promise<void>
-    activeTurnsByAgent: Map<string, string>
-    activeAgentIds: Set<string>
-    activeGenerationCount: number
-  }
-  internals.activeTurnsByAgent.set(state.agentId, turn.turnId)
-  internals.activeAgentIds.add(state.agentId)
-  internals.activeGenerationCount = 1
+  })
+  runtime.activeOperations.set(agent.agentId, turn.turnId)
 
-  await internals.waitForTurnResponse(turn, state)
+  await waitForTurnResponse(runtime, turn, agent)
 
   assert.equal(turn.status, "completed")
-  assert.equal((turn as typeof turn & { response?: string }).response, "```ts\nconst exact = true\n```")
+  assert.equal(turn.response, "```ts\nconst exact = true\n```")
   assert.equal(observationDisposals, 1)
-  assert.equal(internals.activeTurnsByAgent.has(state.agentId), false)
-  assert.equal(internals.activeAgentIds.has(state.agentId), false)
-  assert.equal(internals.activeGenerationCount, 0)
-  assert.deepEqual(module.drainEvents(), [`agent_finished:${state.agentId}:${turn.turnId}`])
-  assert.deepEqual(module.drainEvents(), [])
-  await module.dispose()
+  assert.equal(runtime.activeOperations.has(agent.agentId), false)
+  assert.deepEqual(runtime.pendingEvents.splice(0), [`agent_finished:${agent.agentId}:${turn.turnId}`])
+  assert.deepEqual(runtime.pendingEvents.splice(0), [])
 })
 
 test("assistant observation failure gets one catastrophic recovery attempt before failing", async () => {
-  const module = createModule()
-  const settlement = deferred()
+  const runtime = createRuntime()
   let recoveryAttempts = 0
-  const state = {
+  const agent = {
     agentId: "recovery-agent",
-    page: {
-      isClosed: () => false,
-      url: () => "https://chatgpt.com/c/conversation-1",
-    },
-    hasSubmittedTurn: true,
+    page: { isClosed: () => false, url: () => "https://chatgpt.com/c/conversation-1" },
     conversationId: "conversation-1",
     conversationUrl: "https://chatgpt.com/c/conversation-1",
     lastUsedAt: Date.now(),
     turnCount: 1,
-  }
-  const turn = {
-    turnId: "recovery-agent_turn_1",
-    agentId: state.agentId,
-    status: "running" as "running" | "completed" | "failed",
-    activity: "Generating response" as const,
-    lastActivityAt: Date.now(),
-    tracking: { baselineDom: [], prompt: "review" },
-    settled: settlement.promise,
-    settle: settlement.resolve,
-  }
-  const internals = module as unknown as {
-    failOrRecoverSubmittedTurn(value: typeof turn, agent: typeof state, error: unknown): Promise<void>
-    recoverSubmittedTurn(value: typeof turn, agent: typeof state): Promise<void>
-    activeTurnsByAgent: Map<string, string>
-    activeAgentIds: Set<string>
-    activeGenerationCount: number
-  }
-  internals.activeTurnsByAgent.set(state.agentId, turn.turnId)
-  internals.activeAgentIds.add(state.agentId)
-  internals.activeGenerationCount = 1
-  internals.recoverSubmittedTurn = async () => {
+  } as BrowserAgentState
+  const turn = runningTurn(agent.agentId)
+  runtime.activeOperations.set(agent.agentId, turn.turnId)
+  const recover = async () => {
     recoveryAttempts += 1
     throw new Error("recovery failed")
   }
 
-  await internals.failOrRecoverSubmittedTurn(turn, state, new Error("observation failed"))
-  await internals.failOrRecoverSubmittedTurn(turn, state, new Error("second failure"))
+  await failOrRecoverSubmittedTurn(runtime, turn, agent, new Error("observation failed"), undefined, recover)
+  await failOrRecoverSubmittedTurn(runtime, turn, agent, new Error("second failure"), undefined, recover)
 
   assert.equal(recoveryAttempts, 1)
   assert.equal(turn.status, "failed")
-  assert.equal((turn as typeof turn & { errorMessage?: string }).errorMessage, "recovery failed")
-  assert.equal(internals.activeGenerationCount, 0)
-  await module.dispose()
+  assert.equal(turn.errorMessage, "recovery failed")
+  assert.equal(runtime.activeOperations.has(agent.agentId), false)
 })
 
 test("catastrophic recovery opens the saved conversation in a fresh tab without reloading", async () => {
-  const module = createModule()
-  const settlement = deferred()
+  const runtime = createRuntime()
   const conversationUrl = "https://chatgpt.com/c/conversation-1"
   const exactResponse = "```ts\nconst recovered = true\n```"
   let oldCloses = 0
@@ -377,6 +319,7 @@ test("catastrophic recovery opens the saved conversation in a fresh tab without 
   const newPage = {
     isClosed: () => false,
     url: () => conversationUrl,
+    setViewportSize: async () => undefined,
     goto: async () => undefined,
     close: async () => undefined,
     waitForResponse: async (predicate: (response: { url(): string; status(): number }) => boolean) => {
@@ -425,103 +368,58 @@ test("catastrophic recovery opens the saved conversation in a fresh tab without 
       return { first: () => ({ isVisible: async () => false }) }
     },
     getByText: () => ({ first: () => ({ isVisible: async () => false }) }),
-    context: () => context,
   }
-  const context = {
+  runtime.context = {
     newPage: async () => {
       newPages += 1
       return newPage
     },
-    newCDPSession: async () => ({ send: async () => undefined, detach: async () => undefined }),
-  }
-  const state = {
+  } as never
+  const agent = {
     agentId: "catastrophic-agent",
     page: oldPage,
-    hasSubmittedTurn: true,
     conversationId: "conversation-1",
     conversationUrl,
     lastUsedAt: Date.now(),
     turnCount: 1,
-  }
-  const turn = {
-    turnId: "catastrophic-agent_turn_1",
-    agentId: state.agentId,
-    status: "running" as "running" | "completed" | "failed",
-    activity: "Generating response" as const,
-    lastActivityAt: Date.now(),
-    tracking: { baselineDom: [], prompt: "review" },
-    settled: settlement.promise,
-    settle: settlement.resolve,
-  }
-  const internals = module as unknown as {
-    context: typeof context
-    recoverSubmittedTurn(value: typeof turn, agent: typeof state): Promise<void>
-    activeTurnsByAgent: Map<string, string>
-    activeAgentIds: Set<string>
-    activeGenerationCount: number
-  }
-  internals.context = context
-  internals.activeTurnsByAgent.set(state.agentId, turn.turnId)
-  internals.activeAgentIds.add(state.agentId)
-  internals.activeGenerationCount = 1
+  } as unknown as BrowserAgentState
+  const turn = runningTurn(agent.agentId)
+  runtime.activeOperations.set(agent.agentId, turn.turnId)
 
-  await internals.recoverSubmittedTurn(turn, state)
+  await recoverSubmittedTurn(runtime, turn, agent)
 
   assert.equal(newPages, 1)
   assert.equal(oldCloses, 1)
-  assert.equal(state.page, newPage)
+  assert.equal(agent.page, newPage)
   assert.equal(turn.status, "completed")
-  assert.equal((turn as typeof turn & { response?: string }).response, exactResponse)
-  assert.equal(internals.activeGenerationCount, 0)
-  assert.deepEqual(module.drainEvents(), [`agent_finished:${state.agentId}:${turn.turnId}`])
-  await module.dispose()
+  assert.equal(turn.response, exactResponse)
+  assert.equal(runtime.activeOperations.has(agent.agentId), false)
+  assert.deepEqual(runtime.pendingEvents.splice(0), [`agent_finished:${agent.agentId}:${turn.turnId}`])
 })
 
 test("submitted turn without a saved conversation fails without catastrophic recovery", async () => {
-  const module = createModule()
-  const settlement = deferred()
+  const runtime = createRuntime()
   let recoveryAttempts = 0
-  const state = {
+  const agent = {
     agentId: "unrecoverable-agent",
     page: { isClosed: () => false, url: () => "https://chatgpt.com/" },
-    hasSubmittedTurn: true,
     lastUsedAt: Date.now(),
     turnCount: 1,
-  }
-  const turn = {
-    turnId: "unrecoverable-agent_turn_1",
-    agentId: state.agentId,
-    status: "running" as "running" | "completed" | "failed",
-    activity: "Generating response" as const,
-    lastActivityAt: Date.now(),
-    tracking: { baselineDom: [], prompt: "review" },
-    settled: settlement.promise,
-    settle: settlement.resolve,
-  }
-  const internals = module as unknown as {
-    failOrRecoverSubmittedTurn(value: typeof turn, agent: typeof state, error: unknown): Promise<void>
-    recoverSubmittedTurn(value: typeof turn, agent: typeof state): Promise<void>
-    activeTurnsByAgent: Map<string, string>
-    activeAgentIds: Set<string>
-    activeGenerationCount: number
-  }
-  internals.recoverSubmittedTurn = async () => {
-    recoveryAttempts += 1
-  }
-  internals.activeTurnsByAgent.set(state.agentId, turn.turnId)
-  internals.activeAgentIds.add(state.agentId)
-  internals.activeGenerationCount = 1
+  } as unknown as BrowserAgentState
+  const turn = runningTurn(agent.agentId)
+  runtime.activeOperations.set(agent.agentId, turn.turnId)
 
-  await internals.failOrRecoverSubmittedTurn(turn, state, new Error("browser failed"))
+  await failOrRecoverSubmittedTurn(runtime, turn, agent, new Error("browser failed"), undefined, async () => {
+    recoveryAttempts += 1
+  })
 
   assert.equal(recoveryAttempts, 0)
   assert.equal(turn.status, "failed")
-  assert.equal(internals.activeGenerationCount, 0)
-  await module.dispose()
+  assert.equal(runtime.activeOperations.has(agent.agentId), false)
 })
 
 test("dispose closes managed agent pages but leaves user-repurposed tabs alone", async () => {
-  const module = createModule()
+  const runtime = createRuntime()
   let managedCloses = 0
   let repurposedCloses = 0
   let browserCloses = 0
@@ -536,7 +434,9 @@ test("dispose closes managed agent pages but leaves user-repurposed tabs alone",
     },
     conversationId: "conversation-1",
     conversationUrl: "https://chatgpt.com/c/conversation-1",
-  }
+    lastUsedAt: Date.now(),
+    turnCount: 1,
+  } as BrowserAgentState
   const repurposed = {
     agentId: "repurposed",
     page: {
@@ -548,20 +448,18 @@ test("dispose closes managed agent pages but leaves user-repurposed tabs alone",
     },
     conversationId: "conversation-2",
     conversationUrl: "https://chatgpt.com/c/conversation-2",
-  }
-  const internals = module as unknown as {
-    agents: Map<string, typeof managed | typeof repurposed>
-    browser: { close(): Promise<void> }
-  }
-  internals.agents.set(managed.agentId, managed)
-  internals.agents.set(repurposed.agentId, repurposed)
-  internals.browser = {
+    lastUsedAt: Date.now(),
+    turnCount: 1,
+  } as BrowserAgentState
+  runtime.agents.set(managed.agentId, managed)
+  runtime.agents.set(repurposed.agentId, repurposed)
+  runtime.browser = {
     close: async () => {
       browserCloses += 1
     },
-  }
+  } as never
 
-  await module.dispose()
+  await disposeSubagents(runtime)
 
   assert.equal(managedCloses, 1)
   assert.equal(repurposedCloses, 0)
@@ -569,9 +467,9 @@ test("dispose closes managed agent pages but leaves user-repurposed tabs alone",
 })
 
 test("expires idle agent tabs and local completed turn state", async () => {
-  const module = createModule()
+  const runtime = createRuntime()
   let closes = 0
-  const state = {
+  const agent = {
     agentId: "idle-agent",
     page: {
       isClosed: () => false,
@@ -580,44 +478,33 @@ test("expires idle agent tabs and local completed turn state", async () => {
         closes += 1
       },
     },
-    hasSubmittedTurn: true,
     conversationId: "conversation-1",
     conversationUrl: "https://chatgpt.com/c/conversation-1",
     lastUsedAt: 1_000,
     turnCount: 2,
-  }
-  const turn = {
+  } as BrowserAgentState
+  const turn = runningTurn(agent.agentId, {
     turnId: "idle-agent_turn_2",
-    agentId: state.agentId,
-    status: "completed" as const,
-    activity: "Generating response" as const,
+    status: "completed",
     lastActivityAt: 1_000,
-  }
-  const internals = module as unknown as {
-    agents: Map<string, typeof state>
-    turns: Map<string, typeof turn>
-    pendingEvents: string[]
-    cleanupIdleAgents(now: number): Promise<void>
-  }
-  internals.agents.set(state.agentId, state)
-  internals.turns.set(turn.turnId, turn)
-  internals.pendingEvents.push(`agent_finished:${state.agentId}:${turn.turnId}`)
+  })
+  runtime.agents.set(agent.agentId, agent)
+  runtime.turns.set(turn.turnId, turn)
+  runtime.pendingEvents.push(`agent_finished:${agent.agentId}:${turn.turnId}`)
 
-  await internals.cleanupIdleAgents(1_000 + 30 * 60_000)
+  await cleanupIdleAgents(runtime, 1_000 + 30 * 60_000)
 
   assert.equal(closes, 1)
-  assert.equal(internals.agents.has(state.agentId), false)
-  assert.equal(internals.turns.size, 0)
-  assert.deepEqual(module.drainEvents(), [])
-  await module.dispose()
+  assert.equal(runtime.agents.has(agent.agentId), false)
+  assert.equal(runtime.turns.size, 0)
+  assert.deepEqual(runtime.pendingEvents, [])
 })
 
 test("30-minute active-turn deadline reuses observed progress and preserves conversation recovery metadata", async () => {
-  const module = createModule()
+  const runtime = createRuntime()
   let closes = 0
   let observationDisposals = 0
-  const settlement = deferred()
-  const state = {
+  const agent = {
     agentId: "long-running-agent",
     page: {
       isClosed: () => false,
@@ -626,17 +513,14 @@ test("30-minute active-turn deadline reuses observed progress and preserves conv
         closes += 1
       },
     },
-    hasSubmittedTurn: true,
     conversationId: "conversation-1",
     conversationUrl: "https://chatgpt.com/c/conversation-1",
     lastUsedAt: 1_000,
     turnCount: 4,
-  }
-  const turn = {
+  } as BrowserAgentState
+  const turn = runningTurn(agent.agentId, {
     turnId: "long-running-agent_turn_4",
-    agentId: state.agentId,
-    status: "running" as "running" | "completed" | "failed",
-    activity: "Using tools" as const,
+    activity: "Using tools",
     lastActivityAt: 1_000,
     observation: {
       response: new Promise<string>(() => undefined),
@@ -644,39 +528,25 @@ test("30-minute active-turn deadline reuses observed progress and preserves conv
         observationDisposals += 1
       },
     },
-    settled: settlement.promise,
-    settle: settlement.resolve,
-  }
-  const internals = module as unknown as {
-    agents: Map<string, typeof state>
-    turns: Map<string, typeof turn>
-    activeTurnsByAgent: Map<string, string>
-    activeAgentIds: Set<string>
-    conversationRefs: Map<string, { conversationId: string; conversationUrl: string; turnCount: number }>
-    activeGenerationCount: number
-    cleanupIdleAgents(now: number): Promise<void>
-  }
-  internals.agents.set(state.agentId, state)
-  internals.turns.set(turn.turnId, turn)
-  internals.activeTurnsByAgent.set(state.agentId, turn.turnId)
-  internals.activeAgentIds.add(state.agentId)
-  internals.activeGenerationCount = 1
+  })
+  runtime.agents.set(agent.agentId, agent)
+  runtime.turns.set(turn.turnId, turn)
+  runtime.activeOperations.set(agent.agentId, turn.turnId)
 
-  await internals.cleanupIdleAgents(1_000 + 29 * 60_000)
+  await cleanupIdleAgents(runtime, 1_000 + 29 * 60_000)
   assert.equal(closes, 0)
-  assert.equal(internals.agents.has(state.agentId), true)
-  assert.equal(internals.activeGenerationCount, 1)
+  assert.equal(runtime.agents.has(agent.agentId), true)
+  assert.equal(runtime.activeOperations.get(agent.agentId), turn.turnId)
 
-  await internals.cleanupIdleAgents(1_000 + 30 * 60_000)
+  await cleanupIdleAgents(runtime, 1_000 + 30 * 60_000)
   assert.equal(closes, 1)
   assert.equal(observationDisposals, 1)
-  assert.equal(internals.agents.has(state.agentId), false)
-  assert.equal(internals.turns.has(turn.turnId), false)
-  assert.equal(internals.activeGenerationCount, 0)
-  assert.deepEqual(internals.conversationRefs.get(state.agentId), {
+  assert.equal(runtime.agents.has(agent.agentId), false)
+  assert.equal(runtime.turns.has(turn.turnId), false)
+  assert.equal(runtime.activeOperations.has(agent.agentId), false)
+  assert.deepEqual(runtime.conversationRefs.get(agent.agentId), {
     conversationId: "conversation-1",
     conversationUrl: "https://chatgpt.com/c/conversation-1",
     turnCount: 4,
   })
-  await module.dispose()
 })

@@ -4,7 +4,7 @@ import { readFile } from "node:fs/promises"
 import test from "node:test"
 
 import { MCP_CONFIG } from "../../src/config.js"
-import { extractConversationMessages } from "../../src/tools/subagent/chatgpt-subagent-browser.js"
+import { extractConversationMessages } from "../../src/tools/subagent/chatgpt-subagent-protocol.js"
 
 const LIVE_FIXTURE_ENABLED = process.env.RUN_LIVE_CHATGPT_FIXTURE_TESTS === "1" && !process.env.CI
 const LIVE_TIMEOUT_MS = 60_000

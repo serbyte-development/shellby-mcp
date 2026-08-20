@@ -4,22 +4,10 @@ import test from "node:test"
 import type { Page } from "playwright-core"
 
 import { MCP_CONFIG } from "../src/config.js"
-import {
-  ChatGptStructuredTurnTracker,
-  configureManagedChatGptPage,
-  extractConversationMessages,
-  extractConversationNodes,
-  isExpectedAgentPage,
-  observeAssistantResponse,
-  waitForStableConversationLocation,
-  type ManagedAgentPageState,
-} from "../src/tools/subagent/chatgpt-subagent-browser.js"
-import type { ChatGptSubagentOptions } from "../src/tools/subagent/chatgpt-subagent-contracts.js"
-import { ChatGptSubagentModule } from "../src/tools/subagent/chatgpt-subagent.js"
-
-function createModule(options: ChatGptSubagentOptions = {}): ChatGptSubagentModule {
-  return new ChatGptSubagentModule({ cdpEndpoint: "http://127.0.0.1:1", ...options })
-}
+import { isExpectedAgentPage, waitForStableConversationLocation, type ManagedAgentPageState } from "../src/tools/subagent/chatgpt-subagent-browser.js"
+import { observeAssistantResponse } from "../src/tools/subagent/chatgpt-subagent-observer.js"
+import { ChatGptStructuredTurnTracker, extractConversationMessages, extractConversationNodes } from "../src/tools/subagent/chatgpt-subagent-protocol.js"
+import { askSubagent, createChatGptSubagentRuntimeState, disposeSubagents } from "../src/tools/subagent/chatgpt-subagent.js"
 
 function turnFrame(topicId: string, encodedItem: string): string {
   return JSON.stringify([
@@ -49,31 +37,6 @@ function deltaMessage(role: "user" | "assistant", text: string, options: { recip
     },
   })}\n\n`
 }
-
-test("managed ChatGPT pages receive the full mobile CDP profile before navigation", async () => {
-  const sends: Array<{ method: string; params: Record<string, unknown> }> = []
-  let detached = 0
-  const context = {
-    newCDPSession: async () => ({
-      send: async (method: string, params: Record<string, unknown>) => sends.push({ method, params }),
-      detach: async () => {
-        detached += 1
-      },
-    }),
-  }
-  const page = { context: () => context } as unknown as Page
-
-  await configureManagedChatGptPage(page)
-
-  assert.equal(sends[0]?.method, "Network.setUserAgentOverride")
-  assert.equal(sends[0]?.params.platform, "Android")
-  assert.match(String(sends[0]?.params.userAgent), /Android.*Mobile/)
-  assert.deepEqual(sends[1], {
-    method: "Emulation.setDeviceMetricsOverride",
-    params: { width: 412, height: 915, deviceScaleFactor: 1, mobile: true },
-  })
-  assert.equal(detached, 1)
-})
 
 test("DOM response observation re-arms after first-turn navigation destroys its execution context", async () => {
   let domAttempts = 0
@@ -152,7 +115,7 @@ test("start-time conversation binding ignores transient WEB routes and stores th
 })
 
 test("subagent start dismisses a ChatGPT modal that races with composer interaction and retries only the blocked click", async () => {
-  const module = createModule({ interactionDelayMs: 0 })
+  const runtime = createChatGptSubagentRuntimeState({ interactionDelayMs: 0 })
   let modalVisible = false
   let composerClicks = 0
   let escapePresses = 0
@@ -232,20 +195,14 @@ test("subagent start dismisses a ChatGPT modal that races with composer interact
   const state = {
     agentId: "modal-agent",
     page,
-    hasSubmittedTurn: false,
     lastUsedAt: Date.now(),
     turnCount: 0,
   }
-  const internals = module as unknown as {
-    agents: Map<string, typeof state>
-    context: { pages(): Array<typeof page> }
-    connect(): Promise<void>
-  }
-  internals.context = { pages: () => [page] }
-  internals.connect = async () => undefined
-  internals.agents.set(state.agentId, state)
+  runtime.context = { pages: () => [page] } as never
+  runtime.browser = { isConnected: () => true, close: async () => undefined } as never
+  runtime.agents.set(state.agentId, state as never)
 
-  const result = await module.ask({
+  const result = await askSubagent(runtime, {
     agentId: state.agentId,
     prompt: "Review this.",
     oververbosity: MCP_CONFIG.chatGpt.defaultOververbosity,
@@ -254,7 +211,7 @@ test("subagent start dismisses a ChatGPT modal that races with composer interact
   assert.equal(result.status, "running")
   assert.equal(composerClicks, 2)
   assert.equal(escapePresses, 1)
-  await module.dispose()
+  await disposeSubagents(runtime)
 })
 
 test("unbound new-chat pages accept ChatGPT's transient web conversation route", () => {

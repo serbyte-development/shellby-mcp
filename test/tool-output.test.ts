@@ -2,7 +2,7 @@ import assert from "node:assert/strict"
 import { readFile } from "node:fs/promises"
 import test from "node:test"
 
-import { extractConversationMessages } from "../src/tools/subagent/chatgpt-subagent-browser.js"
+import { extractConversationMessages } from "../src/tools/subagent/chatgpt-subagent-protocol.js"
 import { compactToolResult, renderStructuredContent } from "../src/server/tool-output.js"
 import { countTokens } from "../src/tokenizer.js"
 
@@ -86,10 +86,10 @@ test("compact result preserves existing content and removes structuredContent", 
 })
 
 test("subagent formatter preserves fenced Markdown from the frozen real ChatGPT fixture", async () => {
-  const payload = JSON.parse(
-    await readFile(new URL("./fixtures/chatgpt-live-fixture/conversation.json", import.meta.url), "utf8")
-  ) as unknown
-  const assistant = extractConversationMessages(payload).filter((message) => message.role === "assistant").at(-1)
+  const payload = JSON.parse(await readFile(new URL("./fixtures/chatgpt-live-fixture/conversation.json", import.meta.url), "utf8")) as unknown
+  const assistant = extractConversationMessages(payload)
+    .filter((message) => message.role === "assistant")
+    .at(-1)
   assert.ok(assistant)
 
   const rendered = renderStructuredContent({
@@ -123,7 +123,7 @@ const toolFamilyCases: Array<{ tool: string; structuredContent: unknown; expecte
       ],
     },
     expected:
-      "status=completed cwd=/workspace exit_code=1\n\noutput:\n\nline one\nline two\n\ncommands:\n\n- run=1 command=\"npm run lint\" status=completed exit_code=0\n- run=2 command=\"npm run type-check…\" path=./api status=completed exit_code=1",
+      'status=completed cwd=/workspace exit_code=1\n\noutput:\n\nline one\nline two\n\ncommands:\n\n- run=1 command="npm run lint" status=completed exit_code=0\n- run=2 command="npm run type-check…" path=./api status=completed exit_code=1',
   },
   {
     tool: "shell_poll",

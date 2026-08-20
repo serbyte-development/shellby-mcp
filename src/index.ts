@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url"
 
 import { UnhingedAgentAuthStore } from "./auth/auth.js"
 import { MCP_CONFIG } from "./config.js"
-import { ChatGptSubagentModule } from "./tools/subagent/chatgpt-subagent.js"
+import { createChatGptSubagentService } from "./tools/subagent/chatgpt-subagent.js"
 import { McpAuditLogger } from "./server/audit-log.js"
 import { createShellSession } from "./tools/shell/session.js"
 import { createShellSessionManager } from "./tools/shell/session-manager.js"
@@ -18,7 +18,7 @@ const authStore = new UnhingedAgentAuthStore()
 await authStore.ensureState()
 const cwd = MCP_CONFIG.workspace
 await mkdir(cwd, { recursive: true })
-const chatGptSubagents = new ChatGptSubagentModule({
+const chatGptSubagents = createChatGptSubagentService({
   onPageCreated: () => {
     const child = spawn(process.execPath, [resolve(repositoryRoot, "scripts", "chatgpt-browser.mjs"), "--hide"], {
       stdio: "ignore",
