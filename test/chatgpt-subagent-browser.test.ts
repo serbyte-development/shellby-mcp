@@ -140,8 +140,10 @@ test("subagent start dismisses a ChatGPT modal that races with composer interact
   }
   const internals = module as unknown as {
     agents: Map<string, typeof state>
+    context: { pages(): Array<typeof page> }
     connect(): Promise<void>
   }
+  internals.context = { pages: () => [page] }
   internals.connect = async () => undefined
   internals.agents.set(state.agentId, state)
 

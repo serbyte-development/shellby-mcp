@@ -41,6 +41,10 @@ const MAX_CONCURRENT_AGENTS = 3
 const COMPLETION_WATCH_INTERVAL_MS = 1_000
 const COMPLETION_DOM_GRACE_MS = 5_000
 const CONVERSATION_BIND_TIMEOUT_MS = 30_000
+const RATE_LIMIT_COOLDOWN_MS = 15 * 60_000
+const RATE_LIMIT_SELECTOR = '[data-testid="modal-conversation-history-rate-limit"]'
+const RATE_LIMIT_DISMISS_SETTLE_MS = 250
+const RATE_LIMIT_PRE_SUBMIT_SETTLE_MS = 500
 
 const INJECTED_PROMPT =
   "Respond terse like smart caveman — drop articles, filler, pleasantries. Fragments OK. Technical terms exact. Code unchanged. Pattern: [thing] [action] [reason]. [next step].\n\nNot use `subagent` or `computer_*` tools."
@@ -101,6 +105,7 @@ export class ChatGptSubagentModule implements ChatGptSubagentService {
   private readonly activeAgentIds = new Set<string>()
   private readonly pendingEvents: string[] = []
   private activeGenerationCount = 0
+  private rateLimitedUntil = 0
   private browser?: Browser
   private context?: BrowserContext
   private connectPromise?: Promise<void>
@@ -130,12 +135,15 @@ export class ChatGptSubagentModule implements ChatGptSubagentService {
   }
 
   async ask(request: ChatGptSubagentRequest, signal?: AbortSignal): Promise<ChatGptSubagentStartResult> {
+    this.assertNotRateLimited()
     this.beginAgentOperation(request.agentId, true)
     let state: BrowserAgentState | undefined
     let operationTransferred = false
 
     try {
       await this.connect(signal)
+      if (this.rateLimitedUntil > 0) await this.clearExpiredRateLimit(signal)
+      else await this.detectRateLimit()
       state = this.agents.get(request.agentId)
       if (!state) state = await this.createAgent(request.agentId, signal)
 
@@ -158,6 +166,8 @@ export class ChatGptSubagentModule implements ChatGptSubagentService {
       await delay(this.interactionDelayMs, signal)
       throwIfAborted(signal)
       assertPreSubmitLocation(active)
+      await delay(RATE_LIMIT_PRE_SUBMIT_SETTLE_MS, signal)
+      await this.detectRateLimit()
       await submitComposer(active.page, composer, signal)
       active.hasSubmittedTurn = true
       active.lastUsedAt = Date.now()
@@ -617,6 +627,49 @@ export class ChatGptSubagentModule implements ChatGptSubagentService {
       "AGENT_BUSY",
       `ChatGPT subagent ${state.agentId} is still generating. Do not retry automatically; wait before sending another turn.`
     )
+  }
+
+  private assertNotRateLimited(): void {
+    if (Date.now() >= this.rateLimitedUntil) return
+    throw new ChatGptSubagentError(
+      "SUBAGENT_RATE_LIMITED",
+      "ChatGPT temporarily rate limited conversation access. New subagent turns are blocked during a 15-minute cooldown. Existing turns remain available through subagent_result. Do not retry automatically."
+    )
+  }
+
+  private async detectRateLimit(): Promise<void> {
+    this.assertNotRateLimited()
+    for (const page of this.requireContext().pages()) {
+      if (!page.url().startsWith("https://chatgpt.com/")) continue
+      const modal = page.locator(RATE_LIMIT_SELECTOR).first()
+      if (!(await modal.isVisible().catch(() => false))) continue
+      this.rateLimitedUntil = Date.now() + RATE_LIMIT_COOLDOWN_MS
+      this.assertNotRateLimited()
+    }
+  }
+
+  private async clearExpiredRateLimit(signal?: AbortSignal): Promise<void> {
+    this.assertNotRateLimited()
+    this.rateLimitedUntil = 0
+    let dismissed = false
+
+    for (const page of this.requireContext().pages()) {
+      if (!page.url().startsWith("https://chatgpt.com/")) continue
+      const modal = page.locator(RATE_LIMIT_SELECTOR).first()
+      if (!(await modal.isVisible().catch(() => false))) continue
+      const clicked = await modal
+        .getByRole("button", { name: "Got it", exact: true })
+        .first()
+        .click()
+        .then(
+          () => true,
+          () => false
+        )
+      dismissed ||= clicked
+    }
+
+    if (dismissed) await delay(RATE_LIMIT_DISMISS_SETTLE_MS, signal)
+    await this.detectRateLimit()
   }
 
   private beginAgentOperation(agentId: string, generation: boolean): void {

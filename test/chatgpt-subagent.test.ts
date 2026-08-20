@@ -37,6 +37,112 @@ test("hard caps concurrent generations at three", async () => {
   await module.dispose()
 })
 
+test("rate limit modal starts a 15-minute cooldown for new subagent turns", async () => {
+  const module = createModule()
+  let modalVisible = true
+  let pageCreates = 0
+  const page = {
+    url: () => "https://chatgpt.com/",
+    locator: (selector: string) => ({
+      first: () => ({
+        isVisible: async () => selector === '[data-testid="modal-conversation-history-rate-limit"]' && modalVisible,
+      }),
+    }),
+  }
+  const context = {
+    pages: () => [page],
+    newPage: async () => {
+      pageCreates += 1
+      throw new Error("should not create a page while rate limited")
+    },
+  }
+  const internals = module as unknown as {
+    context: typeof context
+    connect(): Promise<void>
+    rateLimitedUntil: number
+  }
+  internals.context = context
+  internals.connect = async () => undefined
+
+  const startedAt = Date.now()
+  await assert.rejects(
+    module.ask({ agentId: "rate-limited", prompt: "Review this.", oververbosity: MCP_CONFIG.chatGpt.defaultOververbosity }),
+    (error: unknown) =>
+      error instanceof ChatGptSubagentError &&
+      error.code === "SUBAGENT_RATE_LIMITED" &&
+      /15-minute cooldown/.test(error.message) &&
+      /subagent_result/.test(error.message)
+  )
+  assert.ok(internals.rateLimitedUntil >= startedAt + 15 * 60_000)
+  assert.equal(pageCreates, 0)
+
+  modalVisible = false
+  await assert.rejects(
+    module.ask({ agentId: "still-rate-limited", prompt: "Review this too.", oververbosity: MCP_CONFIG.chatGpt.defaultOververbosity }),
+    (error: unknown) => error instanceof ChatGptSubagentError && error.code === "SUBAGENT_RATE_LIMITED"
+  )
+  assert.equal(pageCreates, 0)
+  await module.dispose()
+})
+
+test("rate limit cooldown does not block polling existing turns", async () => {
+  const module = createModule()
+  const turn = {
+    turnId: "rate-limit-existing-turn",
+    agentId: "rate-limit-existing-agent",
+    status: "completed" as const,
+    activity: "Generating response" as const,
+    lastActivityAt: Date.now(),
+    response: "finished",
+  }
+  const internals = module as unknown as {
+    turns: Map<string, typeof turn>
+    rateLimitedUntil: number
+  }
+  internals.turns.set(turn.turnId, turn)
+  internals.rateLimitedUntil = Date.now() + 15 * 60_000
+
+  const result = await module.poll(turn.turnId, 0)
+  assert.equal(result.status, "completed")
+  assert.equal(result.response, "finished")
+  await module.dispose()
+})
+
+test("expired rate limit cooldown dismisses stale modals before new subagent work", async () => {
+  const module = createModule()
+  let modalVisible = true
+  let gotItClicks = 0
+  const modal = {
+    isVisible: async () => modalVisible,
+    getByRole: () => ({
+      first: () => ({
+        click: async () => {
+          gotItClicks += 1
+          modalVisible = false
+        },
+      }),
+    }),
+  }
+  const page = {
+    url: () => "https://chatgpt.com/",
+    locator: () => ({ first: () => modal }),
+  }
+  const internals = module as unknown as {
+    context: { pages(): Array<typeof page> }
+    rateLimitedUntil: number
+    clearExpiredRateLimit(): Promise<void>
+  }
+  internals.context = { pages: () => [page] }
+  internals.rateLimitedUntil = Date.now() - 1
+
+  await internals.clearExpiredRateLimit()
+
+  assert.equal(gotItClicks, 1)
+  assert.equal(modalVisible, false)
+  assert.equal(internals.rateLimitedUntil, 0)
+  await module.dispose()
+})
+
 test("browser visibility hook is best effort", async () => {
   let calls = 0
   const module = createModule({
