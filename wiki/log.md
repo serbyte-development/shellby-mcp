@@ -1081,3 +1081,11 @@
 - Recorded that the sampled `stream_status` requests stayed HTTP 200 while a post-completion recovery reload triggered `/backend-api/conversations` HTTP 429 responses and the conversation-history rate-limit modal.
 - Kept the observed upstream behavior separate from the current production completion contract and documented WebSocket-driven completion as an implementation direction rather than an implemented change.
 - Added index/backlinks and a sanitized source-manifest entry; no captured authentication tokens, conversation IDs, topic IDs, or account identifiers were retained in the wiki.
+
+## [2026-08-20] subagents | Replace completion polling with event-driven response observation
+
+- Replaced the Playwright-response plus one-second `stream_status` completion loop with one contained response observer: raw CDP WebSocket turn-topic parsing is primary and a page `MutationObserver` is the only normal secondary path.
+- Bound WebSocket topics through the exact submitted prompt, reconstructed inherited v1 assistant delta patches, required a final assistant node plus an explicit completion signal, and retained short submission/response settle graces for both first and follow-up turns.
+- Made `subagent_result` wait only on shared in-process turn settlement, retained the existing 30-minute no-progress cutoff, and removed normal completion refreshes and application-level `stream_status` requests.
+- Reduced catastrophic recovery to one fresh-tab navigation to the saved conversation, preferring canonical conversation JSON captured during that navigation and never resubmitting the prompt.
+- A live two-turn canary completed both new-agent and follow-up turns before disposal cleanup was tightened; a later Turn 1 also completed with the new path, while Turn 2 was correctly blocked after ChatGPT's own frontend history request hit HTTP 429. Passive CDP initiator evidence attributed the remaining `stream_status` and history calls to ChatGPT's frontend bundle rather than Unhinged Agent.

@@ -4,7 +4,7 @@ import test from "node:test"
 
 import { MCP_CONFIG } from "../src/config.js"
 import {
-  ChatGptConversationTracker,
+  ChatGptWebSocketTurnTracker,
   extractConversationMessages,
   extractConversationNodes,
   isExpectedAgentPage,
@@ -16,6 +16,35 @@ import { ChatGptSubagentModule } from "../src/tools/subagent/chatgpt-subagent.js
 
 function createModule(options: ChatGptSubagentOptions = {}): ChatGptSubagentModule {
   return new ChatGptSubagentModule({ cdpEndpoint: "http://127.0.0.1:1", ...options })
+}
+
+function turnFrame(topicId: string, encodedItem: string): string {
+  return JSON.stringify([
+    {
+      type: "message",
+      topic_id: topicId,
+      payload: {
+        type: "conversation-turn-stream",
+        payload: { type: "stream-item", encoded_item: encodedItem },
+      },
+    },
+  ])
+}
+
+function deltaMessage(role: "user" | "assistant", text: string, options: { recipient?: string; status?: string; endTurn?: boolean | null } = {}): string {
+  return `event: delta\ndata: ${JSON.stringify({
+    v: {
+      message: {
+        id: `${role}-${Math.random()}`,
+        author: { role },
+        content: { content_type: "text", parts: [text] },
+        status: options.status ?? "finished_successfully",
+        end_turn: options.endTurn ?? null,
+        metadata: {},
+        recipient: options.recipient ?? "all",
+      },
+    },
+  })}\n\n`
 }
 
 test("frozen real ChatGPT conversation fixture preserves the expected user and fenced Markdown assistant messages", async () => {
@@ -85,6 +114,17 @@ test("subagent start dismisses a ChatGPT modal that races with composer interact
   const page = {
     isClosed: () => false,
     url: () => "https://chatgpt.com/",
+    context: () => ({
+      newCDPSession: async () => ({
+        send: async () => undefined,
+        on: () => undefined,
+        detach: async () => undefined,
+      }),
+    }),
+    evaluate: async (_fn: unknown, argument?: unknown) => {
+      if (argument && typeof argument === "object" && "baseline" in argument) return new Promise<never>(() => undefined)
+      return undefined
+    },
     locator: (selector: string) => ({
       first: () => {
         if (selector === '#modal-beacon, [data-testid="modal-beacon"]') {
@@ -123,17 +163,9 @@ test("subagent start dismisses a ChatGPT modal that races with composer interact
     },
     close: async () => undefined,
   }
-  const tracker = {
-    snapshotIds: () => new Set<string>(),
-    setActivityListener() {},
-    setUpdateListener() {},
-    findFinalResponse: () => undefined,
-    dispose() {},
-  }
   const state = {
     agentId: "modal-agent",
     page,
-    tracker,
     hasSubmittedTurn: false,
     lastUsedAt: Date.now(),
     turnCount: 0,
@@ -170,49 +202,17 @@ test("unbound new-chat pages accept ChatGPT's transient web conversation route",
   assert.equal(isExpectedAgentPage(state), true)
 })
 
-test("tracker emits coarse activity only when observed conversation state changes", () => {
-  const tracker = new ChatGptConversationTracker()
+test("WebSocket turn tracker reports activity only after binding the submitted prompt", () => {
   const activities: string[] = []
-  tracker.setActivityListener((activity) => activities.push(activity))
+  const tracker = new ChatGptWebSocketTurnTracker("review", (activity) => activities.push(activity))
+  const topic = "conversation-turn-turn-1"
 
-  const webNode = {
-    id: "tool-1",
-    message: {
-      id: "tool-1",
-      author: { role: "assistant" },
-      content: { parts: ["searching"] },
-      status: "in_progress",
-      end_turn: false,
-      metadata: { working_turn_id: "turn-1" },
-      recipient: "web.run",
-    },
-    children: [],
-  }
+  tracker.ingestFrame(turnFrame("conversation-turn-unrelated", deltaMessage("user", "other prompt")))
+  tracker.ingestFrame(turnFrame(topic, deltaMessage("user", "review")))
+  tracker.ingestFrame(turnFrame(topic, deltaMessage("assistant", "searching", { recipient: "web.run", status: "in_progress", endTurn: false })))
+  tracker.ingestFrame(turnFrame(topic, deltaMessage("assistant", "draft", { status: "in_progress", endTurn: false })))
 
-  tracker.ingestPayload(webNode)
-  tracker.ingestPayload(webNode)
-  tracker.ingestPayload({
-    ...webNode,
-    message: {
-      ...webNode.message,
-      content: { parts: ["searching more"] },
-    },
-  })
-  tracker.ingestPayload({
-    id: "assistant-1",
-    message: {
-      id: "assistant-1",
-      author: { role: "assistant" },
-      content: { parts: ["draft"] },
-      status: "in_progress",
-      end_turn: false,
-      metadata: { working_turn_id: "turn-1" },
-      recipient: "all",
-    },
-    children: [],
-  })
-
-  assert.deepEqual(activities, ["Searching the web", "Searching the web", "Generating response"])
+  assert.deepEqual(activities, ["Working", "Searching the web", "Generating response"])
 })
 
 test("extractConversationNodes normalizes ChatGPT mapping nodes", () => {
@@ -289,185 +289,77 @@ test("extractConversationNodes preserves fenced Markdown from server content par
   assert.equal(nodes[0]?.message.text, response)
 })
 
-test("tracker returns only the new final assistant response for a turn", () => {
-  const tracker = new ChatGptConversationTracker()
-  tracker.ingestPayload({
-    id: "old",
-    message: {
-      id: "old",
-      author: { role: "assistant" },
-      create_time: 1,
-      content: { parts: ["old response"] },
-      status: "finished_successfully",
-      end_turn: true,
-      metadata: { is_complete: true },
-      recipient: "all",
-    },
-    children: [],
-  })
-  const baseline = tracker.snapshotIds()
+test("WebSocket turn tracker reconstructs the exact final assistant text from inherited delta patches", () => {
+  const prompt = "review"
+  const topic = "conversation-turn-turn-1"
+  const tracker = new ChatGptWebSocketTurnTracker(prompt)
 
-  tracker.ingestPayload([
-    {
-      id: "u2",
-      message: {
-        id: "u2",
-        author: { role: "user" },
-        create_time: 2,
-        content: { parts: ["next question"] },
-        status: "finished_successfully",
-        metadata: { turn_exchange_id: "turn-2" },
-        recipient: "all",
-      },
-      parent: "old",
-      children: ["tool2"],
-    },
-    {
-      id: "tool2",
-      message: {
-        id: "tool2",
-        author: { role: "assistant" },
-        create_time: 3,
-        content: { text: "tool payload" },
-        status: "finished_successfully",
-        end_turn: false,
-        metadata: { is_complete: true, turn_exchange_id: "turn-2" },
-        recipient: "web.run",
-      },
-      parent: "u2",
-      children: ["a2"],
-    },
-    {
-      id: "a2",
-      message: {
-        id: "a2",
-        author: { role: "assistant" },
-        create_time: 4,
-        content: { parts: ["new response"] },
-        status: "finished_successfully",
-        end_turn: true,
-        metadata: { is_complete: true, turn_exchange_id: "turn-2" },
-        recipient: "all",
-      },
-      parent: "tool2",
-      children: [],
-    },
-  ])
-
-  const result = tracker.findFinalResponse({
-    baselineIds: baseline,
-    prompt: "next question",
-    sentAtSeconds: 2,
-  })
-
-  assert.equal(result?.id, "a2")
-  assert.equal(result?.message.text, "new response")
-})
-
-test("tracker rejects an unrelated completed conversation when the submitted prompt is absent", () => {
-  const tracker = new ChatGptConversationTracker()
-  const baseline = tracker.snapshotIds()
-  tracker.ingestPayload([
-    {
-      id: "other-user",
-      message: {
-        id: "other-user",
-        author: { role: "user" },
-        create_time: 10,
-        content: { parts: ["Send the market report."] },
-        status: "finished_successfully",
-        metadata: { turn_exchange_id: "other-turn" },
-        recipient: "all",
-      },
-      children: ["other-assistant"],
-    },
-    {
-      id: "other-assistant",
-      message: {
-        id: "other-assistant",
-        author: { role: "assistant" },
-        create_time: 11,
-        content: { parts: ["Market report complete."] },
-        status: "finished_successfully",
-        end_turn: true,
-        metadata: { is_complete: true, turn_exchange_id: "other-turn" },
-        recipient: "all",
-      },
-      parent: "other-user",
-      children: [],
-    },
-  ])
-
+  assert.equal(tracker.ingestFrame(turnFrame("conversation-turn-other", deltaMessage("user", prompt))), undefined)
+  assert.equal(tracker.ingestFrame(turnFrame(topic, deltaMessage("user", prompt))), undefined)
   assert.equal(
-    tracker.findFinalResponse({
-      baselineIds: baseline,
-      prompt: "Review the implementation.",
-      sentAtSeconds: 9,
-    }),
+    tracker.ingestFrame(
+      turnFrame(
+        topic,
+        deltaMessage("assistant", "", {
+          status: "in_progress",
+          endTurn: null,
+        })
+      )
+    ),
     undefined
   )
+  assert.equal(
+    tracker.ingestFrame(turnFrame(topic, 'event: delta\ndata: {"p":"/message/content/parts/0","o":"append","v":"## Findings\\n\\n"}\n\n')),
+    undefined
+  )
+  assert.equal(tracker.ingestFrame(turnFrame(topic, 'event: delta\ndata: {"v":"- exact server response"}\n\n')), undefined)
+
+  assert.equal(
+    tracker.ingestFrame(
+      turnFrame(
+        topic,
+        'event: delta\ndata: {"p":"","o":"patch","v":[{"p":"/message/content/parts/0","o":"append","v":"\\n\\n```ts\\nconst answer = 42;\\n```"},{"p":"/message/status","o":"replace","v":"finished_successfully"},{"p":"/message/end_turn","o":"replace","v":true}]}\n\n'
+      )
+    ),
+    undefined
+  )
+
+  const final = tracker.ingestFrame(turnFrame(topic, 'data: {"type":"message_stream_complete","conversation_id":"conversation-1"}\n\n'))
+
+  assert.equal(final, "## Findings\n\n- exact server response\n\n```ts\nconst answer = 42;\n```")
 })
 
-test("tracker does not return an already-seen assistant response", () => {
-  const tracker = new ChatGptConversationTracker()
-  tracker.ingestPayload({
-    id: "a1",
-    message: {
-      id: "a1",
-      author: { role: "assistant" },
-      create_time: 1,
-      content: { parts: ["answer"] },
-      status: "finished_successfully",
-      end_turn: true,
-      metadata: { is_complete: true },
-      recipient: "all",
-    },
-    children: [],
-  })
+test("WebSocket turn tracker ignores final-looking output until the submitted prompt binds that topic", () => {
+  const tracker = new ChatGptWebSocketTurnTracker("expected prompt")
+  const topic = "conversation-turn-turn-2"
 
-  assert.equal(tracker.findFinalResponse({ baselineIds: tracker.snapshotIds() }), undefined)
-})
+  assert.equal(
+    tracker.ingestFrame(
+      turnFrame(
+        topic,
+        deltaMessage("assistant", "wrong conversation", {
+          status: "finished_successfully",
+          endTurn: true,
+        })
+      )
+    ),
+    undefined
+  )
 
-test("tracker rejects completed assistant nodes that explicitly do not end the turn", () => {
-  const tracker = new ChatGptConversationTracker()
-  const baseline = tracker.snapshotIds()
-  tracker.ingestPayload({
-    id: "intermediate",
-    message: {
-      id: "intermediate",
-      author: { role: "assistant" },
-      create_time: 5,
-      content: { parts: ["not final"] },
-      status: "finished_successfully",
-      end_turn: false,
-      metadata: { is_complete: true },
-      recipient: "all",
-    },
-    children: [],
-  })
-
-  assert.equal(tracker.findFinalResponse({ baselineIds: baseline }), undefined)
-})
-
-test("tracker rejects completed assistant nodes until ChatGPT marks end_turn true", () => {
-  const tracker = new ChatGptConversationTracker()
-  const baseline = tracker.snapshotIds()
-  tracker.ingestPayload({
-    id: "thinking",
-    message: {
-      id: "thinking",
-      author: { role: "assistant" },
-      create_time: 5,
-      content: { parts: ["Thinking"] },
-      status: "finished_successfully",
-      end_turn: null,
-      metadata: { is_complete: true },
-      recipient: "all",
-    },
-    children: [],
-  })
-
-  assert.equal(tracker.findFinalResponse({ baselineIds: baseline }), undefined)
+  tracker.ingestFrame(turnFrame(topic, deltaMessage("user", "expected prompt")))
+  assert.equal(
+    tracker.ingestFrame(
+      turnFrame(
+        topic,
+        deltaMessage("assistant", "right conversation", {
+          status: "finished_successfully",
+          endTurn: true,
+        })
+      )
+    ),
+    undefined
+  )
+  assert.equal(tracker.ingestFrame(turnFrame(topic, 'data: {"type":"message_stream_complete","conversation_id":"conversation-1"}\n\n')), "right conversation")
 })
 
 test("extractConversationMessages follows the active branch and excludes tool nodes", () => {

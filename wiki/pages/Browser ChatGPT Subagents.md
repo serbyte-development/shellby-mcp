@@ -1,12 +1,12 @@
 # Browser ChatGPT Subagents
 
-Verified 2026-08-18 against current source and tests.
+Verified 2026-08-20 against current source, deterministic tests, and live ChatGPT runs.
 
 ## What This Is
 
 Implementation overview for the process-level browser runtime behind `subagent_run` and `subagent_result`. Caller behavior is canonical in [`subagent_run` / `subagent_result`](./tools/subagent.md); completion and recovery rules are canonical in [Subagent Completion and Recovery](./Subagent%20Completion%20and%20Recovery.md).
 
-Point-in-time upstream ChatGPT HTTP/WebSocket behavior observed through raw CDP is documented separately in [ChatGPT CDP Transport](./ChatGPT%20CDP%20Transport.md); that page is evidence about ChatGPT Web, not a statement that production currently consumes those WebSocket frames.
+Point-in-time upstream ChatGPT HTTP/WebSocket behavior observed through raw CDP is documented separately in [ChatGPT CDP Transport](./ChatGPT%20CDP%20Transport.md). Production now consumes the observed turn-topic WebSocket frames while retaining a DOM observer as its secondary completion path.
 
 The runtime attaches through Playwright-over-CDP to an already-running authenticated Chrome instance. Production browser setup/start/hide behavior belongs to `scripts/chatgpt-browser.mjs` and `scripts/start.mjs`; the CDP endpoint comes from `MCP_CONFIG.chatGpt.cdpEndpoint` (`src/config.ts`, `src/tools/subagent/chatgpt-subagent.ts`).
 
@@ -34,15 +34,15 @@ Before prompt submission, `assertPreSubmitLocation()` verifies ownership again. 
 
 ## Conversation Binding
 
-New ChatGPT conversations may move through a temporary `WEB:` URL before receiving a stable `/c/<id>` URL. Temporary IDs are deliberately ignored. After first-turn submission, `waitForStableConversationLocation()` records the stable conversation ID/URL when it becomes available; later result reconciliation can repair a missed binding (`src/tools/subagent/chatgpt-subagent-browser.ts`, `src/tools/subagent/chatgpt-subagent.ts`).
+New ChatGPT conversations may move through a temporary `WEB:` URL before receiving a stable `/c/<id>` URL. Temporary IDs are deliberately ignored. After first-turn submission, `waitForStableConversationLocation()` records the stable conversation ID/URL when it becomes available (`src/tools/subagent/chatgpt-subagent-browser.ts`, `src/tools/subagent/chatgpt-subagent.ts`).
 
 Before a stable URL exists, the submitted page is the only recoverable identity for that first turn. Preserving page ownership during initial binding is therefore an implementation invariant.
 
 ## Prompt Submission
 
-`ask()` performs only the synchronous work needed to submit safely and create detached turn state. It connects to CDP, resolves the agent page, verifies ownership, snapshots turn-relative browser state, handles the known composer overlay when necessary, enters the prompt, verifies ownership again, and submits exactly once (`src/tools/subagent/chatgpt-subagent.ts`, `src/tools/subagent/chatgpt-subagent-browser.ts`).
+`ask()` performs only the synchronous work needed to submit safely and create detached turn state. It connects to CDP, resolves the agent page, verifies ownership, snapshots turn-relative DOM state, installs the WebSocket + DOM response observation, handles the known composer overlay when necessary, enters the prompt, verifies ownership again, waits the shared submission grace, performs the final rate-limit check, and submits exactly once (`src/tools/subagent/chatgpt-subagent.ts`, `src/tools/subagent/chatgpt-subagent-browser.ts`). The same path and grace apply to a new agent's first message and later turns.
 
-After submission it records the turn, attaches passive network tracking, starts stable-conversation binding when needed, starts autonomous completion observation, and returns the `turn_id`. No post-submission recovery path is allowed to resubmit the prompt. Completion details live in [Subagent Completion and Recovery](./Subagent%20Completion%20and%20Recovery.md).
+After submission it records the turn, starts stable-conversation binding when needed, and lets the already-installed observers settle the detached turn. `subagent_result` only waits on that shared local turn state. No post-submission recovery path is allowed to resubmit the prompt. Completion details live in [Subagent Completion and Recovery](./Subagent%20Completion%20and%20Recovery.md).
 
 ## Runtime Reclamation
 
@@ -52,14 +52,14 @@ A full MCP restart loses process-local agent, turn, pending-event, and conversat
 
 ## Code Map
 
-| Location | Responsibility |
-| --- | --- |
-| `src/tools/subagent/chatgpt-subagent.ts` | Agent/turn state, page ownership, submission, lifecycle, completion integration, reclamation. |
-| `src/tools/subagent/chatgpt-subagent-browser.ts` | ChatGPT page interaction, conversation parsing, server/UI observation, stable URL capture. |
-| `src/tools/subagent/chatgpt-subagent-contracts.ts` | Dependency-light service/result/error contracts. |
-| `src/tools/subagent/subagent-tools.ts` | Public MCP schemas, batching, staggering, result fan-out. |
-| `src/server/tool-registration-boundary.ts` | Global completion-event delivery boundary. |
-| `scripts/chatgpt-browser.mjs` | Dedicated authenticated Chrome profile setup and lifecycle. |
+| Location                                           | Responsibility                                                                                |
+| -------------------------------------------------- | --------------------------------------------------------------------------------------------- |
+| `src/tools/subagent/chatgpt-subagent.ts`           | Agent/turn state, page ownership, submission, lifecycle, completion integration, reclamation. |
+| `src/tools/subagent/chatgpt-subagent-browser.ts`   | ChatGPT page interaction, conversation parsing, server/UI observation, stable URL capture.    |
+| `src/tools/subagent/chatgpt-subagent-contracts.ts` | Dependency-light service/result/error contracts.                                              |
+| `src/tools/subagent/subagent-tools.ts`             | Public MCP schemas, batching, staggering, result fan-out.                                     |
+| `src/server/tool-registration-boundary.ts`         | Global completion-event delivery boundary.                                                    |
+| `scripts/chatgpt-browser.mjs`                      | Dedicated authenticated Chrome profile setup and lifecycle.                                   |
 
 Test ownership and live compatibility coverage are maintained in [Build and Test](./Build%20and%20Test.md).
 

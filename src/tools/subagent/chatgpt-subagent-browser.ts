@@ -1,11 +1,9 @@
-import { type Locator, type Page, type Response } from "playwright-core"
+import { randomUUID } from "node:crypto"
+
+import { type CDPSession, type Locator, type Page } from "playwright-core"
 
 import { asRecord, booleanValue, finiteNumber as numberValue } from "../../utils.js"
-import {
-  ChatGptSubagentError,
-  type ChatGptConversationMessage,
-  type ChatGptSubagentActivity,
-} from "./chatgpt-subagent-contracts.js"
+import { ChatGptSubagentError, type ChatGptConversationMessage, type ChatGptSubagentActivity } from "./chatgpt-subagent-contracts.js"
 
 export interface TrackedConversationNode {
   id: string
@@ -25,15 +23,14 @@ export interface TrackedConversationNode {
   }
 }
 
-export interface FinalResponseQuery {
-  baselineIds: ReadonlySet<string>
-  prompt?: string
-  sentAtSeconds?: number
-}
-
 export interface DomAssistantMessage {
   key: string
   text: string
+}
+
+export interface AssistantResponseObservation {
+  response: Promise<string>
+  dispose(): Promise<void>
 }
 
 export interface ManagedAgentPageState {
@@ -43,90 +40,306 @@ export interface ManagedAgentPageState {
   conversationUrl?: string
 }
 
-export class ChatGptConversationTracker {
-  private readonly messages = new Map<string, TrackedConversationNode>()
-  private readonly responseHandler: (response: Response) => void
-  private onActivity?: (activity: ChatGptSubagentActivity) => void
-  private onUpdate?: () => void
+export class ChatGptWebSocketTurnTracker {
+  private topicId?: string
+  private assistant?: TrackedConversationNode
+  private lastDeltaPath?: string
+  private lastDeltaOperation?: string
+  private completionObserved = false
 
-  constructor(private readonly page?: Page) {
-    this.responseHandler = (response) => {
-      void this.consumeResponse(response)
-    }
-    page?.on("response", this.responseHandler)
-  }
+  constructor(
+    private readonly prompt: string,
+    private readonly onActivity?: (activity: ChatGptSubagentActivity) => void
+  ) {}
 
-  dispose(): void {
-    this.page?.off("response", this.responseHandler)
-  }
+  ingestFrame(payloadData: string): string | undefined {
+    let assistantChanged = false
+    let completionSignal = false
+    const parsed = tryParseJson(payloadData)
+    if (parsed === undefined) return undefined
 
-  snapshotIds(): Set<string> {
-    return new Set(this.messages.keys())
-  }
+    visitObjects(parsed, (record) => {
+      const topicId = stringValue(record.topic_id)
+      const envelope = asRecord(record.payload)
+      if (!topicId?.startsWith("conversation-turn-") || envelope?.type !== "conversation-turn-stream") return
+      const payload = asRecord(envelope.payload)
+      if (!payload) return
 
-  setActivityListener(listener?: (activity: ChatGptSubagentActivity) => void): void {
-    this.onActivity = listener
-  }
-
-  setUpdateListener(listener?: () => void): void {
-    this.onUpdate = listener
-  }
-
-  ingestPayload(payload: unknown): void {
-    let changed = false
-    for (const node of extractConversationNodes(payload)) {
-      const previous = this.messages.get(node.id)
-      this.messages.set(node.id, node)
-      if (!previous || didTrackedNodeProgress(previous, node)) {
-        changed = true
-        this.onActivity?.(classifyActivity(node))
+      if (payload.type === "done") {
+        if (this.topicId === topicId) completionSignal = true
+        return
       }
-    }
-    if (changed) this.onUpdate?.()
-  }
+      if (payload.type !== "stream-item") return
 
-  findFinalResponse(query: FinalResponseQuery): TrackedConversationNode | undefined {
-    const newNodes = [...this.messages.values()].filter((node) => !query.baselineIds.has(node.id))
-    if (newNodes.length === 0) return undefined
+      const encodedItem = stringValue(payload.encoded_item)
+      if (!encodedItem) return
+      for (const item of parseResponsePayloads(encodedItem)) {
+        const itemRecord = asRecord(item)
+        if (!itemRecord) continue
+        const deltaValue = asRecord(itemRecord.v)
+        const node = deltaValue ? normalizeConversationNode(deltaValue) : undefined
+        if (node?.message.role === "user" && node.message.text.trim() === this.prompt.trim()) {
+          this.topicId = topicId
+        }
 
-    const userNode = findNewestMatchingUserNode(newNodes, query.prompt)
-    if (query.prompt?.trim() && !userNode) return undefined
-    const finals = newNodes.filter(isFinalAssistantNode)
-    if (finals.length === 0) return undefined
+        const inputMessage = asRecord(itemRecord.input_message)
+        const inputNode = inputMessage ? normalizeConversationNode({ message: inputMessage }) : undefined
+        if (inputNode?.message.role === "user" && inputNode.message.text.trim() === this.prompt.trim()) {
+          this.topicId = topicId
+        }
 
-    const ranked = finals
-      .map((node) => ({
-        node,
-        score: scoreFinalCandidate(node, userNode, this.messages, query.sentAtSeconds),
-      }))
-      .filter(({ score }) => score >= 0)
-      .sort((left, right) => {
-        if (right.score !== left.score) return right.score - left.score
-        return (right.node.message.createTime ?? 0) - (left.node.message.createTime ?? 0)
-      })
-
-    return ranked[0]?.node
-  }
-
-  private async consumeResponse(response: Response): Promise<void> {
-    if (!isConversationResponse(response)) return
-
-    try {
-      const text = await response.text()
-      for (const payload of parseResponsePayloads(text)) {
-        this.ingestPayload(payload)
+        if (this.topicId !== topicId) continue
+        this.onActivity?.(node ? classifyActivity(node) : "Working")
+        if (node?.message.role === "assistant") {
+          this.assistant = node
+          this.lastDeltaPath = undefined
+          this.lastDeltaOperation = undefined
+          assistantChanged = true
+        }
+        assistantChanged = this.applyDelta(itemRecord) || assistantChanged
+        if (itemRecord.type === "message_stream_complete") completionSignal = true
       }
-    } catch {
-      // Streaming and aborted responses are allowed to be unreadable.
-      // subagent_result reconciles against the DOM when network evidence is incomplete.
+    })
+
+    if (completionSignal) this.completionObserved = true
+    if (!assistantChanged && !completionSignal) return undefined
+    if (!this.completionObserved) return undefined
+    return this.finalAssistantText()
+  }
+
+  private applyDelta(delta: Record<string, unknown>): boolean {
+    if (!this.assistant) return false
+    const explicitOperation = stringValue(delta.o)
+    const operation = explicitOperation || this.lastDeltaOperation
+    if (operation === "patch" && Array.isArray(delta.v)) {
+      let changed = false
+      for (const nested of delta.v) {
+        const record = asRecord(nested)
+        if (record) changed = this.applyDelta(record) || changed
+      }
+      return changed
     }
+
+    const explicitPath = stringValue(delta.p)
+    const path = explicitPath || this.lastDeltaPath
+    if (explicitPath) this.lastDeltaPath = explicitPath
+    if (explicitOperation) this.lastDeltaOperation = explicitOperation
+    if (!path) return false
+
+    if (operation === "append" && path === "/message/content/parts/0" && typeof delta.v === "string") {
+      this.assistant.message.text += delta.v
+      this.onActivity?.("Generating response")
+      return true
+    }
+    if (operation === "replace" && path === "/message/status" && typeof delta.v === "string") {
+      this.assistant.message.status = delta.v
+      return true
+    }
+    if (operation === "replace" && path === "/message/end_turn" && typeof delta.v === "boolean") {
+      this.assistant.message.endTurn = delta.v
+      return true
+    }
+    return false
+  }
+
+  private finalAssistantText(): string | undefined {
+    if (!this.assistant || !isFinalAssistantNode(this.assistant)) return undefined
+    return this.assistant.message.text
   }
 }
 
-export function findLatestAssistantAfterPrompt(
-  messages: readonly ChatGptConversationMessage[],
-  prompt?: string
-): ChatGptConversationMessage | undefined {
+export async function observeAssistantResponse(
+  page: Page,
+  input: {
+    baselineDom: readonly DomAssistantMessage[]
+    prompt: string
+    settleMs: number
+    onActivity?: (activity: ChatGptSubagentActivity) => void
+  }
+): Promise<AssistantResponseObservation> {
+  const tracker = new ChatGptWebSocketTurnTracker(input.prompt, input.onActivity)
+  const observerToken = randomUUID()
+  let cdp: CDPSession | undefined
+  let websocketFailed = false
+  let domFailed = false
+  let settled = false
+  let settleTimer: NodeJS.Timeout | undefined
+  let cleanupPromise: Promise<void> | undefined
+  let resolveResponse!: (response: string) => void
+  let rejectResponse!: (error: unknown) => void
+  const response = new Promise<string>((resolve, reject) => {
+    resolveResponse = resolve
+    rejectResponse = reject
+  })
+
+  const cleanup = (): Promise<void> => {
+    cleanupPromise ??= (async () => {
+      if (settleTimer) clearTimeout(settleTimer)
+      await page
+        .evaluate(
+          ({ token, registryKey }) => {
+            const registry = (window as unknown as Record<string, Map<string, () => void>>)[registryKey]
+            registry?.get(token)?.()
+          },
+          { token: observerToken, registryKey: "__unhingedAssistantResponseObservers" }
+        )
+        .catch(() => undefined)
+      await cdp?.detach().catch(() => undefined)
+    })()
+    return cleanupPromise
+  }
+
+  const finish = (text: string): void => {
+    if (settled) return
+    settled = true
+    resolveResponse(text)
+    void cleanup()
+  }
+
+  const failSource = (source: "websocket" | "dom", error: unknown): void => {
+    if (source === "websocket") websocketFailed = true
+    else domFailed = true
+    if (settled || !websocketFailed || !domFailed) return
+    settled = true
+    rejectResponse(error)
+    void cleanup()
+  }
+
+  const scheduleStructuredResponse = (text: string): void => {
+    if (settled) return
+    if (settleTimer) clearTimeout(settleTimer)
+    settleTimer = setTimeout(() => finish(text), input.settleMs)
+  }
+
+  const frameHandler = (event: { response?: { payloadData?: string } }): void => {
+    const payloadData = event.response?.payloadData
+    if (!payloadData) return
+    try {
+      const text = tracker.ingestFrame(payloadData)
+      if (text) scheduleStructuredResponse(text)
+    } catch (error) {
+      failSource("websocket", error)
+    }
+  }
+
+  try {
+    cdp = await page.context().newCDPSession(page)
+    await cdp.send("Network.enable")
+    cdp.on("Network.webSocketFrameReceived", frameHandler)
+    cdp.on("close", () => failSource("websocket", new Error("ChatGPT CDP session closed while waiting for the assistant response.")))
+  } catch {
+    websocketFailed = true
+    await cdp?.detach().catch(() => undefined)
+    cdp = undefined
+  }
+
+  const domPromise = page.evaluate(
+    ({ baseline, settleMs, token, registryKey }) =>
+      new Promise<string | null>((resolve) => {
+        const stopSelector = 'button[data-testid="stop-button"], button[aria-label*="Stop generating" i], button[aria-label="Stop"]'
+        const baselineByKey = new Map(baseline.map((message) => [message.key, message.text]))
+        const registryHost = window as unknown as Record<string, Map<string, () => void>>
+        const registry = (registryHost[registryKey] ??= new Map<string, () => void>())
+        let timer: ReturnType<typeof setTimeout> | undefined
+        let sawGenerating = false
+        let lastText = ""
+        let lastGenerating = false
+
+        const isVisible = (element: Element | null): boolean => {
+          if (!(element instanceof HTMLElement)) return false
+          const style = window.getComputedStyle(element)
+          return style.display !== "none" && style.visibility !== "hidden" && element.getClientRects().length > 0
+        }
+
+        const readCandidate = (): string => {
+          const elements = [...document.querySelectorAll('[data-message-author-role="assistant"]')]
+          const candidates = elements
+            .map((element, index) => {
+              const owner = element.closest("[data-message-id]")
+              const key = owner?.getAttribute("data-message-id") ?? element.getAttribute("data-message-id") ?? `assistant:${index}`
+              return { key, text: (element.textContent ?? "").trim() }
+            })
+            .filter((message) => !baselineByKey.has(message.key) || baselineByKey.get(message.key) !== message.text)
+          return candidates.at(-1)?.text ?? ""
+        }
+
+        const finishDom = (value: string | null): void => {
+          if (timer) clearTimeout(timer)
+          observer.disconnect()
+          registry.delete(token)
+          resolve(value)
+        }
+
+        const inspect = (): void => {
+          const generating = isVisible(document.querySelector(stopSelector))
+          if (generating) sawGenerating = true
+          const text = readCandidate()
+          if (generating !== lastGenerating || text !== lastText) {
+            lastGenerating = generating
+            lastText = text
+            if (timer) clearTimeout(timer)
+            timer = undefined
+          }
+          if (generating || !text || /^thinking\b/i.test(text) || timer) return
+
+          const grace = sawGenerating ? settleMs : Math.max(settleMs, 2_000)
+          const expectedText = text
+          timer = setTimeout(() => {
+            timer = undefined
+            if (isVisible(document.querySelector(stopSelector))) return
+            const current = readCandidate()
+            if (!current || current !== expectedText) {
+              inspect()
+              return
+            }
+            finishDom(current)
+          }, grace)
+        }
+
+        const observer = new MutationObserver(inspect)
+        registry.set(token, () => finishDom(null))
+        observer.observe(document.documentElement, {
+          subtree: true,
+          childList: true,
+          characterData: true,
+          attributes: true,
+          attributeFilter: ["aria-label", "class", "data-testid"],
+        })
+        inspect()
+      }),
+    {
+      baseline: input.baselineDom,
+      settleMs: input.settleMs,
+      token: observerToken,
+      registryKey: "__unhingedAssistantResponseObservers",
+    }
+  )
+
+  domPromise.then(
+    (text) => {
+      if (text) finish(text)
+      else if (!settled) failSource("dom", new Error("ChatGPT DOM response observation stopped before completion."))
+    },
+    (error) => failSource("dom", error)
+  )
+
+  if (websocketFailed) {
+    domPromise.catch(() => undefined)
+  }
+
+  return {
+    response,
+    async dispose() {
+      if (!settled) {
+        settled = true
+        rejectResponse(new Error("ChatGPT assistant response observation was disposed."))
+      }
+      await cleanup()
+    },
+  }
+}
+
+export function findLatestAssistantAfterPrompt(messages: readonly ChatGptConversationMessage[], prompt?: string): ChatGptConversationMessage | undefined {
   if (messages.length === 0) return undefined
   const normalizedPrompt = prompt?.trim()
   let promptIndex = -1
@@ -242,12 +455,7 @@ export async function assertAuthenticated(page: Page): Promise<void> {
   }
 }
 
-export async function assertConversationAvailable(
-  page: Page,
-  conversationId: string,
-  timeoutMs: number,
-  signal?: AbortSignal
-): Promise<void> {
+export async function assertConversationAvailable(page: Page, conversationId: string, timeoutMs: number, signal?: AbortSignal): Promise<void> {
   const deadline = Date.now() + Math.min(timeoutMs, 10_000)
   const unavailable = page.getByText(/conversation.*(?:not found|unavailable)|unable to load conversation/i).first()
 
@@ -323,10 +531,7 @@ export async function readAssistantDomMessages(page: Page): Promise<DomAssistant
   )
 }
 
-export async function findNewDomAssistantMessage(
-  page: Page,
-  baseline: readonly DomAssistantMessage[]
-): Promise<DomAssistantMessage | undefined> {
+export async function findNewDomAssistantMessage(page: Page, baseline: readonly DomAssistantMessage[]): Promise<DomAssistantMessage | undefined> {
   const current = await readAssistantDomMessages(page)
   if (current.length === 0) return undefined
   const baselineKeys = new Set(baseline.map((message) => message.key))
@@ -336,57 +541,35 @@ export async function findNewDomAssistantMessage(
   return undefined
 }
 
-export async function loadConversationPayload(page: Page, conversationId: string, timeoutMs: number): Promise<unknown> {
+export async function navigateAndCaptureConversationPayload(
+  page: Page,
+  conversationUrl: string,
+  conversationId: string,
+  timeoutMs: number,
+  signal?: AbortSignal
+): Promise<unknown | undefined> {
   const pathname = `/backend-api/conversation/${conversationId}`
-  const responsePromise = page.waitForResponse(
-    (response) => {
-      try {
-        const url = new URL(response.url())
-        return url.hostname === "chatgpt.com" && url.pathname === pathname && response.status() === 200
-      } catch {
-        return false
-      }
-    },
-    { timeout: timeoutMs }
-  )
+  const responsePromise = page
+    .waitForResponse(
+      (response) => {
+        try {
+          const url = new URL(response.url())
+          return url.hostname === "chatgpt.com" && url.pathname === pathname && response.status() === 200
+        } catch {
+          return false
+        }
+      },
+      { timeout: Math.min(timeoutMs, 10_000) }
+    )
+    .then((response) => response.json())
+    .catch(() => undefined)
 
-  await page.reload({ waitUntil: "domcontentloaded", timeout: timeoutMs }).catch(() => undefined)
-  const response = await responsePromise
-  return response.json()
+  await waitForPromise(page.goto(conversationUrl, { waitUntil: "domcontentloaded", timeout: timeoutMs }), signal)
+  throwIfAborted(signal)
+  return waitForPromise(responsePromise, signal)
 }
 
-export async function isGenerating(page: Page): Promise<boolean> {
-  const selectors = ['button[data-testid="stop-button"]', 'button[aria-label*="Stop generating" i]', 'button[aria-label="Stop"]']
-  for (const selector of selectors) {
-    const locator = page.locator(selector).first()
-    if ((await locator.count()) > 0 && (await locator.isVisible().catch(() => false))) return true
-  }
-  return false
-}
-
-export async function getConversationStreamStatus(page: Page, conversationId: string): Promise<string | undefined> {
-  try {
-    return await page.evaluate(async (id) => {
-      try {
-        const response = await fetch(`/backend-api/conversation/${encodeURIComponent(id)}/stream_status`, {
-          credentials: "same-origin",
-        })
-        if (!response.ok) return undefined
-        const payload = (await response.json()) as { status?: unknown }
-        return typeof payload.status === "string" ? payload.status : undefined
-      } catch {
-        return undefined
-      }
-    }, conversationId)
-  } catch {
-    return undefined
-  }
-}
-
-export async function waitForStableConversationLocation(
-  state: ManagedAgentPageState,
-  timeoutMs: number
-): Promise<boolean> {
+export async function waitForStableConversationLocation(state: ManagedAgentPageState, timeoutMs: number): Promise<boolean> {
   if (state.conversationId) return true
 
   try {
@@ -537,72 +720,6 @@ function classifyActivity(node: TrackedConversationNode): ChatGptSubagentActivit
   return "Working"
 }
 
-function didTrackedNodeProgress(previous: TrackedConversationNode, next: TrackedConversationNode): boolean {
-  return (
-    previous.parent !== next.parent ||
-    previous.children.join("\u0000") !== next.children.join("\u0000") ||
-    previous.message.status !== next.message.status ||
-    previous.message.endTurn !== next.message.endTurn ||
-    previous.message.recipient !== next.message.recipient ||
-    previous.message.text !== next.message.text ||
-    previous.message.turnExchangeId !== next.message.turnExchangeId ||
-    previous.message.workingTurnId !== next.message.workingTurnId ||
-    previous.message.isComplete !== next.message.isComplete
-  )
-}
-
-function findNewestMatchingUserNode(nodes: readonly TrackedConversationNode[], prompt?: string): TrackedConversationNode | undefined {
-  const users = nodes.filter((node) => node.message.role === "user")
-  if (users.length === 0) return undefined
-  const normalizedPrompt = prompt?.trim()
-  const candidates = normalizedPrompt ? users.filter((node) => node.message.text.trim() === normalizedPrompt) : users
-  if (candidates.length === 0) return undefined
-  return [...candidates].sort((left, right) => (right.message.createTime ?? 0) - (left.message.createTime ?? 0))[0]
-}
-
-function scoreFinalCandidate(
-  candidate: TrackedConversationNode,
-  userNode: TrackedConversationNode | undefined,
-  messages: ReadonlyMap<string, TrackedConversationNode>,
-  sentAtSeconds?: number
-): number {
-  if (userNode) {
-    if (userNode.message.turnExchangeId && candidate.message.turnExchangeId === userNode.message.turnExchangeId) return 300
-    if (isDescendantOf(candidate, userNode.id, messages)) return 200
-    if (
-      userNode.message.createTime !== undefined &&
-      candidate.message.createTime !== undefined &&
-      candidate.message.createTime >= userNode.message.createTime
-    ) {
-      return 100
-    }
-    return -1
-  }
-
-  if (sentAtSeconds !== undefined && candidate.message.createTime !== undefined && candidate.message.createTime + 1 < sentAtSeconds) return -1
-  return 10
-}
-
-function isDescendantOf(node: TrackedConversationNode, ancestorId: string, messages: ReadonlyMap<string, TrackedConversationNode>): boolean {
-  const visited = new Set<string>()
-  let current: TrackedConversationNode | undefined = node
-  while (current?.parent) {
-    if (current.parent === ancestorId) return true
-    if (visited.has(current.parent)) return false
-    visited.add(current.parent)
-    current = messages.get(current.parent)
-  }
-  return false
-}
-
-function isConversationResponse(response: Response): boolean {
-  const url = response.url()
-  if (!url.includes("chatgpt.com")) return false
-  if (!url.toLowerCase().includes("conversation")) return false
-  const contentType = response.headers()["content-type"]?.toLowerCase() ?? ""
-  return contentType.includes("application/json") || contentType.includes("text/event-stream") || contentType.includes("text/plain")
-}
-
 function parseResponsePayloads(text: string): unknown[] {
   const trimmed = text.trim()
   if (!trimmed) return []
@@ -626,6 +743,19 @@ function tryParseJson(text: string): unknown | undefined {
   } catch {
     return undefined
   }
+}
+
+function visitObjects(value: unknown, visitor: (record: Record<string, unknown>) => void, visited = new Set<object>()): void {
+  if (!value || typeof value !== "object" || visited.has(value)) return
+  visited.add(value)
+  if (Array.isArray(value)) {
+    for (const item of value) visitObjects(item, visitor, visited)
+    return
+  }
+
+  const record = value as Record<string, unknown>
+  visitor(record)
+  for (const nested of Object.values(record)) visitObjects(nested, visitor, visited)
 }
 
 async function retryAfterDismissingBlockingOverlay<T>(page: Page, action: () => Promise<T>, signal?: AbortSignal): Promise<T> {
