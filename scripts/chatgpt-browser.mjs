@@ -11,6 +11,8 @@ const hide = process.argv.includes("--hide")
 const endpoint = new URL(process.env.MCP_CHATGPT_CDP_ENDPOINT?.trim() || "http://127.0.0.1:9222")
 const profileDir = join(homedir(), ".unhinged-agent", "chatgpt-chrome")
 const markerPath = join(profileDir, ".configured")
+const mobileUserAgent = "Mozilla/5.0 (Linux; Android 14; Pixel 8 Pro) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Mobile Safari/537.36"
+const mobileWindowSize = "430,900"
 const configured = await exists(markerPath)
 const cdpReady = await isCdpReady(endpoint)
 
@@ -67,6 +69,8 @@ const child = spawn(
     `--remote-debugging-port=${port}`,
     "--remote-debugging-address=127.0.0.1",
     `--user-data-dir=${profileDir}`,
+    `--user-agent=${mobileUserAgent}`,
+    `--window-size=${mobileWindowSize}`,
     "--no-first-run",
     "--no-default-browser-check",
     "https://chatgpt.com/",

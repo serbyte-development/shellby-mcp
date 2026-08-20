@@ -7,6 +7,7 @@ import {
   assertConversationAvailable,
   assertPreSubmitLocation,
   captureOrValidateConversationLocation,
+  configureManagedChatGptPage,
   delay,
   dismissBlockingChatGptOverlay,
   enterPrompt,
@@ -286,9 +287,7 @@ export class ChatGptSubagentModule implements ChatGptSubagentService {
   }
 
   private async createAgent(agentId: string, signal?: AbortSignal): Promise<BrowserAgentState> {
-    const context = this.requireContext()
-    const page = await context.newPage()
-    await this.afterPageCreated()
+    const page = await this.createManagedPage()
     const stored = this.conversationRefs.get(agentId)
     const state: BrowserAgentState = {
       agentId,
@@ -326,9 +325,7 @@ export class ChatGptSubagentModule implements ChatGptSubagentService {
       )
     }
 
-    const context = this.requireContext()
-    const page = await context.newPage()
-    await this.afterPageCreated()
+    const page = await this.createManagedPage()
     try {
       await waitForPromise(page.goto(state.conversationUrl, { waitUntil: "domcontentloaded" }), signal)
       throwIfAborted(signal)
@@ -400,11 +397,9 @@ export class ChatGptSubagentModule implements ChatGptSubagentService {
       throw new ChatGptSubagentError("AGENT_TARGET_LOST", `ChatGPT subagent ${state.agentId} has no saved conversation to recover.`)
     }
 
-    const context = this.requireContext()
     const oldPage = state.page
     const closeOldPage = !oldPage.isClosed() && isExpectedAgentPage(state)
-    const page = await context.newPage()
-    await this.afterPageCreated()
+    const page = await this.createManagedPage()
 
     try {
       const payload = await navigateAndCaptureConversationPayload(page, state.conversationUrl, state.conversationId, this.timeoutMs, signal)
@@ -456,6 +451,18 @@ export class ChatGptSubagentModule implements ChatGptSubagentService {
     turn.settle?.()
     turn.settle = undefined
     this.pendingEvents.push(`agent_finished:${turn.agentId}:${turn.turnId}`)
+  }
+
+  private async createManagedPage(): Promise<Page> {
+    const page = await this.requireContext().newPage()
+    try {
+      await configureManagedChatGptPage(page)
+      await this.afterPageCreated()
+      return page
+    } catch (error) {
+      if (!page.isClosed()) await page.close().catch(() => undefined)
+      throw error
+    }
   }
 
   private failTurn(turn: BrowserTurnState, state: BrowserAgentState, error: unknown): void {

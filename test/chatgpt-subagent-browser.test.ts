@@ -1,13 +1,16 @@
 import assert from "node:assert/strict"
 import { readFile } from "node:fs/promises"
 import test from "node:test"
+import type { Page } from "playwright-core"
 
 import { MCP_CONFIG } from "../src/config.js"
 import {
-  ChatGptWebSocketTurnTracker,
+  ChatGptStructuredTurnTracker,
+  configureManagedChatGptPage,
   extractConversationMessages,
   extractConversationNodes,
   isExpectedAgentPage,
+  observeAssistantResponse,
   waitForStableConversationLocation,
   type ManagedAgentPageState,
 } from "../src/tools/subagent/chatgpt-subagent-browser.js"
@@ -46,6 +49,65 @@ function deltaMessage(role: "user" | "assistant", text: string, options: { recip
     },
   })}\n\n`
 }
+
+test("managed ChatGPT pages receive the full mobile CDP profile before navigation", async () => {
+  const sends: Array<{ method: string; params: Record<string, unknown> }> = []
+  let detached = 0
+  const context = {
+    newCDPSession: async () => ({
+      send: async (method: string, params: Record<string, unknown>) => sends.push({ method, params }),
+      detach: async () => {
+        detached += 1
+      },
+    }),
+  }
+  const page = { context: () => context } as unknown as Page
+
+  await configureManagedChatGptPage(page)
+
+  assert.equal(sends[0]?.method, "Network.setUserAgentOverride")
+  assert.equal(sends[0]?.params.platform, "Android")
+  assert.match(String(sends[0]?.params.userAgent), /Android.*Mobile/)
+  assert.deepEqual(sends[1], {
+    method: "Emulation.setDeviceMetricsOverride",
+    params: { width: 412, height: 915, deviceScaleFactor: 1, mobile: true },
+  })
+  assert.equal(detached, 1)
+})
+
+test("DOM response observation re-arms after first-turn navigation destroys its execution context", async () => {
+  let domAttempts = 0
+  const page = {
+    context: () => ({
+      newCDPSession: async () => ({
+        send: async () => undefined,
+        on: () => undefined,
+        detach: async () => undefined,
+      }),
+    }),
+    on: () => page,
+    off: () => page,
+    isClosed: () => false,
+    mainFrame: () => ({}),
+    waitForLoadState: async () => undefined,
+    evaluate: async (_fn: unknown, argument?: Record<string, unknown>) => {
+      if (!argument || !("prompt" in argument)) return undefined
+      domAttempts += 1
+      if (domAttempts === 1) throw new Error("Execution context was destroyed, most likely because of a navigation")
+      return "rearmed mobile answer"
+    },
+  }
+
+  const observation = await observeAssistantResponse(page as unknown as Page, {
+    baselineDom: [],
+    prompt: "mobile prompt",
+    settleMs: 1,
+  })
+
+  assert.equal(await observation.response, "rearmed mobile answer")
+  assert.equal(domAttempts, 2)
+  await observation.dispose()
+})
 
 test("frozen real ChatGPT conversation fixture preserves the expected user and fenced Markdown assistant messages", async () => {
   const payload = JSON.parse(await readFile(new URL("./fixtures/chatgpt-live-fixture/conversation.json", import.meta.url), "utf8")) as unknown
@@ -121,6 +183,10 @@ test("subagent start dismisses a ChatGPT modal that races with composer interact
         detach: async () => undefined,
       }),
     }),
+    on: () => page,
+    off: () => page,
+    mainFrame: () => ({}),
+    waitForLoadState: async () => undefined,
     evaluate: async (_fn: unknown, argument?: unknown) => {
       if (argument && typeof argument === "object" && "baseline" in argument) return new Promise<never>(() => undefined)
       return undefined
@@ -204,7 +270,7 @@ test("unbound new-chat pages accept ChatGPT's transient web conversation route",
 
 test("WebSocket turn tracker reports activity only after binding the submitted prompt", () => {
   const activities: string[] = []
-  const tracker = new ChatGptWebSocketTurnTracker("review", (activity) => activities.push(activity))
+  const tracker = new ChatGptStructuredTurnTracker("review", (activity) => activities.push(activity))
   const topic = "conversation-turn-turn-1"
 
   tracker.ingestFrame(turnFrame("conversation-turn-unrelated", deltaMessage("user", "other prompt")))
@@ -292,7 +358,7 @@ test("extractConversationNodes preserves fenced Markdown from server content par
 test("WebSocket turn tracker reconstructs the exact final assistant text from inherited delta patches", () => {
   const prompt = "review"
   const topic = "conversation-turn-turn-1"
-  const tracker = new ChatGptWebSocketTurnTracker(prompt)
+  const tracker = new ChatGptStructuredTurnTracker(prompt)
 
   assert.equal(tracker.ingestFrame(turnFrame("conversation-turn-other", deltaMessage("user", prompt))), undefined)
   assert.equal(tracker.ingestFrame(turnFrame(topic, deltaMessage("user", prompt))), undefined)
@@ -330,7 +396,7 @@ test("WebSocket turn tracker reconstructs the exact final assistant text from in
 })
 
 test("WebSocket turn tracker ignores final-looking output until the submitted prompt binds that topic", () => {
-  const tracker = new ChatGptWebSocketTurnTracker("expected prompt")
+  const tracker = new ChatGptStructuredTurnTracker("expected prompt")
   const topic = "conversation-turn-turn-2"
 
   assert.equal(
@@ -360,6 +426,31 @@ test("WebSocket turn tracker ignores final-looking output until the submitted pr
     undefined
   )
   assert.equal(tracker.ingestFrame(turnFrame(topic, 'data: {"type":"message_stream_complete","conversation_id":"conversation-1"}\n\n')), "right conversation")
+})
+
+test("structured turn tracker reconstructs a mobile HTTP SSE response", () => {
+  const tracker = new ChatGptStructuredTurnTracker("mobile prompt")
+  const response = [
+    deltaMessage("user", "mobile prompt"),
+    deltaMessage("assistant", "", { status: "in_progress", endTurn: null }),
+    'event: delta\ndata: {"p":"/message/content/parts/0","o":"append","v":"mobile exact response"}\n\n',
+    'event: delta\ndata: {"p":"","o":"patch","v":[{"p":"/message/status","o":"replace","v":"finished_successfully"},{"p":"/message/end_turn","o":"replace","v":true}]}\n\n',
+    'data: {"type":"message_stream_complete","conversation_id":"conversation-1"}\n\n',
+    "data: [DONE]\n\n",
+  ].join("")
+
+  assert.equal(tracker.ingestSse(response), "mobile exact response")
+})
+
+test("HTTP completion cannot complete an assistant response that came from WebSocket", () => {
+  const tracker = new ChatGptStructuredTurnTracker("review")
+  const topic = "conversation-turn-turn-3"
+
+  tracker.ingestSse(`${deltaMessage("user", "review")}data: {"type":"message_stream_complete"}\n\n`)
+  tracker.ingestFrame(turnFrame(topic, deltaMessage("user", "review")))
+  tracker.ingestFrame(turnFrame(topic, deltaMessage("assistant", "websocket answer", { status: "finished_successfully", endTurn: true })))
+
+  assert.equal(tracker.ingestFrame(turnFrame(topic, 'data: {"type":"message_stream_complete"}\n\n')), "websocket answer")
 })
 
 test("extractConversationMessages follows the active branch and excludes tool nodes", () => {

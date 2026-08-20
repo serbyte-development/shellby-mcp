@@ -197,8 +197,12 @@ test("fails explicitly when a saved ChatGPT conversation was deleted", async () 
     getByText: () => ({
       first: () => ({ isVisible: async () => false }),
     }),
+    context: () => context,
   }
-  const context = { newPage: async () => page }
+  const context = {
+    newPage: async () => page,
+    newCDPSession: async () => ({ send: async () => undefined, detach: async () => undefined }),
+  }
   const internals = module as unknown as {
     context: typeof context
     conversationRefs: Map<string, { conversationId: string; conversationUrl: string; turnCount: number }>
@@ -421,12 +425,14 @@ test("catastrophic recovery opens the saved conversation in a fresh tab without 
       return { first: () => ({ isVisible: async () => false }) }
     },
     getByText: () => ({ first: () => ({ isVisible: async () => false }) }),
+    context: () => context,
   }
   const context = {
     newPage: async () => {
       newPages += 1
       return newPage
     },
+    newCDPSession: async () => ({ send: async () => undefined, detach: async () => undefined }),
   }
   const state = {
     agentId: "catastrophic-agent",

@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto"
 
-import { type CDPSession, type Locator, type Page } from "playwright-core"
+import { type CDPSession, type Locator, type Page, type Response } from "playwright-core"
 
 import { asRecord, booleanValue, finiteNumber as numberValue } from "../../utils.js"
 import { ChatGptSubagentError, type ChatGptConversationMessage, type ChatGptSubagentActivity } from "./chatgpt-subagent-contracts.js"
@@ -40,12 +40,34 @@ export interface ManagedAgentPageState {
   conversationUrl?: string
 }
 
-export class ChatGptWebSocketTurnTracker {
+const MOBILE_CHATGPT_USER_AGENT = "Mozilla/5.0 (Linux; Android 14; Pixel 8 Pro) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Mobile Safari/537.36"
+
+export async function configureManagedChatGptPage(page: Page): Promise<void> {
+  const cdp = await page.context().newCDPSession(page)
+  try {
+    await cdp.send("Network.setUserAgentOverride", {
+      userAgent: MOBILE_CHATGPT_USER_AGENT,
+      platform: "Android",
+    })
+    await cdp.send("Emulation.setDeviceMetricsOverride", {
+      width: 412,
+      height: 915,
+      deviceScaleFactor: 1,
+      mobile: true,
+    })
+  } finally {
+    await cdp.detach().catch(() => undefined)
+  }
+}
+
+export class ChatGptStructuredTurnTracker {
   private topicId?: string
   private assistant?: TrackedConversationNode
+  private assistantSource?: string
   private lastDeltaPath?: string
   private lastDeltaOperation?: string
-  private completionObserved = false
+  private directBound = false
+  private readonly completionSources = new Set<string>()
 
   constructor(
     private readonly prompt: string,
@@ -53,10 +75,9 @@ export class ChatGptWebSocketTurnTracker {
   ) {}
 
   ingestFrame(payloadData: string): string | undefined {
-    let assistantChanged = false
-    let completionSignal = false
     const parsed = tryParseJson(payloadData)
     if (parsed === undefined) return undefined
+    let response: string | undefined
 
     visitObjects(parsed, (record) => {
       const topicId = stringValue(record.topic_id)
@@ -66,56 +87,81 @@ export class ChatGptWebSocketTurnTracker {
       if (!payload) return
 
       if (payload.type === "done") {
-        if (this.topicId === topicId) completionSignal = true
+        if (this.topicId === topicId) {
+          this.completionSources.add(topicId)
+          response = this.finalAssistantText(topicId) ?? response
+        }
         return
       }
       if (payload.type !== "stream-item") return
 
       const encodedItem = stringValue(payload.encoded_item)
       if (!encodedItem) return
-      for (const item of parseResponsePayloads(encodedItem)) {
-        const itemRecord = asRecord(item)
-        if (!itemRecord) continue
-        const deltaValue = asRecord(itemRecord.v)
-        const node = deltaValue ? normalizeConversationNode(deltaValue) : undefined
-        if (node?.message.role === "user" && node.message.text.trim() === this.prompt.trim()) {
-          this.topicId = topicId
-        }
-
-        const inputMessage = asRecord(itemRecord.input_message)
-        const inputNode = inputMessage ? normalizeConversationNode({ message: inputMessage }) : undefined
-        if (inputNode?.message.role === "user" && inputNode.message.text.trim() === this.prompt.trim()) {
-          this.topicId = topicId
-        }
-
-        if (this.topicId !== topicId) continue
-        this.onActivity?.(node ? classifyActivity(node) : "Working")
-        if (node?.message.role === "assistant") {
-          this.assistant = node
-          this.lastDeltaPath = undefined
-          this.lastDeltaOperation = undefined
-          assistantChanged = true
-        }
-        assistantChanged = this.applyDelta(itemRecord) || assistantChanged
-        if (itemRecord.type === "message_stream_complete") completionSignal = true
-      }
+      response = this.ingestStream(encodedItem, topicId) ?? response
     })
 
-    if (completionSignal) this.completionObserved = true
-    if (!assistantChanged && !completionSignal) return undefined
-    if (!this.completionObserved) return undefined
-    return this.finalAssistantText()
+    return response
   }
 
-  private applyDelta(delta: Record<string, unknown>): boolean {
-    if (!this.assistant) return false
+  ingestSse(text: string): string | undefined {
+    return this.ingestStream(text, "http")
+  }
+
+  private ingestStream(text: string, source: string): string | undefined {
+    let assistantChanged = false
+    let completionSignal = false
+
+    for (const item of parseResponsePayloads(text)) {
+      const itemRecord = asRecord(item)
+      if (!itemRecord) continue
+      const deltaValue = asRecord(itemRecord.v)
+      const node = deltaValue ? normalizeConversationNode(deltaValue) : undefined
+      if (node?.message.role === "user" && node.message.text.trim() === this.prompt.trim()) {
+        this.bindSource(source)
+      }
+
+      const inputMessage = asRecord(itemRecord.input_message)
+      const inputNode = inputMessage ? normalizeConversationNode({ message: inputMessage }) : undefined
+      if (inputNode?.message.role === "user" && inputNode.message.text.trim() === this.prompt.trim()) {
+        this.bindSource(source)
+      }
+
+      if (!this.isSourceBound(source)) continue
+      this.onActivity?.(node ? classifyActivity(node) : "Working")
+      if (node?.message.role === "assistant") {
+        this.assistant = node
+        this.assistantSource = source
+        this.lastDeltaPath = undefined
+        this.lastDeltaOperation = undefined
+        assistantChanged = true
+      }
+      assistantChanged = this.applyDelta(itemRecord, source) || assistantChanged
+      if (itemRecord.type === "message_stream_complete") completionSignal = true
+    }
+
+    if (completionSignal) this.completionSources.add(source)
+    if (!assistantChanged && !completionSignal) return undefined
+    return this.finalAssistantText(source)
+  }
+
+  private bindSource(source: string): void {
+    if (source === "http") this.directBound = true
+    else this.topicId = source
+  }
+
+  private isSourceBound(source: string): boolean {
+    return source === "http" ? this.directBound : this.topicId === source
+  }
+
+  private applyDelta(delta: Record<string, unknown>, source: string): boolean {
+    if (!this.assistant || this.assistantSource !== source) return false
     const explicitOperation = stringValue(delta.o)
     const operation = explicitOperation || this.lastDeltaOperation
     if (operation === "patch" && Array.isArray(delta.v)) {
       let changed = false
       for (const nested of delta.v) {
         const record = asRecord(nested)
-        if (record) changed = this.applyDelta(record) || changed
+        if (record) changed = this.applyDelta(record, source) || changed
       }
       return changed
     }
@@ -142,8 +188,9 @@ export class ChatGptWebSocketTurnTracker {
     return false
   }
 
-  private finalAssistantText(): string | undefined {
-    if (!this.assistant || !isFinalAssistantNode(this.assistant)) return undefined
+  private finalAssistantText(source: string): string | undefined {
+    if (!this.completionSources.has(source)) return undefined
+    if (!this.assistant || this.assistantSource !== source || !isFinalAssistantNode(this.assistant)) return undefined
     return this.assistant.message.text
   }
 }
@@ -157,11 +204,12 @@ export async function observeAssistantResponse(
     onActivity?: (activity: ChatGptSubagentActivity) => void
   }
 ): Promise<AssistantResponseObservation> {
-  const tracker = new ChatGptWebSocketTurnTracker(input.prompt, input.onActivity)
+  const tracker = new ChatGptStructuredTurnTracker(input.prompt, input.onActivity)
   const observerToken = randomUUID()
   let cdp: CDPSession | undefined
-  let websocketFailed = false
-  let domFailed = false
+  let domObserverToken: string | undefined
+  let domObserverAttempt = 0
+  let domCancelled = false
   let settled = false
   let settleTimer: NodeJS.Timeout | undefined
   let cleanupPromise: Promise<void> | undefined
@@ -175,15 +223,10 @@ export async function observeAssistantResponse(
   const cleanup = (): Promise<void> => {
     cleanupPromise ??= (async () => {
       if (settleTimer) clearTimeout(settleTimer)
-      await page
-        .evaluate(
-          ({ token, registryKey }) => {
-            const registry = (window as unknown as Record<string, Map<string, () => void>>)[registryKey]
-            registry?.get(token)?.()
-          },
-          { token: observerToken, registryKey: "__unhingedAssistantResponseObservers" }
-        )
-        .catch(() => undefined)
+      domCancelled = true
+      if (domObserverToken) await cancelDomObserver(page, domObserverToken)
+      page.off("response", responseHandler)
+      page.off("close", pageCloseHandler)
       await cdp?.detach().catch(() => undefined)
     })()
     return cleanupPromise
@@ -196,10 +239,8 @@ export async function observeAssistantResponse(
     void cleanup()
   }
 
-  const failSource = (source: "websocket" | "dom", error: unknown): void => {
-    if (source === "websocket") websocketFailed = true
-    else domFailed = true
-    if (settled || !websocketFailed || !domFailed) return
+  const failObservation = (error: unknown): void => {
+    if (settled) return
     settled = true
     rejectResponse(error)
     void cleanup()
@@ -217,27 +258,104 @@ export async function observeAssistantResponse(
     try {
       const text = tracker.ingestFrame(payloadData)
       if (text) scheduleStructuredResponse(text)
-    } catch (error) {
-      failSource("websocket", error)
+    } catch {
+      // HTTP SSE and DOM observation remain available if the private WebSocket schema changes.
     }
   }
+
+  const responseHandler = (candidate: Response): void => {
+    if (!isAssistantEventStreamResponse(candidate)) return
+    void candidate.text().then(
+      (text) => {
+        if (settled) return
+        try {
+          const response = tracker.ingestSse(text)
+          if (response) scheduleStructuredResponse(response)
+        } catch {
+          // The WebSocket and DOM paths remain available if an upstream SSE body changes shape.
+        }
+      },
+      () => undefined
+    )
+  }
+
+  page.on("response", responseHandler)
+  const pageCloseHandler = () => failObservation(new Error("ChatGPT managed page closed while waiting for the assistant response."))
+  page.on("close", pageCloseHandler)
 
   try {
     cdp = await page.context().newCDPSession(page)
     await cdp.send("Network.enable")
     cdp.on("Network.webSocketFrameReceived", frameHandler)
-    cdp.on("close", () => failSource("websocket", new Error("ChatGPT CDP session closed while waiting for the assistant response.")))
   } catch {
-    websocketFailed = true
     await cdp?.detach().catch(() => undefined)
     cdp = undefined
   }
 
-  const domPromise = page.evaluate(
-    ({ baseline, settleMs, token, registryKey }) =>
+  const domTask = (async () => {
+    let allowWithoutGenerating = false
+    while (!settled && !domCancelled) {
+      const token = `${observerToken}:${domObserverAttempt++}`
+      domObserverToken = token
+      let navigated = false
+      const onFrameNavigated = (frame: { url(): string }) => {
+        if (frame === page.mainFrame()) navigated = true
+      }
+      page.on("framenavigated", onFrameNavigated)
+
+      try {
+        const text = await runDomAssistantObserver(page, {
+          baseline: input.baselineDom,
+          prompt: input.prompt,
+          settleMs: input.settleMs,
+          token,
+          allowWithoutGenerating,
+        })
+        page.off("framenavigated", onFrameNavigated)
+        if (text) finish(text)
+        return
+      } catch (error) {
+        page.off("framenavigated", onFrameNavigated)
+        if (settled || domCancelled) return
+        if (!page.isClosed() && (navigated || isNavigationInterrupted(error))) {
+          allowWithoutGenerating = true
+          await page.waitForLoadState("domcontentloaded", { timeout: 5_000 }).catch(() => undefined)
+          continue
+        }
+        return
+      }
+    }
+  })()
+  domTask.catch(() => undefined)
+
+  return {
+    response,
+    async dispose() {
+      if (!settled) {
+        settled = true
+        rejectResponse(new Error("ChatGPT assistant response observation was disposed."))
+      }
+      await cleanup()
+    },
+  }
+}
+
+async function runDomAssistantObserver(
+  page: Page,
+  input: {
+    baseline: readonly DomAssistantMessage[]
+    prompt: string
+    settleMs: number
+    token: string
+    allowWithoutGenerating: boolean
+  }
+): Promise<string | null> {
+  return page.evaluate(
+    ({ baseline, prompt, settleMs, token, registryKey, allowWithoutGenerating }) =>
       new Promise<string | null>((resolve) => {
         const stopSelector = 'button[data-testid="stop-button"], button[aria-label*="Stop generating" i], button[aria-label="Stop"]'
         const baselineByKey = new Map(baseline.map((message) => [message.key, message.text]))
+        const normalizedPrompt = prompt.trim()
         const registryHost = window as unknown as Record<string, Map<string, () => void>>
         const registry = (registryHost[registryKey] ??= new Map<string, () => void>())
         let timer: ReturnType<typeof setTimeout> | undefined
@@ -252,14 +370,28 @@ export async function observeAssistantResponse(
         }
 
         const readCandidate = (): string => {
-          const elements = [...document.querySelectorAll('[data-message-author-role="assistant"]')]
-          const candidates = elements
-            .map((element, index) => {
-              const owner = element.closest("[data-message-id]")
-              const key = owner?.getAttribute("data-message-id") ?? element.getAttribute("data-message-id") ?? `assistant:${index}`
-              return { key, text: (element.textContent ?? "").trim() }
-            })
-            .filter((message) => !baselineByKey.has(message.key) || baselineByKey.get(message.key) !== message.text)
+          const messages = [...document.querySelectorAll("[data-message-author-role]")].map((element, index) => {
+            const owner = element.closest("[data-message-id]")
+            return {
+              role: element.getAttribute("data-message-author-role") ?? "",
+              key: owner?.getAttribute("data-message-id") ?? element.getAttribute("data-message-id") ?? `message:${index}`,
+              text: (element.textContent ?? "").trim(),
+            }
+          })
+          let promptIndex = -1
+          for (let index = messages.length - 1; index >= 0; index -= 1) {
+            const message = messages[index]
+            if (message?.role === "user" && message.text === normalizedPrompt) {
+              promptIndex = index
+              break
+            }
+          }
+          if (promptIndex < 0) return ""
+
+          const candidates = messages
+            .slice(promptIndex + 1)
+            .filter((message) => message.role === "assistant")
+            .filter((message) => allowWithoutGenerating || !baselineByKey.has(message.key) || baselineByKey.get(message.key) !== message.text)
           return candidates.at(-1)?.text ?? ""
         }
 
@@ -281,8 +413,8 @@ export async function observeAssistantResponse(
             timer = undefined
           }
           if (generating || !text || /^thinking\b/i.test(text) || timer) return
+          if (!sawGenerating && !allowWithoutGenerating) return
 
-          const grace = sawGenerating ? settleMs : Math.max(settleMs, 2_000)
           const expectedText = text
           timer = setTimeout(() => {
             timer = undefined
@@ -293,7 +425,7 @@ export async function observeAssistantResponse(
               return
             }
             finishDom(current)
-          }, grace)
+          }, settleMs)
         }
 
         const observer = new MutationObserver(inspect)
@@ -308,35 +440,41 @@ export async function observeAssistantResponse(
         inspect()
       }),
     {
-      baseline: input.baselineDom,
-      settleMs: input.settleMs,
-      token: observerToken,
+      ...input,
       registryKey: "__unhingedAssistantResponseObservers",
     }
   )
+}
 
-  domPromise.then(
-    (text) => {
-      if (text) finish(text)
-      else if (!settled) failSource("dom", new Error("ChatGPT DOM response observation stopped before completion."))
-    },
-    (error) => failSource("dom", error)
-  )
+async function cancelDomObserver(page: Page, token: string): Promise<void> {
+  await page
+    .evaluate(
+      ({ token, registryKey }) => {
+        const registry = (window as unknown as Record<string, Map<string, () => void>>)[registryKey]
+        registry?.get(token)?.()
+      },
+      { token, registryKey: "__unhingedAssistantResponseObservers" }
+    )
+    .catch(() => undefined)
+}
 
-  if (websocketFailed) {
-    domPromise.catch(() => undefined)
+function isAssistantEventStreamResponse(response: Response): boolean {
+  try {
+    const url = new URL(response.url())
+    return (
+      url.hostname === "chatgpt.com" &&
+      url.pathname === "/backend-api/f/conversation" &&
+      response.request().method() === "POST" &&
+      response.headers()["content-type"]?.toLowerCase().includes("text/event-stream") === true
+    )
+  } catch {
+    return false
   }
+}
 
-  return {
-    response,
-    async dispose() {
-      if (!settled) {
-        settled = true
-        rejectResponse(new Error("ChatGPT assistant response observation was disposed."))
-      }
-      await cleanup()
-    },
-  }
+function isNavigationInterrupted(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error)
+  return /execution context was destroyed|cannot find context with specified id|frame was detached|navigation/i.test(message)
 }
 
 export function findLatestAssistantAfterPrompt(messages: readonly ChatGptConversationMessage[], prompt?: string): ChatGptConversationMessage | undefined {
