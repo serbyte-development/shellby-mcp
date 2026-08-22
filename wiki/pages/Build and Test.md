@@ -60,6 +60,8 @@ GitHub Actions runs the same release validation sequence on both `macos-15` arm6
 
 The normal/CI tests do not exercise the real `src/index.ts` composition path, `/healthz`, GET/DELETE 405 responses, signal-driven shutdown, tunnel configuration, a real browser launch, or the installed Peekaboo/macOS permission path used by `setup`/`setup:computer`. The separate live fixture and generative canary tests attach to the real authenticated ChatGPT browser but still do not own browser launch/setup (`test/`, `test/live/`, `scripts/peekaboo-permissions.mjs`, `src/index.ts`, `src/server/http-server.ts`, `src/tools/web/web-open.ts`, `src/tools/computer/peekaboo.ts`).
 
+The checked-in live conversation IDs are account-specific. A future fixture bootstrap command should create normal and optional project conversations for the current authenticated account, store only their IDs in an ignored local file, and leave the shared parser fixture account-neutral.
+
 Some `apply_patch` integration cases inject fake executables for deterministic caps/abort behavior; real-binary integration now covers partial application, failed-hunk reporting, and move+edit. Remaining parser observations and unsupported tolerances are tracked in [apply_patch](./tools/apply_patch.md) (`test/mcp-integration.test.ts`, `test/apply-patch-vendor.test.ts`).
 
 ## Related
