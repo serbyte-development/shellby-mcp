@@ -4,7 +4,6 @@ import test from "node:test"
 import { MCP_CONFIG } from "../src/config.js"
 import { ChatGptSubagentError, type ChatGptSubagentOptions } from "../src/tools/subagent/chatgpt-subagent-contracts.js"
 import {
-  afterPageCreated,
   askSubagent,
   beginAgentOperation,
   cleanupIdleAgents,
@@ -26,6 +25,40 @@ import {
 
 function createRuntime(options: ChatGptSubagentOptions = {}): ChatGptSubagentRuntimeState {
   return createChatGptSubagentRuntimeState({ cdpEndpoint: "http://127.0.0.1:1", ...options })
+}
+
+function installBackgroundPage(runtime: ChatGptSubagentRuntimeState, page: object, targetId = "background-target-1"): unknown[] {
+  const existingPage = { isClosed: () => false }
+  const pages: object[] = [existingPage]
+  const createTargetCalls: unknown[] = []
+
+  runtime.context = {
+    pages: () => pages,
+    newCDPSession: async (candidate: object) => ({
+      send: async (method: string) => {
+        assert.equal(candidate, page)
+        assert.equal(method, "Target.getTargetInfo")
+        return { targetInfo: { targetId } }
+      },
+      detach: async () => undefined,
+    }),
+  } as never
+  runtime.browser = {
+    newBrowserCDPSession: async () => ({
+      send: async (method: string, params?: unknown) => {
+        if (method === "Target.createTarget") {
+          createTargetCalls.push(params)
+          pages.push(page)
+          return { targetId }
+        }
+        if (method === "Target.closeTarget") return { success: true }
+        throw new Error(`unexpected CDP method: ${method}`)
+      },
+      detach: async () => undefined,
+    }),
+  } as never
+
+  return createTargetCalls
 }
 
 function deferred(): { promise: Promise<void>; resolve: () => void } {
@@ -92,14 +125,15 @@ test("rate limit modal starts a 15-minute cooldown for new subagent turns", asyn
       }),
     }),
   }
-  runtime.context = {
-    pages: () => [page],
-    newPage: async () => {
+  runtime.context = { pages: () => [page] } as never
+  runtime.browser = {
+    isConnected: () => true,
+    close: async () => undefined,
+    newBrowserCDPSession: async () => {
       pageCreates += 1
       throw new Error("should not create a page while rate limited")
     },
   } as never
-  runtime.browser = { isConnected: () => true, close: async () => undefined } as never
 
   const startedAt = Date.now()
   await assert.rejects(
@@ -167,28 +201,9 @@ test("expired rate limit cooldown dismisses stale modals before new subagent wor
   assert.equal(runtime.rateLimitedUntil, 0)
 })
 
-test("browser visibility hook is best effort", async () => {
-  let calls = 0
-  const runtime = createRuntime({
-    onPageCreated: () => {
-      calls += 1
-      throw new Error("hide failed")
-    },
-  })
-
-  await afterPageCreated(runtime)
-  assert.equal(calls, 1)
-})
-
-
 test("creates managed subagent pages as unfocused background Chrome targets", async () => {
   const runtime = createRuntime()
-  const targetId = "background-target-1"
-  const createTargetCalls: unknown[] = []
-  let contextNewPageCalls = 0
-  let pageCreatedHooks = 0
   let currentUrl = "about:blank"
-
   const page = {
     isClosed: () => false,
     url: () => currentUrl,
@@ -204,45 +219,11 @@ test("creates managed subagent pages as unfocused background Chrome targets", as
       }),
     }),
   }
-  const existingPage = { isClosed: () => false }
-  const pages = [existingPage]
-  runtime.context = {
-    pages: () => pages,
-    newPage: async () => {
-      contextNewPageCalls += 1
-      throw new Error("foreground context.newPage() should not be used")
-    },
-    newCDPSession: async () => ({
-      send: async (method: string) => {
-        assert.equal(method, "Target.getTargetInfo")
-        return { targetInfo: { targetId } }
-      },
-      detach: async () => undefined,
-    }),
-  } as never
-  runtime.browser = {
-    newBrowserCDPSession: async () => ({
-      send: async (method: string, params?: unknown) => {
-        if (method === "Target.createTarget") {
-          createTargetCalls.push(params)
-          pages.push(page)
-          return { targetId }
-        }
-        if (method === "Target.closeTarget") return { success: true }
-        throw new Error(`unexpected CDP method: ${method}`)
-      },
-      detach: async () => undefined,
-    }),
-  } as never
-  runtime.onPageCreated = () => {
-    pageCreatedHooks += 1
-  }
+  const createTargetCalls = installBackgroundPage(runtime, page)
 
   const agent = await createAgent(runtime, "background-agent")
 
   assert.equal(agent.page, page)
-  assert.equal(contextNewPageCalls, 0)
-  assert.equal(pageCreatedHooks, 1)
   assert.deepEqual(createTargetCalls, [{ url: "about:blank", background: true, focus: false }])
 })
 
@@ -274,7 +255,7 @@ test("fails explicitly when a saved ChatGPT conversation was deleted", async () 
     locator: () => ({ first: () => ({ isVisible: async () => false }) }),
     getByText: () => ({ first: () => ({ isVisible: async () => false }) }),
   }
-  runtime.context = { newPage: async () => page } as never
+  const createTargetCalls = installBackgroundPage(runtime, page, "deleted-agent-target")
   runtime.conversationRefs.set("deleted-agent", {
     conversationId: "deleted-conversation",
     conversationUrl: "https://chatgpt.com/c/deleted-conversation",
@@ -286,6 +267,7 @@ test("fails explicitly when a saved ChatGPT conversation was deleted", async () 
     (error: unknown) => error instanceof ChatGptSubagentError && error.code === "SUBAGENT_CONVERSATION_NOT_FOUND"
   )
   assert.equal(closes, 1)
+  assert.equal(createTargetCalls.length, 1)
   assert.equal(runtime.conversationRefs.has("deleted-agent"), true)
 })
 
@@ -379,7 +361,6 @@ test("catastrophic recovery opens the saved conversation in a fresh tab without 
   const conversationUrl = "https://chatgpt.com/c/conversation-1"
   const exactResponse = "```ts\nconst recovered = true\n```"
   let oldCloses = 0
-  let newPages = 0
   const oldPage = {
     isClosed: () => false,
     url: () => conversationUrl,
@@ -440,12 +421,7 @@ test("catastrophic recovery opens the saved conversation in a fresh tab without 
     },
     getByText: () => ({ first: () => ({ isVisible: async () => false }) }),
   }
-  runtime.context = {
-    newPage: async () => {
-      newPages += 1
-      return newPage
-    },
-  } as never
+  const createTargetCalls = installBackgroundPage(runtime, newPage, "catastrophic-recovery-target")
   const agent = {
     agentId: "catastrophic-agent",
     page: oldPage,
@@ -459,7 +435,7 @@ test("catastrophic recovery opens the saved conversation in a fresh tab without 
 
   await recoverSubmittedTurn(runtime, turn, agent)
 
-  assert.equal(newPages, 1)
+  assert.equal(createTargetCalls.length, 1)
   assert.equal(oldCloses, 1)
   assert.equal(agent.page, newPage)
   assert.equal(turn.status, "completed")

@@ -1,4 +1,3 @@
-import { spawn } from "node:child_process"
 import { mkdir } from "node:fs/promises"
 import { dirname, resolve } from "node:path"
 import { fileURLToPath } from "node:url"
@@ -18,15 +17,7 @@ const authStore = new UnhingedAgentAuthStore()
 await authStore.ensureState()
 const cwd = MCP_CONFIG.workspace
 await mkdir(cwd, { recursive: true })
-const chatGptSubagents = createChatGptSubagentService({
-  onPageCreated: () => {
-    const child = spawn(process.execPath, [resolve(repositoryRoot, "scripts", "chatgpt-browser.mjs"), "--hide"], {
-      stdio: "ignore",
-    })
-    child.on("error", () => undefined)
-    child.unref()
-  },
-})
+const chatGptSubagents = createChatGptSubagentService()
 
 const shells = createShellSessionManager({
   createShell: (initialState) => createShellSession({ cwd, initialState }),

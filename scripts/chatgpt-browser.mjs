@@ -7,7 +7,6 @@ import { spawn, spawnSync } from "node:child_process"
 const setup = process.argv.includes("--setup")
 const auto = process.argv.includes("--auto")
 const optional = process.argv.includes("--optional")
-const hide = process.argv.includes("--hide")
 const endpoint = new URL(process.env.MCP_CHATGPT_CDP_ENDPOINT?.trim() || "http://127.0.0.1:9222")
 const profileDir = join(homedir(), ".unhinged-agent", "chatgpt-chrome")
 const chromeProfileDirectory = process.env.MCP_CHATGPT_PROFILE_DIRECTORY?.trim()
@@ -19,11 +18,6 @@ const cdpReady = await isCdpReady(endpoint)
 
 if (!isLocalEndpoint(endpoint)) {
   console.log(`ChatGPT browser: using configured CDP endpoint ${endpoint.href}`)
-  process.exit(0)
-}
-
-if (hide) {
-  if (configured) hideManagedChrome()
   process.exit(0)
 }
 

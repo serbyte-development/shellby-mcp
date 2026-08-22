@@ -84,7 +84,6 @@ export interface ChatGptSubagentRuntimeState {
   minInterTurnDelayMs: number
   interactionDelayMs: number
   timeoutMs: number
-  onPageCreated?: () => void | Promise<void>
   agents: Map<string, BrowserAgentState>
   conversationRefs: Map<string, StoredConversationRef>
   turns: Map<string, BrowserTurnState>
@@ -112,7 +111,6 @@ export function createChatGptSubagentRuntimeState(options: ChatGptSubagentOption
     minInterTurnDelayMs: nonNegativeInteger(options.minInterTurnDelayMs, 1_500),
     interactionDelayMs: nonNegativeInteger(options.interactionDelayMs, 300),
     timeoutMs: options.timeoutMs ?? 120_000,
-    onPageCreated: options.onPageCreated,
     agents: new Map(),
     conversationRefs: new Map(),
     turns: new Map(),
@@ -477,7 +475,6 @@ async function createManagedPage(state: ChatGptSubagentRuntimeState): Promise<Pa
   const page = await createBackgroundPage(state)
   try {
     await page.setViewportSize(MANAGED_VIEWPORT)
-    await afterPageCreated(state)
     return page
   } catch (error) {
     if (!page.isClosed()) await page.close().catch(() => undefined)
@@ -487,12 +484,7 @@ async function createManagedPage(state: ChatGptSubagentRuntimeState): Promise<Pa
 
 async function createBackgroundPage(state: ChatGptSubagentRuntimeState): Promise<Page> {
   const context = requireContext(state)
-  const browser = state.browser
-
-  // Production is always Chromium over CDP. Keep context.newPage() as a small
-  // compatibility fallback for test doubles and non-CDP Browser implementations.
-  if (!browser || typeof browser.newBrowserCDPSession !== "function") return context.newPage()
-
+  const browser = requireBrowser(state)
   const knownPages = new Set(context.pages())
   const session = await browser.newBrowserCDPSession()
   let targetId: string | undefined
@@ -569,6 +561,11 @@ function turnResult(turn: BrowserTurnState): ChatGptSubagentPollResult {
 function requireContext(state: ChatGptSubagentRuntimeState): BrowserContext {
   if (!state.context) throw new Error("ChatGPT subagent runtime is not connected to Chrome.")
   return state.context
+}
+
+function requireBrowser(state: ChatGptSubagentRuntimeState): Browser {
+  if (!state.browser) throw new Error("ChatGPT subagent runtime is not connected to Chrome.")
+  return state.browser
 }
 
 async function waitForInterTurn(state: ChatGptSubagentRuntimeState, agent: BrowserAgentState, signal?: AbortSignal): Promise<void> {
@@ -654,14 +651,6 @@ function rememberConversation(state: ChatGptSubagentRuntimeState, agent: Browser
     conversationUrl: agent.conversationUrl,
     turnCount: agent.turnCount,
   })
-}
-
-export async function afterPageCreated(state: ChatGptSubagentRuntimeState): Promise<void> {
-  try {
-    await state.onPageCreated?.()
-  } catch {
-    // Browser visibility is best effort and must never break subagent work.
-  }
 }
 
 export async function cleanupIdleAgents(state: ChatGptSubagentRuntimeState, now = Date.now()): Promise<void> {

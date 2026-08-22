@@ -1,6 +1,5 @@
 export interface ChatGptSubagentOptions {
   cdpEndpoint?: string
-  onPageCreated?: () => void | Promise<void>
   connectTimeoutMs?: number
   chatGptUrl?: string
   maxConcurrentAgents?: number

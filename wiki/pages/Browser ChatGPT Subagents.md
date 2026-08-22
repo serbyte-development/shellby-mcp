@@ -1,6 +1,6 @@
 # Browser ChatGPT Subagents
 
-Verified 2026-08-20 against current source, deterministic tests, and live ChatGPT runs.
+Verified 2026-08-22 against current source, deterministic tests, and live ChatGPT runs.
 
 ## What This Is
 
@@ -26,7 +26,7 @@ pendingEvents: completion notifications
 
 ## Browser and Page Ownership
 
-Each live agent owns one module-created Playwright `Page`. Routing is page-based, so foreground window focus, tab order, mouse position, and keyboard focus do not determine which subagent receives work (`src/tools/subagent/chatgpt-subagent.ts`).
+Each live agent owns one module-created Playwright `Page`. Production creates it through a browser-level CDP session with `Target.createTarget({ background: true, focus: false })`, then binds the returned target ID to the Playwright page. There is no `BrowserContext.newPage()` compatibility path. Routing is page-based, so foreground window focus, tab order, mouse position, and keyboard focus do not determine which subagent receives work (`src/tools/subagent/chatgpt-subagent.ts`).
 
 `createAgent()` opens either the base ChatGPT URL for a new agent or the exact saved conversation for a recoverable agent. `ensureActivePage()` keeps using the current page only while it still matches the expected ChatGPT target; if the page is closed or lost, it can reopen the saved conversation. It never hijacks an unrelated tab that a user navigated elsewhere (`src/tools/subagent/chatgpt-subagent.ts`).
 

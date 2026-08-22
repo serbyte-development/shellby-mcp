@@ -155,7 +155,7 @@ PM2 is a repository dependency and implementation detail; users do not need to i
 
 Unhinged Agent can use ChatGPT Web itself as a parallel agent runtime. `npm run setup:chatgpt` creates a dedicated Chrome profile and launches it with the Chrome DevTools Protocol on `127.0.0.1:9222`. After you sign into ChatGPT once, `npm start` launches that profile automatically when needed. `npm run chatgpt` launches it manually or brings the hidden managed browser to the foreground without restarting the MCP.
 
-Setup keeps the dedicated Chrome visible so you can sign in. Normal `npm start` runs keep that same headed Chrome process hidden in the background. Creating a subagent tab can make Chrome visible on macOS, so the MCP immediately re-hides only the dedicated profile's Chrome process after page creation. Hiding is best effort: if macOS refuses it, Chrome simply stays visible and subagent behavior is unchanged.
+Setup keeps the dedicated Chrome visible so you can sign in. Normal `npm start` runs keep that same headed Chrome process hidden in the background. Subagent pages are created through CDP as unfocused background targets (`background: true`, `focus: false`), so opening a subagent tab does not bring the managed Chrome window to the foreground.
 
 Returned turn IDs are readable and sequential per agent, for example `seo-audit_turn_1` and `seo-audit_turn_2`. Local runtime state expires after 30 minutes without observable progress. Cleanup closes the managed tab, removes local turn records, and releases any generation slot while retaining the conversation reference in-process. Reusing the same `agent_id` then reopens the saved ChatGPT conversation; if that conversation was deleted, recovery fails explicitly instead of silently starting a new thread.
 
