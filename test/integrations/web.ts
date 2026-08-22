@@ -62,7 +62,8 @@ test("continues one cached website across MCP client sessions", { timeout: 20_00
     name: "fetch_website",
     arguments: {
       url: "https://example.com/start",
-      format: "clean_html",
+      format: "html",
+      compact: false,
       max_output_tokens: 64,
     },
   })
@@ -78,7 +79,8 @@ test("continues one cached website across MCP client sessions", { timeout: 20_00
     name: "fetch_website",
     arguments: {
       url: "https://example.com/start",
-      format: "clean_html",
+      format: "html",
+      compact: false,
       cursor: firstContent.next_cursor,
       max_output_tokens: 256,
     },
@@ -88,4 +90,103 @@ test("continues one cached website across MCP client sessions", { timeout: 20_00
   assert.equal(firstContent.content + secondContent.content, expected)
   assert.equal(secondContent.next_cursor, undefined)
   assert.equal(renders, 1)
+})
+
+test("compact only removes explicit token-heavy markup", { timeout: 60_000 }, async (t) => {
+  const pageServer = createServer((_request, response) => {
+    response.writeHead(200, { "content-type": "text/html; charset=utf-8" })
+    response.end(`<!doctype html>
+      <html class="root-class">
+        <head><title>Full Page</title><style>.paint { color: blue; }</style><script>window.headNoise = true</script></head>
+        <body class="page" data-page="reviews" style="margin:0">
+          <nav>Site Navigation</nav>
+          <main class="paint" data-controller="reviews">
+            <h1>Customer Reviews</h1>
+            <article>
+              <p>Customer review body survives.</p>
+              <div class="review-reply">
+                <strong>Reply from business</strong>
+                <div class="card-text">Owner reply should survive.</div>
+              </div>
+            </article>
+            <aside>Sidebar details should survive.</aside>
+            <table><tr><th>Service</th><th>Warranty</th></tr><tr><td>Painting</td><td>1 year</td></tr></table>
+            <img alt="House" src="data:image/png;base64,AAAA" srcset="one.jpg 1x, two.jpg 2x" sizes="100vw" width="800" height="600" loading="lazy">
+            <button onclick="doThing()">Useful button</button>
+            <svg viewBox="0 0 10 10"><path d="M0 0h10v10z"></path></svg>
+            <div aria-hidden="true">ARIA hidden detail</div>
+            <div hidden>Hidden detail</div>
+            <div style="display:none">Inline hidden detail</div>
+            <script>window.bodyNoise = true</script>
+          </main>
+          <footer>Site Footer</footer>
+        </body>
+      </html>`)
+  })
+  await new Promise<void>((resolve, reject) => {
+    pageServer.once("error", reject)
+    pageServer.listen(0, "127.0.0.1", resolve)
+  })
+  t.after(async () => {
+    await new Promise<void>((resolve) => pageServer.close(() => resolve()))
+  })
+
+  const address = pageServer.address()
+  assert.ok(address && typeof address !== "string")
+  const url = `http://127.0.0.1:${address.port}/reviews`
+  const opener = new WebPageOpener()
+
+  const fullHtml = await opener.open({
+    url,
+    format: "html",
+    compact: false,
+    maxOutputTokens: opener.maximumOutputTokens,
+  })
+  assert.match(fullHtml.content, /<head>/)
+  assert.match(fullHtml.content, /Site Navigation/)
+  assert.match(fullHtml.content, /Site Footer/)
+  assert.match(fullHtml.content, /class="card-text"/)
+  assert.match(fullHtml.content, /srcset=/)
+  assert.match(fullHtml.content, /data:image\/png;base64,AAAA/)
+  assert.match(fullHtml.content, /<svg/)
+  assert.match(fullHtml.content, /window\.bodyNoise/)
+
+  const compactHtml = await opener.open({
+    url,
+    format: "html",
+    compact: true,
+    maxOutputTokens: opener.maximumOutputTokens,
+  })
+  assert.doesNotMatch(compactHtml.content, /<head/)
+  assert.doesNotMatch(compactHtml.content, /<nav/)
+  assert.doesNotMatch(compactHtml.content, /<footer/)
+  assert.doesNotMatch(compactHtml.content, /<script/)
+  assert.doesNotMatch(compactHtml.content, /<style/)
+  assert.doesNotMatch(compactHtml.content, /<svg/)
+  assert.doesNotMatch(compactHtml.content, /class=/)
+  assert.doesNotMatch(compactHtml.content, /style=/)
+  assert.doesNotMatch(compactHtml.content, /data-controller=/)
+  assert.doesNotMatch(compactHtml.content, /onclick=/)
+  assert.doesNotMatch(compactHtml.content, /srcset=/)
+  assert.doesNotMatch(compactHtml.content, /sizes=/)
+  assert.doesNotMatch(compactHtml.content, /width=/)
+  assert.doesNotMatch(compactHtml.content, /height=/)
+  assert.doesNotMatch(compactHtml.content, /loading=/)
+  assert.doesNotMatch(compactHtml.content, /data:image/)
+  assert.doesNotMatch(compactHtml.content, /ARIA hidden detail|Hidden detail|Inline hidden detail/)
+  assert.match(compactHtml.content, /Owner reply should survive\./)
+  assert.match(compactHtml.content, /Sidebar details should survive\./)
+  assert.match(compactHtml.content, /Useful button/)
+  assert.match(compactHtml.content, /<table>/)
+
+  const compactMarkdown = await opener.open({
+    url,
+    format: "markdown",
+    compact: true,
+    maxOutputTokens: opener.maximumOutputTokens,
+  })
+  assert.match(compactMarkdown.content, /Owner reply should survive\./)
+  assert.match(compactMarkdown.content, /Sidebar details should survive\./)
+  assert.match(compactMarkdown.content, /\| Service\s+\| Warranty\s+\|/)
+  assert.doesNotMatch(compactMarkdown.content, /Site Navigation|Site Footer|ARIA hidden detail|Hidden detail|Inline hidden detail/)
 })

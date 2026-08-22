@@ -21,10 +21,16 @@ export function registerWebTool(server: McpServer, webPageOpener: WebPageOpener)
           .transform((value) => new URL(value).href)
           .describe("A single HTTP or HTTPS URL to fetch."),
         format: z
-          .enum(["markdown", "clean_html", "raw_html"])
+          .enum(["markdown", "html"])
           .default(MCP_CONFIG.web.defaultFormat)
           .describe(
-            "Output format. markdown returns cleaned readable content and is the default. clean_html returns cleaned main-content HTML. raw_html returns the complete rendered page source. Reuse the same format when continuing with a `cursor`."
+            "Output representation. markdown converts the rendered page to readable Markdown; html returns rendered HTML. Reuse the same format when continuing with a cursor."
+          ),
+        compact: z
+          .boolean()
+          .default(false)
+          .describe(
+            "Strip token-heavy rendering details while preserving page content. Removes the head, navigation, footer, scripts, styles, SVGs, hidden elements, presentation attributes, data attributes, event handlers, responsive-image metadata, and embedded data-image sources. Set false to preserve the full rendered page before format conversion."
           ),
         cursor: z.string().min(1).optional().describe("Opaque next_cursor from an earlier fetch_website response."),
         max_output_tokens: z.int().min(1).max(webPageOpener.maximumOutputTokens).default(webPageOpener.defaultOutputTokens),
@@ -44,11 +50,12 @@ export function registerWebTool(server: McpServer, webPageOpener: WebPageOpener)
       },
       _meta: MCP_CONFIG.toolMeta,
     },
-    async ({ url, format, cursor, max_output_tokens }, ctx) => {
+    async ({ url, format, compact, cursor, max_output_tokens }, ctx) => {
       try {
         const result = await webPageOpener.open({
           url,
           format,
+          compact,
           cursor,
           maxOutputTokens: max_output_tokens,
           signal: ctx.mcpReq.signal,
@@ -62,14 +69,7 @@ export function registerWebTool(server: McpServer, webPageOpener: WebPageOpener)
         }
         return {
           structuredContent,
-          content: [
-            {
-              type: "text" as const,
-              text: result.output_truncated
-                ? `Fetched ${result.title || result.url} as ${result.format}; response output truncated at the limit${result.source_dropped ? ", and source bytes were dropped at the cache ceiling" : ""}.`
-                : `Fetched ${result.title || result.url} as ${result.format}${result.source_dropped ? "; source bytes were dropped at the cache ceiling" : ""}.`,
-            },
-          ],
+          content: [],
         }
       } catch (error) {
         const text =

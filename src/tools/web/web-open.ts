@@ -4,11 +4,12 @@ import { tokenChunk } from "../../tokenizer.js"
 import { MCP_CONFIG } from "../../config.js"
 import { utf8Prefix } from "../../utils.js"
 
-type WebsiteContentFormat = "markdown" | "clean_html" | "raw_html"
+type WebsiteContentFormat = "markdown" | "html"
 
 export interface WebOpenInput {
   url: string
   format: WebsiteContentFormat
+  compact: boolean
   cursor?: string
   maxOutputTokens: number
   signal?: AbortSignal
@@ -18,6 +19,7 @@ export interface WebOpenResult extends Record<string, unknown> {
   url: string
   title: string
   format: WebsiteContentFormat
+  compact: boolean
   content: string
   next_cursor?: string
   output_truncated?: true
@@ -32,7 +34,7 @@ interface RenderedWebPage {
 }
 
 export interface WebPageOpenerOptions {
-  renderPage?: (url: string, format: WebsiteContentFormat, signal?: AbortSignal) => Promise<RenderedWebPage>
+  renderPage?: (url: string, format: WebsiteContentFormat, compact: boolean, signal?: AbortSignal) => Promise<RenderedWebPage>
   defaultOutputTokens?: number
   maxOutputTokens?: number
   documentByteLimit?: number
@@ -45,6 +47,7 @@ interface CachedDocument extends RenderedWebPage {
   id: string
   requestedUrl: string
   format: WebsiteContentFormat
+  compact: boolean
   expiresAt: number
   droppedSourceBytes: number
 }
@@ -79,6 +82,7 @@ export class WebPageOpener {
   async open(input: WebOpenInput): Promise<WebOpenResult> {
     const requestedUrl = input.url
     const format = input.format
+    const compact = input.compact
     const maxOutputTokens = input.maxOutputTokens
     this.removeExpiredDocuments()
 
@@ -94,12 +98,15 @@ export class WebPageOpener {
       if (format !== document.format) {
         throw new WebOpenError("invalid_cursor", `The cursor belongs to format ${document.format}; continue with the same format.`)
       }
+      if (compact !== document.compact) {
+        throw new WebOpenError("invalid_cursor", `The cursor belongs to compact=${document.compact}; continue with the same compact setting.`)
+      }
       offset = cursor.offset
       if (offset < 0 || offset > document.content.length) {
         throw new WebOpenError("invalid_cursor", "The cursor offset is invalid.")
       }
     } else {
-      const rendered = await this.renderPage(requestedUrl, format, input.signal)
+      const rendered = await this.renderPage(requestedUrl, format, compact, input.signal)
       const finalUrl = normalizeWebUrl(rendered.url)
       const boundedContent = utf8Prefix(rendered.content, this.documentByteLimit)
       document = {
@@ -108,6 +115,7 @@ export class WebPageOpener {
         url: finalUrl,
         title: rendered.title.trim(),
         format,
+        compact,
         content: boundedContent.value,
         expiresAt: this.now() + this.documentTtlMs,
         droppedSourceBytes: boundedContent.omittedBytes,
@@ -120,6 +128,7 @@ export class WebPageOpener {
       url: document.url,
       title: document.title,
       format: document.format,
+      compact: document.compact,
       content: chunk.value,
     }
     if (chunk.nextOffset < document.content.length) {
@@ -176,7 +185,12 @@ export class WebOpenError extends Error {
   }
 }
 
-async function renderWithCloakBrowser(url: string, format: WebsiteContentFormat, signal?: AbortSignal): Promise<RenderedWebPage> {
+async function renderWithCloakBrowser(
+  url: string,
+  format: WebsiteContentFormat,
+  compact: boolean,
+  signal?: AbortSignal
+): Promise<RenderedWebPage> {
   if (signal?.aborted) {
     throw new WebOpenError("open_failed", "The web request was aborted.")
   }
@@ -208,26 +222,21 @@ async function renderWithCloakBrowser(url: string, format: WebsiteContentFormat,
     const finalUrl = page.url()
     const browserTitle = await page.title()
     const html = await page.content()
+    const outputHtml = compact ? await compactRenderedHtml(html) : html
 
-    if (format === "raw_html") {
+    if (format === "html") {
       return {
         url: finalUrl,
         title: browserTitle,
-        content: html,
+        content: outputHtml,
       }
     }
 
-    const [{ Defuddle }, { parseHTML }] = await Promise.all([import("defuddle/node"), import("linkedom")])
-    const { document } = parseHTML(html)
-    const parsed = await Defuddle(document as unknown as Document, finalUrl, {
-      markdown: format === "markdown",
-      useAsync: false,
-    })
-
+    const { NodeHtmlMarkdown } = await import("node-html-markdown")
     return {
       url: finalUrl,
-      title: parsed.title || browserTitle,
-      content: parsed.content,
+      title: browserTitle,
+      content: NodeHtmlMarkdown.translate(outputHtml),
     }
   } catch (error) {
     if (error instanceof WebOpenError) throw error
@@ -235,6 +244,51 @@ async function renderWithCloakBrowser(url: string, format: WebsiteContentFormat,
   } finally {
     await browser.close()
   }
+}
+
+async function compactRenderedHtml(html: string): Promise<string> {
+  const { parseHTML } = await import("linkedom")
+  const { document } = parseHTML(html)
+  const body = document.body
+  if (!body) return ""
+
+  document.querySelector("head")?.remove()
+  body.querySelectorAll('script, style, noscript, template, nav, footer, svg, [hidden], [aria-hidden="true"]').forEach((element) => element.remove())
+
+  const hiddenStyle = /(?:^|;)\s*(?:display\s*:\s*none|visibility\s*:\s*hidden)(?:\s*!important)?\s*(?:;|$)/i
+  const strippedAttributes = new Set([
+    "class",
+    "style",
+    "srcset",
+    "sizes",
+    "width",
+    "height",
+    "loading",
+    "decoding",
+    "fetchpriority",
+  ])
+
+  for (const element of document.querySelectorAll("*")) {
+    const style = element.getAttribute("style")
+    if (style && hiddenStyle.test(style)) {
+      element.remove()
+      continue
+    }
+
+    for (const attribute of Array.from(element.attributes)) {
+      const name = attribute.name.toLowerCase()
+      if (strippedAttributes.has(name) || name.startsWith("data-") || name.startsWith("on")) {
+        element.removeAttribute(attribute.name)
+      }
+    }
+
+    const src = element.getAttribute("src")
+    if (src?.startsWith("data:")) {
+      element.removeAttribute("src")
+    }
+  }
+
+  return document.documentElement?.outerHTML ?? body.outerHTML
 }
 
 function normalizeWebUrl(value: string): string {

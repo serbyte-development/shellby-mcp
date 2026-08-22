@@ -50,7 +50,10 @@ test("publishes the assembled MCP tool surface", { timeout: 10_000 }, async (t) 
 
   const runWait = (shellRun.inputSchema.properties as Record<string, Record<string, unknown>>).wait_ms
   const pollWait = (shellPoll.inputSchema.properties as Record<string, Record<string, unknown>>).wait_ms
-  const webTokens = (fetchWebsite.inputSchema.properties as Record<string, Record<string, unknown>>).max_output_tokens
+  const webProperties = fetchWebsite.inputSchema.properties as Record<string, Record<string, unknown>>
+  const webTokens = webProperties.max_output_tokens
+  const webCompact = webProperties.compact
+  const webFormat = webProperties.format
   const subagentWait = (subagentResult.inputSchema.properties as Record<string, Record<string, unknown>>).wait_ms
   assert.equal(runWait?.default, MCP_CONFIG.shell.defaultWaitMs)
   assert.equal(runWait?.maximum, MCP_CONFIG.shell.maxWaitMs)
@@ -58,6 +61,8 @@ test("publishes the assembled MCP tool surface", { timeout: 10_000 }, async (t) 
   assert.equal(pollWait?.maximum, MCP_CONFIG.shell.maxPollWaitMs)
   assert.equal(webTokens?.default, MCP_CONFIG.web.defaultOutputTokens)
   assert.equal(webTokens?.maximum, MCP_CONFIG.web.maxOutputTokens)
+  assert.equal(webCompact?.default, false)
+  assert.deepEqual(webFormat?.enum, ["markdown", "html"])
   assert.equal(subagentWait?.default, MCP_CONFIG.chatGpt.defaultPollWaitMs)
   assert.equal(subagentWait?.maximum, MCP_CONFIG.chatGpt.maxPollWaitMs)
 })
