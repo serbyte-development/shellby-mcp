@@ -75,14 +75,12 @@ test("lists shells without refreshing their idle timers", async (t) => {
     {
       shell_id: DEFAULT_SHELL_ID,
       status: "idle",
-      is_default: true,
       can_close: false,
       idle_ms: 75,
     },
     {
       shell_id: "alpha",
       status: "idle",
-      is_default: false,
       can_close: true,
       idle_ms: 75,
     },

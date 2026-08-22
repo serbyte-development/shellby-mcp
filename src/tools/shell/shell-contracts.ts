@@ -136,7 +136,6 @@ export const shellListOutputSchema = z.object({
     z.object({
       shell_id: z.string(),
       status: z.enum(["idle", "active"]),
-      is_default: z.boolean(),
       can_close: z.boolean(),
       idle_ms: z.int().nonnegative(),
     })

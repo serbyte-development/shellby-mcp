@@ -145,7 +145,6 @@ export function createShellSessionManager(options: ShellSessionManagerOptions = 
     return [...sessions.entries()].map(([shellId, shell]) => ({
       shell_id: shellId,
       status: shell.hasActiveWork || (leases.get(shellId) ?? 0) > 0 ? "active" : "idle",
-      is_default: shellId === DEFAULT_SHELL_ID,
       can_close: shellId !== DEFAULT_SHELL_ID,
       idle_ms: Math.max(0, at - (lastUsedAt.get(shellId) ?? at)),
     }))

@@ -143,12 +143,12 @@ const toolFamilyCases: Array<{ tool: string; structuredContent: unknown; expecte
   {
     tool: "shell_list",
     structuredContent: {
-      shells: [{ shell_id: "default", status: "idle", is_default: true, can_close: false, idle_ms: 50 }],
+      shells: [{ shell_id: "default", status: "idle", can_close: false, idle_ms: 50 }],
       count: 1,
       limit: 4,
       idle_timeout_ms: 300_000,
     },
-    expected: "count=1 limit=4 idle_timeout_ms=300000\n\nshells:\n\n- shell_id=default status=idle is_default=true can_close=false idle_ms=50",
+    expected: "count=1 limit=4 idle_timeout_ms=300000\n\nshells:\n\n- shell_id=default status=idle can_close=false idle_ms=50",
   },
   {
     tool: "shell_close",
