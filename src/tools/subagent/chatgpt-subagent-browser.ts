@@ -1,12 +1,48 @@
-import type { Locator, Page } from "playwright-core"
+import type { Browser, BrowserContext, Locator, Page } from "playwright-core"
 
 import { ChatGptSubagentError } from "./chatgpt-subagent-contracts.js"
+
+const BACKGROUND_PAGE_BIND_TIMEOUT_MS = 5_000
 
 export interface ManagedAgentPageState {
   agentId: string
   page: Page
   conversationId?: string
   conversationUrl?: string
+}
+
+export async function createBackgroundPage(browser: Browser, context: BrowserContext): Promise<Page> {
+  const knownPages = new Set(context.pages())
+  const session = await browser.newBrowserCDPSession()
+  let targetId: string | undefined
+
+  try {
+    const created = await session.send("Target.createTarget", {
+      url: "about:blank",
+      background: true,
+      focus: false,
+    })
+    targetId = created.targetId
+
+    const deadline = Date.now() + BACKGROUND_PAGE_BIND_TIMEOUT_MS
+    while (Date.now() < deadline) {
+      for (const page of context.pages()) {
+        if (knownPages.has(page) || page.isClosed()) continue
+        if ((await pageTargetId(context, page)) === targetId) return page
+      }
+      await delay(25)
+    }
+
+    throw new ChatGptSubagentError(
+      "BROWSER_UNAVAILABLE",
+      `Chrome created background target ${targetId}, but Playwright did not expose its page within ${BACKGROUND_PAGE_BIND_TIMEOUT_MS} ms.`
+    )
+  } catch (error) {
+    if (targetId) await session.send("Target.closeTarget", { targetId }).catch(() => undefined)
+    throw error
+  } finally {
+    await session.detach().catch(() => undefined)
+  }
 }
 
 export async function findComposer(page: Page, timeoutMs: number, signal?: AbortSignal): Promise<Locator> {
@@ -109,25 +145,25 @@ export async function navigateAndCaptureConversationPayload(
   timeoutMs: number,
   signal?: AbortSignal
 ): Promise<unknown | undefined> {
-  const pathname = `/backend-api/conversation/${conversationId}`
   const responsePromise = page
-    .waitForResponse(
-      (response) => {
-        try {
-          const url = new URL(response.url())
-          return url.hostname === "chatgpt.com" && url.pathname === pathname && response.status() === 200
-        } catch {
-          return false
-        }
-      },
-      { timeout: Math.min(timeoutMs, 10_000) }
-    )
+    .waitForResponse((response) => isConversationPayloadUrl(response.url(), conversationId) && response.status() === 200, {
+      timeout: Math.min(timeoutMs, 10_000),
+    })
     .then((response) => response.json())
     .catch(() => undefined)
 
   await waitForPromise(page.goto(conversationUrl, { waitUntil: "domcontentloaded", timeout: timeoutMs }), signal)
   throwIfAborted(signal)
   return waitForPromise(responsePromise, signal)
+}
+
+export function isConversationPayloadUrl(value: string, conversationId: string): boolean {
+  try {
+    const url = new URL(value)
+    return url.protocol === "https:" && url.hostname === "chatgpt.com" && url.pathname === `/backend-api/conversations/${conversationId}`
+  } catch {
+    return false
+  }
 }
 
 export async function waitForStableConversationLocation(state: ManagedAgentPageState, timeoutMs: number): Promise<boolean> {
@@ -218,6 +254,19 @@ export function delay(ms: number, signal?: AbortSignal): Promise<void> {
     }
     signal.addEventListener("abort", onAbort, { once: true })
   })
+}
+
+async function pageTargetId(context: BrowserContext, page: Page): Promise<string | undefined> {
+  const session = await context.newCDPSession(page).catch(() => undefined)
+  if (!session) return undefined
+  try {
+    const info = await session.send("Target.getTargetInfo")
+    return info.targetInfo.targetId
+  } catch {
+    return undefined
+  } finally {
+    await session.detach().catch(() => undefined)
+  }
 }
 
 async function retryAfterDismissingBlockingOverlay<T>(page: Page, action: () => Promise<T>, signal?: AbortSignal): Promise<T> {

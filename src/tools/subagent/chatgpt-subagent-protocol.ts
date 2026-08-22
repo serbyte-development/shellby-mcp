@@ -196,6 +196,16 @@ export function extractConversationNodes(payload: unknown): TrackedConversationN
 
 export function extractConversationMessages(payload: unknown): ChatGptConversationMessage[] {
   const record = asRecord(payload)
+  if (Array.isArray(record?.messages)) {
+    const nodes = record.messages
+      .map((message) => {
+        const messageRecord = asRecord(message)
+        return messageRecord ? normalizeConversationNode({ message: messageRecord }) : undefined
+      })
+      .filter((node): node is TrackedConversationNode => node !== undefined)
+    return conversationMessages(nodes)
+  }
+
   const currentNodeId = stringValue(record?.current_node)
   if (!currentNodeId) return []
 
@@ -213,8 +223,12 @@ export function extractConversationMessages(payload: unknown): ChatGptConversati
   }
 
   branch.reverse()
+  return conversationMessages(branch)
+}
+
+function conversationMessages(nodes: readonly TrackedConversationNode[]): ChatGptConversationMessage[] {
   const messages: ChatGptConversationMessage[] = []
-  for (const node of branch) {
+  for (const node of nodes) {
     const { message } = node
     if (!message.text) continue
     if (message.role === "user") messages.push({ role: "user", text: message.text })

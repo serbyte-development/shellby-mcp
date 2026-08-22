@@ -1100,3 +1100,10 @@
 - Replaced the defaults-plus-loader pipeline with one process-wide `MCP_CONFIG` object and removed numeric environment parsing and its standalone config test.
 - Made shell output, capacity, hibernation, cache, and structured-output policy fixed source configuration while retaining environment inputs for machine paths and integrations.
 - Updated `.env.example`, README, tool-surface, build/test, and startup documentation to match the reduced environment surface and production compact-output mode.
+
+## [2026-08-22] subagents | Repair the live saved-conversation contract
+
+- Updated catastrophic recovery for ChatGPT's current `/backend-api/conversations/<id>` response and flat `messages` payload instead of silently missing the obsolete singular endpoint.
+- Reworked `test:live:fixture` to reuse the production background-page and navigation/capture helpers, then validate live payload parsing, exact source Markdown, conversation routing, and rendered DOM without generating a turn.
+- Removed exact saved-conversation title coupling because titles are mutable and unused by production; retained exact conversation branch and fixture-content assertions.
+- Made the fixture script load an optional repository `.env`; the project fixture is gated only by `MCP_CHATGPT_PROJECT_URL` and skips when it is unset.

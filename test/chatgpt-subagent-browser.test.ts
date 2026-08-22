@@ -4,7 +4,12 @@ import test from "node:test"
 import type { Page } from "playwright-core"
 
 import { MCP_CONFIG } from "../src/config.js"
-import { isExpectedAgentPage, waitForStableConversationLocation, type ManagedAgentPageState } from "../src/tools/subagent/chatgpt-subagent-browser.js"
+import {
+  isConversationPayloadUrl,
+  isExpectedAgentPage,
+  waitForStableConversationLocation,
+  type ManagedAgentPageState,
+} from "../src/tools/subagent/chatgpt-subagent-browser.js"
 import { observeAssistantResponse } from "../src/tools/subagent/chatgpt-subagent-observer.js"
 import { ChatGptStructuredTurnTracker, extractConversationMessages, extractConversationNodes } from "../src/tools/subagent/chatgpt-subagent-protocol.js"
 import { askSubagent, createChatGptSubagentRuntimeState, disposeSubagents } from "../src/tools/subagent/chatgpt-subagent.js"
@@ -88,6 +93,18 @@ test("frozen real ChatGPT conversation fixture preserves the expected user and f
   assert.ok(messages[1]?.text.includes("| fixture | ok |"))
   assert.equal(messages[1]?.text.match(/LONG_LINE:(x+)/)?.[1]?.length, 320)
   assert.ok(messages[1]?.text.endsWith("LIVE_SUBAGENT_FIXTURE_END"))
+})
+
+test("conversation payload URL matching follows the current ChatGPT saved-conversation route", () => {
+  const conversationId = "conversation-1"
+
+  assert.equal(
+    isConversationPayloadUrl(`https://chatgpt.com/backend-api/conversations/${conversationId}?include_has_versions=true&num_turns=10`, conversationId),
+    true
+  )
+  assert.equal(isConversationPayloadUrl(`https://chatgpt.com/backend-api/conversation/${conversationId}`, conversationId), false)
+  assert.equal(isConversationPayloadUrl("https://chatgpt.com/backend-api/conversations/wrong-conversation", conversationId), false)
+  assert.equal(isConversationPayloadUrl(`https://example.com/backend-api/conversations/${conversationId}`, conversationId), false)
 })
 
 test("start-time conversation binding ignores transient WEB routes and stores the stable ChatGPT URL", async () => {

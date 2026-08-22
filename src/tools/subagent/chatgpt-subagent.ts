@@ -7,6 +7,7 @@ import {
   assertConversationAvailable,
   assertPreSubmitLocation,
   captureOrValidateConversationLocation,
+  createBackgroundPage,
   delay,
   dismissBlockingChatGptOverlay,
   enterPrompt,
@@ -39,7 +40,6 @@ const RATE_LIMIT_SELECTOR = '[data-testid="modal-conversation-history-rate-limit
 const RATE_LIMIT_DISMISS_SETTLE_MS = 250
 const SUBMISSION_GRACE_MS = 500
 const MANAGED_VIEWPORT = { width: 412, height: 915 } as const
-const BACKGROUND_PAGE_BIND_TIMEOUT_MS = 5_000
 
 const INJECTED_PROMPT =
   "Respond terse like smart caveman — drop articles, filler, pleasantries. Fragments OK. Technical terms exact. Code unchanged. Pattern: [thing] [action] [reason]. [next step].\n\nNot use `subagent` or `computer_*` tools."
@@ -472,62 +472,13 @@ function completeTurn(state: ChatGptSubagentRuntimeState, turn: BrowserTurnState
 }
 
 async function createManagedPage(state: ChatGptSubagentRuntimeState): Promise<Page> {
-  const page = await createBackgroundPage(state)
+  const page = await createBackgroundPage(requireBrowser(state), requireContext(state))
   try {
     await page.setViewportSize(MANAGED_VIEWPORT)
     return page
   } catch (error) {
     if (!page.isClosed()) await page.close().catch(() => undefined)
     throw error
-  }
-}
-
-async function createBackgroundPage(state: ChatGptSubagentRuntimeState): Promise<Page> {
-  const context = requireContext(state)
-  const browser = requireBrowser(state)
-  const knownPages = new Set(context.pages())
-  const session = await browser.newBrowserCDPSession()
-  let targetId: string | undefined
-
-  try {
-    const created = await session.send("Target.createTarget", {
-      url: "about:blank",
-      background: true,
-      focus: false,
-    })
-    targetId = created.targetId
-
-    const deadline = Date.now() + BACKGROUND_PAGE_BIND_TIMEOUT_MS
-    while (Date.now() < deadline) {
-      for (const page of context.pages()) {
-        if (knownPages.has(page) || page.isClosed()) continue
-        if ((await pageTargetId(context, page)) === targetId) return page
-      }
-      await delay(25)
-    }
-
-    throw new ChatGptSubagentError(
-      "BROWSER_UNAVAILABLE",
-      `Chrome created background target ${targetId}, but Playwright did not expose its page within ${BACKGROUND_PAGE_BIND_TIMEOUT_MS} ms.`
-    )
-  } catch (error) {
-    if (targetId) await session.send("Target.closeTarget", { targetId }).catch(() => undefined)
-    throw error
-  } finally {
-    await session.detach().catch(() => undefined)
-  }
-}
-
-async function pageTargetId(context: BrowserContext, page: Page): Promise<string | undefined> {
-  const session = await context.newCDPSession(page).catch(() => undefined)
-  if (!session) return undefined
-  try {
-    const info = await session.send("Target.getTargetInfo")
-    return info.targetInfo.targetId
-  } catch {
-    return undefined
-  } finally {
-    await session.detach().catch(() => undefined)
   }
 }
 

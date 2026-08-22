@@ -376,40 +376,30 @@ test("catastrophic recovery opens the saved conversation in a fresh tab without 
     close: async () => undefined,
     waitForResponse: async (predicate: (response: { url(): string; status(): number }) => boolean) => {
       const response = {
-        url: () => "https://chatgpt.com/backend-api/conversation/conversation-1",
+        url: () => "https://chatgpt.com/backend-api/conversations/conversation-1?include_has_versions=true&num_turns=10",
         status: () => 200,
         json: async () => ({
           current_node: "assistant-1",
-          mapping: {
-            user: {
+          messages: [
+            {
               id: "user-1",
-              parent: null,
-              children: ["assistant-1"],
-              message: {
-                id: "user-1",
-                author: { role: "user" },
-                content: { parts: ["review"] },
-                status: "finished_successfully",
-                end_turn: null,
-                metadata: {},
-                recipient: "all",
-              },
+              author: { role: "user" },
+              content: { parts: ["review"] },
+              status: "finished_successfully",
+              end_turn: null,
+              metadata: {},
+              recipient: "all",
             },
-            assistant: {
+            {
               id: "assistant-1",
-              parent: "user-1",
-              children: [],
-              message: {
-                id: "assistant-1",
-                author: { role: "assistant" },
-                content: { parts: [exactResponse] },
-                status: "finished_successfully",
-                end_turn: true,
-                metadata: { is_complete: true },
-                recipient: "all",
-              },
+              author: { role: "assistant" },
+              content: { parts: [exactResponse] },
+              status: "finished_successfully",
+              end_turn: true,
+              metadata: { is_complete: true },
+              recipient: "all",
             },
-          },
+          ],
         }),
       }
       assert.equal(predicate(response), true)

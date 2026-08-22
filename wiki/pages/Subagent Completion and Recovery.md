@@ -31,7 +31,7 @@ Each running turn owns one settlement promise. `subagent_result(wait_ms)` waits 
 A successfully submitted prompt is never automatically submitted twice. If normal WebSocket and DOM observation fail and a stable conversation identity is available, exactly one catastrophic recovery attempt may:
 
 1. open the saved conversation URL in one fresh tab;
-2. capture ChatGPT's normal `/backend-api/conversation/<id>` response during that navigation when available;
+2. capture ChatGPT's normal `/backend-api/conversations/<id>` flat `messages` response during that navigation when available;
 3. complete from the exact canonical response if it contains the submitted prompt and final assistant answer;
 4. otherwise attach the same WebSocket + DOM observer to that fresh tab and wait for current-turn progress;
 5. close the old owned page after the replacement is established.
