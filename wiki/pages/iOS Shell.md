@@ -19,7 +19,7 @@ ChatGPT
 
 The shared iCloud workspace is `chatgpt-workspace-ios`; a-Shell bookmarks it as `~mcp`. The bridge script lives there as `ios-bridge.py`. The authentication token is stored separately in `bridge-token.txt` and must never be committed or copied into the wiki.
 
-The bridge listens on TCP port `8765`, accepts an authenticated JSON command, and returns `stdout`, `stderr`, and `exit_code`. MCP host, port, timeout, and token-file location are server-side environment configuration; they are intentionally absent from the public tool schema (`src/tools/ios/ios-shell.ts`).
+The bridge listens on TCP port `8765`, accepts an authenticated JSON command, and returns `stdout`, `stderr`, and `exit_code`. Host and token-file location come from `MCP_IOS_HOST` and `MCP_IOS_TOKEN_FILE`; port `8765` and the five-second timeout are fixed in `MCP_CONFIG`. These values remain absent from the public tool schema (`src/config.ts`, `src/tools/ios/ios-shell.ts`).
 
 ## Starting the Bridge
 

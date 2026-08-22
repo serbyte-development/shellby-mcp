@@ -1094,3 +1094,9 @@
 
 - Removed the repository-specific default ChatGPT Project URL. Unset or blank `MCP_CHATGPT_PROJECT_URL` now remains unconfigured, and the subagent runtime starts new conversations from normal `https://chatgpt.com/`.
 - Kept explicit project URLs supported and updated configuration tests, the live project-fixture guard, `.env.example`, README, and startup documentation.
+
+## [2026-08-22] configuration | Collapse runtime configuration to one object
+
+- Replaced the defaults-plus-loader pipeline with one process-wide `MCP_CONFIG` object and removed numeric environment parsing and its standalone config test.
+- Made shell output, capacity, hibernation, cache, and structured-output policy fixed source configuration while retaining environment inputs for machine paths and integrations.
+- Updated `.env.example`, README, tool-surface, build/test, and startup documentation to match the reduced environment surface and production compact-output mode.

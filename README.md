@@ -161,7 +161,7 @@ Returned turn IDs are readable and sequential per agent, for example `seo-audit_
 
 `subagent_run` accepts 1-3 independent agents per call. Reusing an `agent_id` retains that subagent's conversation context; a new ID creates a new conversation. The first task is submitted immediately, the second 5 seconds later, and the third 7 seconds after that; at most three generations may run at once. The passive ChatGPT network listener can recognize a definitive final response, complete the local turn, release its generation slot, and queue `agent_finished:<agent_id>:<turn_id>`. That event is appended to the next MCP tool response. `subagent_result` retrieves 1-3 turn results concurrently and remains the reconciliation fallback when a turn is still running. The actual subagent answer is returned only by `subagent_result`. See [`wiki/pages/Browser ChatGPT Subagents.md`](wiki/pages/Browser%20ChatGPT%20Subagents.md) for the full architecture and code map.
 
-Normal non-Computer tools default to compact model-facing Markdown. `MCP_TOOL_OUTPUT_STRUCTURED=always|optional|never` controls the result surface: `always` preserves advertised output schemas and structured results, `optional` is the default and adds `structured: false` to tool inputs so callers may request a structured result per call, and `never` exposes compact content only. Computer Use tools and `image_view` keep their native content contracts. MCP audit entries log approximate tool-context cost as `in / out` token counts when the final model-facing output is available.
+Normal non-Computer tools return compact model-facing Markdown without advertising output schemas. Computer Use tools and `image_view` keep their native content contracts. MCP audit entries log approximate tool-context cost as `in / out` token counts when the final model-facing output is available.
 
 Default endpoint:
 
@@ -303,13 +303,9 @@ Copy `.env.example` to `.env` to override the defaults below. Internal safety li
 | `MCP_CWD`                   | `~/Desktop/agent-workspace` | Initial/default workspace                          |
 | `MCP_PEEKABOO_BIN`          | `peekaboo`                  | Peekaboo executable                                |
 | `MCP_CHATGPT_CDP_ENDPOINT`  | `http://127.0.0.1:9222`     | Chrome CDP endpoint for browser subagents          |
+| `MCP_CHATGPT_PROFILE_DIRECTORY` | unset                  | Optional profile inside the dedicated Chrome data  |
 | `MCP_CHATGPT_PROJECT_URL`   | unset                       | Optional project start URL; unset uses normal ChatGPT |
 | `CHROME_BIN`                | normal macOS Chrome path    | Optional dedicated Chrome executable override      |
-| `MCP_DEFAULT_OUTPUT_TOKENS` | `1024`                      | Default `max_output_tokens` when omitted           |
-| `MCP_MAX_OUTPUT_TOKENS`     | `16384`                     | Largest allowed `max_output_tokens` override       |
-| `MCP_MAX_SHELLS`            | `8`                         | Maximum live shells including `default`            |
-| `MCP_SHELL_IDLE_TTL_MS`     | `300000`                    | Idle hibernation; `0` disables idle hibernation    |
-| `MCP_SHELL_CACHE_TTL_MS`    | `86400000`                  | Hibernated cwd/environment lifetime since last use |
 
 The production listener always binds to `127.0.0.1:3333`; host and port are not environment-configurable. Tests may still inject a different host or request an ephemeral port directly through the HTTP server API.
 

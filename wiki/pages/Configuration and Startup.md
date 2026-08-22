@@ -8,7 +8,7 @@ This page documents the supported environment surface, first-time workspace init
 
 ## Static MCP Configuration
 
-`src/config.ts` is the single runtime configuration boundary. It owns static defaults, parses the small supported environment surface once into `MCP_CONFIG`, validates full numeric strings and cross-field constraints such as `MCP_DEFAULT_OUTPUT_TOKENS <= MCP_MAX_OUTPUT_TOKENS`, and exposes resolved host, fixed production port, workspace, adapter, shell, shell-manager, and iOS settings. Model-facing text response limits use `o200k_base` tokens; internal safety/runtime limits such as transcript retention, per-command capture, cache size, record count, wait bounds, and shutdown grace periods remain byte/count based where appropriate and stay config-only. Other modules consume typed config rather than reading individual environment variables. The only remaining `process.env` uses outside this boundary pass the full environment through to spawned shell or Peekaboo child processes. `.env.example` is the committed, commented configuration template; local `.env*` files are ignored, and public Node entry scripts load an optional `.env` before importing runtime code. `MCP_CONFIG.server` and `MCP_CONFIG.toolMeta` own shared MCP metadata, while `buildMcpInstructions(workspace)` owns the global model-facing instructions and resolves `<workspace>/AGENTS.md`.
+`src/config.ts` directly exports the process-wide `MCP_CONFIG` object. It contains the fixed host, port, model-facing limits, runtime safety limits, shared MCP metadata, and the small set of environment-selected machine paths and integrations. There is no defaults object, configuration loader, or numeric environment parsing layer. Model-facing text response limits use `o200k_base` tokens; internal retention, cache, record, wait, and shutdown limits stay literal config values. Public Node entry scripts load an optional `.env` before importing runtime code, while startup-specific ngrok and Chrome inputs are consumed by their scripts. `.env.example` is the committed template and local `.env*` files are ignored. `buildMcpInstructions(workspace)` owns the global model-facing instructions and resolves `<workspace>/AGENTS.md`.
 
 ## Environment Inputs
 
@@ -21,17 +21,13 @@ This page documents the supported environment surface, first-time workspace init
 | `MCP_CWD`                   | `~/Desktop/agent-workspace` | Absolute-resolved workspace and initial cwd              |
 | `MCP_PEEKABOO_BIN`          | `peekaboo`                  | Peekaboo executable name or absolute path                |
 | `MCP_CHATGPT_CDP_ENDPOINT`  | `http://127.0.0.1:9222`     | Already-running Chrome DevTools endpoint for subagents   |
+| `MCP_CHATGPT_PROFILE_DIRECTORY` | unset                  | Optional profile inside the dedicated Chrome data directory |
 | `MCP_CHATGPT_PROJECT_URL`   | unset                       | Optional project start URL; unset uses normal ChatGPT    |
 | `CHROME_BIN`                | normal macOS Chrome path    | Optional dedicated-browser executable override           |
-| `MCP_DEFAULT_OUTPUT_TOKENS` | `1024`                      | Default `max_output_tokens` when omitted                 |
-| `MCP_MAX_OUTPUT_TOKENS`     | `16384`                     | Largest allowed `max_output_tokens` override             |
-| `MCP_MAX_SHELLS`            | `8`                         | Maximum live shells including protected `default`        |
-| `MCP_SHELL_IDLE_TTL_MS`     | `300000`                    | Live named-shell idle lifetime; `0` disables hibernation |
-| `MCP_SHELL_CACHE_TTL_MS`    | `86400000`                  | Cached cwd/exported-environment lifetime since last use  |
 
 Shell configuration values are canonical here. Caller-visible lifetime consequences are in [`shell_run` / `shell_poll`](./tools/shell_run.md); manager mechanics are in [Persistent Shell Runtime](./Persistent%20Shell%20Runtime.md).
 
-Production HTTP always binds to `127.0.0.1:3333`; host and port are not environment-configurable. `MCP_CWD` expands `~`, resolves relative values from startup cwd, and becomes the shell/workspace/instruction root. Its `AGENTS.md` is the coding-instructions path advertised to MCP clients. Numeric values are range-checked. Audit retention and token-accounting behavior are documented in [Audit Logging](./Audit%20Logging.md).
+Production HTTP always binds to `127.0.0.1:3333`; host and port are not environment-configurable. `MCP_CWD` expands `~`, resolves relative values from startup cwd, and becomes the shell/workspace/instruction root. Its `AGENTS.md` is the coding-instructions path advertised to MCP clients. Shell limits and lifetimes are fixed in `MCP_CONFIG`. Audit retention and token-accounting behavior are documented in [Audit Logging](./Audit%20Logging.md).
 
 ## Startup and Shutdown
 
