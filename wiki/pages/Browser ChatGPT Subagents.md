@@ -12,13 +12,13 @@ The runtime attaches through Playwright-over-CDP to an already-running authentic
 
 ## Runtime State
 
-One process-level `ChatGptSubagentModule` is shared across otherwise stateless MCP requests. Its main state is (`src/tools/subagent/chatgpt-subagent.ts`):
+One process-level service returned by `createChatGptSubagentService()` is shared across otherwise stateless MCP requests. Its runtime state is (`src/tools/subagent/chatgpt-subagent.ts`):
 
 ```text
 agents: agent_id -> live browser/page state
 conversationRefs: agent_id -> saved conversation ID/URL + turn counter
 turns: turn_id -> detached turn state
-activeTurnsByAgent: agent_id -> active turn_id
+activeOperations: agent_id -> reserved operation or active turn_id
 pendingEvents: completion notifications
 ```
 
@@ -26,7 +26,7 @@ pendingEvents: completion notifications
 
 ## Browser and Page Ownership
 
-Each live agent owns one module-created Playwright `Page`. Production creates it through a browser-level CDP session with `Target.createTarget({ background: true, focus: false })`, then binds the returned target ID to the Playwright page. There is no `BrowserContext.newPage()` compatibility path. Routing is page-based, so foreground window focus, tab order, mouse position, and keyboard focus do not determine which subagent receives work (`src/tools/subagent/chatgpt-subagent.ts`).
+Each live agent owns one service-created Playwright `Page`. The shared `createBackgroundPage()` helper creates it through a browser-level CDP session with `Target.createTarget({ background: true, focus: false })`, then binds the returned target ID to the Playwright page. There is no `BrowserContext.newPage()` compatibility path. Routing is page-based, so foreground window focus, tab order, mouse position, and keyboard focus do not determine which subagent receives work (`src/tools/subagent/chatgpt-subagent-browser.ts`, `src/tools/subagent/chatgpt-subagent.ts`).
 
 `createAgent()` opens either the base ChatGPT URL for a new agent or the exact saved conversation for a recoverable agent. `ensureActivePage()` keeps using the current page only while it still matches the expected ChatGPT target; if the page is closed or lost, it can reopen the saved conversation. It never hijacks an unrelated tab that a user navigated elsewhere (`src/tools/subagent/chatgpt-subagent.ts`).
 
@@ -40,7 +40,7 @@ Before a stable URL exists, the submitted page is the only recoverable identity 
 
 ## Prompt Submission
 
-`ask()` performs only the synchronous work needed to submit safely and create detached turn state. It connects to CDP, resolves the agent page, verifies ownership, snapshots turn-relative DOM state, installs the WebSocket + DOM response observation, handles the known composer overlay when necessary, enters the prompt, verifies ownership again, waits the shared submission grace, performs the final rate-limit check, and submits exactly once (`src/tools/subagent/chatgpt-subagent.ts`, `src/tools/subagent/chatgpt-subagent-browser.ts`). The same path and grace apply to a new agent's first message and later turns.
+`askSubagent()` performs only the synchronous work needed to submit safely and create detached turn state. It connects to CDP, resolves the agent page, verifies ownership, snapshots turn-relative DOM state, installs the WebSocket + DOM response observation, handles the known composer overlay when necessary, enters the prompt, verifies ownership again, waits the shared submission grace, performs the final rate-limit check, and submits exactly once (`src/tools/subagent/chatgpt-subagent.ts`, `src/tools/subagent/chatgpt-subagent-browser.ts`, `src/tools/subagent/chatgpt-subagent-observer.ts`). The same path and grace apply to a new agent's first message and later turns.
 
 After submission it records the turn, starts stable-conversation binding when needed, and lets the already-installed observers settle the detached turn. `subagent_result` only waits on that shared local turn state. No post-submission recovery path is allowed to resubmit the prompt. Completion details live in [Subagent Completion and Recovery](./Subagent%20Completion%20and%20Recovery.md).
 
@@ -52,14 +52,16 @@ A full MCP restart loses process-local agent, turn, pending-event, and conversat
 
 ## Code Map
 
-| Location                                           | Responsibility                                                                                |
-| -------------------------------------------------- | --------------------------------------------------------------------------------------------- |
-| `src/tools/subagent/chatgpt-subagent.ts`           | Agent/turn state, page ownership, submission, lifecycle, completion integration, reclamation. |
-| `src/tools/subagent/chatgpt-subagent-browser.ts`   | ChatGPT page interaction, conversation parsing, server/UI observation, stable URL capture.    |
-| `src/tools/subagent/chatgpt-subagent-contracts.ts` | Dependency-light service/result/error contracts.                                              |
-| `src/tools/subagent/subagent-tools.ts`             | Public MCP schemas, batching, staggering, result fan-out.                                     |
-| `src/server/tool-registration-boundary.ts`         | Global completion-event delivery boundary.                                                    |
-| `scripts/chatgpt-browser.mjs`                      | Dedicated authenticated Chrome profile setup and lifecycle.                                   |
+| Location                                           | Responsibility                                                                                 |
+| -------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
+| `src/tools/subagent/chatgpt-subagent.ts`           | Agent/turn state, page ownership, submission, lifecycle, completion integration, reclamation.  |
+| `src/tools/subagent/chatgpt-subagent-browser.ts`   | Background-page creation, ChatGPT page interaction, saved-payload capture, stable URL binding. |
+| `src/tools/subagent/chatgpt-subagent-observer.ts`  | Passive WebSocket and DOM response observation.                                                |
+| `src/tools/subagent/chatgpt-subagent-protocol.ts`  | Stream and saved-conversation payload normalization.                                           |
+| `src/tools/subagent/chatgpt-subagent-contracts.ts` | Dependency-light service/result/error contracts.                                               |
+| `src/tools/subagent/subagent-tools.ts`             | Public MCP schemas, batching, staggering, result fan-out.                                      |
+| `src/server/tool-registration-boundary.ts`         | Global completion-event delivery boundary.                                                     |
+| `scripts/chatgpt-browser.mjs`                      | Dedicated authenticated Chrome profile setup and lifecycle.                                    |
 
 Test ownership and live compatibility coverage are maintained in [Build and Test](./Build%20and%20Test.md).
 

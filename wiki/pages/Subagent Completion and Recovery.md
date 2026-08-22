@@ -1,6 +1,6 @@
 # Subagent Completion and Recovery
 
-Verified 2026-08-20 against current source, deterministic tests, and live ChatGPT runs.
+Verified 2026-08-22 against current source, deterministic tests, and live ChatGPT runs.
 
 ## What This Is
 
@@ -10,11 +10,11 @@ Canonical completion, event-delivery, result waiting, and catastrophic recovery 
 
 Detached turns must complete autonomously without requiring `subagent_result` polling. All successful paths converge on `completeTurn()`, whose running-state guard makes the transition race-safe. The winning completion stores the answer, releases per-agent/global generation capacity, preserves the conversation reference when available, and queues exactly one `agent_finished:<agent_id>:<turn_id>` event (`src/tools/subagent/chatgpt-subagent.ts`).
 
-Normal completion is event-driven through `observeAssistantResponse()` (`src/tools/subagent/chatgpt-subagent-browser.ts`). The primary path is raw CDP `Network.webSocketFrameReceived`: the turn topic is bound by the exact submitted user prompt, assistant v1 deltas reconstruct the source response, and completion requires both a final assistant node (`finished_successfully`, `end_turn: true`) and an explicit stream-completion signal. This preserves source Markdown and code fences.
+Normal completion is event-driven through `observeAssistantResponse()` (`src/tools/subagent/chatgpt-subagent-observer.ts`). The primary path is raw CDP `Network.webSocketFrameReceived`: the turn topic is bound by the exact submitted user prompt, assistant v1 deltas reconstruct the source response, and completion requires both a final assistant node (`finished_successfully`, `end_turn: true`) and an explicit stream-completion signal. This preserves source Markdown and code fences.
 
 ## Secondary DOM Observation
 
-A page-context `MutationObserver` runs alongside the WebSocket observer. It watches only the turn-relative assistant DOM and generation control. Once generation is no longer visible and the new assistant text remains stable through the settle grace, it can return rendered text as the secondary response source (`src/tools/subagent/chatgpt-subagent-browser.ts`).
+A page-context `MutationObserver` runs alongside the WebSocket observer. It watches only the turn-relative assistant DOM and generation control. Once generation is no longer visible and the new assistant text remains stable through the settle grace, it can return rendered text as the secondary response source (`src/tools/subagent/chatgpt-subagent-observer.ts`).
 
 Normal completion makes no `stream_status` request, runs no one-second reconciliation loop, and does not refresh or navigate the managed page. Both observers are installed before prompt submission so first turns and follow-up turns use the same observation path.
 

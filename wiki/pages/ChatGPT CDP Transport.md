@@ -47,7 +47,7 @@ The DOM therefore provides a useful independent fallback and activity signal, bu
 
 ## Conversation-History Rate Limit
 
-The same probe captured the exact rate-limit path behind ChatGPT's conversation-history modal. Normal `stream_status` checks returned HTTP 200 throughout the sampled turn, including the final `COMPLETE` response. After completion, the current recovery path reloaded the managed conversation page to recover canonical conversation JSON (`src/tools/subagent/chatgpt-subagent.ts`, `src/tools/subagent/chatgpt-subagent-browser.ts`).
+The same probe captured the exact rate-limit path behind ChatGPT's conversation-history modal. Normal `stream_status` checks returned HTTP 200 throughout the sampled turn, including the final `COMPLETE` response. At the time of the probe, recovery reloaded the managed conversation page to recover canonical conversation JSON; that application-level reload path was subsequently removed.
 
 That reload caused ChatGPT to issue a fresh burst of page/bootstrap requests, including multiple conversation/sidebar history requests. Two `/backend-api/conversations?...` requests then returned HTTP 429 with `{"detail":"Too many requests"}`. The managed tab subsequently displayed `[data-testid="modal-conversation-history-rate-limit"]` with ChatGPT's "Too many requests" conversation-access warning.
 

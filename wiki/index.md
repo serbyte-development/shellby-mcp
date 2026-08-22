@@ -6,7 +6,7 @@ Start with [Project Overview](pages/Project%20Overview.md), then open only the p
 
 - [Project Overview](pages/Project%20Overview.md) — purpose, audience, current status, primary workflows, boundaries, conventions, and deeper entry points.
 - [Architecture Map](pages/Architecture%20Map.md) — system layers and end-to-end request lifecycle.
-- [Configuration and Startup](pages/Configuration%20and%20Startup.md) — environment parsing, workspace initialization, managed startup, shutdown, and recovery.
+- [Configuration and Startup](pages/Configuration%20and%20Startup.md) — supported environment inputs, workspace initialization, managed startup, shutdown, and recovery.
 - [Build and Test](pages/Build%20and%20Test.md) — build boundary, validation commands, CI, coverage, and gaps.
 - [Open Questions and Risks](pages/Open%20Questions%20and%20Risks.md) — unresolved operational and architectural risks.
 - [Roadmap](pages/ROADMAP.md) — uncommitted experiments and deferred architectural work.

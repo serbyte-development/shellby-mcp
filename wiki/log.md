@@ -1107,3 +1107,9 @@
 - Reworked `test:live:fixture` to reuse the production background-page and navigation/capture helpers, then validate live payload parsing, exact source Markdown, conversation routing, and rendered DOM without generating a turn.
 - Removed exact saved-conversation title coupling because titles are mutable and unused by production; retained exact conversation branch and fixture-content assertions.
 - Made the fixture script load an optional repository `.env`; the project fixture is gated only by `MCP_CHATGPT_PROJECT_URL` and skips when it is unset.
+
+## [2026-08-22] docs | Lint the wiki and streamline the public README
+
+- Audited all 21 maintained wiki pages for required sections, index coverage, relative links, repository citations, Obsidian links, and committed private identifiers; the structural checks passed.
+- Corrected stale subagent class/state names, background-page and observer ownership, recovery-history wording, and the completed functional-runtime roadmap item across the architecture, browser, testing, recovery, risk, and roadmap pages.
+- Replaced the oversized root README with a public GitHub landing page using alerts, collapsible operational details, a Mermaid flow, focused setup/security guidance, and links into the maintainer wiki.

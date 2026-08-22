@@ -12,18 +12,18 @@ This page documents the supported environment surface, first-time workspace init
 
 ## Environment Inputs
 
-| Name                        | Default                     | Consumer                                                 |
-| --------------------------- | --------------------------- | -------------------------------------------------------- |
-| `NGROK_URL`                 | unset                       | Optional fixed domain for the npm/PM2 ngrok helpers      |
-| `NGROK_BIN`                 | `ngrok` from `PATH`         | Optional ngrok executable override                       |
-| `NGROK_AUTHTOKEN`           | unset                       | Optional ngrok auth token                                |
-| `MCP_SHELL`                 | `/bin/zsh`                  | Login shell executable                                   |
-| `MCP_CWD`                   | `~/Desktop/agent-workspace` | Absolute-resolved workspace and initial cwd              |
-| `MCP_PEEKABOO_BIN`          | `peekaboo`                  | Peekaboo executable name or absolute path                |
-| `MCP_CHATGPT_CDP_ENDPOINT`  | `http://127.0.0.1:9222`     | Already-running Chrome DevTools endpoint for subagents   |
-| `MCP_CHATGPT_PROFILE_DIRECTORY` | unset                  | Optional profile inside the dedicated Chrome data directory |
-| `MCP_CHATGPT_PROJECT_URL`   | unset                       | Optional project start URL; unset uses normal ChatGPT    |
-| `CHROME_BIN`                | normal macOS Chrome path    | Optional dedicated-browser executable override           |
+| Name                            | Default                     | Consumer                                                    |
+| ------------------------------- | --------------------------- | ----------------------------------------------------------- |
+| `NGROK_URL`                     | unset                       | Optional fixed domain for the npm/PM2 ngrok helpers         |
+| `NGROK_BIN`                     | `ngrok` from `PATH`         | Optional ngrok executable override                          |
+| `NGROK_AUTHTOKEN`               | unset                       | Optional ngrok auth token                                   |
+| `MCP_SHELL`                     | `/bin/zsh`                  | Login shell executable                                      |
+| `MCP_CWD`                       | `~/Desktop/agent-workspace` | Absolute-resolved workspace and initial cwd                 |
+| `MCP_PEEKABOO_BIN`              | `peekaboo`                  | Peekaboo executable name or absolute path                   |
+| `MCP_CHATGPT_CDP_ENDPOINT`      | `http://127.0.0.1:9222`     | Already-running Chrome DevTools endpoint for subagents      |
+| `MCP_CHATGPT_PROFILE_DIRECTORY` | unset                       | Optional profile inside the dedicated Chrome data directory |
+| `MCP_CHATGPT_PROJECT_URL`       | unset                       | Optional project start URL; unset uses normal ChatGPT       |
+| `CHROME_BIN`                    | normal macOS Chrome path    | Optional dedicated-browser executable override              |
 
 Shell configuration values are canonical here. Caller-visible lifetime consequences are in [`shell_run` / `shell_poll`](./tools/shell_run.md); manager mechanics are in [Persistent Shell Runtime](./Persistent%20Shell%20Runtime.md).
 
