@@ -31,9 +31,10 @@ test("loads supported environment overrides", () => {
   assert.equal(configured.toolOutputStructured, "optional")
 })
 
-test("blank ChatGPT project URL falls back to normal ChatGPT", () => {
-  assert.equal(loadMcpConfig({ MCP_CHATGPT_PROJECT_URL: "" }).chatGpt.projectUrl, "https://chatgpt.com/")
-  assert.equal(loadMcpConfig({ MCP_CHATGPT_PROJECT_URL: "   " }).chatGpt.projectUrl, "https://chatgpt.com/")
+test("leaves the ChatGPT project URL undefined when it is absent or blank", () => {
+  assert.equal(loadMcpConfig({}).chatGpt.projectUrl, undefined)
+  assert.equal(loadMcpConfig({ MCP_CHATGPT_PROJECT_URL: "" }).chatGpt.projectUrl, undefined)
+  assert.equal(loadMcpConfig({ MCP_CHATGPT_PROJECT_URL: "   " }).chatGpt.projectUrl, undefined)
 })
 
 test("ignores unsupported environment overrides", () => {

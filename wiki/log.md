@@ -1089,3 +1089,8 @@
 - Made `subagent_result` wait only on shared in-process turn settlement, retained the existing 30-minute no-progress cutoff, and removed normal completion refreshes and application-level `stream_status` requests.
 - Reduced catastrophic recovery to one fresh-tab navigation to the saved conversation, preferring canonical conversation JSON captured during that navigation and never resubmitting the prompt.
 - A live two-turn canary completed both new-agent and follow-up turns before disposal cleanup was tightened; a later Turn 1 also completed with the new path, while Turn 2 was correctly blocked after ChatGPT's own frontend history request hit HTTP 429. Passive CDP initiator evidence attributed the remaining `stream_status` and history calls to ChatGPT's frontend bundle rather than Unhinged Agent.
+
+## [2026-08-22] subagents | Make ChatGPT project routing optional
+
+- Removed the repository-specific default ChatGPT Project URL. Unset or blank `MCP_CHATGPT_PROJECT_URL` now remains unconfigured, and the subagent runtime starts new conversations from normal `https://chatgpt.com/`.
+- Kept explicit project URLs supported and updated configuration tests, the live project-fixture guard, `.env.example`, README, and startup documentation.

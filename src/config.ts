@@ -29,7 +29,6 @@ const DEFAULTS = {
   peekabooExecutable: "peekaboo",
   chatGpt: {
     cdpEndpoint: "http://127.0.0.1:9222",
-    projectUrl: "https://chatgpt.com/g/g-p-6a863444b7d08191bffa3e468da73458/project",
     defaultOververbosity: 2,
     defaultPollWaitMs: 0,
     maxPollWaitMs: 270_000,
@@ -69,6 +68,7 @@ const DEFAULTS = {
 export function loadMcpConfig(env: NodeJS.ProcessEnv = process.env) {
   const defaultOutputTokens = parsePositiveInteger(env.MCP_DEFAULT_OUTPUT_TOKENS, DEFAULTS.shell.defaultOutputTokens)
   const maxOutputTokens = parsePositiveInteger(env.MCP_MAX_OUTPUT_TOKENS, DEFAULTS.shell.maxOutputTokens)
+  const projectUrl = env.MCP_CHATGPT_PROJECT_URL?.trim() || undefined
   if (defaultOutputTokens > maxOutputTokens) {
     throw new Error("MCP_DEFAULT_OUTPUT_TOKENS cannot exceed MCP_MAX_OUTPUT_TOKENS.")
   }
@@ -84,7 +84,7 @@ export function loadMcpConfig(env: NodeJS.ProcessEnv = process.env) {
     },
     chatGpt: {
       cdpEndpoint: env.MCP_CHATGPT_CDP_ENDPOINT ?? DEFAULTS.chatGpt.cdpEndpoint,
-      projectUrl: env.MCP_CHATGPT_PROJECT_URL === undefined ? DEFAULTS.chatGpt.projectUrl : env.MCP_CHATGPT_PROJECT_URL.trim() || "https://chatgpt.com/",
+      projectUrl,
       defaultOververbosity: DEFAULTS.chatGpt.defaultOververbosity,
       defaultPollWaitMs: DEFAULTS.chatGpt.defaultPollWaitMs,
       maxPollWaitMs: DEFAULTS.chatGpt.maxPollWaitMs,

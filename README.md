@@ -303,7 +303,7 @@ Copy `.env.example` to `.env` to override the defaults below. Internal safety li
 | `MCP_CWD`                   | `~/Desktop/agent-workspace` | Initial/default workspace                          |
 | `MCP_PEEKABOO_BIN`          | `peekaboo`                  | Peekaboo executable                                |
 | `MCP_CHATGPT_CDP_ENDPOINT`  | `http://127.0.0.1:9222`     | Chrome CDP endpoint for browser subagents          |
-| `MCP_CHATGPT_PROJECT_URL`   | configured project URL      | Project start URL; blank uses normal ChatGPT       |
+| `MCP_CHATGPT_PROJECT_URL`   | unset                       | Optional project start URL; unset uses normal ChatGPT |
 | `CHROME_BIN`                | normal macOS Chrome path    | Optional dedicated Chrome executable override      |
 | `MCP_DEFAULT_OUTPUT_TOKENS` | `1024`                      | Default `max_output_tokens` when omitted           |
 | `MCP_MAX_OUTPUT_TOKENS`     | `16384`                     | Largest allowed `max_output_tokens` override       |

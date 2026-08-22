@@ -52,6 +52,11 @@ function runningTurn(agentId: string, overrides: Partial<BrowserTurnState> = {})
   }
 }
 
+test("starts new subagent conversations from normal ChatGPT when no project URL is configured", () => {
+  assert.equal(createRuntime().chatGptUrl, "https://chatgpt.com/")
+  assert.equal(createRuntime({ chatGptUrl: "https://chatgpt.com/g/example/project" }).chatGptUrl, "https://chatgpt.com/g/example/project")
+})
+
 test("service fails clearly when the expected Chrome CDP endpoint is unavailable", async () => {
   const service = createChatGptSubagentService({ cdpEndpoint: "http://127.0.0.1:1", connectTimeoutMs: 250 })
   await assert.rejects(service.connect(), /already-running debuggable Chrome instance.*attach-only.*will not launch Chrome/i)

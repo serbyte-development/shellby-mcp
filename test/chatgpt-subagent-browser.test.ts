@@ -91,12 +91,12 @@ test("frozen real ChatGPT conversation fixture preserves the expected user and f
 })
 
 test("start-time conversation binding ignores transient WEB routes and stores the stable ChatGPT URL", async () => {
-  let currentUrl = "https://chatgpt.com/g/g-p-6a863444b7d08191bffa3e468da73458/project"
+  let currentUrl = "https://chatgpt.com/g/g-p-example/project"
   const page = {
     url: () => currentUrl,
     waitForURL: async (predicate: (url: URL) => boolean) => {
       assert.equal(predicate(new URL("https://chatgpt.com/c/WEB%3Atemporary-conversation-id")), false)
-      currentUrl = "https://chatgpt.com/g/g-p-6a863444b7d08191bffa3e468da73458-agentic-work/c/conversation-1"
+      currentUrl = "https://chatgpt.com/g/g-p-example-agentic-work/c/conversation-1"
       assert.equal(predicate(new URL(currentUrl)), true)
     },
   }

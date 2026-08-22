@@ -106,7 +106,7 @@ export function createChatGptSubagentRuntimeState(options: ChatGptSubagentOption
   return {
     cdpEndpoint: options.cdpEndpoint ?? MCP_CONFIG.chatGpt.cdpEndpoint,
     connectTimeoutMs: options.connectTimeoutMs ?? 3_000,
-    chatGptUrl: options.chatGptUrl ?? MCP_CONFIG.chatGpt.projectUrl,
+    chatGptUrl: options.chatGptUrl ?? MCP_CONFIG.chatGpt.projectUrl ?? "https://chatgpt.com/",
     maxConcurrentAgents: Math.min(positiveInteger(options.maxConcurrentAgents, MAX_CONCURRENT_AGENTS), MAX_CONCURRENT_AGENTS),
     minInterTurnDelayMs: nonNegativeInteger(options.minInterTurnDelayMs, 1_500),
     interactionDelayMs: nonNegativeInteger(options.interactionDelayMs, 300),

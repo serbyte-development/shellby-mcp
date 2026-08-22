@@ -70,6 +70,10 @@ test(
           fixtureTest.skip(`Create ${fixture.file.pathname} before running the project fixture contract.`)
           return
         }
+        if (fixture.projectScoped && !MCP_CONFIG.chatGpt.projectUrl) {
+          fixtureTest.skip("Set MCP_CHATGPT_PROJECT_URL before running the project fixture contract.")
+          return
+        }
 
         const frozenPayload = JSON.parse(await readFile(fixture.file, "utf8")) as unknown
         const frozenRecord = asRecord(frozenPayload)
@@ -162,7 +166,11 @@ test(
 )
 
 function projectConversationUrl(conversationId: string): string {
-  const projectUrl = new URL(MCP_CONFIG.chatGpt.projectUrl)
+  const configuredProjectUrl = MCP_CONFIG.chatGpt.projectUrl
+  if (!configuredProjectUrl) {
+    throw new Error("Project fixture requires MCP_CHATGPT_PROJECT_URL to point at a ChatGPT project.")
+  }
+  const projectUrl = new URL(configuredProjectUrl)
   if (projectUrl.pathname === "/") {
     throw new Error("Project fixture requires MCP_CHATGPT_PROJECT_URL to point at a ChatGPT project.")
   }
