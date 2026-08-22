@@ -180,6 +180,72 @@ test("browser visibility hook is best effort", async () => {
   assert.equal(calls, 1)
 })
 
+
+test("creates managed subagent pages as unfocused background Chrome targets", async () => {
+  const runtime = createRuntime()
+  const targetId = "background-target-1"
+  const createTargetCalls: unknown[] = []
+  let contextNewPageCalls = 0
+  let pageCreatedHooks = 0
+  let currentUrl = "about:blank"
+
+  const page = {
+    isClosed: () => false,
+    url: () => currentUrl,
+    setViewportSize: async () => undefined,
+    goto: async (url: string) => {
+      currentUrl = url
+    },
+    close: async () => undefined,
+    locator: (selector: string) => ({
+      first: () => ({
+        count: async () => (selector === "#prompt-textarea" ? 1 : 0),
+        isVisible: async () => selector === "#prompt-textarea",
+      }),
+    }),
+  }
+  const existingPage = { isClosed: () => false }
+  const pages = [existingPage]
+  runtime.context = {
+    pages: () => pages,
+    newPage: async () => {
+      contextNewPageCalls += 1
+      throw new Error("foreground context.newPage() should not be used")
+    },
+    newCDPSession: async () => ({
+      send: async (method: string) => {
+        assert.equal(method, "Target.getTargetInfo")
+        return { targetInfo: { targetId } }
+      },
+      detach: async () => undefined,
+    }),
+  } as never
+  runtime.browser = {
+    newBrowserCDPSession: async () => ({
+      send: async (method: string, params?: unknown) => {
+        if (method === "Target.createTarget") {
+          createTargetCalls.push(params)
+          pages.push(page)
+          return { targetId }
+        }
+        if (method === "Target.closeTarget") return { success: true }
+        throw new Error(`unexpected CDP method: ${method}`)
+      },
+      detach: async () => undefined,
+    }),
+  } as never
+  runtime.onPageCreated = () => {
+    pageCreatedHooks += 1
+  }
+
+  const agent = await createAgent(runtime, "background-agent")
+
+  assert.equal(agent.page, page)
+  assert.equal(contextNewPageCalls, 0)
+  assert.equal(pageCreatedHooks, 1)
+  assert.deepEqual(createTargetCalls, [{ url: "about:blank", background: true, focus: false }])
+})
+
 test("forgets an agent whose page is lost before a conversation can be recovered", async () => {
   const runtime = createRuntime()
   const agent = {
