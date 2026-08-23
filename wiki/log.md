@@ -1126,3 +1126,8 @@
 - Restored the 30-minute no-progress cutoff and one post-submit catastrophic recovery attempt without reintroducing prompt resubmission or DOM completion.
 - Bound agents to one saved conversation URL, restore mismatched or closed managed pages before follow-up submission, and close only the background page after 30 idle minutes while retaining agent context.
 - Restored the exact prior first-turn oververbosity prompt mapping and added deterministic coverage for URL restoration, idle reopening, timeout failure, one-shot history recovery, and the no-second-recovery boundary.
+
+## [2026-08-23] shell | Redirect shell apply_patch mistakes to the native tool
+
+- Added one output-level hint when normal, batch, or polled shell output reports `command not found: apply_patch`, preserving the shell's original output and exit status.
+- Added integration coverage for normal and batch execution and documented the caller-visible behavior in `pages/tools/shell_run.md`.

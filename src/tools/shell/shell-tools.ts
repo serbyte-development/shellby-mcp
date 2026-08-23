@@ -19,6 +19,9 @@ import {
 import { ShellSessionError, type ShellSnapshot } from "./session.js"
 import type { ShellSessionManager } from "./session-manager.js"
 
+const APPLY_PATCH_TOOL_HINT = "apply_patch_tool_required: Use the apply_patch tool directly; do not run apply_patch through shell_run."
+const APPLY_PATCH_COMMAND_NOT_FOUND = /command not found:\s*apply_patch(?:\s|$)/i
+
 export function registerShellExecutionTools(server: McpServer, shells: ShellSessionManager, workspace: string): void {
   const workspaceDescription = JSON.stringify(workspace)
 
@@ -192,7 +195,7 @@ function pollSnapshotResult(snapshot: ShellSnapshot) {
 
   const structuredContent: ShellPollOutput = {
     status: snapshot.status,
-    output: snapshot.output,
+    output: withApplyPatchToolHint(snapshot.output),
   }
   if (snapshot.exit_code !== null) structuredContent.exit_code = snapshot.exit_code
   if (snapshot.status === "running" || snapshot.output_truncated) structuredContent.next_cursor = snapshot.next_cursor
@@ -220,7 +223,7 @@ function compactShellSnapshot(snapshot: ShellSnapshot, shellId: string): ShellRu
   const compact: ShellRunOutput = {
     status: snapshot.status,
     cwd: snapshot.cwd,
-    output: snapshot.output,
+    output: withApplyPatchToolHint(snapshot.output),
   }
   if (snapshot.exit_code !== null) compact.exit_code = snapshot.exit_code
   if (shellId !== DEFAULT_SHELL_ID) compact.shell_id = shellId
@@ -233,6 +236,11 @@ function compactShellSnapshot(snapshot: ShellSnapshot, shellId: string): ShellRu
   if (snapshot.dropped_output_bytes > 0) compact.dropped_output_bytes = snapshot.dropped_output_bytes
   if (snapshot.commands) compact.commands = compactBatchCommands(snapshot.commands)
   return compact
+}
+
+function withApplyPatchToolHint(output: string): string {
+  if (!APPLY_PATCH_COMMAND_NOT_FOUND.test(output)) return output
+  return `${output}${output.endsWith("\n") ? "" : "\n"}${APPLY_PATCH_TOOL_HINT}`
 }
 
 function toolError(error: unknown) {

@@ -1,6 +1,6 @@
 # `shell_run` / `shell_poll`
 
-Verified 2026-08-18.
+Verified 2026-08-23.
 
 ## What This Is
 
@@ -86,6 +86,8 @@ Batch output is grouped and labeled:
 ```
 
 `stdout` + `stderr` share the output stream.
+
+If zsh reports `command not found: apply_patch`, normal, batch, and polled output append `apply_patch_tool_required` guidance directing the caller to the native `apply_patch` tool. The shell command still retains its original output and exit status (`src/tools/shell/shell-tools.ts`, `test/integrations/shell.ts`).
 
 - `output_truncated=true`: this response chunk hit its token limit. More retained output exists.
 - `next_cursor`: continue from here with `shell_poll`.

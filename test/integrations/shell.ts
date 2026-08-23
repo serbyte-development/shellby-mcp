@@ -8,6 +8,28 @@ import { createShellSession } from "../../src/tools/shell/session.js"
 import { createShellSessionManager } from "../../src/tools/shell/session-manager.js"
 import { callUntilComplete, connectClient, snapshotFromResult, startMcpHttpServer } from "./helpers.js"
 
+const APPLY_PATCH_TOOL_HINT = "apply_patch_tool_required: Use the apply_patch tool directly; do not run apply_patch through shell_run."
+
+test("redirects missing apply_patch commands to the native tool in normal and batch output", { timeout: 20_000 }, async (t) => {
+  const running = await startMcpHttpServer({ port: 0 })
+  t.after(() => running.close())
+  const connected = await connectClient(running.url, "apply-patch-shell-hint-client")
+  t.after(() => connected.client.close())
+
+  const normal = await callUntilComplete(connected.client, "missing-apply-patch", "PATH=/nonexistent apply_patch")
+  assert.match(normal.output, /command not found: apply_patch/)
+  assert.match(normal.output, new RegExp(APPLY_PATCH_TOOL_HINT))
+
+  const batch = await callUntilComplete(
+    connected.client,
+    "missing-apply-patch-batch",
+    "*** Run:\nPATH=/nonexistent apply_patch\n*** Run:\nprintf batch-ok"
+  )
+  assert.match(batch.output, /command not found: apply_patch/)
+  assert.match(batch.output, new RegExp(APPLY_PATCH_TOOL_HINT))
+  assert.match(batch.output, /batch-ok/)
+})
+
 test("retains default shell state across MCP client sessions", { timeout: 20_000 }, async (t) => {
   const running = await startMcpHttpServer({ port: 0 })
   t.after(() => running.close())
