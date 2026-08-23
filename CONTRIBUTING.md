@@ -1,10 +1,10 @@
 # Contributing
 
-Thanks for improving Unhinged Agent.
+Thanks for improving Shellby MCP.
 
 ## Development
 
-Unhinged Agent currently targets macOS on Apple Silicon or Intel and Node.js 22.13.0 or newer.
+Shellby MCP currently targets macOS on Apple Silicon or Intel and Node.js 22.13.0 or newer.
 
 ```bash
 npm ci

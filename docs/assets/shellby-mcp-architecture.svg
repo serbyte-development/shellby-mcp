@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 488" role="img" aria-labelledby="unhinged-agent-architecture-title unhinged-agent-architecture-desc">
-  <title id="unhinged-agent-architecture-title">How Unhinged Agent turns ChatGPT Web into a local computer agent</title>
-  <desc id="unhinged-agent-architecture-desc">ChatGPT Web reaches the context-optimized Unhinged Agent harness through an ngrok trust boundary, then uses persistent shells, file and web tools, Computer Use, and parallel ChatGPT agents on the local computer, with the multi-agent runtime looping back through ChatGPT Web.</desc>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 488" role="img" aria-labelledby="shellby-mcp-architecture-title shellby-mcp-architecture-desc">
+  <title id="shellby-mcp-architecture-title">How Shellby MCP turns ChatGPT Web into a local computer agent</title>
+  <desc id="shellby-mcp-architecture-desc">ChatGPT Web reaches the context-optimized Shellby MCP harness through an ngrok trust boundary, then uses persistent shells, file and web tools, Computer Use, and parallel ChatGPT agents on the local computer, with the multi-agent runtime looping back through ChatGPT Web.</desc>
   <defs>
     <style>text { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; }</style>
     <marker id="arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#9a9a9a" /></marker>
@@ -29,7 +29,7 @@
   <text x="296" y="236" fill="#9a9a9a" font-size="8" text-anchor="middle">ChatGPT-origin filter</text>
   <rect x="408" y="140" width="192" height="160" rx="8" fill="#141414" />
   <rect x="408" y="140" width="192" height="160" rx="8" fill="rgba(255,90,54,0.12)" stroke="#ff5a36" stroke-width="1.2" />
-  <text x="504" y="196" fill="#f5f5f5" font-size="16" font-weight="700" text-anchor="middle">Unhinged Agent</text>
+  <text x="504" y="196" fill="#f5f5f5" font-size="16" font-weight="700" text-anchor="middle">Shellby MCP</text>
   <text x="504" y="220" fill="#9a9a9a" font-size="8" text-anchor="middle">AGENT HARNESS</text>
   <text x="504" y="244" fill="#9a9a9a" font-size="8" text-anchor="middle">persistent runtime · MCP transport</text>
   <text x="504" y="264" fill="#9a9a9a" font-size="8" text-anchor="middle">compact output · token-aware</text>

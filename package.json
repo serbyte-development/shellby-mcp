@@ -1,5 +1,5 @@
 {
-  "name": "unhinged-agent",
+  "name": "shellby-mcp",
   "version": "0.1.0",
   "description": "Context-optimized agent harness that gives ChatGPT Web full computer access, persistent tools, and multi-agent capabilities.",
   "private": false,
@@ -7,9 +7,9 @@
   "type": "module",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/Serbyte-Development/unhinged-agent.git"
+    "url": "git+https://github.com/Serbyte-Development/shellby-mcp.git"
   },
-  "homepage": "https://github.com/Serbyte-Development/unhinged-agent#readme",
+  "homepage": "https://github.com/Serbyte-Development/shellby-mcp#readme",
   "engines": {
     "node": ">=22.13.0"
   },

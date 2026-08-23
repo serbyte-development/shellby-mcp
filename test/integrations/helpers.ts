@@ -17,7 +17,7 @@ export async function connectClient(url: string, name: string, openAiSubject?: s
         ? {
             headers: {
               ...(openAiSubject ? { "x-openai-subject": openAiSubject } : {}),
-              ...(trustedRemote ? { "x-unhinged-agent-remote": "1" } : {}),
+              ...(trustedRemote ? { "x-shellby-remote": "1" } : {}),
             },
           }
         : undefined,

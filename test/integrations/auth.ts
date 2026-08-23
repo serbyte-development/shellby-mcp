@@ -6,12 +6,12 @@ import test from "node:test"
 
 import { LATEST_PROTOCOL_VERSION } from "@modelcontextprotocol/client"
 
-import { UnhingedAgentAuthStore } from "../../src/auth/auth.js"
+import { ShellbyAuthStore } from "../../src/auth/auth.js"
 import { connectClient, postWithHost, startMcpHttpServer } from "./helpers.js"
 
 test("remote MCP binds one OpenAI subject while local MCP remains available", { timeout: 20_000 }, async (t) => {
-  const root = await mkdtemp(join(tmpdir(), "unhinged-agent-remote-auth-"))
-  const authStore = new UnhingedAgentAuthStore(join(root, "auth.json"))
+  const root = await mkdtemp(join(tmpdir(), "shellby-mcp-remote-auth-"))
+  const authStore = new ShellbyAuthStore(join(root, "auth.json"))
   await authStore.ensureState()
   const running = await startMcpHttpServer({ port: 0, authStore })
   t.after(async () => {
@@ -59,9 +59,9 @@ test("remote MCP binds one OpenAI subject while local MCP remains available", { 
 })
 
 test("remote MCP owner survives an HTTP server restart", { timeout: 20_000 }, async (t) => {
-  const root = await mkdtemp(join(tmpdir(), "unhinged-agent-remote-restart-"))
+  const root = await mkdtemp(join(tmpdir(), "shellby-mcp-remote-restart-"))
   const filePath = join(root, "auth.json")
-  const firstAuthStore = new UnhingedAgentAuthStore(filePath)
+  const firstAuthStore = new ShellbyAuthStore(filePath)
   await firstAuthStore.ensureState()
   let running = await startMcpHttpServer({ port: 0, authStore: firstAuthStore })
   const port = running.port
@@ -72,7 +72,7 @@ test("remote MCP owner survives an HTTP server restart", { timeout: 20_000 }, as
   await owner.client.close()
   await running.close()
 
-  const secondAuthStore = new UnhingedAgentAuthStore(filePath)
+  const secondAuthStore = new ShellbyAuthStore(filePath)
   assert.deepEqual(await secondAuthStore.ensureState(), { version: 1, subject: "subject-a" })
   running = await startMcpHttpServer({ port, authStore: secondAuthStore })
   t.after(async () => {

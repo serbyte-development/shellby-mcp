@@ -4,7 +4,7 @@ Verified 2026-08-18.
 
 ## What This Is
 
-Unhinged Agent is a macOS local MCP harness that lets ChatGPT Web operate a developer's computer through persistent shells, direct file editing, webpage retrieval, focused Computer Use, dynamic skills, and browser-backed parallel agents while runtime state and tool execution remain on the local machine (`README.md`, `package.json`, `src/index.ts`).
+Shellby MCP is a macOS local MCP harness that lets ChatGPT Web operate a developer's computer through persistent shells, direct file editing, webpage retrieval, focused Computer Use, dynamic skills, and browser-backed parallel agents while runtime state and tool execution remain on the local machine (`README.md`, `package.json`, `src/index.ts`).
 
 ## Who It Serves and Why
 

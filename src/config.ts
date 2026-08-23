@@ -6,7 +6,7 @@ export type ToolOutputStructuredMode = "always" | "optional" | "never"
 
 export const MCP_CONFIG = {
   server: {
-    name: "unhinged-agent",
+    name: "shellby-mcp",
     version: "0.1.0",
     icons: [
       {

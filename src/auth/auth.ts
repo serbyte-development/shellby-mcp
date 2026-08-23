@@ -3,39 +3,39 @@ import { homedir } from "node:os"
 import { dirname, join } from "node:path"
 
 const AUTH_STATE_VERSION = 1
-const DEFAULT_AUTH_STATE_PATH = join(homedir(), ".unhinged-agent", "auth.json")
+const DEFAULT_AUTH_STATE_PATH = join(homedir(), ".shellby", "auth.json")
 
-export interface UnhingedAgentAuthState {
+export interface ShellbyAuthState {
   version: typeof AUTH_STATE_VERSION
   subject: string | null
 }
 
-export type UnhingedAgentAuthErrorCode = "state_missing" | "state_invalid" | "subject_missing" | "subject_mismatch"
+export type ShellbyAuthErrorCode = "state_missing" | "state_invalid" | "subject_missing" | "subject_mismatch"
 
-export class UnhingedAgentAuthError extends Error {
+export class ShellbyAuthError extends Error {
   constructor(
-    readonly code: UnhingedAgentAuthErrorCode,
+    readonly code: ShellbyAuthErrorCode,
     message: string
   ) {
     super(message)
-    this.name = "UnhingedAgentAuthError"
+    this.name = "ShellbyAuthError"
   }
 }
 
-export class UnhingedAgentAuthStore {
+export class ShellbyAuthStore {
   private mutationTail: Promise<void> = Promise.resolve()
 
   constructor(readonly filePath = DEFAULT_AUTH_STATE_PATH) {}
 
-  async ensureState(): Promise<UnhingedAgentAuthState> {
+  async ensureState(): Promise<ShellbyAuthState> {
     return this.withMutation(async () => {
       try {
         return await this.readState()
       } catch (error) {
-        if (!(error instanceof UnhingedAgentAuthError) || error.code !== "state_missing") throw error
+        if (!(error instanceof ShellbyAuthError) || error.code !== "state_missing") throw error
       }
 
-      const state: UnhingedAgentAuthState = { version: AUTH_STATE_VERSION, subject: null }
+      const state: ShellbyAuthState = { version: AUTH_STATE_VERSION, subject: null }
       await ensurePrivateDirectory(dirname(this.filePath))
       try {
         await writeFile(this.filePath, serializeState(state), { encoding: "utf8", flag: "wx", mode: 0o600 })
@@ -48,13 +48,13 @@ export class UnhingedAgentAuthStore {
     })
   }
 
-  async readState(): Promise<UnhingedAgentAuthState> {
+  async readState(): Promise<ShellbyAuthState> {
     let raw: string
     try {
       raw = await readFile(this.filePath, "utf8")
     } catch (error) {
       if (isNodeError(error, "ENOENT")) {
-        throw new UnhingedAgentAuthError("state_missing", "Unhinged Agent authentication state is missing.")
+        throw new ShellbyAuthError("state_missing", "Shellby MCP authentication state is missing.")
       }
       throw error
     }
@@ -65,28 +65,28 @@ export class UnhingedAgentAuthStore {
     return state
   }
 
-  async authorizeToolCall(subject: string | undefined): Promise<UnhingedAgentAuthState> {
+  async authorizeToolCall(subject: string | undefined): Promise<ShellbyAuthState> {
     if (!isValidSubject(subject)) {
-      throw new UnhingedAgentAuthError("subject_missing", "OpenAI subject is required for remote tool calls.")
+      throw new ShellbyAuthError("subject_missing", "OpenAI subject is required for remote tool calls.")
     }
 
     return this.withMutation(async () => {
       const state = await this.readState()
       if (state.subject === null) {
-        const boundState: UnhingedAgentAuthState = { ...state, subject }
+        const boundState: ShellbyAuthState = { ...state, subject }
         await writeStateAtomically(this.filePath, boundState)
         return boundState
       }
       if (state.subject !== subject) {
-        throw new UnhingedAgentAuthError("subject_mismatch", "This Unhinged Agent installation is bound to a different ChatGPT user.")
+        throw new ShellbyAuthError("subject_mismatch", "This Shellby MCP installation is bound to a different ChatGPT user.")
       }
       return state
     })
   }
 
-  async reset(): Promise<UnhingedAgentAuthState> {
+  async reset(): Promise<ShellbyAuthState> {
     return this.withMutation(async () => {
-      const state: UnhingedAgentAuthState = { version: AUTH_STATE_VERSION, subject: null }
+      const state: ShellbyAuthState = { version: AUTH_STATE_VERSION, subject: null }
       await writeStateAtomically(this.filePath, state)
       return state
     })
@@ -107,28 +107,28 @@ export class UnhingedAgentAuthStore {
   }
 }
 
-function parseState(raw: string): UnhingedAgentAuthState {
+function parseState(raw: string): ShellbyAuthState {
   let parsed: unknown
   try {
     parsed = JSON.parse(raw)
   } catch {
-    throw invalidState("Unhinged Agent authentication state is malformed.")
+    throw invalidState("Shellby MCP authentication state is malformed.")
   }
 
   if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-    throw invalidState("Unhinged Agent authentication state must be an object.")
+    throw invalidState("Shellby MCP authentication state must be an object.")
   }
   const state = parsed as Record<string, unknown>
   if (state.version !== AUTH_STATE_VERSION) {
-    throw invalidState("Unhinged Agent authentication state version is unsupported.")
+    throw invalidState("Shellby MCP authentication state version is unsupported.")
   }
   if (state.subject !== null && !isValidSubject(state.subject)) {
-    throw invalidState("Unhinged Agent authentication subject is invalid.")
+    throw invalidState("Shellby MCP authentication subject is invalid.")
   }
   return { version: AUTH_STATE_VERSION, subject: state.subject as string | null }
 }
 
-async function writeStateAtomically(filePath: string, state: UnhingedAgentAuthState): Promise<void> {
+async function writeStateAtomically(filePath: string, state: ShellbyAuthState): Promise<void> {
   const directory = dirname(filePath)
   await ensurePrivateDirectory(directory)
   const temporaryPath = join(directory, `.auth-${process.pid}-${Date.now()}.tmp`)
@@ -146,7 +146,7 @@ async function ensurePrivateDirectory(directory: string): Promise<void> {
   await chmod(directory, 0o700)
 }
 
-function serializeState(state: UnhingedAgentAuthState): string {
+function serializeState(state: ShellbyAuthState): string {
   return `${JSON.stringify(state, null, 2)}\n`
 }
 
@@ -154,8 +154,8 @@ function isValidSubject(subject: unknown): subject is string {
   return typeof subject === "string" && subject.length > 0 && subject.length <= 512
 }
 
-function invalidState(message: string): UnhingedAgentAuthError {
-  return new UnhingedAgentAuthError("state_invalid", message)
+function invalidState(message: string): ShellbyAuthError {
+  return new ShellbyAuthError("state_invalid", message)
 }
 
 function isNodeError(error: unknown, code: string): error is NodeJS.ErrnoException {

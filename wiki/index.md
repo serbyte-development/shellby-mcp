@@ -1,4 +1,4 @@
-# Unhinged Agent Wiki
+# Shellby MCP Wiki
 
 Start with [Project Overview](pages/Project%20Overview.md), then open only the pages relevant to the subsystem or operation you are changing.
 
@@ -32,7 +32,7 @@ Start with [Project Overview](pages/Project%20Overview.md), then open only the p
 
 ## Possible Work
 
-- [Possible Evals](pages/Possible%20Evals.md) — candidate real-work benchmarks for comparing ChatGPT Web plus Unhinged Agent with Codex.
+- [Possible Evals](pages/Possible%20Evals.md) — candidate real-work benchmarks for comparing ChatGPT Web plus Shellby MCP with Codex.
 
 ## Supporting Files
 

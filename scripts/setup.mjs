@@ -20,14 +20,14 @@ if (errors.length > 0) {
 }
 prerequisiteStep.succeed("Prerequisites ready")
 
-await mkdir(join(homedir(), ".unhinged-agent"), { recursive: true })
+await mkdir(join(homedir(), ".shellby"), { recursive: true })
 
 const workspaceStep = spinner("Preparing agent workspace")
 const workspace = await initializeWorkspace()
 workspaceStep.succeed(workspace.created ? "Agent workspace created" : "Agent workspace ready")
 note("Workspace", workspace.agentsPath)
 
-await commandStep("Building Unhinged Agent", "Build ready", "npm", ["run", "build"])
+await commandStep("Building Shellby MCP", "Build ready", "npm", ["run", "build"])
 
 const computer = await commandStep(
   "Checking Computer Use",
@@ -47,7 +47,7 @@ const browser = await commandStep(
 )
 note("Multi-agent", combinedOutput(browser))
 
-outro(["Sign into ChatGPT if the dedicated Chrome window opened.", "Run `npm start` to launch Unhinged Agent."])
+outro(["Sign into ChatGPT if the dedicated Chrome window opened.", "Run `npm start` to launch Shellby MCP."])
 
 async function commandStep(label, successMessage, command, args, options = {}) {
   const step = spinner(label)

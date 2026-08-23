@@ -1,6 +1,6 @@
 # Security Policy
 
-Unhinged Agent intentionally gives authorized MCP callers powerful access to the local macOS user account. Treat authentication, tunnel policy, command execution, browser control, and file access issues as security-sensitive.
+Shellby MCP intentionally gives authorized MCP callers powerful access to the local macOS user account. Treat authentication, tunnel policy, command execution, browser control, and file access issues as security-sensitive.
 
 ## Reporting a vulnerability
 
@@ -10,4 +10,4 @@ Include the affected version or commit, reproduction steps, impact, and any sugg
 
 ## Scope
 
-The supported release target is macOS on Apple Silicon or Intel. Direct localhost MCP access is intentionally unauthenticated; the remote ChatGPT path depends on the checked-in ngrok trust policy plus Unhinged Agent's bound OpenAI subject check. See the README and [`wiki/pages/HTTP Transport.md`](wiki/pages/HTTP%20Transport.md) for the current trust model.
+The supported release target is macOS on Apple Silicon or Intel. Direct localhost MCP access is intentionally unauthenticated; the remote ChatGPT path depends on the checked-in ngrok trust policy plus Shellby MCP's bound OpenAI subject check. See the README and [`wiki/pages/HTTP Transport.md`](wiki/pages/HTTP%20Transport.md) for the current trust model.

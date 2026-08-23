@@ -8,7 +8,7 @@ This page defines what authentication, provider, audit-log, and machine-local in
 
 ## Current State
 
-Remote ChatGPT ownership state is stored outside the repository in `~/.unhinged-agent/auth.json` with owner-only permissions. Treat the bound OpenAI subject as private authentication metadata; transport and binding mechanics are documented in [HTTP Transport](./HTTP%20Transport.md) (`src/auth/auth.ts`, `src/server/http-server.ts`).
+Remote ChatGPT ownership state is stored outside the repository in `~/.shellby/auth.json` with owner-only permissions. Treat the bound OpenAI subject as private authentication metadata; transport and binding mechanics are documented in [HTTP Transport](./HTTP%20Transport.md) (`src/auth/auth.ts`, `src/server/http-server.ts`).
 
 Provider credentials such as ngrok, npm, or future CI tokens belong in provider/user configuration or a password manager, not repository Markdown (`package.json`).
 

@@ -1,4 +1,4 @@
-# Unhinged Agent Wiki Maintainer
+# Shellby MCP Wiki Maintainer
 
 This vault follows the LLM wiki pattern from Andrej Karpathy's "LLM Wiki" gist (`https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f`): raw sources are read-only evidence, the wiki is maintained Markdown, and this file is the schema for future agents.
 
@@ -6,7 +6,7 @@ The vault lives at `wiki/`.
 
 ## Purpose
 
-- Preserve the architecture, runtime contracts, operational knowledge, risks, and decisions needed to maintain the Unhinged Agent local MCP harness.
+- Preserve the architecture, runtime contracts, operational knowledge, risks, and decisions needed to maintain the Shellby MCP local MCP harness.
 - Start with [Project Overview](./pages/Project%20Overview.md) for the project's purpose, audience, status, workflows, boundaries, constraints, and deeper wiki entry points.
 - Keep current implementation synthesis in the vault so future agents can verify rather than rediscover how the harness works.
 - Keep end-user setup details only when they constrain an implemented server or operational contract.

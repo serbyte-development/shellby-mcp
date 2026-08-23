@@ -1,11 +1,11 @@
-<h1 align="center">Unhinged Agent</h1>
+<h1 align="center">Shellby MCP</h1>
 
 <p align="center">
   <strong>A local coding harness that gives ChatGPT Web persistent shells, direct file editing, Computer Use, and browser-backed subagents.</strong>
 </p>
 
 <p align="center">
-  <a href="https://github.com/Serbyte-Development/unhinged-agent/actions/workflows/ci.yml"><img src="https://github.com/Serbyte-Development/unhinged-agent/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="https://github.com/Serbyte-Development/shellby-mcp/actions/workflows/ci.yml"><img src="https://github.com/Serbyte-Development/shellby-mcp/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="MIT License"></a>
   <img src="https://img.shields.io/badge/platform-macOS-lightgrey.svg" alt="macOS">
 </p>
@@ -18,9 +18,9 @@
 </p>
 
 > [!CAUTION]
-> Unhinged Agent deliberately gives an authorized ChatGPT caller the authority of your local macOS user. It can run commands, edit files, and control supported applications. It is not a sandbox and is intended for experienced software engineers.
+> Shellby MCP deliberately gives an authorized ChatGPT caller the authority of your local macOS user. It can run commands, edit files, and control supported applications. It is not a sandbox and is intended for experienced software engineers.
 
-Unhinged Agent connects ChatGPT Web to a stateful local runtime over MCP. MCP requests remain stateless at the HTTP boundary, while shells, browser conversations, webpage documents, Computer Use targets, and skills persist in the local process.
+Shellby MCP connects ChatGPT Web to a stateful local runtime over MCP. MCP requests remain stateless at the HTTP boundary, while shells, browser conversations, webpage documents, Computer Use targets, and skills persist in the local process.
 
 ## What you get
 
@@ -33,7 +33,7 @@ Unhinged Agent connects ChatGPT Web to a stateful local runtime over MCP. MCP re
 | Web and images    | Rendered webpage extraction, bounded document pagination, and native image transport.                  |
 | Dynamic skills    | Workspace skills load directly from `<workspace>/skills/*/SKILL.md`.                                   |
 
-![Unhinged Agent architecture showing ChatGPT Web connecting to the local harness and its persistent tools, Computer Use, and subagent runtime](docs/assets/unhinged-agent-architecture.svg)
+![Shellby MCP architecture showing ChatGPT Web connecting to the local harness and its persistent tools, Computer Use, and subagent runtime](docs/assets/shellby-mcp-architecture.svg)
 
 ## Requirements
 
@@ -51,8 +51,8 @@ Google Chrome is optional for browser-backed subagents. Peekaboo is optional for
 
    ```bash
    brew install --cask ngrok
-   git clone https://github.com/Serbyte-Development/unhinged-agent.git
-   cd unhinged-agent
+   git clone https://github.com/Serbyte-Development/shellby-mcp.git
+   cd shellby-mcp
    npm ci
    ```
 
@@ -92,7 +92,7 @@ Google Chrome is optional for browser-backed subagents. Peekaboo is optional for
 ```mermaid
 flowchart LR
     ChatGPT[ChatGPT Web] -->|HTTPS / MCP| Tunnel[ngrok policy]
-    Tunnel --> Server[Local Unhinged Agent]
+    Tunnel --> Server[Local Shellby MCP]
     Server --> Shells[Persistent shells]
     Server --> Files[apply_patch]
     Server --> Browser[ChatGPT subagents]
@@ -103,7 +103,7 @@ flowchart LR
 - Production HTTP listens only on `127.0.0.1:3333`.
 - The checked-in ngrok policy accepts ChatGPT-origin traffic on the exact `/mcp` route and marks it as remote.
 - Remote calls are subject-bound; direct localhost MCP clients are intentionally unauthenticated.
-- Runtime state stays local. Remote ownership is stored at `~/.unhinged-agent/auth.json` with owner-only permissions.
+- Runtime state stays local. Remote ownership is stored at `~/.shellby/auth.json` with owner-only permissions.
 
 The local development endpoint is `http://127.0.0.1:3333/mcp`.
 
@@ -117,7 +117,7 @@ npm run setup:chatgpt
 npm run chatgpt
 ```
 
-The setup command creates a dedicated Chrome profile under `~/.unhinged-agent/chatgpt-chrome`. The runtime attaches over CDP at `127.0.0.1:9222`; it never copies or modifies your normal Chrome profile. Managed subagent tabs are created as unfocused background targets.
+The setup command creates a dedicated Chrome profile under `~/.shellby/chatgpt-chrome`. The runtime attaches over CDP at `127.0.0.1:9222`; it never copies or modifies your normal Chrome profile. Managed subagent tabs are created as unfocused background targets.
 
 Reuse an `agent_id` to continue the same in-process conversation. A new ID starts a new conversation. See [Browser ChatGPT Subagents](wiki/pages/Browser%20ChatGPT%20Subagents.md).
 
@@ -131,7 +131,7 @@ brew install steipete/tap/peekaboo
 npm run setup:computer
 ```
 
-Unhinged Agent delegates permission guidance to Peekaboo. Screen Recording enables observation; Accessibility and Event Synthesizing enable actions. Computer actions are stateful and are never automatically retried.
+Shellby MCP delegates permission guidance to Peekaboo. Screen Recording enables observation; Accessibility and Event Synthesizing enable actions. Computer actions are stateful and are never automatically retried.
 
 </details>
 
