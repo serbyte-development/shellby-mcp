@@ -3,12 +3,12 @@ import { Client, StreamableHTTPClientTransport } from "@modelcontextprotocol/cli
 import { MCP_CONFIG } from "../src/config.js"
 import { startMcpHttpServer } from "../src/server/http-server.js"
 import { countTokens, OUTPUT_TOKEN_ENCODING } from "../src/tokenizer.js"
-import { PersistentShellSession } from "../src/tools/shell/session.js"
-import { ShellSessionManager } from "../src/tools/shell/session-manager.js"
+import { createShellSession } from "../src/tools/shell/session.js"
+import { createShellSessionManager } from "../src/tools/shell/session-manager.js"
 
 const requestedNames = new Set(process.argv.slice(2))
-const shells = new ShellSessionManager({
-  createShell: () => new PersistentShellSession({ cwd: MCP_CONFIG.workspace }),
+const shells = createShellSessionManager({
+  createShell: () => createShellSession({ cwd: MCP_CONFIG.workspace }),
 })
 const running = await startMcpHttpServer({ host: "127.0.0.1", port: 0, shellManager: shells })
 const client = new Client({ name: "unhinged-agent-schema-viewer", version: "1.0.0" })
