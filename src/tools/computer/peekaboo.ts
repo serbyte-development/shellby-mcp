@@ -101,6 +101,10 @@ export class PeekabooClient {
     return this.snapshots.get(snapshotId)
   }
 
+  rememberSnapshotTarget(snapshotId: string, target: PeekabooSnapshotTarget): void {
+    this.rememberSnapshot(snapshotId, target)
+  }
+
   async close(): Promise<void> {
     if (this.closed) return
     this.closed = true

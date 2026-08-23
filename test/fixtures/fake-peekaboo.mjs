@@ -66,10 +66,11 @@ if (
   })
 } else if (command === "see") {
   const screenCapture = args.includes("--mode") && optionValue("--mode") === "screen"
+  const treeCapture = args.includes("--tree")
   respond({
     success: true,
     data: {
-      snapshot_id: screenCapture ? "snapshot-screen" : "snapshot-42",
+      snapshot_id: screenCapture ? "snapshot-screen" : treeCapture ? "snapshot-inspect" : "snapshot-42",
       ui_elements: [
         {
           id: "B1",

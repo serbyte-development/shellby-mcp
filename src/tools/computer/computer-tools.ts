@@ -20,27 +20,12 @@ const interactionRequirement =
   "Call computer_observe first and pass its snapshot_id when targeting an element. Element IDs and coordinates are valid only for the observed UI state."
 
 export function registerComputerUseTools(server: McpServer, peekaboo: PeekabooClient): void {
-  const listSchema = z
-    .object({
-      kind: z.enum(["apps", "windows", "screens", "permissions"]).default("apps"),
-      app: appInput.optional().describe("Required when kind is windows."),
-      include_hidden: z.boolean().optional(),
-      include_background: z.boolean().optional(),
-    })
-    .superRefine((value, context) => {
-      if (value.kind === "windows" && !value.app) {
-        context.addIssue({
-          code: "custom",
-          message: "app is required for windows.",
-        })
-      }
-      if (value.kind !== "apps" && (value.include_hidden !== undefined || value.include_background !== undefined)) {
-        context.addIssue({
-          code: "custom",
-          message: "include_hidden and include_background are valid only for apps.",
-        })
-      }
-    })
+  const listSchema = z.object({
+    kind: z.enum(["apps", "windows", "screens", "permissions"]).default("apps"),
+    app: appInput.optional().describe("Application to list windows for."),
+    include_hidden: z.boolean().optional().describe("Include hidden applications."),
+    include_background: z.boolean().optional().describe("Include background applications."),
+  })
 
   server.registerTool(
     "computer_list",
@@ -63,7 +48,8 @@ export function registerComputerUseTools(server: McpServer, peekaboo: PeekabooCl
         if (include_hidden) args.push("--include-hidden")
         if (include_background) args.push("--include-background")
       } else if (kind === "windows") {
-        args = ["window", "list", "--app", app!]
+        if (!app) throw new Error("app is required when kind is windows")
+        args = ["window", "list", "--app", app]
       } else if (kind === "screens") {
         args = ["screen", "list"]
       } else {
@@ -81,11 +67,10 @@ export function registerComputerUseTools(server: McpServer, peekaboo: PeekabooCl
       annotate: z.boolean().default(false).describe("Overlay element IDs on the returned screenshot."),
     })
     .superRefine((value, context) => {
-      const targetCount = [value.app, value.window_id, value.screen_index].filter((item) => item !== undefined).length
-      if (targetCount > 1) {
+      if (value.screen_index !== undefined && (value.app !== undefined || value.window_id !== undefined)) {
         context.addIssue({
           code: "custom",
-          message: "Supply only one of app, window_id, or screen_index.",
+          message: "screen_index cannot be combined with app or window_id.",
         })
       }
     })
@@ -107,12 +92,12 @@ export function registerComputerUseTools(server: McpServer, peekaboo: PeekabooCl
     },
     async ({ app, window_id, screen_index, annotate }, ctx) => {
       const args: string[] = []
-      if (app !== undefined) args.push("--app", app)
-      else if (window_id !== undefined) args.push("--window-id", String(window_id))
-      else if (screen_index !== undefined) {
+      if (screen_index !== undefined) {
         args.push("--mode", "screen", "--screen-index", String(screen_index))
       } else {
-        args.push("--mode", "frontmost")
+        if (app !== undefined) args.push("--app", app)
+        if (window_id !== undefined) args.push("--window-id", String(window_id))
+        if (app === undefined && window_id === undefined) args.push("--mode", "frontmost")
       }
       args.push("--no-web-focus")
 
@@ -130,7 +115,7 @@ export function registerComputerUseTools(server: McpServer, peekaboo: PeekabooCl
     {
       title: "Inspect accessible UI",
       description:
-        "Return a bounded accessibility-tree text view for an existing observation snapshot. Use only when its screenshot is insufficient; prefer small limits and inspect again after the UI changes.",
+        "Return a bounded accessibility-tree text view for an observed target. Peekaboo creates a fresh snapshot for the inspection; use the returned snapshot_id with any element IDs. Prefer small limits and inspect again after the UI changes.",
       inputSchema: z.object({
         snapshot_id: snapshotInput,
         max_depth: z.number().int().min(1).max(20).default(8),
@@ -152,6 +137,8 @@ export function registerComputerUseTools(server: McpServer, peekaboo: PeekabooCl
         addObservationTargetArgs(args, target)
         args.push("--tree", "--no-screenshot", "--depth", String(max_depth), "--max-elements", String(max_elements), "--max-children", String(max_children))
         const result = await peekaboo.run(args, ctx.mcpReq.signal)
+        const inspectedSnapshotId = stringValue(asRecord(result.data)?.snapshot_id)
+        if (inspectedSnapshotId) peekaboo.rememberSnapshotTarget(inspectedSnapshotId, target)
         return inspectionResult(result)
       } catch (error) {
         return peekabooToolError(error)
@@ -263,10 +250,9 @@ export function registerComputerUseTools(server: McpServer, peekaboo: PeekabooCl
       _meta: MCP_CONFIG.toolMeta,
     },
     async (input, ctx) => {
-      const args = ["type", "--text", input.text]
+      const args = ["type", "--text", input.press_return ? `${input.text}\n` : input.text]
       addTargetArgs(args, input)
       if (input.clear) args.push("--clear")
-      if (input.press_return) args.push("--return")
       if (input.foreground) args.push("--foreground")
       if (input.delay_ms !== undefined) args.push("--delay", String(input.delay_ms))
       return callPeekaboo(peekaboo, args, ctx.mcpReq.signal, "Typing completed.")
@@ -468,20 +454,21 @@ export function registerComputerUseTools(server: McpServer, peekaboo: PeekabooCl
 
   const windowSchema = z
     .object({
-      action: z.enum(["focus", "close", "minimize", "maximize", "move", "resize", "set_bounds"]),
+      action: z.enum(["focus", "close", "minimize", "restore", "maximize", "move", "resize", "set_bounds"]),
       app: appInput.optional(),
       window_id: windowIdInput.optional(),
       window_title: z.string().min(1).optional(),
+      foreground: z.boolean().optional().describe("For close only, allow Peekaboo's focused fallback if Accessibility close does not dismiss the window."),
       x: z.number().int().optional(),
       y: z.number().int().optional(),
       width: z.number().int().positive().optional(),
       height: z.number().int().positive().optional(),
     })
     .superRefine((value, context) => {
-      if ((value.app === undefined) === (value.window_id === undefined)) {
+      if (value.app === undefined && value.window_id === undefined) {
         context.addIssue({
           code: "custom",
-          message: "Supply exactly one window anchor: app or window_id.",
+          message: "Supply at least one window anchor: app or window_id.",
         })
       }
       if (value.window_title && !value.app) {
@@ -490,10 +477,17 @@ export function registerComputerUseTools(server: McpServer, peekaboo: PeekabooCl
           message: "window_title requires app.",
         })
       }
+      if (value.foreground && value.action !== "close") {
+        context.addIssue({
+          code: "custom",
+          message: "foreground is valid only for close.",
+        })
+      }
       const requiredGeometry: Record<typeof value.action, Array<keyof typeof value>> = {
         focus: [],
         close: [],
         minimize: [],
+        restore: [],
         maximize: [],
         move: ["x", "y"],
         resize: ["width", "height"],
@@ -523,7 +517,7 @@ export function registerComputerUseTools(server: McpServer, peekaboo: PeekabooCl
     {
       title: "Manage a computer window",
       description:
-        "Focus, close, minimize, maximize, move, resize, or set the bounds of an app window. Use computer_list with kind=windows to obtain exact window IDs.",
+        "Focus, close, minimize, restore, maximize, move, resize, or set the bounds of an app window. Use computer_list with kind=windows to obtain exact window IDs.",
       inputSchema: windowSchema,
       annotations: {
         readOnlyHint: false,
@@ -544,6 +538,7 @@ export function registerComputerUseTools(server: McpServer, peekaboo: PeekabooCl
       if (input.width !== undefined) args.push("--width", String(input.width))
       if (input.height !== undefined) args.push("--height", String(input.height))
       if (input.action === "focus") args.push("--verify")
+      if (input.foreground) args.push("--foreground")
       return callPeekaboo(peekaboo, args, ctx.mcpReq.signal, `Window ${input.action} completed.`)
     }
   )
@@ -597,10 +592,11 @@ function addObservationTargetArgs(args: string[], target: PeekabooSnapshotTarget
   const screenCapture = target.kind?.toLowerCase().includes("screen") ?? false
   if (screenCapture) {
     args.push("--mode", "screen", "--screen-index", String(target.screenIndex ?? 0))
+  } else if (target.windowId !== undefined) {
+    if (target.app) args.push("--app", target.app)
+    args.push("--window-id", String(target.windowId))
   } else if (target.app && target.windowTitle) {
     args.push("--app", target.app, "--window-title", target.windowTitle)
-  } else if (target.windowId !== undefined) {
-    args.push("--window-id", String(target.windowId))
   } else if (target.app) {
     args.push("--app", target.app)
   } else {
@@ -608,12 +604,7 @@ function addObservationTargetArgs(args: string[], target: PeekabooSnapshotTarget
   }
 }
 
-function appCommandArgs(
-  action: "launch" | "switch" | "quit" | "relaunch" | "hide" | "unhide",
-  app: string,
-  open: string[],
-  force: boolean
-): string[] {
+function appCommandArgs(action: "launch" | "switch" | "quit" | "relaunch" | "hide" | "unhide", app: string, open: string[], force: boolean): string[] {
   if (action === "launch") {
     const args = ["app", "launch", app, "--wait-ready"]
     for (const item of open) args.push("--open", item)
@@ -679,6 +670,7 @@ function observationResult(observation: PeekabooObservation): CallToolResult {
 
 function inspectionResult(result: PeekabooResult): CallToolResult {
   const data = asRecord(result.data)
+  const snapshotId = stringValue(data?.snapshot_id)
   const embeddedText = Array.isArray(data?.content)
     ? data.content
         .map(asRecord)
@@ -704,7 +696,10 @@ function inspectionResult(result: PeekabooResult): CallToolResult {
     (typeof result.summary === "string" ? result.summary : undefined) ??
     result.messages?.find((message) => message.trim()) ??
     "Inspected accessible UI."
-  return { content: [{ type: "text", text }] }
+  return {
+    content: [{ type: "text", text: snapshotId ? `snapshot_id=${snapshotId}\n${text}` : text }],
+    ...(snapshotId ? { structuredContent: { snapshot_id: snapshotId, text } } : {}),
+  }
 }
 
 function peekabooToolError(error: unknown): CallToolResult {
