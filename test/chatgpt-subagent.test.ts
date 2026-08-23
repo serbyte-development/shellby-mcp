@@ -11,6 +11,7 @@ import {
   clearExpiredRateLimit,
   createAgent,
   createChatGptSubagentRuntimeState,
+  conversationUrlForStart,
   createChatGptSubagentService,
   disposeSubagents,
   endAgentOperation,
@@ -31,8 +32,7 @@ function installBackgroundPage(runtime: ChatGptSubagentRuntimeState, page: objec
   runtime.context = {
     pages: () => pages,
     newCDPSession: async (candidate: object) => ({
-      send: async (method: string) =>
-        method === "Target.getTargetInfo" ? { targetInfo: { targetId: candidate === page ? "target-1" : "other" } } : {},
+      send: async (method: string) => (method === "Target.getTargetInfo" ? { targetInfo: { targetId: candidate === page ? "target-1" : "other" } } : {}),
       on: () => undefined,
       detach: async () => undefined,
     }),
@@ -62,7 +62,6 @@ function createRunningTurn(agentId: string, lastActivityAt: number, recoveryAtte
     agentId,
     status: "running",
     recoveryAttempted,
-    activity: "Working",
     lastActivityAt,
     prompt: "submitted prompt",
     settled,
@@ -94,7 +93,7 @@ test("new agents start from configured project URL", async () => {
 })
 
 test("same agent keeps one page across multiple turns and captures conversation id from CDP", async () => {
-  const runtime = createRuntime()
+  const runtime = createRuntime({ chatGptUrl: "https://chatgpt.com/g/g-p-example/project" })
   let currentUrl = "https://chatgpt.com/g/g-p-example/project"
   let inserted = ""
   let frameHandler: ((event: { response?: { payloadData?: string } }) => void) | undefined
@@ -102,13 +101,14 @@ test("same agent keeps one page across multiple turns and captures conversation 
   let detachCount = 0
   let sendCount = 0
   const emitTurn = (answer: string, conversationId: string) => {
-    currentUrl = `https://chatgpt.com/c/${conversationId}`
     const topic = `conversation-turn-server-${sendCount}`
     const wrap = (encoded: string) =>
       JSON.stringify([{ topic_id: topic, payload: { type: "conversation-turn-stream", payload: { type: "stream-item", encoded_item: encoded } } }])
-    const msg = (role: string, text: string, endTurn: boolean | null) =>
-      `data: ${JSON.stringify({ v: { message: { id: `${role}-${sendCount}`, author: { role }, content: { parts: [text] }, status: "finished_successfully", end_turn: endTurn, recipient: "all", metadata: {} } } })}\n\n`
-    frameHandler?.({ response: { payloadData: wrap(msg("user", inserted, null)) } })
+    const msg = (role: string, text: string, endTurn: boolean | null, id?: string) =>
+      `data: ${JSON.stringify({ conversation_id: id, v: { message: { id: `${role}-${sendCount}`, author: { role }, content: { parts: [text] }, status: "finished_successfully", end_turn: endTurn, recipient: "all", metadata: {} } } })}\n\n`
+    frameHandler?.({ response: { payloadData: wrap(msg("user", inserted, null, conversationId)) } })
+    if (sendCount === 1) assert.equal(runtime.agents.get("multi")?.conversationUrl, `https://chatgpt.com/g/g-p-example/c/${conversationId}`)
+    currentUrl = `https://chatgpt.com/c/${conversationId}`
     frameHandler?.({ response: { payloadData: wrap(msg("assistant", answer, true)) } })
     frameHandler?.({ response: { payloadData: wrap(`data: ${JSON.stringify({ type: "message_stream_complete", conversation_id: conversationId })}\n\n`) } })
   }
@@ -157,7 +157,7 @@ test("same agent keeps one page across multiple turns and captures conversation 
     },
     close: async () => closeHandler?.(),
   }
-  const agent: BrowserAgentState = { agentId: "multi", page: page as never, lastUsedAt: Date.now(), turnCount: 0 }
+  const agent: BrowserAgentState = { agentId: "multi", status: "idle", page: page as never, lastUsedAt: Date.now(), turnCount: 0 }
   runtime.browser = { isConnected: () => true, close: async () => undefined } as never
   runtime.context = { pages: () => [page] } as never
   runtime.agents.set(agent.agentId, agent)
@@ -165,6 +165,7 @@ test("same agent keeps one page across multiple turns and captures conversation 
   const first = await askSubagent(runtime, { agentId: "multi", prompt: "first", oververbosity: 2 })
   const firstResult = await pollSubagent(runtime, first.turnId, 100)
   assert.equal(firstResult.response, "answer-1")
+  assert.equal(agent.status, "idle")
   assert.equal(agent.conversationUrl, "https://chatgpt.com/c/conversation-1")
   assert.match(inserted, /Respond terse like smart caveman/)
 
@@ -184,10 +185,7 @@ test("first-turn oververbosity injection exactly matches the previous prompt con
   assert.equal(appendFirstTurnMode("prompt", 1), `prompt\n\n---\n\nSwitch to caveman ultra mode. ${injected}`)
   assert.equal(appendFirstTurnMode("prompt", 2), `prompt\n\n---\n\nSwitch to caveman full mode. ${injected}`)
   assert.equal(appendFirstTurnMode("prompt", 3), `prompt\n\n---\n\nSwitch to caveman lite mode. ${injected}`)
-  assert.equal(
-    appendFirstTurnMode("prompt", 4),
-    `prompt\n\n---\n\nSwitch to caveman lite mode. ${injected} Favor completeness over terseness when useful.`
-  )
+  assert.equal(appendFirstTurnMode("prompt", 4), `prompt\n\n---\n\nSwitch to caveman lite mode. ${injected} Favor completeness over terseness when useful.`)
   assert.equal(appendFirstTurnMode(" prompt ", 5), " prompt ")
 })
 
@@ -208,6 +206,7 @@ test("wrong conversation URL is restored on the same managed page before submiss
   }
   const agent: BrowserAgentState = {
     agentId: "restore-same-page",
+    status: "idle",
     page: page as never,
     conversationUrl: "https://chatgpt.com/c/correct",
     lastUsedAt: Date.now(),
@@ -230,6 +229,7 @@ test("idle cleanup closes only the page and a later turn restores the saved conv
   }
   const agent: BrowserAgentState = {
     agentId: "idle",
+    status: "idle",
     page: oldPage as never,
     conversationUrl: "https://chatgpt.com/c/saved",
     lastUsedAt: 1,
@@ -270,7 +270,7 @@ test("30 minutes without progress fails an unbound turn and releases capacity", 
   const runtime = createRuntime()
   const now = 30 * 60_000 + 10
   const page = { isClosed: () => false, url: () => "https://chatgpt.com/" }
-  const agent: BrowserAgentState = { agentId: "stalled", page: page as never, lastUsedAt: 1, turnCount: 1 }
+  const agent: BrowserAgentState = { agentId: "stalled", status: "Generating response", page: page as never, lastUsedAt: 1, turnCount: 1 }
   const turn = createRunningTurn(agent.agentId, 1)
   runtime.agents.set(agent.agentId, agent)
   runtime.turns.set(turn.turnId, turn)
@@ -279,6 +279,7 @@ test("30 minutes without progress fails an unbound turn and releases capacity", 
   await cleanupIdleAgents(runtime, now)
   assert.equal(turn.status, "failed")
   assert.equal(turn.errorCode, "AGENT_IDLE_EXPIRED")
+  assert.equal(agent.status, "uncertain")
   assert.equal(runtime.activeOperations.has(agent.agentId), false)
 })
 
@@ -294,6 +295,7 @@ test("30-minute cutoff performs one recovery and settles from saved conversation
   }
   const agent: BrowserAgentState = {
     agentId: "recover",
+    status: "Generating response",
     page: oldPage as never,
     conversationUrl: "https://chatgpt.com/c/recovery",
     lastUsedAt: 1,
@@ -347,32 +349,81 @@ test("30-minute cutoff performs one recovery and settles from saved conversation
   assert.equal(turn.recoveryAttempted, true)
   assert.equal(turn.status, "completed")
   assert.equal(turn.response, "recovered answer")
+  assert.equal(agent.status, "idle")
   assert.equal(agent.page, recoveryPage)
   assert.equal(agent.turnCount, 1)
   assert.equal(oldClosed, true)
   assert.equal(runtime.activeOperations.has(agent.agentId), false)
 })
 
-test("a turn that already used catastrophic recovery fails at the next no-progress cutoff", async () => {
-  const runtime = createRuntime()
-  const page = { isClosed: () => false, url: () => "https://chatgpt.com/c/once" }
+test("one-shot recovery fails immediately when history has no final answer", async () => {
+  const runtime = createRuntime({ timeoutMs: 100 })
+  const oldPage = { isClosed: () => false, url: () => "https://chatgpt.com/c/missing", close: async () => undefined }
   const agent: BrowserAgentState = {
-    agentId: "recover-once",
-    page: page as never,
-    conversationUrl: "https://chatgpt.com/c/once",
+    agentId: "recover-missing",
+    status: "Generating response",
+    page: oldPage as never,
+    conversationUrl: "https://chatgpt.com/c/missing",
     lastUsedAt: 1,
     turnCount: 1,
   }
-  const turn = createRunningTurn(agent.agentId, 1, true)
+  const turn = createRunningTurn(agent.agentId, 1)
+  let currentUrl = "about:blank"
+  const composer = { count: async () => 1, isVisible: async () => true }
+  const hidden = { count: async () => 0, isVisible: async () => false }
+  const recoveryPage = {
+    isClosed: () => false,
+    url: () => currentUrl,
+    setViewportSize: async () => undefined,
+    goto: async (url: string) => {
+      currentUrl = url
+    },
+    waitForResponse: async (predicate: (response: object) => boolean) => {
+      const response = {
+        url: () => "https://chatgpt.com/backend-api/conversations/missing",
+        status: () => 200,
+        json: async () => ({ messages: [{ author: { role: "user" }, content: { parts: [turn.prompt] } }] }),
+      }
+      assert.equal(predicate(response), true)
+      return response
+    },
+    locator: (selector: string) => ({ first: () => (selector === "#prompt-textarea" ? composer : hidden) }),
+    close: async () => undefined,
+  }
+  installBackgroundPage(runtime, recoveryPage)
   runtime.agents.set(agent.agentId, agent)
   runtime.turns.set(turn.turnId, turn)
   runtime.activeOperations.set(agent.agentId, turn.turnId)
 
   await cleanupIdleAgents(runtime, 30 * 60_000 + 10)
+  assert.equal(turn.recoveryAttempted, true)
   assert.equal(turn.status, "failed")
   assert.equal(turn.errorCode, "AGENT_IDLE_EXPIRED")
+  assert.match(turn.errorMessage ?? "", /expired after 30 minutes without observable progress/)
+  assert.equal(agent.status, "uncertain")
+  assert.equal(runtime.activeOperations.has(agent.agentId), false)
+  assert.throws(
+    () => beginAgentOperation(runtime, agent.agentId),
+    (error: unknown) => error instanceof ChatGptSubagentError && error.code === "AGENT_BUSY" && /uncertain upstream state/.test(error.message)
+  )
 })
 
+test("running poll activity comes from agent lifecycle state", async () => {
+  const runtime = createRuntime()
+  const agent: BrowserAgentState = { agentId: "progress", status: "Searching the web", lastUsedAt: Date.now(), turnCount: 1 }
+  const turn = createRunningTurn(agent.agentId, Date.now())
+  runtime.agents.set(agent.agentId, agent)
+  runtime.turns.set(turn.turnId, turn)
+
+  const result = await pollSubagent(runtime, turn.turnId, 0)
+  assert.equal(result.status, "running")
+  assert.equal(result.activity, "Searching the web")
+})
+
+test("conversation URL fallback preserves configured project scope", () => {
+  assert.equal(conversationUrlForStart("https://chatgpt.com/g/g-p-example/project", "conversation-1"), "https://chatgpt.com/g/g-p-example/c/conversation-1")
+  assert.equal(conversationUrlForStart("https://chatgpt.com/", "conversation-1"), "https://chatgpt.com/c/conversation-1")
+})
 test("configured pacing values are retained", () => {
   const runtime = createChatGptSubagentRuntimeState({ interactionDelayMs: 375, minInterTurnDelayMs: 2_000 })
   assert.equal(runtime.interactionDelayMs, 375)

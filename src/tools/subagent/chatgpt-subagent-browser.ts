@@ -184,7 +184,7 @@ async function retryAfterDismissingBlockingOverlay<T>(page: Page, action: () => 
   }
 }
 
-function isChatGptUrl(value: string): boolean {
+export function isChatGptUrl(value: string): boolean {
   try {
     return new URL(value).hostname === "chatgpt.com"
   } catch {

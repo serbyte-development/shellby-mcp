@@ -11,6 +11,7 @@ import {
   enterPrompt,
   extractConversationId,
   findComposer,
+  isChatGptUrl,
   isExpectedConversationPage,
   navigateAndCaptureConversationPayload,
   submitComposer,
@@ -35,14 +36,19 @@ const MAX_CONCURRENT_AGENTS = 3
 const RATE_LIMIT_COOLDOWN_MS = 15 * 60_000
 const RATE_LIMIT_SELECTOR = '[data-testid="modal-conversation-history-rate-limit"]'
 const RATE_LIMIT_DISMISS_SETTLE_MS = 250
+const RATE_LIMIT_ERROR_MESSAGE =
+  "ChatGPT temporarily rate limited conversation access. New subagent turns are blocked during a 15-minute cooldown. Existing turns remain available through subagent_result. Do not retry automatically."
 const SUBMISSION_GRACE_MS = 500
 const MANAGED_VIEWPORT = { width: 412, height: 915 } as const
 
 const INJECTED_PROMPT =
   "Respond terse like smart caveman — drop articles, filler, pleasantries. Fragments OK. Technical terms exact. Code unchanged. Pattern: [thing] [action] [reason]. [next step].\n\nNot use `subagent` or `computer_*` tools."
 
+export type BrowserAgentStatus = "idle" | "uncertain" | ChatGptSubagentActivity
+
 export interface BrowserAgentState {
   agentId: string
+  status: BrowserAgentStatus
   page?: Page
   conversationUrl?: string
   lastCompletedAt?: number
@@ -55,7 +61,6 @@ export interface BrowserTurnState {
   agentId: string
   status: "running" | "completed" | "failed"
   recoveryAttempted: boolean
-  activity: ChatGptSubagentActivity
   lastActivityAt: number
   response?: string
   errorCode?: string
@@ -138,6 +143,7 @@ export async function askSubagent(
 ): Promise<ChatGptSubagentStartResult> {
   assertNotRateLimited(state)
   beginAgentOperation(state, request.agentId)
+  let agent: BrowserAgentState | undefined
   let observation: AssistantResponseObservation | undefined
   let operationTransferred = false
 
@@ -146,7 +152,8 @@ export async function askSubagent(
     if (state.rateLimitedUntil > 0) await clearExpiredRateLimit(state, signal)
     else await detectRateLimit(state)
 
-    const agent = state.agents.get(request.agentId) ?? (await createAgent(state, request.agentId, signal))
+    agent = state.agents.get(request.agentId) ?? (await createAgent(state, request.agentId, signal))
+    const activeAgent = agent
     await waitForInterTurn(state, agent, signal)
     const page = await ensureAgentPage(state, agent, signal)
 
@@ -158,7 +165,6 @@ export async function askSubagent(
       agentId: agent.agentId,
       status: "running",
       recoveryAttempted: false,
-      activity: "Generating response",
       lastActivityAt: Date.now(),
       prompt: submittedPrompt,
       settled: settlement.promise,
@@ -167,8 +173,9 @@ export async function askSubagent(
 
     observation = await observeAssistantResponse(page, {
       prompt: submittedPrompt,
+      onConversationId: (conversationId) => bindConversation(activeAgent, conversationId, state.chatGptUrl),
       onActivity: (activity) => {
-        turn.activity = activity
+        activeAgent.status = activity
         turn.lastActivityAt = Date.now()
       },
     })
@@ -184,6 +191,7 @@ export async function askSubagent(
     await detectRateLimit(state)
     await submitComposer(page, composer, signal)
 
+    if (agent.status === "idle") agent.status = "Generating response"
     agent.lastUsedAt = Date.now()
     agent.turnCount += 1
     turn.observation = observation
@@ -196,6 +204,7 @@ export async function askSubagent(
     return { agentId: agent.agentId, turnId, status: "running" }
   } catch (error) {
     await observation?.dispose().catch(() => undefined)
+    if (!operationTransferred && agent) agent.status = "idle"
     throw error
   } finally {
     if (!operationTransferred) endAgentOperation(state, request.agentId)
@@ -212,26 +221,20 @@ export async function pollSubagent(
   if (!turn) throw new ChatGptSubagentError("UNKNOWN_TURN", `Unknown ChatGPT subagent turn: ${turnId}`)
   if (turn.status === "running" && waitMs > 0) await waitForTurnSettlement(turn.settled, waitMs, signal)
   throwIfAborted(signal)
-  return turnResult(turn)
+  return turnResult(state, turn)
 }
 
 export async function createAgent(state: ChatGptSubagentRuntimeState, agentId: string, signal?: AbortSignal): Promise<BrowserAgentState> {
-  const agent: BrowserAgentState = { agentId, lastUsedAt: Date.now(), turnCount: 0 }
+  const agent: BrowserAgentState = { agentId, status: "idle", lastUsedAt: Date.now(), turnCount: 0 }
   await ensureAgentPage(state, agent, signal)
   state.agents.set(agentId, agent)
   return agent
 }
 
-export async function ensureAgentPage(
-  state: ChatGptSubagentRuntimeState,
-  agent: BrowserAgentState,
-  signal?: AbortSignal
-): Promise<Page> {
+export async function ensureAgentPage(state: ChatGptSubagentRuntimeState, agent: BrowserAgentState, signal?: AbortSignal): Promise<Page> {
   throwIfAborted(signal)
   const page = agent.page && !agent.page.isClosed() ? agent.page : undefined
-  if (page && !page.isClosed() && !agent.conversationUrl && agent.turnCount > 0 && extractConversationId(page.url())) {
-    agent.conversationUrl = page.url()
-  }
+  if (agent.turnCount > 0) captureConversationUrlFromPage(agent)
   if (page && isExpectedConversationPage(page, agent.conversationUrl)) return page
   const targetUrl = agent.conversationUrl ?? (agent.turnCount === 0 ? state.chatGptUrl : undefined)
   if (!targetUrl) {
@@ -260,7 +263,7 @@ export async function waitForTurnResponse(state: ChatGptSubagentRuntimeState, tu
   try {
     const result = await observation.response
     if (state.disposed || turn.status !== "running" || turn.observation !== observation) return
-    if (result.conversationId) bindConversation(agent, result.conversationId)
+    if (result.conversationId) bindConversation(agent, result.conversationId, state.chatGptUrl)
     completeTurn(state, turn, agent, result.text)
   } catch (error) {
     if (state.disposed || turn.status !== "running" || turn.observation !== observation) return
@@ -281,20 +284,20 @@ export async function failOrRecoverSubmittedTurn(
   turn.observation = undefined
   await oldObservation?.dispose().catch(() => undefined)
 
-  const page = agent.page
-  if (!agent.conversationUrl && page && !page.isClosed() && extractConversationId(page.url())) agent.conversationUrl = page.url()
+  captureConversationUrlFromPage(agent)
 
   if (!turn.recoveryAttempted && agent.conversationUrl) {
     turn.recoveryAttempted = true
     turn.lastActivityAt = Date.now()
+    agent.status = "Working"
     try {
-      await recoverSubmittedTurn(state, turn, agent, signal)
-      return
+      if (await recoverSubmittedTurn(state, turn, agent, signal)) return
     } catch (recoveryError) {
       originalError = recoveryError
     }
   }
 
+  agent.status = "uncertain"
   failTurn(state, turn, agent, originalError)
 }
 
@@ -303,7 +306,7 @@ export async function recoverSubmittedTurn(
   turn: BrowserTurnState,
   agent: BrowserAgentState,
   signal?: AbortSignal
-): Promise<void> {
+): Promise<boolean> {
   const conversationUrl = agent.conversationUrl
   const conversationId = conversationUrl ? extractConversationId(conversationUrl) : undefined
   if (!conversationUrl || !conversationId) {
@@ -312,18 +315,7 @@ export async function recoverSubmittedTurn(
 
   const oldPage = agent.page
   const page = await createManagedPage(state)
-  let observation: AssistantResponseObservation | undefined
   try {
-    observation = await observeAssistantResponse(page, {
-      prompt: turn.prompt,
-      onActivity: (activity) => {
-        turn.activity = activity
-        turn.lastActivityAt = Date.now()
-      },
-    })
-    void observation.response.catch(() => undefined)
-    turn.observation = observation
-
     const payload = await navigateAndCaptureConversationPayload(page, conversationUrl, conversationId, state.timeoutMs, signal)
     await assertAuthenticated(page)
     assertManagedChatGptPage(page, agent.agentId, conversationUrl)
@@ -333,29 +325,21 @@ export async function recoverSubmittedTurn(
     agent.lastUsedAt = Date.now()
     if (oldPage && !oldPage.isClosed()) await oldPage.close().catch(() => undefined)
 
-    const answer = findLatestAssistantAfterPrompt(extractConversationMessages(payload), turn.prompt)
-    if (answer) {
-      completeTurn(state, turn, agent, answer.text)
-      return
-    }
-
-    void waitForTurnResponse(state, turn, agent)
+    const answer = findLatestAssistantAfterPrompt(extractConversationMessages(payload), turn.prompt, agent.turnCount)
+    if (!answer) return false
+    completeTurn(state, turn, agent, answer.text)
+    return true
   } catch (error) {
-    if (turn.observation === observation) turn.observation = undefined
-    await observation?.dispose().catch(() => undefined)
     if (agent.page !== page && !page.isClosed()) await page.close().catch(() => undefined)
     throw error
   }
 }
-
 export async function disposeSubagents(state: ChatGptSubagentRuntimeState): Promise<void> {
   state.disposed = true
   if (state.cleanupTimer) clearInterval(state.cleanupTimer)
   const browser = state.browser
   const observations = [...state.turns.values()].map((turn) => turn.observation).filter((value): value is AssistantResponseObservation => value !== undefined)
-  const pages = [...state.agents.values()]
-    .map((agent) => agent.page)
-    .filter((page): page is Page => page !== undefined && !page.isClosed())
+  const pages = [...state.agents.values()].map((agent) => agent.page).filter((page): page is Page => page !== undefined && !page.isClosed())
   for (const turn of state.turns.values()) turn.settle()
   state.agents.clear()
   state.turns.clear()
@@ -371,6 +355,16 @@ export async function disposeSubagents(state: ChatGptSubagentRuntimeState): Prom
 
 export function beginAgentOperation(state: ChatGptSubagentRuntimeState, agentId: string): void {
   if (state.activeOperations.has(agentId)) throw new ChatGptSubagentError("AGENT_BUSY", `ChatGPT subagent ${agentId} already has an active turn.`)
+  const agent = state.agents.get(agentId)
+  if (agent?.status === "uncertain") {
+    throw new ChatGptSubagentError(
+      "AGENT_BUSY",
+      `ChatGPT subagent ${agentId} has uncertain upstream state after recovery could not confirm completion. Use a new agent_id.`
+    )
+  }
+  if (agent && agent.status !== "idle") {
+    throw new ChatGptSubagentError("AGENT_BUSY", `ChatGPT subagent ${agentId} is still ${agent.status}.`)
+  }
   if (state.activeOperations.size >= state.maxConcurrentAgents) {
     throw new ChatGptSubagentError("SUBAGENT_CAPACITY_REACHED", `ChatGPT subagent generation capacity is ${state.maxConcurrentAgents}.`)
   }
@@ -384,7 +378,7 @@ export function endAgentOperation(state: ChatGptSubagentRuntimeState, agentId: s
 export async function clearExpiredRateLimit(state: ChatGptSubagentRuntimeState, signal?: AbortSignal): Promise<void> {
   if (state.rateLimitedUntil === 0 || Date.now() < state.rateLimitedUntil) return
   for (const page of state.context?.pages() ?? []) {
-    if (!isChatGptPage(page)) continue
+    if (!isChatGptUrl(page.url())) continue
     const modal = page.locator(RATE_LIMIT_SELECTOR).first()
     if (!(await modal.isVisible().catch(() => false))) continue
     const button = modal.getByRole("button", { name: /got it|okay|ok|close/i }).first()
@@ -397,10 +391,10 @@ export async function clearExpiredRateLimit(state: ChatGptSubagentRuntimeState, 
 function completeTurn(state: ChatGptSubagentRuntimeState, turn: BrowserTurnState, agent: BrowserAgentState, response: string): void {
   if (turn.status !== "running") return
   const now = Date.now()
-  const page = agent.page
-  if (!agent.conversationUrl && page && !page.isClosed() && extractConversationId(page.url())) agent.conversationUrl = page.url()
+  captureConversationUrlFromPage(agent)
   agent.lastCompletedAt = now
   agent.lastUsedAt = now
+  agent.status = "idle"
   turn.status = "completed"
   turn.response = response
   settleTurn(state, turn, agent)
@@ -454,14 +448,31 @@ async function createManagedPage(state: ChatGptSubagentRuntimeState): Promise<Pa
   }
 }
 
-function bindConversation(agent: BrowserAgentState, conversationId: string): void {
+function bindConversation(agent: BrowserAgentState, conversationId: string, startUrl: string): void {
   const pageUrl = agent.page && !agent.page.isClosed() ? agent.page.url() : undefined
   if (pageUrl && extractConversationId(pageUrl) === conversationId) agent.conversationUrl = pageUrl
   else if (extractConversationId(agent.conversationUrl ?? "") !== conversationId) {
-    agent.conversationUrl = `https://chatgpt.com/c/${encodeURIComponent(conversationId)}`
+    agent.conversationUrl = conversationUrlForStart(startUrl, conversationId)
   }
 }
 
+function captureConversationUrlFromPage(agent: BrowserAgentState): void {
+  if (agent.conversationUrl || !agent.page || agent.page.isClosed()) return
+  const pageUrl = agent.page.url()
+  if (extractConversationId(pageUrl)) agent.conversationUrl = pageUrl
+}
+
+export function conversationUrlForStart(startUrl: string, conversationId: string): string {
+  const url = new URL(startUrl)
+  const encodedId = encodeURIComponent(conversationId)
+  if (/\/g\/g-p-[^/]+\/project\/?$/.test(url.pathname)) {
+    url.pathname = `${url.pathname.replace(/\/project\/?$/, "")}/c/${encodedId}`
+    url.search = ""
+    url.hash = ""
+    return url.toString()
+  }
+  return `https://chatgpt.com/c/${encodedId}`
+}
 async function waitForInterTurn(state: ChatGptSubagentRuntimeState, agent: BrowserAgentState, signal?: AbortSignal): Promise<void> {
   if (agent.lastCompletedAt === undefined) return
   const remaining = agent.lastCompletedAt + state.minInterTurnDelayMs - Date.now()
@@ -470,16 +481,13 @@ async function waitForInterTurn(state: ChatGptSubagentRuntimeState, agent: Brows
 
 function assertNotRateLimited(state: ChatGptSubagentRuntimeState): void {
   if (Date.now() >= state.rateLimitedUntil) return
-  throw new ChatGptSubagentError(
-    "SUBAGENT_RATE_LIMITED",
-    "ChatGPT temporarily rate limited conversation access. New subagent turns are blocked during a 15-minute cooldown. Existing turns remain available through subagent_result. Do not retry automatically."
-  )
+  throw new ChatGptSubagentError("SUBAGENT_RATE_LIMITED", RATE_LIMIT_ERROR_MESSAGE)
 }
 
 async function detectRateLimit(state: ChatGptSubagentRuntimeState): Promise<void> {
   assertNotRateLimited(state)
   for (const page of state.context?.pages() ?? []) {
-    if (!isChatGptPage(page)) continue
+    if (!isChatGptUrl(page.url())) continue
     const visible = await page
       .locator(RATE_LIMIT_SELECTOR)
       .first()
@@ -487,18 +495,7 @@ async function detectRateLimit(state: ChatGptSubagentRuntimeState): Promise<void
       .catch(() => false)
     if (!visible) continue
     state.rateLimitedUntil = Date.now() + RATE_LIMIT_COOLDOWN_MS
-    throw new ChatGptSubagentError(
-      "SUBAGENT_RATE_LIMITED",
-      "ChatGPT temporarily rate limited conversation access. New subagent turns are blocked during a 15-minute cooldown. Existing turns remain available through subagent_result. Do not retry automatically."
-    )
-  }
-}
-
-function isChatGptPage(page: Page): boolean {
-  try {
-    return new URL(page.url()).hostname === "chatgpt.com"
-  } catch {
-    return false
+    throw new ChatGptSubagentError("SUBAGENT_RATE_LIMITED", RATE_LIMIT_ERROR_MESSAGE)
   }
 }
 
@@ -542,11 +539,13 @@ async function waitForTurnSettlement(settled: Promise<void>, waitMs: number, sig
   })
 }
 
-function turnResult(turn: BrowserTurnState): ChatGptSubagentPollResult {
+function turnResult(state: ChatGptSubagentRuntimeState, turn: BrowserTurnState): ChatGptSubagentPollResult {
+  const agentStatus = state.agents.get(turn.agentId)?.status
+  const activity = agentStatus === "idle" || agentStatus === "uncertain" ? undefined : agentStatus
   return {
     turnId: turn.turnId,
     status: turn.status,
-    activity: turn.status === "running" ? turn.activity : undefined,
+    activity: turn.status === "running" ? activity : undefined,
     activityAgeMs: turn.status === "running" ? Math.max(0, Date.now() - turn.lastActivityAt) : undefined,
     response: turn.response,
     errorCode: turn.errorCode,

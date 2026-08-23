@@ -1,7 +1,7 @@
 import assert from "node:assert/strict"
 import test from "node:test"
 
-import { ChatGptTurnTracker } from "../src/tools/subagent/chatgpt-subagent-protocol.js"
+import { ChatGptTurnTracker, findLatestAssistantAfterPrompt } from "../src/tools/subagent/chatgpt-subagent-protocol.js"
 
 function turnFrame(topicId: string, encodedItem: string): string {
   return JSON.stringify([
@@ -9,17 +9,39 @@ function turnFrame(topicId: string, encodedItem: string): string {
   ])
 }
 
-function message(role: "user" | "assistant", text: string, options: { recipient?: string; status?: string; endTurn?: boolean | null } = {}): string {
-  return `event: delta\ndata: ${JSON.stringify({ v: { message: { id: `${role}-1`, author: { role }, content: { content_type: "text", parts: [text] }, status: options.status ?? "finished_successfully", end_turn: options.endTurn ?? null, metadata: {}, recipient: options.recipient ?? "all" } } })}\n\n`
+function message(
+  role: "user" | "assistant",
+  text: string,
+  options: { conversationId?: string; recipient?: string; status?: string; endTurn?: boolean | null } = {}
+): string {
+  return `event: delta\ndata: ${JSON.stringify({ conversation_id: options.conversationId, v: { message: { id: `${role}-1`, author: { role }, content: { content_type: "text", parts: [text] }, status: options.status ?? "finished_successfully", end_turn: options.endTurn ?? null, metadata: {}, recipient: options.recipient ?? "all" } } })}\n\n`
 }
+
+test("history recovery rejects an older identical prompt before the current turn appears", () => {
+  const staleHistory = [
+    { role: "user" as const, text: "repeat" },
+    { role: "assistant" as const, text: "old answer" },
+  ]
+
+  assert.equal(findLatestAssistantAfterPrompt(staleHistory, "repeat", 2), undefined)
+  assert.deepEqual(findLatestAssistantAfterPrompt([...staleHistory, { role: "user", text: "repeat" }, { role: "assistant", text: "new answer" }], "repeat", 2), {
+    role: "assistant",
+    text: "new answer",
+  })
+})
 
 test("CDP tracker binds only the submitted prompt and reconstructs exact final Markdown", () => {
   const activities: string[] = []
-  const tracker = new ChatGptTurnTracker("review", (activity) => activities.push(activity))
+  const conversationIds: string[] = []
+  const tracker = new ChatGptTurnTracker(
+    "review",
+    (activity) => activities.push(activity),
+    (conversationId) => conversationIds.push(conversationId)
+  )
   const topic = "conversation-turn-turn-1"
 
-  tracker.ingestFrame(turnFrame("conversation-turn-other", message("user", "other")))
-  tracker.ingestFrame(turnFrame(topic, message("user", "review")))
+  tracker.ingestFrame(turnFrame("conversation-turn-other", message("user", "other", { conversationId: "wrong-conversation" })))
+  tracker.ingestFrame(turnFrame(topic, message("user", "review", { conversationId: "conversation-1" })))
   tracker.ingestFrame(turnFrame(topic, message("assistant", "searching", { recipient: "web.run", status: "in_progress", endTurn: false })))
   tracker.ingestFrame(turnFrame(topic, message("assistant", "", { status: "in_progress", endTurn: null })))
   tracker.ingestFrame(turnFrame(topic, 'event: delta\ndata: {"p":"/message/content/parts/0","o":"append","v":"## Findings\\n\\n"}\n\n'))
@@ -33,6 +55,7 @@ test("CDP tracker binds only the submitted prompt and reconstructs exact final M
   const result = tracker.ingestFrame(turnFrame(topic, 'data: {"type":"message_stream_complete","conversation_id":"conversation-1"}\n\n'))
 
   assert.deepEqual(result, { text: "## Findings\n\n- exact server response", conversationId: "conversation-1", turnId: "turn-1" })
+  assert.deepEqual(conversationIds, ["conversation-1"])
   assert.ok(activities.includes("Searching the web"))
   assert.ok(activities.includes("Generating response"))
 })

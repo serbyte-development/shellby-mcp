@@ -32,7 +32,7 @@ Activity remains one of `Working`, `Searching the web`, `Using tools`, or `Gener
 
 Agent state and turn records are process-local. A full MCP restart loses the local `agent_id` conversation mapping.
 
-After 30 idle minutes, only the managed background page closes; the saved conversation identity and prior results remain. A later call restores that conversation. Submitted turns also have a 30-minute no-progress cutoff and one recovery attempt that may reopen/read the saved conversation but never resubmits the prompt.
+After 30 idle minutes, only the managed background page closes; the saved conversation identity and prior results remain. A later call restores that conversation. Submitted turns also have a 30-minute no-progress cutoff and one recovery attempt that reopens and reads the saved conversation once but never resubmits the prompt or waits on a second observer. If recovery cannot prove the submitted turn finished, that agent is marked `uncertain` and rejects later prompts with `AGENT_BUSY`; use a new `agent_id` instead of risking an overlapping upstream turn.
 
 Important failures include `BROWSER_UNAVAILABLE`, `CHATGPT_NOT_AUTHENTICATED`, `AGENT_BUSY`, `SUBAGENT_CAPACITY_REACHED`, `AGENT_TARGET_LOST`, `AGENT_IDLE_EXPIRED`, `UNKNOWN_TURN`, `REQUEST_ABORTED`, and `CHATGPT_UI_CHANGED`.
 

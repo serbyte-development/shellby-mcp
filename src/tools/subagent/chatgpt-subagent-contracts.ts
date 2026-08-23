@@ -32,11 +32,6 @@ export interface ChatGptSubagentPollResult {
 
 export type ChatGptSubagentActivity = "Working" | "Searching the web" | "Using tools" | "Generating response"
 
-export interface ChatGptConversationMessage {
-  role: "user" | "assistant"
-  text: string
-}
-
 export type ChatGptSubagentErrorCode =
   | "BROWSER_UNAVAILABLE"
   | "CHATGPT_NOT_AUTHENTICATED"

@@ -27,7 +27,8 @@ export class ChatGptTurnTracker {
 
   constructor(
     private readonly prompt: string,
-    private readonly onActivity?: (activity: ChatGptSubagentActivity) => void
+    private readonly onActivity?: (activity: ChatGptSubagentActivity) => void,
+    private readonly onConversationId?: (conversationId: string) => void
   ) {}
 
   ingestFrame(payloadData: string): ChatGptTurnCompletion | undefined {
@@ -67,7 +68,6 @@ export class ChatGptTurnTracker {
     for (const item of parseResponsePayloads(text)) {
       const record = asRecord(item)
       if (!record) continue
-      this.captureConversationId(record)
 
       const value = asRecord(record.v)
       const message = value ? normalizeMessage(value) : undefined
@@ -78,6 +78,7 @@ export class ChatGptTurnTracker {
       if (input?.role === "user" && input.text.trim() === this.prompt.trim()) this.bind(sourceId, turnId)
 
       if (this.sourceId !== sourceId) continue
+      this.captureConversationId(record)
       this.onActivity?.(message ? classifyActivity(message) : "Working")
 
       if (message?.role === "assistant") {
@@ -100,7 +101,10 @@ export class ChatGptTurnTracker {
   }
 
   private captureConversationId(record: Record<string, unknown>): void {
-    if (!this.conversationId) this.conversationId = stringValue(record.conversation_id)
+    const conversationId = stringValue(record.conversation_id)
+    if (this.conversationId || !conversationId) return
+    this.conversationId = conversationId
+    this.onConversationId?.(conversationId)
   }
 
   private applyDelta(delta: Record<string, unknown>): void {
@@ -211,8 +215,12 @@ export interface ConversationMessage {
 
 export function findLatestAssistantAfterPrompt(
   messages: readonly ConversationMessage[],
-  prompt: string
+  prompt: string,
+  expectedUserTurnCount: number
 ): ConversationMessage | undefined {
+  const userTurnCount = messages.filter((message) => message.role === "user").length
+  if (userTurnCount !== expectedUserTurnCount) return undefined
+
   let promptIndex = -1
   for (let index = messages.length - 1; index >= 0; index -= 1) {
     const message = messages[index]

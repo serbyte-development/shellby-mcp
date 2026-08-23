@@ -13,13 +13,13 @@ Normal completion comes from raw CDP streams: `/backend-api/f/conversation` SSE 
 One process-level service owns:
 
 ```text
-agents: agent_id -> optional page + conversation URL + turn counter + timestamps
+agents: agent_id -> lifecycle status + optional page + conversation URL + turn counter + timestamps
 turns: turn_id -> detached local turn state
 activeOperations: agent_id -> reserved/submitted turn
 pendingEvents: completion notifications
 ```
 
-The conversation reference stays on the agent when its page is closed. Process restart still loses this in-memory mapping.
+The agent lifecycle reuses the existing activity values: `Working`, `Searching the web`, `Using tools`, and `Generating response`, plus `idle` and `uncertain`. `activeOperations` remains only the concurrency/race lock. The conversation reference stays on the agent when its page is closed. Process restart still loses this in-memory mapping.
 
 ## Submission
 
@@ -44,7 +44,7 @@ A project URL matters when creating the first conversation. ChatGPT owns the res
 
 Before submission, the page must match that saved identity. A mismatched open page is navigated to the correct URL; a closed or unusable page is replaced with one background page. The prompt is still submitted at most once.
 
-After 30 minutes without an active turn, cleanup closes only the background page and retains the agent, conversation reference, and turn count. A later call with the same `agent_id` reopens the saved conversation. A submitted turn with 30 minutes of no observed progress enters the one-shot recovery path described in [Subagent Completion](./Subagent%20Completion.md).
+After 30 minutes without an active turn, cleanup closes only the background page and retains the agent, conversation reference, and turn count. A later call with the same `agent_id` reopens the saved conversation. A submitted turn with 30 minutes of no observed progress enters the one-shot history recovery path described in [Subagent Completion](./Subagent%20Completion.md).
 
 ## Code Map
 

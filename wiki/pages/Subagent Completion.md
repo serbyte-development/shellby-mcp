@@ -14,9 +14,9 @@ There is no DOM completion observer or application-level `stream_status` polling
 
 ## Recovery
 
-Every submitted turn gets at most one catastrophic recovery attempt. Observer/page failure, or 30 minutes without observable progress, disposes the old observer and opens one fresh background page at the saved conversation URL. The recovery navigation captures ChatGPT's conversation payload and completes locally when it contains a final assistant answer after the exact submitted prompt. Otherwise a new CDP observer remains attached to the restored page.
+Every submitted turn gets at most one catastrophic recovery attempt. Observer/page failure, or 30 minutes without observable progress, disposes the old observer and opens one fresh background page at the saved conversation URL. The recovery navigation reads ChatGPT's conversation payload once and completes locally only when it contains a final assistant answer after the exact submitted prompt.
 
-Recovery never clicks Send or resubmits the prompt. A recovery failure, or another 30 minutes without progress after recovery, fails the turn and releases capacity.
+Recovery never clicks Send, resubmits the prompt, or attaches a second turn observer. If that single history read has no matching final answer, or the recovery navigation fails, the turn fails immediately and releases global generation capacity, but the agent becomes `uncertain` because ChatGPT may still be processing upstream. That `agent_id` rejects later submissions with `AGENT_BUSY`; callers can use a new `agent_id` rather than risk overlapping turns in the same conversation.
 
 This is separate from pre-submit restoration: a closed idle page or mismatched conversation URL is corrected before observation and submission, using the existing managed page when possible and one new background page otherwise.
 
@@ -38,7 +38,8 @@ Completed/failed results remain available locally even after idle cleanup closes
 6. `subagent_result` reads local state only.
 7. Recovery may navigate and read conversation history once, but never resubmits.
 8. A turn cannot remain without observable progress for more than 30 minutes before recovery or final failure.
-9. Existing interaction/inter-turn delays and rate-limit cooldown remain in force.
+9. An unreconciled submitted turn leaves its agent `uncertain` and unavailable for reuse.
+10. Existing interaction/inter-turn delays and rate-limit cooldown remain in force.
 
 ## Related
 
