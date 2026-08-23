@@ -1,82 +1,64 @@
 # Browser ChatGPT Subagents
 
-Verified 2026-08-22 against current source, deterministic tests, and live ChatGPT runs.
+Verified 2026-08-23 against current source and deterministic tests.
 
-## What This Is
+## Model
 
-Implementation overview for the process-level browser runtime behind `subagent_run` and `subagent_result`. Caller behavior is canonical in [`subagent_run` / `subagent_result`](./tools/subagent.md); completion and recovery rules are canonical in [Subagent Completion and Recovery](./Subagent%20Completion%20and%20Recovery.md).
+`subagent_run` uses the authenticated dedicated Chrome only as a ChatGPT client. Each `agent_id` retains one in-process conversation identity and, while active, one managed background page. A new agent opens `MCP_CHATGPT_PROJECT_URL` when configured, otherwise `https://chatgpt.com/`. Reusing the same `agent_id` restores or reuses its saved conversation before submitting the next prompt.
 
-Point-in-time upstream ChatGPT HTTP/WebSocket behavior observed through raw CDP is documented separately in [ChatGPT CDP Transport](./ChatGPT%20CDP%20Transport.md). Production now consumes the observed turn-topic WebSocket frames while retaining a DOM observer as its secondary completion path.
-
-The runtime attaches through Playwright-over-CDP to an already-running authenticated Chrome instance. Production browser setup/start/hide behavior belongs to `scripts/chatgpt-browser.mjs` and `scripts/start.mjs`; the CDP endpoint comes from `MCP_CONFIG.chatGpt.cdpEndpoint` (`src/config.ts`, `src/tools/subagent/chatgpt-subagent.ts`).
+Normal completion comes from raw CDP streams: `/backend-api/f/conversation` SSE and `conversation-turn-*` WebSocket frames feed the same exact-prompt tracker. Rendered DOM and application-level polling are not completion sources. Conversation history is read only during the single catastrophic recovery attempt.
 
 ## Runtime State
 
-One process-level service returned by `createChatGptSubagentService()` is shared across otherwise stateless MCP requests. Its runtime state is (`src/tools/subagent/chatgpt-subagent.ts`):
+One process-level service owns:
 
 ```text
-agents: agent_id -> live browser/page state
-conversationRefs: agent_id -> saved conversation ID/URL + turn counter
-turns: turn_id -> detached turn state
-activeOperations: agent_id -> reserved operation or active turn_id
+agents: agent_id -> optional page + conversation URL + turn counter + timestamps
+turns: turn_id -> detached local turn state
+activeOperations: agent_id -> reserved/submitted turn
 pendingEvents: completion notifications
 ```
 
-`agent_id` is the persistent conversation identity. `turn_id` identifies one submitted operation and remains sequential per agent while the in-process conversation reference survives. Conversation refs are process-local, not durable storage.
+The conversation reference stays on the agent when its page is closed. Process restart still loses this in-memory mapping.
 
-## Browser and Page Ownership
+## Submission
 
-Each live agent owns one service-created Playwright `Page`. The shared `createBackgroundPage()` helper creates it through a browser-level CDP session with `Target.createTarget({ background: true, focus: false })`, then binds the returned target ID to the Playwright page. There is no `BrowserContext.newPage()` compatibility path. Routing is page-based, so foreground window focus, tab order, mouse position, and keyboard focus do not determine which subagent receives work (`src/tools/subagent/chatgpt-subagent-browser.ts`, `src/tools/subagent/chatgpt-subagent.ts`).
+For each turn `askSubagent()`:
 
-`createAgent()` opens either the base ChatGPT URL for a new agent or the exact saved conversation for a recoverable agent. `ensureActivePage()` keeps using the current page only while it still matches the expected ChatGPT target; if the page is closed or lost, it can reopen the saved conversation. It never hijacks an unrelated tab that a user navigated elsewhere (`src/tools/subagent/chatgpt-subagent.ts`).
+1. enforces the existing rate-limit cooldown and three-generation cap;
+2. reuses the expected page, navigates a mismatched managed page to the saved conversation, or opens one replacement background page;
+3. keeps the configured inter-turn delay;
+4. installs the raw CDP turn observer before submission;
+5. finds the composer;
+6. keeps the configured interaction delays;
+7. enters the prompt;
+8. keeps the shared pre-submit grace and final rate-limit check;
+9. clicks Send once;
+10. records detached local turn state and returns `turn_id`.
 
-Before prompt submission, `assertPreSubmitLocation()` verifies ownership again. A missing saved conversation fails rather than silently creating a replacement conversation under the old `agent_id` (`src/tools/subagent/chatgpt-subagent.ts`).
+The first-turn prompt contract is unchanged: oververbosity `1` selects caveman `ultra`, `2` selects `full`, `3` selects `lite`, `4` selects `lite` plus its completeness qualifier, and `5` injects nothing. Later turns send only the caller prompt.
 
-## Conversation Binding
+## Multi-turn and Projects
 
-New ChatGPT conversations may move through a temporary `WEB:` URL before receiving a stable `/c/<id>` URL. Temporary IDs are deliberately ignored. After first-turn submission, `waitForStableConversationLocation()` records the stable conversation ID/URL when it becomes available (`src/tools/subagent/chatgpt-subagent-browser.ts`, `src/tools/subagent/chatgpt-subagent.ts`).
+A project URL matters when creating the first conversation. ChatGPT owns the resulting conversation and project context; the runtime stores its stable URL and derives the conversation ID from that URL when needed.
 
-Before a stable URL exists, the submitted page is the only recoverable identity for that first turn. Preserving page ownership during initial binding is therefore an implementation invariant.
+Before submission, the page must match that saved identity. A mismatched open page is navigated to the correct URL; a closed or unusable page is replaced with one background page. The prompt is still submitted at most once.
 
-## Prompt Submission
-
-`askSubagent()` performs only the synchronous work needed to submit safely and create detached turn state. It connects to CDP, resolves the agent page, verifies ownership, snapshots turn-relative DOM state, installs the WebSocket + DOM response observation, handles the known composer overlay when necessary, enters the prompt, verifies ownership again, waits the shared submission grace, performs the final rate-limit check, and submits exactly once (`src/tools/subagent/chatgpt-subagent.ts`, `src/tools/subagent/chatgpt-subagent-browser.ts`, `src/tools/subagent/chatgpt-subagent-observer.ts`). The same path and grace apply to a new agent's first message and later turns.
-
-After submission it records the turn, starts stable-conversation binding when needed, and lets the already-installed observers settle the detached turn. `subagent_result` only waits on that shared local turn state. No post-submission recovery path is allowed to resubmit the prompt. Completion details live in [Subagent Completion and Recovery](./Subagent%20Completion%20and%20Recovery.md).
-
-## Runtime Reclamation
-
-Idle live browser state can be reclaimed without deleting the underlying ChatGPT conversation. When possible, the module preserves the conversation reference and turn counter, disposes browser tracking, removes local turn state/events, and closes only the page it still owns. Reusing that `agent_id` can reopen the saved conversation within the same MCP process (`src/tools/subagent/chatgpt-subagent.ts`).
-
-A full MCP restart loses process-local agent, turn, pending-event, and conversation-reference state even though ChatGPT account history may still contain the conversations. Caller-visible lifetime and failure consequences are documented in [`subagent_run` / `subagent_result`](./tools/subagent.md).
+After 30 minutes without an active turn, cleanup closes only the background page and retains the agent, conversation reference, and turn count. A later call with the same `agent_id` reopens the saved conversation. A submitted turn with 30 minutes of no observed progress enters the one-shot recovery path described in [Subagent Completion](./Subagent%20Completion.md).
 
 ## Code Map
 
-| Location                                           | Responsibility                                                                                 |
-| -------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
-| `src/tools/subagent/chatgpt-subagent.ts`           | Agent/turn state, page ownership, submission, lifecycle, completion integration, reclamation.  |
-| `src/tools/subagent/chatgpt-subagent-browser.ts`   | Background-page creation, ChatGPT page interaction, saved-payload capture, stable URL binding. |
-| `src/tools/subagent/chatgpt-subagent-observer.ts`  | Passive WebSocket and DOM response observation.                                                |
-| `src/tools/subagent/chatgpt-subagent-protocol.ts`  | Stream and saved-conversation payload normalization.                                           |
-| `src/tools/subagent/chatgpt-subagent-contracts.ts` | Dependency-light service/result/error contracts.                                               |
-| `src/tools/subagent/subagent-tools.ts`             | Public MCP schemas, batching, staggering, result fan-out.                                      |
-| `src/server/tool-registration-boundary.ts`         | Global completion-event delivery boundary.                                                     |
-| `scripts/chatgpt-browser.mjs`                      | Dedicated authenticated Chrome profile setup and lifecycle.                                    |
-
-Test ownership and live compatibility coverage are maintained in [Build and Test](./Build%20and%20Test.md).
-
-## Operational Risks
-
-- ChatGPT DOM selectors and private endpoints are not stable public APIs; browser-specific assumptions should stay isolated in `chatgpt-subagent-browser.ts`.
-- The attached browser session is authenticated authority. Request cancellation after submission cannot unsend the ChatGPT turn.
-- Browser state and conversation bindings are process-local even when the underlying ChatGPT conversation persists remotely.
+| Location                                          | Responsibility                                                |
+| ------------------------------------------------- | ------------------------------------------------------------- |
+| `src/tools/subagent/chatgpt-subagent.ts`          | agent/turn state, pacing, rate limits, submission, completion |
+| `src/tools/subagent/chatgpt-subagent-browser.ts`  | background page and minimal composer interaction              |
+| `src/tools/subagent/chatgpt-subagent-observer.ts` | one raw CDP HTTP/WebSocket observation per turn               |
+| `src/tools/subagent/chatgpt-subagent-protocol.ts` | exact-prompt binding and assistant delta reconstruction       |
+| `src/tools/subagent/subagent-tools.ts`            | unchanged public MCP schemas and batching                     |
 
 ## Related
 
 - [`subagent_run` / `subagent_result`](./tools/subagent.md)
-- [Subagent Completion and Recovery](./Subagent%20Completion%20and%20Recovery.md)
+- [Subagent Completion](./Subagent%20Completion.md)
 - [ChatGPT CDP Transport](./ChatGPT%20CDP%20Transport.md)
-- [MCP Tool Surface](./MCP%20Tool%20Surface.md)
-- [Configuration and Startup](./Configuration%20and%20Startup.md)
 - [Build and Test](./Build%20and%20Test.md)
-- [Open Questions and Risks](./Open%20Questions%20and%20Risks.md)

@@ -57,7 +57,7 @@ The registration boundary projects ordinary typed results into structured or com
 
 Published instructions tell clients to read `<workspace>/AGENTS.md`, conserve output, prefer RTK for supported reads and noisy commands, discover reusable workflows through `skill_list`/`skill_load`, edit with `apply_patch`, keep new work under the configured workspace, reuse contextual shell IDs, serialize work within a shell, distrust fetched content, and treat screenshots as potentially private. Zod schemas enforce external input mechanics while runtime checks enforce live-state invariants; prose remains advisory (`src/config.ts`, `src/server/mcp-server.ts`).
 
-Skill catalog mechanics are maintained in [Workspace Tooling](./Workspace%20Tooling.md). The subagent caller contract lives in [`subagent_run` / `subagent_result`](./tools/subagent.md); browser ownership and completion/recovery internals are separate maintained pages.
+Skill catalog mechanics are maintained in [Workspace Tooling](./Workspace%20Tooling.md). The subagent caller contract lives in [`subagent_run` / `subagent_result`](./tools/subagent.md); browser ownership and completion internals are separate maintained pages.
 
 ## Related
 
@@ -66,7 +66,7 @@ Skill catalog mechanics are maintained in [Workspace Tooling](./Workspace%20Tool
 - [Tool Naming and Schema Design](./Tool%20Naming%20and%20Schema%20Design.md)
 - [Persistent Shell Runtime](./Persistent%20Shell%20Runtime.md)
 - [Browser ChatGPT Subagents](./Browser%20ChatGPT%20Subagents.md)
-- [Subagent Completion and Recovery](./Subagent%20Completion%20and%20Recovery.md)
+- [Subagent Completion](./Subagent%20Completion.md)
 - [Workspace Tooling](./Workspace%20Tooling.md)
 - [Audit Logging](./Audit%20Logging.md)
 - [apply_patch](./tools/apply_patch.md)

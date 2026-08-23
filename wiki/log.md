@@ -1113,3 +1113,16 @@
 - Audited all 21 maintained wiki pages for required sections, index coverage, relative links, repository citations, Obsidian links, and committed private identifiers; the structural checks passed.
 - Corrected stale subagent class/state names, background-page and observer ownership, recovery-history wording, and the completed functional-runtime roadmap item across the architecture, browser, testing, recovery, risk, and roadmap pages.
 - Replaced the oversized root README with a public GitHub landing page using alerts, collapsible operational details, a Mermaid flow, focused setup/security guidance, and links into the maintainer wiki.
+
+## [2026-08-23] subagents | Replace recovery state machine with one CDP turn path
+
+- Rebuilt browser-backed subagents around one persistent ChatGPT page per `agent_id`: new agents start from the configured project URL, follow-up turns reuse the same page, and the existing interaction/inter-turn delays, submission grace, three-generation cap, and rate-limit cooldown remain.
+- Made raw CDP turn data the sole normal completion authority: current project sessions complete from `/backend-api/f/conversation` SSE while other observed sessions can complete from `conversation-turn-*` WebSocket frames. Both feed one exact-prompt v1 tracker; removed DOM completion, URL binding, conversation-history recovery, saved-conversation state, idle reclamation, and catastrophic recovery.
+- Removed the retired read-only saved-conversation live fixture and its package script; the two-turn public MCP live canary is now the single real-service compatibility test.
+- Replaced recovery-heavy deterministic tests with focused project-start, same-page multi-turn, CDP protocol, pacing, capacity, and rate-limit coverage. Public subagent tool descriptions and the injected mini-prompt were not changed.
+
+## [2026-08-23] subagents | Restore bounded conversation recovery
+
+- Restored the 30-minute no-progress cutoff and one post-submit catastrophic recovery attempt without reintroducing prompt resubmission or DOM completion.
+- Bound agents to one saved conversation URL, restore mismatched or closed managed pages before follow-up submission, and close only the background page after 30 idle minutes while retaining agent context.
+- Restored the exact prior first-turn oververbosity prompt mapping and added deterministic coverage for URL restoration, idle reopening, timeout failure, one-shot history recovery, and the no-second-recovery boundary.

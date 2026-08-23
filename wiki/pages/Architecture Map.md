@@ -8,24 +8,24 @@ This page maps the process-level components and follows one request from the HTT
 
 ## Layers
 
-| Layer                 | Responsibility                                                                                                                                | Implementation                           |
-| --------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------- |
-| Static MCP config     | Define server identity, shared tool metadata, runtime defaults, and global instructions                                                       | `src/config.ts`                          |
-| Process entry         | Consume static configuration, prepare workspace state, compose dependencies, handle shutdown                                                  | `src/index.ts`                           |
-| HTTP boundary         | Bind localhost, apply MCP Express HTTP guards, expose health and MCP routes, own request transports                                           | `src/server/http-server.ts`              |
-| Remote authentication | Persist the bound ChatGPT subject outside the repo                                                                                            | `src/auth/auth.ts`                       |
-| MCP audit log         | Record every `tools/call` request and compact completion metadata without affecting dispatch                                                  | `src/server/audit-log.ts`                |
-| MCP composition       | Publish shared instructions and register capability tool modules                                                                              | `src/server/mcp-server.ts`               |
-| Tool contracts        | Own tool schemas, descriptions, handlers, result shaping, and capability-specific errors                                                      | `src/tools/`                             |
-| Computer Use tools    | Publish eleven focused schemas, validate targets, and normalize compact MCP results                                                           | `src/tools/computer/computer-tools.ts`   |
-| Peekaboo adapter      | Invoke the CLI without a shell, serialize calls, parse bounded JSON, and retain snapshot targets                                              | `src/tools/computer/peekaboo.ts`         |
-| Shell manager         | Lazily create/restore named shells, manage live LRU capacity, hibernate idle shells, and expire cached recoverable state                      | `src/tools/shell/session-manager.ts`     |
-| Shell runtime         | Own the persistent child shell, marker protocol, transcripts, command/batch records, context capture, reset, and recovery                     | `src/tools/shell/session.ts`             |
-| Parallel shell runner | Parse `*** Run` batches, enforce four children per shell, run isolated shell jobs, cap output, timeout, and clean process groups              | `src/tools/shell/parallel-runner.ts`     |
-| Apply Patch           | Publish the first-class patch tool and execute the checked-in vendored binary directly                                                        | `src/tools/apply-patch/apply-patch.ts`   |
-| Skill catalog         | Discover and load reusable workspace `SKILL.md` files dynamically                                                                             | `src/tools/skills.ts`                    |
-| Website fetching      | Produce Markdown, cleaned HTML, or raw rendered HTML and retain bounded cursor-addressed documents                                            | `src/tools/web/web-open.ts`              |
-| ChatGPT subagents     | Attach to debuggable Chrome, run up to three detached generations, reconcile polls, idle-evict runtime state, and recover saved conversations | `src/tools/subagent/chatgpt-subagent.ts` |
+| Layer                 | Responsibility                                                                                                                                  | Implementation                           |
+| --------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------- |
+| Static MCP config     | Define server identity, shared tool metadata, runtime defaults, and global instructions                                                         | `src/config.ts`                          |
+| Process entry         | Consume static configuration, prepare workspace state, compose dependencies, handle shutdown                                                    | `src/index.ts`                           |
+| HTTP boundary         | Bind localhost, apply MCP Express HTTP guards, expose health and MCP routes, own request transports                                             | `src/server/http-server.ts`              |
+| Remote authentication | Persist the bound ChatGPT subject outside the repo                                                                                              | `src/auth/auth.ts`                       |
+| MCP audit log         | Record every `tools/call` request and compact completion metadata without affecting dispatch                                                    | `src/server/audit-log.ts`                |
+| MCP composition       | Publish shared instructions and register capability tool modules                                                                                | `src/server/mcp-server.ts`               |
+| Tool contracts        | Own tool schemas, descriptions, handlers, result shaping, and capability-specific errors                                                        | `src/tools/`                             |
+| Computer Use tools    | Publish eleven focused schemas, validate targets, and normalize compact MCP results                                                             | `src/tools/computer/computer-tools.ts`   |
+| Peekaboo adapter      | Invoke the CLI without a shell, serialize calls, parse bounded JSON, and retain snapshot targets                                                | `src/tools/computer/peekaboo.ts`         |
+| Shell manager         | Lazily create/restore named shells, manage live LRU capacity, hibernate idle shells, and expire cached recoverable state                        | `src/tools/shell/session-manager.ts`     |
+| Shell runtime         | Own the persistent child shell, marker protocol, transcripts, command/batch records, context capture, reset, and recovery                       | `src/tools/shell/session.ts`             |
+| Parallel shell runner | Parse `*** Run` batches, enforce four children per shell, run isolated shell jobs, cap output, timeout, and clean process groups                | `src/tools/shell/parallel-runner.ts`     |
+| Apply Patch           | Publish the first-class patch tool and execute the checked-in vendored binary directly                                                          | `src/tools/apply-patch/apply-patch.ts`   |
+| Skill catalog         | Discover and load reusable workspace `SKILL.md` files dynamically                                                                               | `src/tools/skills.ts`                    |
+| Website fetching      | Produce Markdown, cleaned HTML, or raw rendered HTML and retain bounded cursor-addressed documents                                              | `src/tools/web/web-open.ts`              |
+| ChatGPT subagents     | Attach to authenticated Chrome, keep one project-aware page per agent, run up to three detached generations, and complete from CDP turn streams | `src/tools/subagent/chatgpt-subagent.ts` |
 
 ## Request Lifecycle
 

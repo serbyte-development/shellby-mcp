@@ -11,7 +11,7 @@ const LIVE_TEST_ENABLED = process.env.RUN_LIVE_SUBAGENT_TESTS === "1" && !proces
 const LIVE_AGENT_ID = "live-subagent-integration"
 const LIVE_TIMEOUT_MS = 4 * 60_000
 const LIVE_PROCESS_HARD_CAP_MS = 5 * 60_000
-const POLL_WAIT_MS = 60_000
+const POLL_WAIT_MS = 30_000
 const ARTIFACT_DIR = new URL("./artifacts/", import.meta.url)
 
 if (LIVE_TEST_ENABLED) {

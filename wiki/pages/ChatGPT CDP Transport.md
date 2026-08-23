@@ -1,77 +1,38 @@
 # ChatGPT CDP Transport
 
-Verified 2026-08-20 against the exploratory authenticated CDP probe plus live subagent canaries.
+Verified 2026-08-23 against authenticated ChatGPT CDP probes and the production subagent tracker.
 
-## What This Is
+## Observed Transport
 
-Point-in-time documentation of the upstream ChatGPT Web transport and browser signals observed while a subagent turn was generated. These are private ChatGPT implementation details, not stable APIs. Current Unhinged Agent completion behavior remains canonical in [Subagent Completion and Recovery](./Subagent%20Completion%20and%20Recovery.md).
+Submitting in ChatGPT Web starts through `/backend-api/f/conversation`, then generation continues on ChatGPT's authenticated WebSocket. Turn traffic is published on topics shaped like `conversation-turn-<turn-id>` and contains encoded SSE-style stream items.
 
-## Observed Turn Transport
+Observed stream data includes the submitted user message, assistant/tool messages, incremental v1 patches, `conversation_id`, `message_stream_complete`, and explicit turn completion. Source Markdown and fenced code are preserved in the structured stream.
 
-A submitted turn did not stay on one HTTP response. The browser first posted to `/backend-api/f/conversation`; that response contained a handoff describing a per-turn topic and ways to resume it. The actual assistant generation then continued over ChatGPT's authenticated WebSocket connection.
+Raw CDP also proved that `/backend-api/f/conversation` can be consumed incrementally with `Network.streamResourceContent` plus `Network.dataReceived`. The production tracker accepts that HTTP path because current ChatGPT/project sessions may choose either transport.
 
-The WebSocket subscribed to a topic shaped like `conversation-turn-<turn-id>` and delivered ordered stream items containing the conversation ID, turn ID, parent stream-item relationship, and encoded SSE-style payload. The stream included the assistant message creation and subsequent text patches, preserving source text such as Markdown and fenced code.
+## Production Choice
 
-Observed completion-related items included:
+Subagents use one CDP observer after submission. It feeds the same tracker from either HTTP SSE or WebSocket turn data:
 
-- `final_channel_token` and `last_token` message markers;
-- `message_stream_complete`;
-- `data: [DONE]`;
-- a turn-topic payload with `type: "done"` and the conversation/turn identity;
-- a separate `conversation-turn-complete` event on ChatGPT's broader `conversations` WebSocket topic.
+```text
+browser UI -> submit prompt
+raw CDP HTTP/WS -> bind exact prompt -> reconstruct final assistant -> complete local turn
+```
 
-This explains the historical unreliability of treating Playwright `page.on("response")` as the sole completion source: the initial HTTP response can finish after handing the live turn to WebSocket, so later assistant deltas are not additional Playwright HTTP `Response` events (`src/tools/subagent/chatgpt-subagent-browser.ts`, `wiki/log.md`).
+The DOM remains necessary for composer interaction only. It is not a completion or recovery source; the one-shot catastrophic recovery uses saved conversation JSON or another CDP observation.
 
-## CDP Signal Coverage
+## Rate-limit Finding
 
-Raw CDP exposed several useful passive signals without issuing additional ChatGPT requests:
+Earlier probes showed that extra conversation-history/reload traffic could contribute to ChatGPT's conversation-history rate limit. The runtime performs no normal conversation-history fetch, `stream_status` request, or reload. It permits one conversation navigation/history response only after a submitted turn fails or reaches 30 minutes without progress. The existing UI modal detection, cooldown, inter-turn delay, interaction delays, and pre-submit grace remain.
 
-| Signal                                                   | Observed value                                                                                                                                                 |
-| -------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `Network.webSocketFrameReceived`                         | Full turn-topic stream, assistant deltas, markers, and explicit completion events.                                                                             |
-| `Network.streamResourceContent` + `Network.dataReceived` | Successfully streamed the initial `/backend-api/f/conversation` response, including the handoff and terminal `[DONE]`, but not the later WebSocket generation. |
-| Playwright `response` / `requestfinished`                | Useful for normal HTTP lifecycle visibility, but insufficient alone after stream handoff.                                                                      |
+ChatGPT's own frontend may still issue its own bootstrap/history traffic; the runtime cannot prevent upstream client behavior.
 
-The WebSocket stream was the richest signal in the probe because it contained both exact assistant text and explicit lifecycle completion.
+## Private Protocol Risk
 
-## DOM Observation
-
-A page-context `MutationObserver` also worked as a passive signal. During the same turn it observed:
-
-1. the temporary `Thinking` assistant state;
-2. replacement with the visible assistant response;
-3. progressive response text changes as tokens rendered;
-4. the generating/stop control eventually disappearing.
-
-The DOM therefore provides a useful independent fallback and activity signal, but rendered text is semantically lossy compared with the structured stream. In the probe, the fenced code block remained understandable but its rendered text did not preserve the exact source Markdown representation.
-
-## Conversation-History Rate Limit
-
-The same probe captured the exact rate-limit path behind ChatGPT's conversation-history modal. Normal `stream_status` checks returned HTTP 200 throughout the sampled turn, including the final `COMPLETE` response. At the time of the probe, recovery reloaded the managed conversation page to recover canonical conversation JSON; that application-level reload path was subsequently removed.
-
-That reload caused ChatGPT to issue a fresh burst of page/bootstrap requests, including multiple conversation/sidebar history requests. Two `/backend-api/conversations?...` requests then returned HTTP 429 with `{"detail":"Too many requests"}`. The managed tab subsequently displayed `[data-testid="modal-conversation-history-rate-limit"]` with ChatGPT's "Too many requests" conversation-access warning.
-
-The exploratory evidence therefore identified conversation-history/bootstrap traffic from recovery navigation as the direct observed trigger in that probe. Later live canaries after removing application-level completion polling and reloads still observed ChatGPT's own frontend bundle issuing a `stream_status` request and conversation-history requests during normal first-turn navigation. CDP initiator stacks attributed those requests to a ChatGPT CDN script, not Unhinged Agent. When the account was already near the history limit, one of those normal frontend `/backend-api/conversations?...` requests also returned 429 and caused the rate-limit gate to block the next turn.
-
-This means Unhinged Agent can remove its own avoidable polling/reload traffic, but cannot guarantee zero upstream history traffic while driving the normal ChatGPT Web UI. The history limit is distinct from prompt submission itself.
-
-## Current Implementation
-
-The production completion path now follows the observed transport:
-
-1. `Network.webSocketFrameReceived` is the primary passive structured stream.
-2. The topic binds only after the exact submitted prompt is observed, then v1 assistant deltas reconstruct source text.
-3. A final assistant node plus an explicit stream-completion signal resolves the structured path after a short settle grace.
-4. A MutationObserver provides the only normal secondary completion path.
-5. Normal completion and `subagent_result` issue no application-level `stream_status` polling and perform no refresh.
-6. One catastrophic recovery may navigate a fresh tab to the saved conversation once; the submitted prompt is never retried.
-
-The WebSocket schema remains a private implementation detail, so the DOM observer and live compatibility test remain important safeguards (`src/tools/subagent/chatgpt-subagent-browser.ts`, `test/live/subagent-live.test.ts`).
+The HTTP/turn-WebSocket schemas are private and can change. Deterministic protocol tests and the manual two-turn live canary are the compatibility boundary. A schema change gets one bounded recovery attempt, then fails the turn clearly.
 
 ## Related
 
 - [Browser ChatGPT Subagents](./Browser%20ChatGPT%20Subagents.md)
-- [Subagent Completion and Recovery](./Subagent%20Completion%20and%20Recovery.md)
-- [`subagent_run` / `subagent_result`](./tools/subagent.md)
+- [Subagent Completion](./Subagent%20Completion.md)
 - [Build and Test](./Build%20and%20Test.md)
-- [Open Questions and Risks](./Open%20Questions%20and%20Risks.md)

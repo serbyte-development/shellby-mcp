@@ -1,42 +1,39 @@
-import { asRecord, booleanValue, finiteNumber as numberValue } from "../../utils.js"
-import type { ChatGptConversationMessage, ChatGptSubagentActivity } from "./chatgpt-subagent-contracts.js"
+import { asRecord } from "../../utils.js"
+import type { ChatGptSubagentActivity } from "./chatgpt-subagent-contracts.js"
 
-export interface TrackedConversationNode {
-  id: string
-  parent?: string
-  children: string[]
-  message: {
-    id: string
-    role?: string
-    status?: string
-    endTurn?: boolean | null
-    recipient?: string | null
-    createTime?: number
-    text: string
-    turnExchangeId?: string
-    workingTurnId?: string
-    isComplete?: boolean
-  }
+export interface ChatGptTurnCompletion {
+  text: string
+  conversationId?: string
+  turnId?: string
 }
 
-export class ChatGptStructuredTurnTracker {
-  private topicId?: string
-  private assistant?: TrackedConversationNode
-  private assistantSource?: string
+interface NormalizedMessage {
+  role?: string
+  status?: string
+  endTurn?: boolean | null
+  recipient?: string | null
+  text: string
+}
+
+/** Reconstruct exactly one submitted ChatGPT turn from either HTTP SSE or a turn WebSocket topic. */
+export class ChatGptTurnTracker {
+  private sourceId?: string
+  private sourceTurnId?: string
+  private conversationId?: string
+  private assistant?: NormalizedMessage
   private lastDeltaPath?: string
   private lastDeltaOperation?: string
-  private directBound = false
-  private readonly completionSources = new Set<string>()
+  private complete = false
 
   constructor(
     private readonly prompt: string,
     private readonly onActivity?: (activity: ChatGptSubagentActivity) => void
   ) {}
 
-  ingestFrame(payloadData: string): string | undefined {
+  ingestFrame(payloadData: string): ChatGptTurnCompletion | undefined {
     const parsed = tryParseJson(payloadData)
     if (parsed === undefined) return undefined
-    let response: string | undefined
+    let completion: ChatGptTurnCompletion | undefined
 
     visitObjects(parsed, (record) => {
       const topicId = stringValue(record.topic_id)
@@ -46,267 +43,134 @@ export class ChatGptStructuredTurnTracker {
       if (!payload) return
 
       if (payload.type === "done") {
-        if (this.topicId === topicId) {
-          this.completionSources.add(topicId)
-          response = this.finalAssistantText(topicId) ?? response
-        }
+        if (this.sourceId !== topicId) return
+        this.captureConversationId(payload)
+        this.complete = true
+        completion = this.result() ?? completion
         return
       }
       if (payload.type !== "stream-item") return
 
       const encodedItem = stringValue(payload.encoded_item)
       if (!encodedItem) return
-      response = this.ingestStream(encodedItem, topicId) ?? response
+      completion = this.ingestStream(encodedItem, topicId, topicId.slice("conversation-turn-".length)) ?? completion
     })
 
-    return response
+    return completion
   }
 
-  ingestSse(text: string): string | undefined {
+  ingestSse(text: string): ChatGptTurnCompletion | undefined {
     return this.ingestStream(text, "http")
   }
 
-  private ingestStream(text: string, source: string): string | undefined {
-    let assistantChanged = false
-    let completionSignal = false
-
+  private ingestStream(text: string, sourceId: string, turnId?: string): ChatGptTurnCompletion | undefined {
     for (const item of parseResponsePayloads(text)) {
-      const itemRecord = asRecord(item)
-      if (!itemRecord) continue
-      const deltaValue = asRecord(itemRecord.v)
-      const node = deltaValue ? normalizeConversationNode(deltaValue) : undefined
-      if (node?.message.role === "user" && node.message.text.trim() === this.prompt.trim()) this.bindSource(source)
+      const record = asRecord(item)
+      if (!record) continue
+      this.captureConversationId(record)
 
-      const inputMessage = asRecord(itemRecord.input_message)
-      const inputNode = inputMessage ? normalizeConversationNode({ message: inputMessage }) : undefined
-      if (inputNode?.message.role === "user" && inputNode.message.text.trim() === this.prompt.trim()) this.bindSource(source)
+      const value = asRecord(record.v)
+      const message = value ? normalizeMessage(value) : undefined
+      if (message?.role === "user" && message.text.trim() === this.prompt.trim()) this.bind(sourceId, turnId)
 
-      if (!this.isSourceBound(source)) continue
-      this.onActivity?.(node ? classifyActivity(node) : "Working")
-      if (node?.message.role === "assistant") {
-        this.assistant = node
-        this.assistantSource = source
+      const inputMessage = asRecord(record.input_message)
+      const input = inputMessage ? normalizeMessage({ message: inputMessage }) : undefined
+      if (input?.role === "user" && input.text.trim() === this.prompt.trim()) this.bind(sourceId, turnId)
+
+      if (this.sourceId !== sourceId) continue
+      this.onActivity?.(message ? classifyActivity(message) : "Working")
+
+      if (message?.role === "assistant") {
+        this.assistant = { ...message }
         this.lastDeltaPath = undefined
         this.lastDeltaOperation = undefined
-        assistantChanged = true
       }
-      assistantChanged = this.applyDelta(itemRecord, source) || assistantChanged
-      if (itemRecord.type === "message_stream_complete") completionSignal = true
+
+      this.applyDelta(record)
+      if (record.type === "message_stream_complete") this.complete = true
     }
 
-    if (completionSignal) this.completionSources.add(source)
-    if (!assistantChanged && !completionSignal) return undefined
-    return this.finalAssistantText(source)
+    return this.result()
   }
 
-  private bindSource(source: string): void {
-    if (source === "http") this.directBound = true
-    else this.topicId = source
+  private bind(sourceId: string, turnId?: string): void {
+    if (this.sourceId) return
+    this.sourceId = sourceId
+    this.sourceTurnId = turnId
   }
 
-  private isSourceBound(source: string): boolean {
-    return source === "http" ? this.directBound : this.topicId === source
+  private captureConversationId(record: Record<string, unknown>): void {
+    if (!this.conversationId) this.conversationId = stringValue(record.conversation_id)
   }
 
-  private applyDelta(delta: Record<string, unknown>, source: string): boolean {
-    if (!this.assistant || this.assistantSource !== source) return false
+  private applyDelta(delta: Record<string, unknown>): void {
+    if (!this.assistant) return
     const explicitOperation = stringValue(delta.o)
     const operation = explicitOperation || this.lastDeltaOperation
     if (operation === "patch" && Array.isArray(delta.v)) {
-      let changed = false
       for (const nested of delta.v) {
         const record = asRecord(nested)
-        if (record) changed = this.applyDelta(record, source) || changed
+        if (record) this.applyDelta(record)
       }
-      return changed
+      return
     }
 
     const explicitPath = stringValue(delta.p)
     const path = explicitPath || this.lastDeltaPath
     if (explicitPath) this.lastDeltaPath = explicitPath
     if (explicitOperation) this.lastDeltaOperation = explicitOperation
-    if (!path) return false
+    if (!path) return
 
     if (operation === "append" && path === "/message/content/parts/0" && typeof delta.v === "string") {
-      this.assistant.message.text += delta.v
+      this.assistant.text += delta.v
       this.onActivity?.("Generating response")
-      return true
+    } else if (operation === "replace" && path === "/message/status" && typeof delta.v === "string") {
+      this.assistant.status = delta.v
+    } else if (operation === "replace" && path === "/message/end_turn" && typeof delta.v === "boolean") {
+      this.assistant.endTurn = delta.v
+    } else if (operation === "replace" && path === "/message/recipient" && (typeof delta.v === "string" || delta.v === null)) {
+      this.assistant.recipient = delta.v as string | null
     }
-    if (operation === "replace" && path === "/message/status" && typeof delta.v === "string") {
-      this.assistant.message.status = delta.v
-      return true
-    }
-    if (operation === "replace" && path === "/message/end_turn" && typeof delta.v === "boolean") {
-      this.assistant.message.endTurn = delta.v
-      return true
-    }
-    return false
   }
 
-  private finalAssistantText(source: string): string | undefined {
-    if (!this.completionSources.has(source)) return undefined
-    if (!this.assistant || this.assistantSource !== source || !isFinalAssistantNode(this.assistant)) return undefined
-    return this.assistant.message.text
+  private result(): ChatGptTurnCompletion | undefined {
+    if (!this.complete || !this.sourceId || !this.assistant) return undefined
+    if (this.assistant.status !== "finished_successfully" || this.assistant.endTurn !== true) return undefined
+    if (this.assistant.recipient && this.assistant.recipient !== "all") return undefined
+    if (!this.assistant.text) return undefined
+    return { text: this.assistant.text, conversationId: this.conversationId, turnId: this.sourceTurnId }
   }
 }
 
-export function findLatestAssistantAfterPrompt(messages: readonly ChatGptConversationMessage[], prompt?: string): ChatGptConversationMessage | undefined {
-  if (messages.length === 0) return undefined
-  const normalizedPrompt = prompt?.trim()
-  let promptIndex = -1
-  if (normalizedPrompt) {
-    for (let index = messages.length - 1; index >= 0; index -= 1) {
-      const message = messages[index]
-      if (message?.role === "user" && message.text.trim() === normalizedPrompt) {
-        promptIndex = index
-        break
-      }
-    }
-    if (promptIndex < 0) return undefined
-  }
-
-  for (let index = messages.length - 1; index > promptIndex; index -= 1) {
-    const message = messages[index]
-    if (message?.role === "assistant" && message.text) return message
-  }
-  return undefined
-}
-
-export function extractConversationNodes(payload: unknown): TrackedConversationNode[] {
-  const nodes = new Map<string, TrackedConversationNode>()
-  const visited = new Set<object>()
-
-  const visit = (value: unknown): void => {
-    if (!value || typeof value !== "object" || visited.has(value)) return
-    visited.add(value)
-    const record = value as Record<string, unknown>
-    const normalized = normalizeConversationNode(record)
-    if (normalized) nodes.set(normalized.id, normalized)
-
-    if (Array.isArray(value)) {
-      for (const item of value) visit(item)
-      return
-    }
-    for (const nested of Object.values(record)) visit(nested)
-  }
-
-  visit(payload)
-  return [...nodes.values()]
-}
-
-export function extractConversationMessages(payload: unknown): ChatGptConversationMessage[] {
-  const record = asRecord(payload)
-  if (Array.isArray(record?.messages)) {
-    const nodes = record.messages
-      .map((message) => {
-        const messageRecord = asRecord(message)
-        return messageRecord ? normalizeConversationNode({ message: messageRecord }) : undefined
-      })
-      .filter((node): node is TrackedConversationNode => node !== undefined)
-    return conversationMessages(nodes)
-  }
-
-  const currentNodeId = stringValue(record?.current_node)
-  if (!currentNodeId) return []
-
-  const nodes = new Map(extractConversationNodes(payload).map((node) => [node.id, node]))
-  const branch: TrackedConversationNode[] = []
-  const visited = new Set<string>()
-  let nodeId: string | undefined = currentNodeId
-
-  while (nodeId && !visited.has(nodeId)) {
-    visited.add(nodeId)
-    const node = nodes.get(nodeId)
-    if (!node) break
-    branch.push(node)
-    nodeId = node.parent
-  }
-
-  branch.reverse()
-  return conversationMessages(branch)
-}
-
-function conversationMessages(nodes: readonly TrackedConversationNode[]): ChatGptConversationMessage[] {
-  const messages: ChatGptConversationMessage[] = []
-  for (const node of nodes) {
-    const { message } = node
-    if (!message.text) continue
-    if (message.role === "user") messages.push({ role: "user", text: message.text })
-    else if (isFinalAssistantNode(node)) messages.push({ role: "assistant", text: message.text })
-  }
-  return messages
-}
-
-function normalizeConversationNode(record: Record<string, unknown>): TrackedConversationNode | undefined {
-  const messageRecord = asRecord(record.message)
-  if (!messageRecord) return undefined
-  const messageId = stringValue(messageRecord.id)
-  const author = asRecord(messageRecord.author)
-  if (!messageId || !author) return undefined
-
-  const metadata = asRecord(messageRecord.metadata)
-  const content = asRecord(messageRecord.content)
+function normalizeMessage(record: Record<string, unknown>): NormalizedMessage | undefined {
+  const message = asRecord(record.message)
+  if (!message) return undefined
+  const author = asRecord(message.author)
+  if (!author) return undefined
   return {
-    id: stringValue(record.id) ?? messageId,
-    parent: stringValue(record.parent),
-    children: stringArray(record.children),
-    message: {
-      id: messageId,
-      role: stringValue(author.role),
-      status: stringValue(messageRecord.status),
-      endTurn: booleanOrNull(messageRecord.end_turn),
-      recipient: nullableString(messageRecord.recipient),
-      createTime: numberValue(messageRecord.create_time),
-      text: extractMessageText(content),
-      turnExchangeId: stringValue(metadata?.turn_exchange_id),
-      workingTurnId: stringValue(metadata?.working_turn_id),
-      isComplete: booleanValue(metadata?.is_complete),
-    },
+    role: stringValue(author.role),
+    status: stringValue(message.status),
+    endTurn: typeof message.end_turn === "boolean" || message.end_turn === null ? (message.end_turn as boolean | null) : undefined,
+    recipient: typeof message.recipient === "string" || message.recipient === null ? (message.recipient as string | null) : undefined,
+    text: extractMessageText(asRecord(message.content)),
   }
 }
 
 function extractMessageText(content?: Record<string, unknown>): string {
   if (!content) return ""
-  const parts = content.parts
-  if (Array.isArray(parts)) {
-    return parts
-      .map((part) => (typeof part === "string" ? part : ""))
-      .filter(Boolean)
-      .join("\n")
-      .trim()
-  }
-  return stringValue(content.text)?.trim() ?? ""
+  if (Array.isArray(content.parts)) return content.parts.filter((part): part is string => typeof part === "string").join("\n")
+  return stringValue(content.text) ?? ""
 }
 
-function isFinalAssistantNode(node: TrackedConversationNode): boolean {
-  const message = node.message
-  return (
-    message.role === "assistant" &&
-    message.status === "finished_successfully" &&
-    Boolean(message.text) &&
-    (!message.recipient || message.recipient === "all") &&
-    message.endTurn === true
-  )
-}
-
-function classifyActivity(node: TrackedConversationNode): ChatGptSubagentActivity {
-  const recipient = node.message.recipient?.toLowerCase()
-  if (recipient && recipient !== "all") {
-    if (recipient.includes("web") || recipient.includes("search")) return "Searching the web"
-    return "Using tools"
-  }
-  if (node.message.role === "assistant") return "Generating response"
-  return "Working"
+function classifyActivity(message: NormalizedMessage): ChatGptSubagentActivity {
+  const recipient = message.recipient?.toLowerCase()
+  if (recipient && recipient !== "all") return recipient.includes("web") || recipient.includes("search") ? "Searching the web" : "Using tools"
+  return message.role === "assistant" ? "Generating response" : "Working"
 }
 
 function parseResponsePayloads(text: string): unknown[] {
-  const trimmed = text.trim()
-  if (!trimmed) return []
-  const direct = tryParseJson(trimmed)
-  if (direct !== undefined) return [direct]
-
   const payloads: unknown[] = []
-  for (const rawLine of trimmed.split(/\r?\n/)) {
+  for (const rawLine of text.split(/\r?\n/)) {
     const line = rawLine.trim()
     if (!line || line === "data: [DONE]") continue
     const candidate = line.startsWith("data:") ? line.slice(5).trim() : line
@@ -324,30 +188,81 @@ function tryParseJson(text: string): unknown | undefined {
   }
 }
 
-function visitObjects(value: unknown, visitor: (record: Record<string, unknown>) => void, visited = new Set<object>()): void {
-  if (!value || typeof value !== "object" || visited.has(value)) return
-  visited.add(value)
+function visitObjects(value: unknown, visitor: (record: Record<string, unknown>) => void, seen = new Set<object>()): void {
+  if (!value || typeof value !== "object" || seen.has(value)) return
+  seen.add(value)
   if (Array.isArray(value)) {
-    for (const item of value) visitObjects(item, visitor, visited)
+    for (const item of value) visitObjects(item, visitor, seen)
     return
   }
   const record = value as Record<string, unknown>
   visitor(record)
-  for (const nested of Object.values(record)) visitObjects(nested, visitor, visited)
+  for (const nested of Object.values(record)) visitObjects(nested, visitor, seen)
 }
 
 function stringValue(value: unknown): string | undefined {
   return typeof value === "string" ? value : undefined
 }
 
-function nullableString(value: unknown): string | null | undefined {
-  return value === null ? null : stringValue(value)
+export interface ConversationMessage {
+  role: "user" | "assistant"
+  text: string
 }
 
-function booleanOrNull(value: unknown): boolean | null | undefined {
-  return value === null ? null : booleanValue(value)
+export function findLatestAssistantAfterPrompt(
+  messages: readonly ConversationMessage[],
+  prompt: string
+): ConversationMessage | undefined {
+  let promptIndex = -1
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index]
+    if (message?.role === "user" && message.text.trim() === prompt.trim()) {
+      promptIndex = index
+      break
+    }
+  }
+  if (promptIndex < 0) return undefined
+
+  for (let index = messages.length - 1; index > promptIndex; index -= 1) {
+    const message = messages[index]
+    if (message?.role === "assistant" && message.text) return message
+  }
+  return undefined
 }
 
-function stringArray(value: unknown): string[] {
-  return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : []
+/** Normalize conversation history for the one-shot recovery check and frozen fixtures. */
+export function extractConversationMessages(payload: unknown): ConversationMessage[] {
+  const root = asRecord(payload)
+  if (Array.isArray(root?.messages)) return root.messages.map(messageFromRaw).filter((value): value is ConversationMessage => value !== undefined)
+  const current = stringValue(root?.current_node)
+  const mapping = asRecord(root?.mapping)
+  if (!current || !mapping) return []
+  const branch: Record<string, unknown>[] = []
+  const seen = new Set<string>()
+  let id: string | undefined = current
+  while (id && !seen.has(id)) {
+    seen.add(id)
+    const node = asRecord(mapping[id])
+    if (!node) break
+    branch.push(node)
+    id = stringValue(node.parent)
+  }
+  return branch
+    .reverse()
+    .map((node) => messageFromRaw(node.message))
+    .filter((value): value is ConversationMessage => value !== undefined)
+}
+
+function messageFromRaw(value: unknown): ConversationMessage | undefined {
+  const message = asRecord(value)
+  const author = asRecord(message?.author)
+  const role = stringValue(author?.role)
+  const text = extractMessageText(asRecord(message?.content))
+  if (!text || (role !== "user" && role !== "assistant")) return undefined
+  if (role === "assistant") {
+    if (message?.end_turn !== true) return undefined
+    const recipient = message.recipient
+    if (recipient && recipient !== "all") return undefined
+  }
+  return { role, text }
 }

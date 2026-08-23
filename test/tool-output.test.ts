@@ -106,8 +106,7 @@ test("subagent formatter preserves fenced Markdown from the frozen real ChatGPT 
 
 const longSkillDescription =
   "Create or revise reusable skills for this ChatGPT local-shell MCP workspace, including reusable agent workflows and adaptations of existing skills without bloating the tool schema."
-const longStartError =
-  "subagent_failed: Browser automation was unavailable after the configured recovery attempt, so this turn could not be submitted without risking a duplicate ChatGPT message."
+const longStartError = "subagent_failed: Browser observation failed after submission, so the detached turn could not complete."
 
 const toolFamilyCases: Array<{ tool: string; structuredContent: unknown; expected: string }> = [
   {
@@ -163,7 +162,7 @@ const toolFamilyCases: Array<{ tool: string; structuredContent: unknown; expecte
         { agent_id: "tester", status: "failed", error: longStartError },
       ],
     },
-    expected: `turns:\n\n- agent_id=reviewer turn_id=reviewer_turn_1 status=running\n\n- agent_id=tester status=failed\n\n  error:\n    ${longStartError}`,
+    expected: `turns:\n\n- agent_id=reviewer turn_id=reviewer_turn_1 status=running\n- agent_id=tester status=failed error="${longStartError}"`,
   },
   {
     tool: "subagent_result",

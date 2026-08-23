@@ -32,7 +32,6 @@
     "tunnel": "ngrok http 3333 ${NGROK_URL:+--url=\"$NGROK_URL\"} --traffic-policy-file ./ngrok-traffic-policy.yml --inspect=false",
     "auth:reset": "node --env-file-if-exists=.env --import tsx src/auth/reset.ts",
     "test": "tsx --test test/*.test.ts",
-    "test:live:fixture": "RUN_LIVE_CHATGPT_FIXTURE_TESTS=1 node --env-file-if-exists=.env --import tsx --test test/live/chatgpt-fixture-live.test.ts",
     "test:live:subagent": "RUN_LIVE_SUBAGENT_TESTS=1 tsx --test test/live/subagent-live.test.ts",
     "type-check": "tsc -p tsconfig.json --noEmit",
     "vendor:apply-patch": "scripts/build-apply-patch.sh",
