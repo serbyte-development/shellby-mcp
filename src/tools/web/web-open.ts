@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto"
+import { stripVTControlCharacters } from "node:util"
 
 import { tokenChunk } from "../../tokenizer.js"
 import { MCP_CONFIG } from "../../config.js"
@@ -18,6 +19,8 @@ export interface WebOpenInput {
 export interface WebOpenResult extends Record<string, unknown> {
   url: string
   title: string
+  status: number
+  content_type?: string
   format: WebsiteContentFormat
   compact: boolean
   content: string
@@ -31,6 +34,8 @@ interface RenderedWebPage {
   url: string
   title: string
   content: string
+  status?: number
+  contentType?: string
 }
 
 export interface WebPageOpenerOptions {
@@ -48,6 +53,7 @@ interface CachedDocument extends RenderedWebPage {
   requestedUrl: string
   format: WebsiteContentFormat
   compact: boolean
+  status: number
   expiresAt: number
   droppedSourceBytes: number
 }
@@ -114,6 +120,8 @@ export class WebPageOpener {
         requestedUrl,
         url: finalUrl,
         title: rendered.title.trim(),
+        status: rendered.status ?? 200,
+        ...(rendered.contentType?.trim() ? { contentType: rendered.contentType.trim() } : {}),
         format,
         compact,
         content: boundedContent.value,
@@ -127,6 +135,8 @@ export class WebPageOpener {
     const result: WebOpenResult = {
       url: document.url,
       title: document.title,
+      status: document.status,
+      ...(document.contentType ? { content_type: document.contentType } : {}),
       format: document.format,
       compact: document.compact,
       content: chunk.value,
@@ -201,6 +211,17 @@ async function renderWithCloakBrowser(
   const browser = await launch({ headless: true })
   try {
     const page = await browser.newPage()
+    let noContentResponse: { url: string; status: 204 | 205; contentType?: string } | undefined
+    page.on("response", (response) => {
+      const status = response.status()
+      if ((status !== 204 && status !== 205) || !response.request().isNavigationRequest() || response.request().frame() !== page.mainFrame()) return
+      const contentType = response.headers()["content-type"]?.trim()
+      noContentResponse = {
+        url: response.url(),
+        status,
+        ...(contentType ? { contentType } : {}),
+      }
+    })
     await page.route("**/*", async (route) => {
       const resourceType = route.request().resourceType()
       if (resourceType === "image" || resourceType === "media" || resourceType === "font") {
@@ -209,11 +230,26 @@ async function renderWithCloakBrowser(
       }
       await route.continue()
     })
-    await page.goto(url, {
-      waitUntil: "domcontentloaded",
-      timeout: 30_000,
-    })
-    await page.waitForTimeout(1_000)
+    let response
+    try {
+      response = await page.goto(url, {
+        waitUntil: "domcontentloaded",
+        timeout: 30_000,
+      })
+    } catch (error) {
+      if (noContentResponse) {
+        return {
+          url: noContentResponse.url,
+          title: "",
+          content: "",
+          status: noContentResponse.status,
+          ...(noContentResponse.contentType ? { contentType: noContentResponse.contentType } : {}),
+        }
+      }
+      throw error
+    }
+
+    await waitForRenderedPageToSettle(page)
 
     if (signal?.aborted) {
       throw new WebOpenError("open_failed", "The web request was aborted.")
@@ -223,12 +259,16 @@ async function renderWithCloakBrowser(
     const browserTitle = await page.title()
     const html = await page.content()
     const outputHtml = compact ? await compactRenderedHtml(html) : html
+    const status = response?.status() ?? 200
+    const contentType = (await response?.headerValue("content-type"))?.trim()
 
     if (format === "html") {
       return {
         url: finalUrl,
         title: browserTitle,
         content: outputHtml,
+        status,
+        ...(contentType ? { contentType } : {}),
       }
     }
 
@@ -237,13 +277,32 @@ async function renderWithCloakBrowser(
       url: finalUrl,
       title: browserTitle,
       content: NodeHtmlMarkdown.translate(outputHtml),
+      status,
+      ...(contentType ? { contentType } : {}),
     }
   } catch (error) {
     if (error instanceof WebOpenError) throw error
-    throw new WebOpenError("open_failed", error instanceof Error ? error.message : String(error))
+    throw new WebOpenError("open_failed", stripVTControlCharacters(error instanceof Error ? error.message : String(error)))
   } finally {
     await browser.close()
   }
+}
+
+async function waitForRenderedPageToSettle(page: { evaluate: (expression: string) => Promise<unknown> }): Promise<void> {
+  await page.evaluate(`new Promise((resolve) => {
+    const startedAt = performance.now();
+    let lastMutationAt = startedAt;
+    const observer = new MutationObserver(() => lastMutationAt = performance.now());
+    observer.observe(document.documentElement, { subtree: true, childList: true, attributes: true, characterData: true });
+    const interval = setInterval(() => {
+      const now = performance.now();
+      if ((now - startedAt >= 2000 && now - lastMutationAt >= 300) || now - startedAt >= 5000) {
+        clearInterval(interval);
+        observer.disconnect();
+        resolve(undefined);
+      }
+    }, 50);
+  })`)
 }
 
 async function compactRenderedHtml(html: string): Promise<string> {

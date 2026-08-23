@@ -38,6 +38,8 @@ export function registerWebTool(server: McpServer, webPageOpener: WebPageOpener)
       outputSchema: z.object({
         url: z.string(),
         title: z.string(),
+        status: z.int().min(100).max(599),
+        content_type: z.string().optional(),
         content: z.string(),
         next_cursor: z.string().optional().describe("Continuation cursor present when additional cached content remains."),
         dropped_source_bytes: z.int().positive().optional().describe("Bytes permanently discarded at the cached-document ceiling."),
@@ -63,6 +65,8 @@ export function registerWebTool(server: McpServer, webPageOpener: WebPageOpener)
         const structuredContent = {
           url: result.url,
           title: result.title,
+          status: result.status,
+          ...(result.content_type ? { content_type: result.content_type } : {}),
           content: result.content,
           ...(result.next_cursor ? { next_cursor: result.next_cursor } : {}),
           ...(result.dropped_source_bytes ? { dropped_source_bytes: result.dropped_source_bytes } : {}),

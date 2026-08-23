@@ -180,10 +180,13 @@ const toolFamilyCases: Array<{ tool: string; structuredContent: unknown; expecte
     structuredContent: {
       url: "https://example.com/docs",
       title: "Example Page",
+      status: 200,
+      content_type: "text/html; charset=utf-8",
       content: "# Heading\n\nPage body.",
       next_cursor: "cursor-2",
     },
-    expected: 'url=https://example.com/docs title="Example Page" next_cursor=cursor-2\n\ncontent:\n# Heading\n\nPage body.',
+    expected:
+      'url=https://example.com/docs title="Example Page" status=200 content_type="text/html; charset=utf-8" next_cursor=cursor-2\n\ncontent:\n# Heading\n\nPage body.',
   },
   {
     tool: "skill_list",

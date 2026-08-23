@@ -29,6 +29,7 @@ test("paginates fetched content without reopening the page", async () => {
   let content = result.content
   assert.ok(countTokens(result.content) <= 256)
   assert.equal(result.url, "https://example.com/final")
+  assert.equal(result.status, 200)
   assert.equal(result.format, "markdown")
   assert.equal(result.compact, true)
   assert.equal(result.output_truncated, true)
@@ -134,6 +135,39 @@ test("accepts the final redirected URL for cursor reads", async () => {
     maxOutputTokens: opener.defaultOutputTokens,
   })
   assert.equal(first.content + second.content, "🙂".repeat(300))
+})
+
+test("preserves HTTP metadata across cursor reads", async () => {
+  const opener = new WebPageOpener({
+    defaultOutputTokens: 64,
+    renderPage: async () => ({
+      url: "https://example.com/data",
+      title: "Data",
+      content: "🙂".repeat(100),
+      status: 202,
+      contentType: "application/json; charset=utf-8",
+    }),
+  })
+
+  const first = await opener.open({
+    url: "https://example.com/data",
+    format: "markdown",
+    compact: false,
+    maxOutputTokens: opener.defaultOutputTokens,
+  })
+  assert.equal(first.status, 202)
+  assert.equal(first.content_type, "application/json; charset=utf-8")
+  assert.ok(first.next_cursor)
+
+  const second = await opener.open({
+    url: "https://example.com/data",
+    format: "markdown",
+    compact: false,
+    cursor: first.next_cursor,
+    maxOutputTokens: opener.defaultOutputTokens,
+  })
+  assert.equal(second.status, 202)
+  assert.equal(second.content_type, "application/json; charset=utf-8")
 })
 
 test("rejects invalid and expired cursors", async () => {

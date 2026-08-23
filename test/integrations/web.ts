@@ -35,10 +35,85 @@ test("renders a real localhost page through the default web stack", { timeout: 6
   })
 
   assert.equal(result.isError, undefined)
-  const content = result.structuredContent as { url: string; title: string; content: string }
+  const content = result.structuredContent as { url: string; title: string; status: number; content_type?: string; content: string }
   assert.equal(content.title, "Integration Test")
+  assert.equal(content.status, 200)
+  assert.equal(content.content_type, "text/html; charset=utf-8")
   assert.match(content.content, /Hello MCP/)
   assert.match(content.content, /Real browser rendering works\./)
+})
+
+test("returns successful empty responses with HTTP metadata", { timeout: 60_000 }, async (t) => {
+  const pageServer = createServer((request, response) => {
+    if (request.url === "/reset") {
+      response.writeHead(205, { "content-type": "text/plain; charset=utf-8" })
+      response.end()
+      return
+    }
+    response.writeHead(204)
+    response.end()
+  })
+  await new Promise<void>((resolve, reject) => {
+    pageServer.once("error", reject)
+    pageServer.listen(0, "127.0.0.1", resolve)
+  })
+  t.after(async () => {
+    await new Promise<void>((resolve) => pageServer.close(() => resolve()))
+  })
+
+  const address = pageServer.address()
+  assert.ok(address && typeof address !== "string")
+  const opener = new WebPageOpener()
+
+  const noContent = await opener.open({
+    url: `http://127.0.0.1:${address.port}/no-content`,
+    format: "markdown",
+    compact: false,
+    maxOutputTokens: opener.maximumOutputTokens,
+  })
+  assert.equal(noContent.status, 204)
+  assert.equal(noContent.content, "")
+  assert.equal(noContent.url, `http://127.0.0.1:${address.port}/no-content`)
+
+  const reset = await opener.open({
+    url: `http://127.0.0.1:${address.port}/reset`,
+    format: "markdown",
+    compact: false,
+    maxOutputTokens: opener.maximumOutputTokens,
+  })
+  assert.equal(reset.status, 205)
+  assert.equal(reset.content_type, "text/plain; charset=utf-8")
+  assert.equal(reset.content, "")
+})
+
+test("waits for delayed client rendering beyond one second", { timeout: 60_000 }, async (t) => {
+  const pageServer = createServer((_request, response) => {
+    response.writeHead(200, { "content-type": "text/html; charset=utf-8" })
+    response.end(`<!doctype html><html><head><title>Delayed</title></head><body><main><p>Initial</p></main><script>
+      setTimeout(() => document.querySelector('main').insertAdjacentHTML('beforeend', '<p>Delayed render captured</p>'), 1500)
+    </script></body></html>`)
+  })
+  await new Promise<void>((resolve, reject) => {
+    pageServer.once("error", reject)
+    pageServer.listen(0, "127.0.0.1", resolve)
+  })
+  t.after(async () => {
+    await new Promise<void>((resolve) => pageServer.close(() => resolve()))
+  })
+
+  const address = pageServer.address()
+  assert.ok(address && typeof address !== "string")
+  const opener = new WebPageOpener()
+  const result = await opener.open({
+    url: `http://127.0.0.1:${address.port}/`,
+    format: "markdown",
+    compact: false,
+    maxOutputTokens: opener.maximumOutputTokens,
+  })
+
+  assert.equal(result.status, 200)
+  assert.equal(result.content_type, "text/html; charset=utf-8")
+  assert.match(result.content, /Delayed render captured/)
 })
 
 test("continues one cached website across MCP client sessions", { timeout: 20_000 }, async (t) => {

@@ -1131,3 +1131,11 @@
 
 - Added one output-level hint when normal, batch, or polled shell output reports `command not found: apply_patch`, preserving the shell's original output and exit status.
 - Added integration coverage for normal and batch execution and documented the caller-visible behavior in `pages/tools/shell_run.md`.
+
+## [2026-08-23] web | Harden fetch response and render semantics
+
+- Made successful HTTP 204 and 205 navigations return normal empty `fetch_website` results instead of surfacing Chromium's `ERR_ABORTED` navigation behavior.
+- Added final HTTP `status` and optional `content_type` metadata to fetched documents and preserved it across cursor reads.
+- Replaced the fixed one-second render delay with a bounded DOM-settle window that waits at least two seconds, extends while mutations continue, and caps at five seconds.
+- Stripped terminal control sequences from browser error messages before returning them to MCP clients.
+- Added deterministic browser integration coverage for empty success responses, HTTP metadata, and client rendering delayed beyond one second.
