@@ -55,12 +55,6 @@ export const MCP_CONFIG = {
     idleTimeoutMs: 5 * 60 * 1000, // 5 minutes
     cacheTimeoutMs: 24 * 60 * 60 * 1000, // 24 hours
   },
-  ios: {
-    host: process.env.MCP_IOS_HOST,
-    port: 8765,
-    tokenFile: process.env.MCP_IOS_TOKEN_FILE,
-    timeoutMs: 5_000,
-  },
 }
 
 function resolveWorkspacePath(configured: string): string {

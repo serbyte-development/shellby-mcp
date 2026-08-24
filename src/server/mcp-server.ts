@@ -3,7 +3,6 @@ import { McpServer } from "@modelcontextprotocol/server"
 import { buildMcpInstructions, MCP_CONFIG, type ToolOutputStructuredMode } from "../config.js"
 import { registerApplyPatchTool } from "../tools/apply-patch/apply-patch.js"
 import { registerImageTools } from "../tools/image/image-tools.js"
-// import { registerIosShellTool } from "../tools/ios/ios-shell.js"
 import { registerShellExecutionTools, registerShellManagementTools } from "../tools/shell/shell-tools.js"
 import type { ShellSessionManager } from "../tools/shell/session-manager.js"
 import { registerSkillTools } from "../tools/skills.js"
@@ -34,8 +33,6 @@ export function createMcpServer(shells: ShellSessionManager, options: CreateMcpS
   })
 
   registerShellExecutionTools(server, shells, workspace)
-  // iOS shell is experimental and intentionally disabled until the bridge is revisited.
-  // registerIosShellTool(server)
   registerApplyPatchTool(server, options.applyPatchExecutable)
   registerShellManagementTools(server, shells)
   registerSubagentTools(server, options.chatGptSubagents)

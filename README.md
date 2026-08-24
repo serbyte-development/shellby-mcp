@@ -68,7 +68,6 @@ Google Chrome is optional for browser-backed subagents. Peekaboo ships as a pinn
 3. Check the machine and run guided setup:
 
    ```bash
-   npm run preflight
    npm run setup
    ```
 

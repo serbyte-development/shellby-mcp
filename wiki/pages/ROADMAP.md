@@ -9,6 +9,7 @@ This page records uncommitted experiments and deferred architectural work; none 
 ## Future experiments
 
 - [ ] Broaden host portability beyond the current macOS release without weakening the local-agent model or adding platform abstractions before they are needed.
+- [ ] Revisit the removed iOS shell experiment only if iPhone command execution becomes a concrete product requirement; preserve its historical findings in [iOS Shell](./iOS%20Shell.md) rather than dormant production code.
 - [ ] Revisit MCP `2026-07-28` and the current `io.modelcontextprotocol/tasks` extension only if they solve a concrete problem or materially simplify Shellby MCP. A self-contained manual compatibility probe is preserved at `experiments/mcp-2026-tasks-probe/`; do not wire it into the production `/mcp` server unless this roadmap item is intentionally resumed.
 - [ ] Consider adding `CTRL_C` support to `shell_run` so an agent can interrupt a stuck foreground command without resetting the persistent shell and losing cwd/environment state. The current non-interactive shell has no terminal job-control foreground process group, so a safe implementation would need to signal only the process tree created by the active command rather than the shell's whole process group; true terminal-equivalent Ctrl+C semantics would require a larger PTY/job-control redesign.
 

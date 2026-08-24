@@ -29,7 +29,7 @@
 - Stored as: [ChatGPT and Local Capability Survey 2026-08-01](./ChatGPT%20and%20Local%20Capability%20Survey%202026-08-01.md).
 - Feeds: [Architecture Map](../pages/Architecture%20Map.md) and [Open Questions and Risks](../pages/Open%20Questions%20and%20Risks.md).
 - Secret handling: no tokens, credential values, messages, screenshots, accessibility trees, recordings, history artifacts, or account data were read or stored.
-- Staleness note: its ChatGPT Computer Use child-MCP inventory remains historical evidence, but that child is not used by the current server. Direct Peekaboo integration supersedes the survey's Computer Use implementation direction (`src/index.ts`, `src/tools/computer/peekaboo.ts`, `src/tools/computer/computer-tools.ts`).
+- Staleness note: its ChatGPT Computer Use child-MCP inventory remains historical evidence, not the current integration contract. Shellby now starts the pinned Peekaboo package as a restricted child MCP through the generic provider and applies its public `computer_*` overlay in the parent (`src/server/child-mcp.ts`, `src/tools/computer/peekaboo-mcp.ts`).
 
 ### Peekaboo CLI documentation and installed package, verified 2026-08-23
 

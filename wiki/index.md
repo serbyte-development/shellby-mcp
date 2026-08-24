@@ -22,7 +22,6 @@ Start with [Project Overview](pages/Project%20Overview.md), then open only the p
 - [Browser ChatGPT Subagents](pages/Browser%20ChatGPT%20Subagents.md) — CDP-backed orchestration, runtime state, conversation binding, prompt submission, and browser ownership.
 - [Subagent Completion](pages/Subagent%20Completion.md) — CDP turn completion, event delivery, and local result settlement.
 - [ChatGPT CDP Transport](pages/ChatGPT%20CDP%20Transport.md) — observed ChatGPT turn transport, CDP completion signals, and rate-limit findings.
-- [iOS Shell](pages/iOS%20Shell.md) — deferred experimental iPhone command bridge retained in source but not registered with MCP.
 
 ## Tool Reference
 
@@ -33,6 +32,7 @@ Start with [Project Overview](pages/Project%20Overview.md), then open only the p
 ## Possible Work
 
 - [Possible Evals](pages/Possible%20Evals.md) — candidate real-work benchmarks for comparing ChatGPT Web plus Shellby MCP with Codex.
+- [iOS Shell](pages/iOS%20Shell.md) — historical design and findings from the removed experimental iPhone command bridge.
 
 ## Supporting Files
 

@@ -2,7 +2,7 @@
   "name": "shellby-mcp",
   "version": "0.1.0",
   "description": "Context-optimized agent harness that gives ChatGPT Web full computer access, persistent tools, and multi-agent capabilities.",
-  "private": false,
+  "private": true,
   "license": "MIT",
   "type": "module",
   "repository": {
@@ -16,7 +16,6 @@
   "scripts": {
     "build": "rm -rf dist && tsc -p tsconfig.build.json",
     "dev": "node --env-file-if-exists=.env --import tsx --watch src/index.ts",
-    "preflight": "node --env-file-if-exists=.env scripts/preflight.mjs",
     "setup": "node --env-file-if-exists=.env scripts/setup.mjs",
     "setup:computer": "node --env-file-if-exists=.env scripts/peekaboo-permissions.mjs",
     "setup:chatgpt": "node --env-file-if-exists=.env scripts/chatgpt-browser.mjs --setup",

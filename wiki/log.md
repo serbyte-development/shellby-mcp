@@ -1156,3 +1156,9 @@
 
 - Documented that macOS may assign Peekaboo's command-line TCC access to the GUI application that first creates the persistent PM2 daemon.
 - Recommended running initial setup and the first managed launch from Terminal.app, checking every Peekaboo source with `setup:computer -- --status`, and treating PM2 daemon recreation as an explicit all-app recovery operation.
+
+## [2026-08-23] cleanup | Remove dormant iOS implementation and stale setup references
+
+- Removed the disabled iOS shell implementation, tests, configuration, and commented registration while retaining its findings as an explicitly historical wiki page and roadmap candidate.
+- Removed the redundant public preflight command and standalone script entry point; guided setup and managed startup continue to share the runtime checker.
+- Marked the clone-distributed package private, removed the stale README preflight step, and corrected the source manifest for the current Peekaboo child-MCP architecture.

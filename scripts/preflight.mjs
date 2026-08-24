@@ -73,16 +73,6 @@ async function hasNgrokAuth(ngrokExecutable) {
   }
 }
 
-if (process.argv[1] === fileURLToPath(import.meta.url)) {
-  const { errors } = await checkPublicRuntime()
-  if (errors.length > 0) {
-    printPreflightErrors(errors)
-    process.exitCode = 1
-  } else {
-    console.log("Preflight passed.")
-  }
-}
-
 function expandHome(value) {
   if (value === "~") return homedir()
   if (value.startsWith("~/")) return join(homedir(), value.slice(2))
