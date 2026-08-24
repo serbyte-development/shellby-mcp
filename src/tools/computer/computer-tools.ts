@@ -675,7 +675,7 @@ function addObservationTargetArgs(args: string[], target: PeekabooSnapshotTarget
 
 function appCommandArgs(action: "launch" | "switch" | "quit" | "relaunch" | "hide" | "unhide", app: string, open: string[], force: boolean): string[] {
   if (action === "launch") {
-    const args = ["app", "launch", app, "--wait-ready"]
+    const args = ["app", "launch", app, "--wait-ready", "--foreground"]
     for (const item of open) args.push("--open", item)
     return args
   }
@@ -684,8 +684,9 @@ function appCommandArgs(action: "launch" | "switch" | "quit" | "relaunch" | "hid
     return ["app", "quit", "--app", app, ...(force ? ["--force"] : [])]
   }
   if (action === "relaunch") {
-    return ["app", "relaunch", app, "--wait-until-ready", ...(force ? ["--force"] : [])]
+    return ["app", "relaunch", app, "--wait-until-ready", "--foreground", ...(force ? ["--force"] : [])]
   }
+  if (action === "unhide") return ["app", "unhide", "--app", app, "--activate"]
   return ["app", action, "--app", app]
 }
 

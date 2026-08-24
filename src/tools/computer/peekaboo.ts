@@ -54,6 +54,7 @@ export interface PeekabooClientOptions {
   env?: NodeJS.ProcessEnv
   timeoutMs?: number
   maxOutputBytes?: number
+  localOnly?: boolean
 }
 
 export class PeekabooError extends Error {
@@ -75,6 +76,7 @@ export class PeekabooClient {
   private readonly env: NodeJS.ProcessEnv
   private readonly timeoutMs: number
   private readonly maxOutputBytes: number
+  private readonly localOnly: boolean
   private readonly shutdownController = new AbortController()
   private readonly snapshots = new Map<string, PeekabooSnapshotTarget>()
 
@@ -87,6 +89,7 @@ export class PeekabooClient {
     this.env = options.env ?? process.env
     this.timeoutMs = options.timeoutMs ?? 30_000
     this.maxOutputBytes = options.maxOutputBytes ?? 4 * 1024 * 1024
+    this.localOnly = options.localOnly ?? false
   }
 
   run(args: string[], signal?: AbortSignal): Promise<PeekabooResult> {
@@ -229,7 +232,8 @@ export class PeekabooClient {
   }
 
   private async runNow(args: string[], signal: AbortSignal): Promise<PeekabooResult> {
-    const commandArgs = [...this.baseArgs, ...args, "--json"]
+    const runtimeArgs = this.localOnly && !args.includes("--no-remote") ? [...args, "--no-remote"] : args
+    const commandArgs = [...this.baseArgs, ...runtimeArgs, "--json"]
     let stdout: string
     let stderr: string
 

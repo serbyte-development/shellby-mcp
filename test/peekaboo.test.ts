@@ -29,6 +29,21 @@ test("accepts an explicit Peekaboo executable", async (t) => {
   assert.deepEqual(startEvents(await readLog(explicitLog))[0]?.args, ["list", "screens", "--json"])
 })
 
+test("can force Peekaboo operations to the local runtime", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "peekaboo-local-only-"))
+  t.after(() => rm(root, { recursive: true, force: true }))
+  const logPath = join(root, "calls.jsonl")
+  const client = fakeClient({ FAKE_PEEKABOO_LOG: logPath }, { localOnly: true })
+  t.after(() => client.close())
+
+  await client.run(["window", "focus", "--window-id", "42"])
+  await client.run(["click", "--at", "10,20", "--no-remote"])
+
+  const starts = startEvents(await readLog(logPath))
+  assert.deepEqual(starts[0]?.args, ["window", "focus", "--window-id", "42", "--no-remote", "--json"])
+  assert.deepEqual(starts[1]?.args, ["click", "--at", "10,20", "--no-remote", "--json"])
+})
+
 test("reports a missing Peekaboo executable", async (t) => {
   const client = new PeekabooClient({
     executable: join(tmpdir(), `peekaboo-not-installed-${process.pid}`),
@@ -245,13 +260,14 @@ interface FakeEvent {
   signal?: string
 }
 
-function fakeClient(env: Record<string, string>, options: { timeoutMs?: number; maxOutputBytes?: number } = {}): PeekabooClient {
+function fakeClient(env: Record<string, string>, options: { timeoutMs?: number; maxOutputBytes?: number; localOnly?: boolean } = {}): PeekabooClient {
   return new PeekabooClient({
     executable: process.execPath,
     baseArgs: [fixture],
     env: { ...process.env, ...env },
     timeoutMs: options.timeoutMs ?? 2_000,
     maxOutputBytes: options.maxOutputBytes ?? 64 * 1024,
+    localOnly: options.localOnly,
   })
 }
 
