@@ -200,6 +200,7 @@ export function registerComputerUseTools(server: McpServer, peekaboo: PeekabooCl
     async (input, ctx) => {
       const args = ["click"]
       let forceForeground = false
+      let localExactWindowTarget: Pick<PeekabooSnapshotTarget, "app" | "windowId"> | undefined
       if (input.element_id) {
         args.push("--on", input.element_id, "--snapshot", input.snapshot_id)
       } else if (input.query) {
@@ -212,8 +213,7 @@ export function registerComputerUseTools(server: McpServer, peekaboo: PeekabooCl
           addSnapshotTargetArgs(args, target)
           const exactWindowTarget = target.windowId !== undefined && !(target.kind?.toLowerCase().includes("screen") ?? false)
           if (exactWindowTarget) {
-            args.push("--snapshot", input.snapshot_id)
-            if (!input.foreground) args.push("--no-remote")
+            if (!input.foreground) localExactWindowTarget = target
           } else {
             forceForeground = true
           }
@@ -233,6 +233,14 @@ export function registerComputerUseTools(server: McpServer, peekaboo: PeekabooCl
         args.push("--foreground")
       }
       if (input.wait_ms !== undefined) args.push("--wait-for", String(input.wait_ms))
+      if (localExactWindowTarget) {
+        try {
+          const result = await peekaboo.runWithFreshLocalWindowSnapshot(localExactWindowTarget, args, ctx.mcpReq.signal)
+          return commandResult(result, "Click completed.")
+        } catch (error) {
+          return peekabooToolError(error)
+        }
+      }
       return callPeekaboo(peekaboo, args, ctx.mcpReq.signal, "Click completed.")
     }
   )

@@ -97,6 +97,31 @@ export class PeekabooClient {
     return this.enqueue((requestSignal) => this.observeNow(args, options, requestSignal), signal)
   }
 
+  runWithFreshLocalWindowSnapshot(target: Pick<PeekabooSnapshotTarget, "app" | "windowId">, args: string[], signal?: AbortSignal): Promise<PeekabooResult> {
+    return this.enqueue(async (requestSignal) => {
+      if (target.windowId === undefined) {
+        throw new PeekabooError("SNAPSHOT_TARGET_MISSING", "An exact window is required for this action.")
+      }
+
+      const directory = await mkdtemp(join(tmpdir(), "peekaboo-mcp-receipt-"))
+      const requestedPath = join(directory, "capture.png")
+
+      try {
+        const seeArgs = ["see"]
+        if (target.app) seeArgs.push("--app", target.app)
+        seeArgs.push("--window-id", String(target.windowId), "--no-elements", "--path", requestedPath, "--no-remote")
+        const observation = await this.runNow(seeArgs, requestSignal)
+        const snapshotId = stringValue(asRecord(observation.data)?.snapshot_id)
+        if (!snapshotId) {
+          throw new PeekabooError("SNAPSHOT_MISSING", "Peekaboo did not return a snapshot ID for the exact window.")
+        }
+        return this.runNow([...args, "--snapshot", snapshotId, "--no-remote"], requestSignal)
+      } finally {
+        await rm(directory, { recursive: true, force: true })
+      }
+    }, signal)
+  }
+
   getSnapshotTarget(snapshotId: string): PeekabooSnapshotTarget | undefined {
     return this.snapshots.get(snapshotId)
   }

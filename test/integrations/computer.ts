@@ -78,7 +78,7 @@ test("routes Computer Use through Peekaboo and preserves semantic errors", { tim
   })
   assert.deepEqual(coordinateClick.structuredContent, {
     command: "click",
-    args: ["click", "--at", "10,20", "--window-id", "4242", "--snapshot", "snapshot-inspect", "--no-remote", "--json"],
+    args: ["click", "--at", "10,20", "--window-id", "4242", "--snapshot", "snapshot-42", "--no-remote", "--json"],
   })
 
   const middleClick = await connected.client.callTool({
