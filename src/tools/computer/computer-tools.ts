@@ -6,9 +6,9 @@ import { MCP_CONFIG } from "../../config.js"
 import { asRecord, booleanValue, finiteNumber as numberValue } from "../../utils.js"
 import { PeekabooClient, PeekabooError, type PeekabooObservation, type PeekabooResult, type PeekabooSnapshotTarget } from "./peekaboo.js"
 
-const appInput = z.string().min(1).describe("Application name, bundle identifier, or PID:12345 token.")
-const snapshotInput = z.string().min(1).describe("Snapshot ID returned by computer_observe or computer_inspect.")
-const windowIdInput = z.number().int().positive().describe("CoreGraphics window ID.")
+const appInput = z.string().min(1).describe("App name, bundle ID, or PID:12345.")
+const snapshotInput = z.string().min(1).describe("Snapshot ID from computer_observe or computer_inspect.")
+const windowIdInput = z.number().int().positive().describe("Window ID from computer_list.")
 
 const targetFields = {
   app: appInput.optional(),
@@ -16,22 +16,19 @@ const targetFields = {
   snapshot_id: snapshotInput.optional(),
 }
 
-const interactionRequirement =
-  "Call computer_observe first. If computer_inspect returns a fresh snapshot_id, use that snapshot with its element IDs. Element IDs and coordinates are valid only for the UI state that produced them."
-
 export function registerComputerUseTools(server: McpServer, peekaboo: PeekabooClient): void {
   const listSchema = z.object({
     kind: z.enum(["apps", "windows", "screens", "permissions"]).default("apps"),
-    app: appInput.optional().describe("Application to list windows for."),
-    include_hidden: z.boolean().optional().describe("Include hidden applications."),
-    include_background: z.boolean().optional().describe("Include background applications."),
+    app: appInput.optional().describe("App whose windows to list."),
+    include_hidden: z.boolean().optional(),
+    include_background: z.boolean().optional(),
   })
 
   server.registerTool(
     "computer_list",
     {
       title: "List computer state",
-      description: "List running applications, an application's renderable windows, connected displays, or Peekaboo permission status.",
+      description: "List apps, windows, screens, or permission status.",
       inputSchema: listSchema,
       annotations: {
         readOnlyHint: true,
@@ -63,8 +60,8 @@ export function registerComputerUseTools(server: McpServer, peekaboo: PeekabooCl
     .object({
       app: appInput.optional(),
       window_id: windowIdInput.optional(),
-      screen_index: z.number().int().nonnegative().optional().describe("Zero-based display index. Omit to observe the frontmost window."),
-      annotate: z.boolean().default(false).describe("Overlay element IDs on the returned screenshot."),
+      screen_index: z.number().int().nonnegative().optional().describe("Display index. Omit for the frontmost window."),
+      annotate: z.boolean().default(false).describe("Overlay element IDs."),
     })
     .superRefine((value, context) => {
       if (value.screen_index !== undefined && (value.app !== undefined || value.window_id !== undefined)) {
@@ -79,8 +76,7 @@ export function registerComputerUseTools(server: McpServer, peekaboo: PeekabooCl
     "computer_observe",
     {
       title: "Observe the computer",
-      description:
-        "Return a screenshot and fresh snapshot ID for an app, window, display, or the frontmost window. Accessibility elements are omitted to conserve context; call computer_inspect only when visual targeting is insufficient. Observe again after the UI changes.",
+      description: "Capture a screenshot and snapshot ID for an app, window, screen, or the frontmost window. Observe again after the UI changes.",
       inputSchema: observeSchema,
       annotations: {
         readOnlyHint: true,
@@ -114,8 +110,7 @@ export function registerComputerUseTools(server: McpServer, peekaboo: PeekabooCl
     "computer_inspect",
     {
       title: "Inspect accessible UI",
-      description:
-        "Return a bounded accessibility-tree text view for an observed target. Peekaboo creates a fresh snapshot for the inspection; use the returned snapshot_id with any element IDs. Prefer small limits and inspect again after the UI changes.",
+      description: "Inspect an observed snapshot for accessible elements. Use the returned snapshot_id with its element IDs.",
       inputSchema: z.object({
         snapshot_id: snapshotInput,
         max_depth: z.number().int().min(1).max(20).default(8),
@@ -150,13 +145,13 @@ export function registerComputerUseTools(server: McpServer, peekaboo: PeekabooCl
     .object({
       snapshot_id: snapshotInput,
       element_id: z.string().min(1).optional(),
-      query: z.string().min(1).optional().describe("Visible label or text query."),
-      x: z.number().finite().optional().describe("Snapshot-local x coordinate. Exact-window coordinates use background delivery by default."),
-      y: z.number().finite().optional().describe("Snapshot-local y coordinate. Exact-window coordinates use background delivery by default."),
+      query: z.string().min(1).optional().describe("Visible label or text."),
+      x: z.number().optional(),
+      y: z.number().optional(),
       button: z.enum(["left", "right", "middle"]).optional(),
       click_count: z.number().int().min(1).max(3).optional(),
       long_press: z.boolean().optional(),
-      foreground: z.boolean().optional().describe("Use the shared physical pointer. Exact-window element, query, and coordinate clicks stay background by default."),
+      foreground: z.boolean().optional().describe("Use the physical pointer."),
       wait_ms: z.number().int().min(0).max(30_000).optional(),
     })
     .superRefine((value, context) => {
@@ -192,7 +187,7 @@ export function registerComputerUseTools(server: McpServer, peekaboo: PeekabooCl
     "computer_click",
     {
       title: "Click the computer",
-      description: `Click an observed element, text query, or coordinate. ${interactionRequirement}`,
+      description: "Click an element, visible text, or coordinates from a snapshot.",
       inputSchema: clickSchema,
       annotations: {
         readOnlyHint: false,
@@ -245,7 +240,7 @@ export function registerComputerUseTools(server: McpServer, peekaboo: PeekabooCl
   const typeSchema = z
     .object({
       ...targetFields,
-      text: z.string().min(1).describe("Literal text to type."),
+      text: z.string().min(1),
       clear: z.boolean().optional(),
       press_return: z.boolean().optional(),
       foreground: z.boolean().optional(),
@@ -264,8 +259,7 @@ export function registerComputerUseTools(server: McpServer, peekaboo: PeekabooCl
     "computer_type",
     {
       title: "Type on the computer",
-      description:
-        "Type literal text into a targeted or focused app. Fresh snapshots or window_id provide exact background targeting; app-only background typing may be rejected when the app has multiple eligible windows.",
+      description: "Type text into an app, window, or snapshot.",
       inputSchema: typeSchema,
       annotations: {
         readOnlyHint: false,
@@ -288,7 +282,7 @@ export function registerComputerUseTools(server: McpServer, peekaboo: PeekabooCl
   const keyToken = z
     .string()
     .regex(/^[A-Za-z0-9_]+$/)
-    .describe("Key token such as return, tab, escape, cmd, shift, or a letter.")
+    .describe("Key such as return, tab, escape, cmd, shift, or a letter.")
 
   const pressSchema = z
     .object({
@@ -310,8 +304,7 @@ export function registerComputerUseTools(server: McpServer, peekaboo: PeekabooCl
     "computer_press",
     {
       title: "Press computer keys",
-      description:
-        "Press one or more special keys sequentially, such as tab, tab, return. Background delivery requires an exact window_id or fresh snapshot_id. Use computer_hotkey for simultaneous shortcuts.",
+      description: "Press keys sequentially. Use computer_hotkey for simultaneous shortcuts.",
       inputSchema: pressSchema,
       annotations: {
         readOnlyHint: false,
@@ -349,8 +342,7 @@ export function registerComputerUseTools(server: McpServer, peekaboo: PeekabooCl
     "computer_hotkey",
     {
       title: "Press a computer shortcut",
-      description:
-        "Press one simultaneous keyboard shortcut, such as cmd+shift+t. Background delivery requires an exact window_id or fresh snapshot_id. Use computer_press for sequential keys.",
+      description: "Press a keyboard shortcut. Use computer_press for sequential keys.",
       inputSchema: hotkeySchema,
       annotations: {
         readOnlyHint: false,
@@ -375,7 +367,7 @@ export function registerComputerUseTools(server: McpServer, peekaboo: PeekabooCl
       amount: z.number().int().min(1).max(100).optional(),
       element_id: z.string().min(1).optional(),
       smooth: z.boolean().optional(),
-      foreground: z.boolean().optional().describe("Scroll at the current physical pointer. Do not combine with app, window_id, snapshot_id, or element_id."),
+      foreground: z.boolean().optional().describe("Scroll at the current pointer."),
     })
     .superRefine((value, context) => {
       if (value.element_id && !value.snapshot_id) {
@@ -408,7 +400,7 @@ export function registerComputerUseTools(server: McpServer, peekaboo: PeekabooCl
     "computer_scroll",
     {
       title: "Scroll the computer",
-      description: `Scroll an observed element in the background, or set foreground=true to scroll at the current physical pointer. ${interactionRequirement}`,
+      description: "Scroll an element from a snapshot, or set foreground=true to scroll at the current pointer.",
       inputSchema: scrollSchema,
       annotations: {
         readOnlyHint: false,
@@ -431,7 +423,7 @@ export function registerComputerUseTools(server: McpServer, peekaboo: PeekabooCl
     }
   )
 
-  const dragPoint = z.union([z.object({ element_id: z.string().min(1) }).strict(), z.object({ x: z.number().finite(), y: z.number().finite() }).strict()])
+  const dragPoint = z.union([z.object({ element_id: z.string().min(1) }).strict(), z.object({ x: z.number(), y: z.number() }).strict()])
   const dragDestination = z.union([dragPoint, z.object({ app: appInput }).strict()])
   const dragSchema = z.object({
     snapshot_id: snapshotInput,
@@ -449,7 +441,7 @@ export function registerComputerUseTools(server: McpServer, peekaboo: PeekabooCl
     "computer_drag",
     {
       title: "Drag on the computer",
-      description: `Drag between observed elements, coordinates, or an application. ${interactionRequirement}`,
+      description: "Drag between elements, coordinates, or to an application.",
       inputSchema: dragSchema,
       annotations: {
         readOnlyHint: false,
@@ -484,8 +476,8 @@ export function registerComputerUseTools(server: McpServer, peekaboo: PeekabooCl
     .object({
       action: z.enum(["launch", "switch", "quit", "relaunch", "hide", "unhide"]),
       app: appInput,
-      open: z.array(z.string().min(1)).max(10).default([]).describe("Files or URLs to open when launching."),
-      force: z.boolean().default(false).describe("Force quit or relaunch without saving."),
+      open: z.array(z.string().min(1)).max(10).default([]).describe("Files or URLs to open."),
+      force: z.boolean().default(false).describe("Force quit when quitting or relaunching."),
     })
     .superRefine((value, context) => {
       if (value.open.length > 0 && value.action !== "launch") {
@@ -506,8 +498,7 @@ export function registerComputerUseTools(server: McpServer, peekaboo: PeekabooCl
     "computer_app",
     {
       title: "Manage a computer app",
-      description:
-        "Launch, switch to, quit, relaunch, hide, or unhide a Mac application. Launch and relaunch wait until the app is ready; switch verifies focus.",
+      description: "Launch, switch to, quit, relaunch, hide, or unhide an app.",
       inputSchema: appSchema,
       annotations: {
         readOnlyHint: false,
@@ -529,7 +520,7 @@ export function registerComputerUseTools(server: McpServer, peekaboo: PeekabooCl
       app: appInput.optional(),
       window_id: windowIdInput.optional(),
       window_title: z.string().min(1).optional(),
-      foreground: z.boolean().optional().describe("For close only, allow Peekaboo's focused fallback if Accessibility close does not dismiss the window."),
+      foreground: z.boolean().optional().describe("Allow focusing the window if needed to close it."),
       x: z.number().int().optional(),
       y: z.number().int().optional(),
       width: z.number().int().positive().optional(),
@@ -587,8 +578,7 @@ export function registerComputerUseTools(server: McpServer, peekaboo: PeekabooCl
     "computer_window",
     {
       title: "Manage a computer window",
-      description:
-        "Focus, close, minimize, restore, maximize, move, resize, or set the bounds of an app window. Use computer_list with kind=windows to obtain exact window IDs.",
+      description: "Focus, close, minimize, restore, maximize, move, resize, or set window bounds.",
       inputSchema: windowSchema,
       annotations: {
         readOnlyHint: false,

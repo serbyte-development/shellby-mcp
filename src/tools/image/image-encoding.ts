@@ -3,7 +3,7 @@ import sharp from "sharp"
 const MAX_MCP_IMAGE_RESPONSE_BYTES = 4 * 1024 * 1024
 
 const RESPONSE_HEADROOM_BYTES = 64 * 1024
-const JPEG_QUALITIES = [65, 55, 45, 35] as const
+const JPEG_QUALITIES = [85, 65, 55, 45, 35] as const
 
 export interface EncodedMcpImage {
   data: string
