@@ -1,6 +1,6 @@
 # HTTP Transport
 
-Verified 2026-08-18.
+Verified 2026-08-23.
 
 ## What This Is
 
@@ -12,7 +12,7 @@ This page documents the local HTTP/MCP boundary, trusted remote path, subject bi
 - `GET /healthz` returns `{ "ok": true }` (`src/server/http-server.ts`).
 - Exact `POST /mcp` is the only MCP endpoint; a regex route keeps `/mcp/` distinct because the MCP Express factory initializes Express routing before application code can enable strict routing. Direct localhost clients remain unauthenticated. Trusted tunnel traffic is marked by ngrok; on marked `tools/call` requests Shellby MCP requires `X-OpenAI-Subject`, binds the first subject before dispatch, and requires that subject thereafter. The tool does not need to exist or succeed for the first call to bind (`src/server/http-server.ts`, `src/auth/auth.ts`).
 - `GET` and `DELETE /mcp` return a JSON-RPC-shaped 405 response with `Allow: POST` (`src/server/http-server.ts`).
-- Tool metadata continues to declare `noauth` because Shellby MCP does not use MCP OAuth or per-tool security schemes; remote authorization is enforced at the HTTP/deployment boundary (`src/tools/shell/shell-tools.ts`, `src/tools/computer/computer-tools.ts`, `src/server/http-server.ts`).
+- Tool metadata continues to declare `noauth` because Shellby MCP does not use MCP OAuth or per-tool security schemes; remote authorization is enforced at the HTTP/deployment boundary. Child tool metadata is merged with this parent-level declaration (`src/tools/shell/shell-tools.ts`, `src/server/child-mcp.ts`, `src/server/http-server.ts`).
 
 The MCP Express Host/Origin guards protect the localhost HTTP listener from DNS-rebinding/browser-origin attacks; they are not caller authentication. The ngrok policy remains the remote trust boundary: it rejects traffic outside ngrok's `com.openai.chatgpt` IP category, exposes only exact `/mcp`, rewrites Host to `localhost:3333`, and adds `X-Shellby-Remote: 1`. Shellby MCP uses that marker only to distinguish already-origin-verified tunnel traffic from direct localhost clients (`ngrok-traffic-policy.yml`, `src/server/http-server.ts`).
 
@@ -24,7 +24,7 @@ Shellby MCP currently uses `X-OpenAI-Subject` as the remote owner identifier (`s
 
 ## Connection Model
 
-Every accepted POST creates a new v2 `McpServer` and `NodeStreamableHTTPServerTransport` with no session ID generator. The response's `finish` or `close` event closes that request's transport/server, while all requests share the process-level `ShellSessionManager`, `WebPageOpener`, `PeekabooClient`, `ChatGptSubagentService`, and production `ShellbyAuthStore`. The HTTP boundary creates default services or accepts explicit instances for production-specific behavior and tests (`src/server/http-server.ts`, `src/index.ts`).
+Every accepted POST creates a new v2 `McpServer` and `NodeStreamableHTTPServerTransport` with no session ID generator. The response's `finish` or `close` event closes that request's transport/server, while all requests share the process-level `ShellSessionManager`, `WebPageOpener`, child MCP clients, `ChatGptSubagentService`, and production `ShellbyAuthStore`. Child MCP schemas are discovered once at startup and registered into each short-lived parent server; calls use the shared long-lived child connection. The HTTP boundary creates default services or accepts explicit instances for production-specific behavior and tests (`src/server/child-mcp.ts`, `src/server/http-server.ts`, `src/index.ts`).
 
 Production also injects the repository-local MCP audit logger at this boundary. Its storage, truncation, token-accounting, and sensitivity rules are canonical in [Audit Logging](./Audit%20Logging.md).
 

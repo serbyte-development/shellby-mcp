@@ -79,6 +79,7 @@ interface ToolRegistrationConfig {
 export interface ToolRegistrationBoundaryOptions {
   toolOutputStructured: ToolOutputStructuredMode
   drainPendingEvents?: () => string[]
+  passthroughToolNames?: ReadonlySet<string>
 }
 
 const TOOL_ANNOTATION_DEFAULTS: Record<string, unknown> = {
@@ -99,8 +100,7 @@ export function installToolRegistrationBoundary(server: McpServer, options: Tool
   const registerTool = server.registerTool.bind(server) as unknown as (name: string, config: ToolRegistrationConfig, callback: unknown) => unknown
 
   server.registerTool = ((name: string, config: ToolRegistrationConfig, callback: unknown) => {
-    const computerUse = name.startsWith("computer_")
-    const nativeContent = computerUse || name === "image_view"
+    const nativeContent = options.passthroughToolNames?.has(name) === true || name === "image_view"
     if (!nativeContent && options.toolOutputStructured !== "always") {
       delete config.outputSchema
     }

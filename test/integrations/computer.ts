@@ -1,137 +1,44 @@
 import assert from "node:assert/strict"
-import { mkdtemp, readFile, rm } from "node:fs/promises"
-import { tmpdir } from "node:os"
-import { join } from "node:path"
 import test from "node:test"
-import { fileURLToPath } from "node:url"
 
-import { PeekabooClient } from "../../src/tools/computer/peekaboo.js"
+import { createFakeChildMcp } from "../helpers/child-mcp.js"
 import { connectClient, startMcpHttpServer } from "./helpers.js"
 
-test("routes Computer Use through Peekaboo and preserves semantic errors", { timeout: 10_000 }, async (t) => {
-  const root = await mkdtemp(join(tmpdir(), "peekaboo-mcp-integration-"))
-  const logPath = join(root, "peekaboo.jsonl")
-  const fixture = fileURLToPath(new URL("../fixtures/fake-peekaboo.mjs", import.meta.url))
-  const peekaboo = new PeekabooClient({
-    executable: process.execPath,
-    baseArgs: [fixture],
-    env: {
-      ...process.env,
-      FAKE_PEEKABOO_FAIL_COMMAND: "app",
-      FAKE_PEEKABOO_FAIL_SUBCOMMAND: "switch",
-      FAKE_PEEKABOO_LOG: logPath,
-    },
-    timeoutMs: 2_000,
+test("passes native child Computer Use schemas, results, and failures through unchanged", { timeout: 10_000 }, async (t) => {
+  const running = await startMcpHttpServer({
+    port: 0,
+    childMcpServers: [createFakeChildMcp()],
+    toolOutputStructured: "never",
   })
-  const running = await startMcpHttpServer({ port: 0, peekaboo })
-  t.after(async () => {
-    await running.close()
-    await rm(root, { recursive: true, force: true })
-  })
+  t.after(() => running.close())
   const connected = await connectClient(running.url, "computer-use-integration-client")
   t.after(() => connected.client.close())
 
-  const windows = await connected.client.callTool({
-    name: "computer_list",
-    arguments: { kind: "windows", app: "Finder", include_hidden: true, include_background: true },
-  })
-  assert.deepEqual(windows.structuredContent, {
-    command: "window",
-    args: ["window", "list", "--app", "Finder", "--json"],
+  const tools = await connected.client.listTools()
+  const permissions = tools.tools.find((tool) => tool.name === "permissions")
+  assert.ok(permissions)
+  assert.equal(permissions.description, "Fixture permissions tool")
+  assert.deepEqual(permissions.annotations, { readOnlyHint: true })
+  assert.deepEqual(permissions._meta, {
+    fixture: "permissions",
+    securitySchemes: [{ type: "noauth" }],
   })
 
-  const missingWindowApp = await connected.client.callTool({
-    name: "computer_list",
-    arguments: { kind: "windows" },
-  })
-  assert.equal(missingWindowApp.isError, true)
-  assert.match(missingWindowApp.content[0]?.type === "text" ? missingWindowApp.content[0].text : "", /app is required/)
-
-  const observed = await connected.client.callTool({ name: "computer_observe", arguments: { app: "Finder" } })
-  assert.equal(observed.isError, undefined)
+  const observed = await connected.client.callTool({ name: "see", arguments: { value: "Finder" } })
   assert.deepEqual(
     observed.content.map((block) => block.type),
     ["text", "image"]
   )
-  assert.deepEqual(observed.structuredContent, { snapshot_id: "snapshot-42" })
+  assert.deepEqual(observed.structuredContent, { snapshot_id: "snapshot-native", arguments: { value: "Finder" } })
+  assert.deepEqual(observed._meta, { source: "fake-child" })
 
-  const inspected = await connected.client.callTool({
-    name: "computer_inspect",
-    arguments: { snapshot_id: "snapshot-42", max_depth: 4, max_elements: 20, max_children: 10 },
-  })
-  assert.deepEqual(inspected.content, [{ type: "text", text: 'snapshot_id=snapshot-inspect\n[B1] AXButton "Continue"' }])
-  assert.deepEqual(inspected.structuredContent, { snapshot_id: "snapshot-inspect", text: '[B1] AXButton "Continue"' })
+  const clicked = await connected.client.callTool({ name: "click", arguments: { value: "B1" } })
+  assert.deepEqual(clicked.content, [{ type: "text", text: "click:ok" }])
+  assert.deepEqual(clicked.structuredContent, { name: "click", arguments: { value: "B1" } })
+  assert.deepEqual(clicked._meta, { source: "fake-child" })
 
-  const clicked = await connected.client.callTool({
-    name: "computer_click",
-    arguments: { snapshot_id: "snapshot-inspect", element_id: "B1" },
-  })
-  assert.equal(clicked.isError, undefined)
-  assert.deepEqual(clicked.structuredContent, {
-    command: "click",
-    args: ["click", "--on", "B1", "--snapshot", "snapshot-inspect", "--json"],
-  })
-
-  const coordinateClick = await connected.client.callTool({
-    name: "computer_click",
-    arguments: { snapshot_id: "snapshot-inspect", x: 10, y: 20 },
-  })
-  assert.deepEqual(coordinateClick.structuredContent, {
-    command: "click",
-    args: ["click", "--at", "10,20", "--window-id", "4242", "--foreground", "--json"],
-  })
-
-  const typed = await connected.client.callTool({
-    name: "computer_type",
-    arguments: { app: "Finder", text: "hello", press_return: true },
-  })
-  assert.deepEqual(typed.structuredContent, {
-    command: "type",
-    args: ["type", "--text", "hello\n", "--app", "Finder", "--json"],
-  })
-
-  const restored = await connected.client.callTool({
-    name: "computer_window",
-    arguments: { action: "restore", app: "Finder", window_id: 4242 },
-  })
-  assert.deepEqual(restored.structuredContent, {
-    command: "window",
-    args: ["window", "restore", "--app", "Finder", "--window-id", "4242", "--json"],
-  })
-
-  const closed = await connected.client.callTool({
-    name: "computer_window",
-    arguments: { action: "close", window_id: 4242, foreground: true },
-  })
-  assert.deepEqual(closed.structuredContent, {
-    command: "window",
-    args: ["window", "close", "--window-id", "4242", "--foreground", "--json"],
-  })
-
-  const exactObserved = await connected.client.callTool({
-    name: "computer_observe",
-    arguments: { app: "Finder", window_id: 4242 },
-  })
-  assert.equal(exactObserved.isError, undefined)
-  const events = (await readFile(logPath, "utf8"))
-    .trim()
-    .split("\n")
-    .map((line) => JSON.parse(line) as { event: string; command: string; args: string[] })
-  const exactObserve = [...events]
-    .reverse()
-    .find((event) => event.event === "start" && event.command === "see" && event.args.includes("--app") && event.args.includes("--window-id"))
-  assert.ok(exactObserve)
-  assert.deepEqual(exactObserve.args.slice(0, 5), ["see", "--app", "Finder", "--window-id", "4242"])
-
-  const failed = await connected.client.callTool({
-    name: "computer_app",
-    arguments: { action: "switch", app: "Finder" },
-  })
+  const failed = await connected.client.callTool({ name: "app", arguments: { action: "fail" } })
   assert.equal(failed.isError, true)
-  assert.deepEqual(failed.content, [
-    {
-      type: "text",
-      text: "FAKE_COMMAND_FAILED: Fake Peekaboo failure for app (fixture requested failure)",
-    },
-  ])
+  assert.deepEqual(failed.content, [{ type: "text", text: "UPSTREAM_FAILURE: fixture requested failure" }])
+  assert.deepEqual(failed._meta, { source: "fake-child" })
 })

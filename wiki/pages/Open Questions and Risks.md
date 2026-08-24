@@ -1,6 +1,6 @@
 # Open Questions and Risks
 
-Verified 2026-08-22.
+Verified 2026-08-23.
 
 ## What This Is
 
@@ -18,9 +18,9 @@ This page is the maintenance lint target for current trust, resource, external-i
 - **Rolling-output loss:** some shell output can become permanently unrecoverable after retention/capture limits are exceeded. The exact caller-visible distinction between truncation and loss is canonical in [`shell_run` / `shell_poll`](./tools/shell_run.md).
 - **`apply_patch` paths are not sandboxed:** patching retains the local user's filesystem authority. Exact path/parser behavior is canonical in [apply_patch](./tools/apply_patch.md).
 - **MCP audit logging can disclose values:** `agent-commands.yaml` can contain sensitive tool inputs even though it is gitignored, permission-restricted, and bounded. Treat the whole file as sensitive; see [Audit Logging](./Audit%20Logging.md) and [Secret Handling](./Secret%20Handling.md).
-- **Peekaboo and permission drift:** the eleven Computer Use schemas are stable at server startup, but the installed Peekaboo CLI version, JSON fields, daemon/Bridge selection, Screen Recording, Accessibility, and Event Synthesizing permissions can change independently. Calls surface the resulting error and are never retried (`src/tools/computer/peekaboo.ts`, `src/tools/computer/computer-tools.ts`).
-- **Ephemeral observation targets:** screenshot IDs and their capture-target mappings live only in process memory, are capped at 64, and disappear on restart or eviction. Coordinate actions fail closed when the mapping is unavailable, so callers must observe again (`src/tools/computer/peekaboo.ts`, `src/tools/computer/computer-tools.ts`).
-- **Coordinate interpretation:** screen captures require display-origin translation, while app/window clicks use screenshot-relative coordinates with an explicit capture target. Multi-display layout or upstream bounds changes are important real-CLI regression cases (`src/tools/computer/peekaboo.ts`, `src/tools/computer/computer-tools.ts`, `test/peekaboo.test.ts`).
+- **Peekaboo and permission drift:** the Peekaboo package is pinned and its ten selected schemas are discovered at Shellby startup, but daemon/Bridge behavior and Screen Recording, Accessibility, and Event Synthesizing permissions can still change independently. Shellby intentionally compacts successful `computer_see` text and compresses images; other upstream results pass through and interrupted actions are never retried. If the child exits, the next call reconnects; changed definitions require a Shellby restart (`package.json`, `src/server/child-mcp.ts`, `src/tools/computer/peekaboo-mcp.ts`).
+- **Ephemeral upstream state:** snapshot IDs and coordinate references belong entirely to the Peekaboo child process and disappear when that process restarts. Shellby no longer retains or reconstructs capture targets, so callers must obtain fresh state from `computer_see` or `computer_inspect_ui` after a child restart (`src/server/child-mcp.ts`, `src/tools/computer/peekaboo-mcp.ts`).
+- **Upstream Computer Use semantics:** coordinate interpretation, foreground consent, action receipts, targeting, output bounds, and Bridge behavior are intentionally Peekaboo responsibilities. Compatibility regressions should be reproduced against the pinned native child before adding parent-side behavior (`src/tools/computer/peekaboo-mcp.ts`, `test/child-mcp.test.ts`, `test/integrations/computer.ts`).
 
 ## Intentional Unenforced Conventions
 

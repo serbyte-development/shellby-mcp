@@ -1,6 +1,6 @@
 # Tool Naming and Schema Design
 
-Verified 2026-08-15.
+Verified 2026-08-23.
 
 ## What This Is
 
@@ -20,7 +20,9 @@ Prefer:
 <domain>_<specific action>
 ```
 
-Examples: `skill_list`, `skill_load`, `shell_run`, `shell_poll`, `computer_click`.
+Examples: `skill_list`, `skill_load`, `shell_run`, `shell_poll`, `subagent_run`.
+
+Child MCP tools still follow Shellby's domain naming convention. A provider-specific tool overlay owns public names and model-facing descriptions together, while the generic child binding retains the original upstream name for dispatch. Peekaboo therefore publishes `computer_see`, `computer_click`, and `computer_window` while leaving argument names, structure, validation, and execution upstream-owned. Response transforms remain separate: Peekaboo compresses image blocks and turns successful `computer_see` output into a compact visual receipt while leaving `computer_inspect_ui` as the explicit AX-text path (`src/server/child-mcp.ts`, `src/tools/computer/peekaboo-mcp.ts`).
 
 Use concrete conventional verbs such as `list`, `load`, `read`, `fetch`, `run`, `poll`, `create`, `delete`, `reset`, and `close`. Avoid vague verbs such as `use`, `manage`, `handle`, or `process` when a precise action exists.
 

@@ -44,11 +44,9 @@ const MANAGED_VIEWPORT = { width: 412, height: 915 } as const
 const INJECTED_PROMPT =
   "Respond terse like smart caveman — drop articles, filler, pleasantries. Fragments OK. Technical terms exact. Code unchanged. Pattern: [thing] [action] [reason]. [next step].\n\nNot use `subagent` or `computer_*` tools."
 
-export type BrowserAgentStatus = "idle" | "uncertain" | ChatGptSubagentActivity
-
 export interface BrowserAgentState {
   agentId: string
-  status: BrowserAgentStatus
+  status: "idle" | "uncertain" | ChatGptSubagentActivity
   page?: Page
   conversationUrl?: string
   lastCompletedAt?: number
@@ -257,7 +255,7 @@ export async function ensureAgentPage(state: ChatGptSubagentRuntimeState, agent:
   }
 }
 
-export async function waitForTurnResponse(state: ChatGptSubagentRuntimeState, turn: BrowserTurnState, agent: BrowserAgentState): Promise<void> {
+async function waitForTurnResponse(state: ChatGptSubagentRuntimeState, turn: BrowserTurnState, agent: BrowserAgentState): Promise<void> {
   const observation = turn.observation
   if (!observation) return
   try {
@@ -271,7 +269,7 @@ export async function waitForTurnResponse(state: ChatGptSubagentRuntimeState, tu
   }
 }
 
-export async function failOrRecoverSubmittedTurn(
+async function failOrRecoverSubmittedTurn(
   state: ChatGptSubagentRuntimeState,
   turn: BrowserTurnState,
   agent: BrowserAgentState,
@@ -301,7 +299,7 @@ export async function failOrRecoverSubmittedTurn(
   failTurn(state, turn, agent, originalError)
 }
 
-export async function recoverSubmittedTurn(
+async function recoverSubmittedTurn(
   state: ChatGptSubagentRuntimeState,
   turn: BrowserTurnState,
   agent: BrowserAgentState,

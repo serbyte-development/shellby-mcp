@@ -29,7 +29,7 @@ Shellby MCP connects ChatGPT Web to a stateful local runtime over MCP. MCP reque
 | Persistent shells | Named login shells retain cwd, exported environment, processes, and command history across MCP calls.  |
 | Direct editing    | Native ChatGPT `apply_patch` binary edits files independently of shell state.                          |
 | Browser subagents | Up to three detached ChatGPT Web conversations with follow-up context and concurrent result retrieval. |
-| Computer Use      | Focused macOS observation and interaction tools backed by [Peekaboo](https://peekaboo.sh/).            |
+| Computer Use      | Native macOS observation and interaction tools from [Peekaboo](https://peekaboo.sh/).                  |
 | Web and images    | Rendered webpage extraction, bounded document pagination, and native image transport.                  |
 | Dynamic skills    | Workspace skills load directly from `<workspace>/skills/*/SKILL.md`.                                   |
 
@@ -43,7 +43,7 @@ Shellby MCP connects ChatGPT Web to a stateful local runtime over MCP. MCP reque
 - An [ngrok](https://ngrok.com/) account and CLI
 - A ChatGPT account where Developer Mode/custom MCP apps are available
 
-Google Chrome is optional for browser-backed subagents. Peekaboo is optional for Computer Use. The core shell, patch, web, image, and skill tools still start when either optional capability is unavailable.
+Google Chrome is optional for browser-backed subagents. Peekaboo ships as a pinned npm dependency; its macOS permissions are required only when Computer Use tools are called.
 
 ## Quick start
 
@@ -73,6 +73,9 @@ Google Chrome is optional for browser-backed subagents. Peekaboo is optional for
    ```
 
    Setup prepares the workspace, builds the server, checks optional Peekaboo permissions, and creates a dedicated Chrome profile when Chrome is installed. Sign into ChatGPT once in the dedicated window if it opens.
+
+   > [!IMPORTANT]
+   > Run initial setup and the first `npm start` from Terminal.app. PM2 keeps a per-user background daemon, and macOS may attribute Peekaboo's Screen Recording and Accessibility access to the GUI application that first launched that daemon. If Claude, Codex, Cursor, or another app launches PM2 first, macOS may require permissions for that app instead. Starting Shellby again from Terminal does not replace an existing PM2 daemon.
 
 4. Start everything:
 
@@ -127,11 +130,15 @@ Reuse an `agent_id` to continue the same in-process conversation. A new ID start
 <summary><strong>Computer Use with Peekaboo</strong></summary>
 
 ```bash
-brew install steipete/tap/peekaboo
 npm run setup:computer
+npm run setup:computer -- --status
 ```
 
-Shellby MCP delegates permission guidance to Peekaboo. Screen Recording enables observation; Accessibility and Event Synthesizing enable actions. Computer actions are stateful and are never automatically retried.
+For predictable macOS permission ownership, run the initial `npm run setup`, `npm start`, and permission setup from Terminal.app, then grant Terminal when macOS requests access. Peekaboo may route through its Bridge daemon; the status command reports both the selected source and local runtime, and every required source should show `Granted`.
+
+If PM2 was first started by another GUI application and you intentionally want Terminal to become the launch context, run `./node_modules/.bin/pm2 kill` from Terminal before starting Shellby again. This stops every application managed by that user's PM2 daemon, not only Shellby.
+
+Shellby starts Peekaboo as a restricted child MCP and publishes ten native schemas under clear `computer_*` names with concise model-facing descriptions. `computer_see` is visual-first: it returns a same-dimension JPEG plus a compact snapshot/coordinate receipt, while `computer_inspect_ui` exposes the bounded accessibility tree only when requested. Argument structure, validation, and execution remain upstream. Screen Recording enables observation; Accessibility and Event Synthesizing enable actions. Computer actions are stateful and are never automatically retried by Shellby.
 
 </details>
 
@@ -167,7 +174,6 @@ Copy [.env.example](.env.example) to `.env`. The main inputs are:
 | ------------------------------- | --------------------------- | ---------------------------------------------------- |
 | `MCP_CWD`                       | `~/Desktop/agent-workspace` | Initial workspace and `AGENTS.md` root               |
 | `MCP_SHELL`                     | `/bin/zsh`                  | Persistent login shell executable                    |
-| `MCP_PEEKABOO_BIN`              | `peekaboo`                  | Peekaboo executable or absolute path                 |
 | `MCP_CHATGPT_CDP_ENDPOINT`      | `http://127.0.0.1:9222`     | Existing Chrome CDP endpoint                         |
 | `MCP_CHATGPT_PROJECT_URL`       | unset                       | Optional ChatGPT Project start URL                   |
 | `MCP_CHATGPT_PROFILE_DIRECTORY` | unset                       | Optional profile within dedicated Chrome data        |

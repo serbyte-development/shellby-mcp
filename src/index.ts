@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url"
 import { ShellbyAuthStore } from "./auth/auth.js"
 import { MCP_CONFIG } from "./config.js"
 import { createChatGptSubagentService } from "./tools/subagent/chatgpt-subagent.js"
+import { PEEKABOO_EXECUTABLE } from "./tools/computer/peekaboo-mcp.js"
 import { McpAuditLogger } from "./server/audit-log.js"
 import { createShellSession } from "./tools/shell/session.js"
 import { createShellSessionManager } from "./tools/shell/session-manager.js"
@@ -35,7 +36,7 @@ console.log(`Shell: ${MCP_CONFIG.shell.path}`)
 console.log(`Default workspace: ${cwd}`)
 console.log(`Maximum live shells: ${shells.maximumShells}`)
 console.log(`Agent MCP audit log: ${auditLogPath}`)
-console.log(`Computer Use: Peekaboo CLI (${MCP_CONFIG.peekaboo.executable})`)
+console.log(`Computer Use: Peekaboo child MCP (${PEEKABOO_EXECUTABLE})`)
 console.log(`ChatGPT Subagents: attach-only CDP ${MCP_CONFIG.chatGpt.cdpEndpoint}`)
 
 let shuttingDown = false

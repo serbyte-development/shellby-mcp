@@ -1,6 +1,6 @@
 # Architecture Map
 
-Verified 2026-08-22.
+Verified 2026-08-23.
 
 ## What This Is
 
@@ -17,8 +17,8 @@ This page maps the process-level components and follows one request from the HTT
 | MCP audit log         | Record every `tools/call` request and compact completion metadata without affecting dispatch                                                    | `src/server/audit-log.ts`                |
 | MCP composition       | Publish shared instructions and register capability tool modules                                                                                | `src/server/mcp-server.ts`               |
 | Tool contracts        | Own tool schemas, descriptions, handlers, result shaping, and capability-specific errors                                                        | `src/tools/`                             |
-| Computer Use tools    | Publish eleven focused schemas, validate targets, and normalize compact MCP results                                                             | `src/tools/computer/computer-tools.ts`   |
-| Peekaboo adapter      | Invoke the CLI without a shell, serialize calls, parse bounded JSON, and retain snapshot targets                                                | `src/tools/computer/peekaboo.ts`         |
+| Child MCP proxy       | Bind transformed public definitions to upstream names, optionally transform results, and forward calls, cancellation, and errors                | `src/server/child-mcp.ts`                |
+| Peekaboo child        | Namespace native tools, compress images, compact `computer_see` to a visual receipt, and bound on-demand AX inspection                          | `src/tools/computer/peekaboo-mcp.ts`     |
 | Shell manager         | Lazily create/restore named shells, manage live LRU capacity, hibernate idle shells, and expire cached recoverable state                        | `src/tools/shell/session-manager.ts`     |
 | Shell runtime         | Own the persistent child shell, marker protocol, transcripts, command/batch records, context capture, reset, and recovery                       | `src/tools/shell/session.ts`             |
 | Parallel shell runner | Parse `*** Run` batches, enforce four children per shell, run isolated shell jobs, cap output, timeout, and clean process groups                | `src/tools/shell/parallel-runner.ts`     |
@@ -32,7 +32,7 @@ This page maps the process-level components and follows one request from the HTT
 1. `src/index.ts` parses configuration, prepares durable/process-level state, and composes shared runtime services (`src/index.ts`, `src/config.ts`).
 2. `src/server/http-server.ts` accepts an MCP request, applies the transport/ownership boundary, and creates a short-lived MCP server/transport around shared process services. See [HTTP Transport](./HTTP%20Transport.md).
 3. `src/server/mcp-server.ts` registers the model-facing tools; the selected capability module under `src/tools/` owns its schema, handler, result, and domain errors.
-4. Stateful capabilities retain only their intended process-level boundary: named shells in the shell manager, webpage documents in the opener cache, browser conversations in the subagent runtime service, and Computer Use capture targets in the Peekaboo adapter. Dedicated pages document those lifecycles.
+4. Stateful capabilities retain only their intended process-level boundary: named shells in the shell manager, webpage documents in the opener cache, browser conversations in the subagent runtime service, and Computer Use state in the long-lived Peekaboo child MCP. Dedicated pages document those lifecycles.
 
 ## Related
 

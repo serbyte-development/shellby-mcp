@@ -1139,3 +1139,20 @@
 - Replaced the fixed one-second render delay with a bounded DOM-settle window that waits at least two seconds, extends while mutations continue, and caps at five seconds.
 - Stripped terminal control sequences from browser error messages before returning them to MCP clients.
 - Added deterministic browser integration coverage for empty success responses, HTTP metadata, and client rendering delayed beyond one second.
+
+## [2026-08-23] computer-use | Proxy native Peekaboo through a child MCP
+
+- Replaced Shellby's eleven custom schemas, CLI argv translation, result shaping, serialized queue, and local snapshot-target cache with ten allowlisted native Peekaboo MCP schemas published under `computer_*` names.
+- Added a transport-generic stdio child-MCP provider for startup discovery, schema/result passthrough, cancellation, clean shutdown, and next-call reconnection without action retry; kept prompts, resources, sampling, and dynamic catalogs out of scope.
+- Pinned `@steipete/peekaboo` 4.2.2, moved permission setup to its package-local binary, and removed the Homebrew/runtime executable override requirement.
+- Added one provider-specific overlay map for public names and concise descriptions while preserving native schema mechanics, execution, and non-image results; startup fails if a mapped parameter disappears.
+- Restored pre-transport screenshot compression by passing every Peekaboo image block through the shared same-dimension 4 MiB Sharp encoder while preserving surrounding native result content and metadata.
+- Restored the visual-first observation contract: successful `computer_see` responses now expose only the compressed screenshot, compact snapshot/coordinate receipt, and critical AX warnings; `computer_inspect_ui` retains the on-demand tree.
+- Set child AX fallbacks to depth 8, 100 elements, and 25 children per node while preserving native caller overrides and documenting when to raise them.
+- Replaced CLI adapter tests with deterministic child-process and HTTP passthrough coverage, then verified the real packaged child published all ten selected tools.
+- Added a real pinned-package schema compatibility test. The curated ten-tool block measures 2,809 tokens and the full production surface measures 5,015 `o200k_base` tokens.
+
+## [2026-08-23] computer-use | Document PM2 permission ownership
+
+- Documented that macOS may assign Peekaboo's command-line TCC access to the GUI application that first creates the persistent PM2 daemon.
+- Recommended running initial setup and the first managed launch from Terminal.app, checking every Peekaboo source with `setup:computer -- --status`, and treating PM2 daemon recreation as an explicit all-app recovery operation.

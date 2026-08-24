@@ -6,7 +6,7 @@ import { Client, StreamableHTTPClientTransport } from "@modelcontextprotocol/cli
 import { startMcpHttpServer as startMcpHttpServerRaw, type StartMcpServerOptions } from "../../src/server/http-server.js"
 
 export function startMcpHttpServer(options: StartMcpServerOptions = {}) {
-  return startMcpHttpServerRaw({ toolOutputStructured: "always", ...options })
+  return startMcpHttpServerRaw({ toolOutputStructured: "always", childMcpServers: [], ...options })
 }
 
 export async function connectClient(url: string, name: string, openAiSubject?: string, trustedRemote = false) {

@@ -2,8 +2,6 @@ import { McpServer } from "@modelcontextprotocol/server"
 
 import { buildMcpInstructions, MCP_CONFIG, type ToolOutputStructuredMode } from "../config.js"
 import { registerApplyPatchTool } from "../tools/apply-patch/apply-patch.js"
-import { registerComputerUseTools } from "../tools/computer/computer-tools.js"
-import { PeekabooClient } from "../tools/computer/peekaboo.js"
 import { registerImageTools } from "../tools/image/image-tools.js"
 // import { registerIosShellTool } from "../tools/ios/ios-shell.js"
 import { registerShellExecutionTools, registerShellManagementTools } from "../tools/shell/shell-tools.js"
@@ -13,11 +11,12 @@ import type { ChatGptSubagentService } from "../tools/subagent/chatgpt-subagent-
 import { registerSubagentTools } from "../tools/subagent/subagent-tools.js"
 import { WebPageOpener } from "../tools/web/web-open.js"
 import { registerWebTool } from "../tools/web/web-tool.js"
+import { registerChildMcpTools, type ChildMcpToolProvider } from "./child-mcp.js"
 import { installToolRegistrationBoundary } from "./tool-registration-boundary.js"
 
 export interface CreateMcpServerOptions {
   chatGptSubagents: ChatGptSubagentService
-  peekaboo: PeekabooClient
+  childMcpServers: readonly ChildMcpToolProvider[]
   webPageOpener: WebPageOpener
   applyPatchExecutable?: string
   toolOutputStructured?: ToolOutputStructuredMode
@@ -31,6 +30,7 @@ export function createMcpServer(shells: ShellSessionManager, options: CreateMcpS
   installToolRegistrationBoundary(server, {
     toolOutputStructured: options.toolOutputStructured ?? MCP_CONFIG.toolOutputStructured,
     drainPendingEvents: () => options.chatGptSubagents.drainEvents?.() ?? [],
+    passthroughToolNames: new Set(options.childMcpServers.flatMap((child) => child.tools.map((tool) => tool.name))),
   })
 
   registerShellExecutionTools(server, shells, workspace)
@@ -42,7 +42,7 @@ export function createMcpServer(shells: ShellSessionManager, options: CreateMcpS
   registerWebTool(server, options.webPageOpener)
   registerSkillTools(server, workspace)
   registerImageTools(server, workspace)
-  registerComputerUseTools(server, options.peekaboo)
+  registerChildMcpTools(server, options.childMcpServers, MCP_CONFIG.toolMeta)
 
   return server
 }

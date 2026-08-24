@@ -39,7 +39,7 @@ export interface RunningProbeServer {
   close: () => Promise<void>
 }
 
-export function createProbeHandler(): ProbeHandler {
+function createProbeHandler(): ProbeHandler {
   const tasks = new Map<string, StoredTask>()
   const core = createMcpHandler(
     () => {

@@ -1,6 +1,7 @@
 import { appendFileSync, chmodSync, existsSync } from "node:fs"
 
 import { countTokens } from "../tokenizer.js"
+import { PEEKABOO_TOOL_NAMES } from "../tools/computer/peekaboo-mcp.js"
 import { asRecord } from "../utils.js"
 
 const MAX_INLINE_ARGUMENT_CHARS = 600
@@ -8,6 +9,7 @@ const MAX_SHELL_COMMAND_CHARS = 2_000
 const MAX_FAILED_PATCH_CHARS = 32_000
 const MAX_FAILED_MESSAGE_CHARS = 1_000
 const SLOW_CALL_MS = 5_000
+const PRIVATE_OUTPUT_TOOLS = new Set<string>(PEEKABOO_TOOL_NAMES)
 
 interface JsonRpcToolCall {
   id?: unknown
@@ -51,7 +53,7 @@ export class McpAuditLogger {
       const startedTime = this.now()
       const inputTokens = countTokens(JSON.stringify(parsed.arguments ?? {}))
       let finished = false
-      const captureOutput = !parsed.name.startsWith("computer_")
+      const captureOutput = !PRIVATE_OUTPUT_TOOLS.has(parsed.name)
 
       return [
         {

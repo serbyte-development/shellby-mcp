@@ -4,10 +4,19 @@ import test from "node:test"
 import { LATEST_PROTOCOL_VERSION } from "@modelcontextprotocol/client"
 
 import { MCP_CONFIG } from "../../src/config.js"
+import { PEEKABOO_UPSTREAM_TOOL_NAMES } from "../../src/tools/computer/peekaboo-mcp.js"
+import { createFakeChildMcp } from "../helpers/child-mcp.js"
 import { callUntilComplete, connectClient, postWithHost, startMcpHttpServer } from "./helpers.js"
 
 test("publishes the assembled MCP tool surface", { timeout: 10_000 }, async (t) => {
-  const running = await startMcpHttpServer({ port: 0 })
+  const computer = createFakeChildMcp(
+    PEEKABOO_UPSTREAM_TOOL_NAMES,
+    {},
+    {
+      transformTool: (tool) => ({ ...tool, name: `computer_${tool.name}` }),
+    }
+  )
+  const running = await startMcpHttpServer({ port: 0, childMcpServers: [computer] })
   t.after(() => running.close())
   const connected = await connectClient(running.url, "tool-surface-client")
   t.after(() => connected.client.close())
@@ -28,13 +37,12 @@ test("publishes the assembled MCP tool surface", { timeout: 10_000 }, async (t) 
       "skill_list",
       "skill_load",
       "image_view",
-      "computer_list",
-      "computer_observe",
-      "computer_inspect",
+      "computer_permissions",
+      "computer_see",
+      "computer_inspect_ui",
       "computer_click",
       "computer_type",
       "computer_press",
-      "computer_hotkey",
       "computer_scroll",
       "computer_drag",
       "computer_app",

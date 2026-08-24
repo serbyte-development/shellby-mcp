@@ -31,10 +31,10 @@
 - Secret handling: no tokens, credential values, messages, screenshots, accessibility trees, recordings, history artifacts, or account data were read or stored.
 - Staleness note: its ChatGPT Computer Use child-MCP inventory remains historical evidence, but that child is not used by the current server. Direct Peekaboo integration supersedes the survey's Computer Use implementation direction (`src/index.ts`, `src/tools/computer/peekaboo.ts`, `src/tools/computer/computer-tools.ts`).
 
-### Peekaboo CLI documentation and installed help, 2026-08-01
+### Peekaboo CLI documentation and installed package, verified 2026-08-23
 
 - Role: supported CLI contracts for installation, permissions, observation, app/window actions, and JSON output.
-- Sources: `https://peekaboo.sh/cli-command-reference.html`, `https://peekaboo.sh/permissions.html`, `https://peekaboo.sh/commands/see.html`, and local `peekaboo --help` / subcommand help.
+- Sources: `https://github.com/openclaw/Peekaboo/blob/main/docs/permissions.md`, `https://peekaboo.sh/cli-command-reference.html`, `https://peekaboo.sh/permissions.html`, `https://peekaboo.sh/commands/see.html`, and local `@steipete/peekaboo` 4.2.2 help and package files.
 - Reliability: public upstream documentation plus point-in-time installed CLI help; flags and JSON shapes can change with Peekaboo upgrades.
 - Feeds: [Architecture Map](../pages/Architecture%20Map.md), [MCP Tool Surface](../pages/MCP%20Tool%20Surface.md), [Configuration and Startup](../pages/Configuration%20and%20Startup.md), and [Open Questions and Risks](../pages/Open%20Questions%20and%20Risks.md).
 - Secret handling: permission status may expose local host/process metadata, so no raw status output or screenshots are stored in the wiki.
