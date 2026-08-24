@@ -622,8 +622,18 @@ function addTargetArgs(args: string[], target: { app?: string; window_id?: numbe
 function addDragPointArgs(args: string[], side: "from" | "to", point: { element_id: string } | { x: number; y: number }, target: PeekabooSnapshotTarget): void {
   if ("element_id" in point) args.push(`--${side}`, point.element_id)
   else {
-    const coordinates = clickCoordinates(target, point.x, point.y)
+    const coordinates = foregroundPointerCoordinates(target, point.x, point.y)
     args.push(`--${side}`, `${coordinates.x},${coordinates.y}`)
+  }
+}
+
+function foregroundPointerCoordinates(target: PeekabooSnapshotTarget, x: number, y: number): { x: number; y: number } {
+  if (!target.bounds) {
+    throw new PeekabooError("SNAPSHOT_BOUNDS_MISSING", "The observation bounds are unavailable. Call computer_observe again.")
+  }
+  return {
+    x: x + target.bounds.x,
+    y: y + target.bounds.y,
   }
 }
 
