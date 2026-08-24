@@ -27,7 +27,11 @@ test("publishes the background-only Peekaboo catalog without changing native con
   const inspectMaxChildren = child.tools.find((tool) => tool.name === "computer_inspect_ui")?.inputSchema.properties?.max_children as
     { description?: unknown } | undefined
 
-  assert.ok(click?.inputSchema.oneOf)
+  assert.equal(click?.inputSchema.oneOf, undefined)
+  assert.equal((click?.inputSchema as { allOf?: unknown } | undefined)?.allOf, undefined)
+  assert.ok(click?.inputSchema.properties?.on)
+  assert.ok(click?.inputSchema.properties?.coords)
+  assert.match(String((click?.inputSchema.properties?.coordinate_space as { description?: unknown })?.description), /global_display_points/)
   assert.deepEqual(type?.inputSchema.required, ["snapshot"])
   assert.match(String(seeMaxElements?.description), /defaults to 100/)
   assert.match(String(inspectMaxChildren?.description), /defaults to 25/)

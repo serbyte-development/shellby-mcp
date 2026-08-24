@@ -53,12 +53,14 @@ const PEEKABOO_TOOL_OVERLAYS: Record<PeekabooUpstreamToolName, ToolOverlay> = {
   click: {
     name: "computer_click",
     description:
-      "Click exactly one element ID, text query, or coordinate target. Background coordinates require a fresh exact-window snapshot or coordinate_reference; use foreground only for intentional shared-pointer input.",
+      "Click exactly one element ID, text query, or coordinate target. Coordinates default to global display points; use image_pixels with a fresh exact-window coordinate_reference for pixels in a computer_see image. Use foreground only for intentional shared-pointer input.",
     parameters: {
       background: "Deprecated inverse alias; prefer foreground.",
       coordinate_reference: "Reference from a fresh exact-window see; required for background image-pixel or normalized coordinates.",
-      coordinate_space: "Coordinate basis. image_pixels and normalized require coordinate_reference.",
-      coords: "Coordinate pair formatted as x,y.",
+      coordinate_space:
+        "Coordinate basis. Defaults to global_display_points, even with an exact-window snapshot. Use image_pixels with coordinate_reference for coordinates relative to the returned computer_see image.",
+      coords:
+        "Coordinate pair formatted as x,y. With omitted coordinate_space, values are global screen points. For pixels in the returned computer_see image, set coordinate_space=image_pixels and provide coordinate_reference or snapshot.",
       foreground: "Use the shared physical pointer instead of background delivery.",
       on: "Opaque element ID copied from current computer_see or computer_inspect_ui output.",
       pid: "Optional process consistency check; never replaces a capture reference.",
@@ -224,7 +226,8 @@ function applyPeekabooToolOverlay(tool: Tool, allowForeground: boolean): Tool {
   const overlay = PEEKABOO_TOOL_OVERLAYS[tool.name as PeekabooUpstreamToolName]
   if (!overlay) throw new Error(`No tool overlay configured for Peekaboo tool ${tool.name}.`)
 
-  const inputSchema = stripDescriptions(tool.inputSchema) as Tool["inputSchema"]
+  let inputSchema = stripDescriptions(tool.inputSchema) as Tool["inputSchema"]
+  if (tool.name === "click") inputSchema = flattenPublicClickSchema(inputSchema)
   const properties = inputSchema.properties as Record<string, unknown> | undefined
   for (const [name, description] of Object.entries(overlay.parameters ?? {})) {
     const property = properties?.[name]
@@ -242,6 +245,18 @@ function applyPeekabooToolOverlay(tool: Tool, allowForeground: boolean): Tool {
     inputSchema,
     ...(tool.outputSchema ? { outputSchema: stripDescriptions(tool.outputSchema) as Tool["outputSchema"] } : {}),
   }
+}
+
+function flattenPublicClickSchema(inputSchema: Tool["inputSchema"]): Tool["inputSchema"] {
+  // Root oneOf/allOf constraints are useful to Peekaboo's own validator, but some MCP hosts expose
+  // schemas containing them as an opaque free-form object. The child still validates every call
+  // against its native schema, so publish the concrete property surface here and leave exclusivity
+  // enforcement to Peekaboo.
+  const { oneOf: _oneOf, allOf: _allOf, ...flat } = inputSchema as Tool["inputSchema"] & {
+    oneOf?: unknown
+    allOf?: unknown
+  }
+  return flat as Tool["inputSchema"]
 }
 
 function stripDescriptions(value: unknown): unknown {
