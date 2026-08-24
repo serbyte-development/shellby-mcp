@@ -1,13 +1,14 @@
 import { spawnSync } from "node:child_process"
+import { fileURLToPath } from "node:url"
 
 const optional = process.argv.includes("--optional")
 const statusOnly = process.argv.includes("--status")
-const executable = process.env.MCP_PEEKABOO_BIN?.trim() || "peekaboo"
+const executable = process.env.MCP_PEEKABOO_BIN?.trim() || fileURLToPath(new URL("../node_modules/.bin/peekaboo", import.meta.url))
 const args = statusOnly ? ["permissions", "status", "--all-sources"] : ["permissions", "grant"]
 const result = spawnSync(executable, args, { stdio: "inherit" })
 
 if (result.error?.code === "ENOENT") {
-  const message = "Peekaboo is not installed. Install it with `brew install steipete/tap/peekaboo`, then run `npm run setup:computer`."
+  const message = "The bundled Peekaboo executable is missing. Run `npm install`, then run `npm run setup:computer`."
   if (optional) console.log(`Computer Use: ${message}`)
   else console.error(message)
   process.exit(optional ? 0 : 1)

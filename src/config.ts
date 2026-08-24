@@ -1,6 +1,9 @@
 import { readFileSync } from "node:fs"
 import { homedir } from "node:os"
 import { join, resolve } from "node:path"
+import { fileURLToPath } from "node:url"
+
+const bundledPeekabooExecutable = fileURLToPath(new URL("../node_modules/.bin/peekaboo", import.meta.url))
 
 export type ToolOutputStructuredMode = "always" | "optional" | "never"
 
@@ -23,7 +26,7 @@ export const MCP_CONFIG = {
   port: 3333,
   workspace: resolveWorkspacePath(process.env.MCP_CWD ?? "~/Desktop/agent-workspace"),
   peekaboo: {
-    executable: process.env.MCP_PEEKABOO_BIN ?? "peekaboo",
+    executable: process.env.MCP_PEEKABOO_BIN?.trim() || bundledPeekabooExecutable,
   },
   chatGpt: {
     cdpEndpoint: process.env.MCP_CHATGPT_CDP_ENDPOINT ?? "http://127.0.0.1:9222",

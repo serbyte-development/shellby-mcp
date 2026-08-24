@@ -9,30 +9,16 @@ import { PeekabooClient, PeekabooError } from "../src/tools/computer/peekaboo.js
 
 const fixture = join(dirname(fileURLToPath(import.meta.url)), "fixtures/fake-peekaboo.mjs")
 
-test("finds Peekaboo through PATH and accepts an explicit executable", async (t) => {
+test("accepts an explicit Peekaboo executable", async (t) => {
   const root = await mkdtemp(join(tmpdir(), "peekaboo-discovery-"))
   t.after(() => rm(root, { recursive: true, force: true }))
-  const pathLog = join(root, "path.jsonl")
   const explicitLog = join(root, "explicit.jsonl")
-  const pathExecutable = await copyFixture(root, "peekaboo")
   const explicitExecutable = await copyFixture(root, "explicit-peekaboo")
-
-  const fromPath = new PeekabooClient({
-    env: {
-      ...process.env,
-      PATH: `${root}:${process.env.PATH ?? ""}`,
-      FAKE_PEEKABOO_LOG: pathLog,
-    },
-    timeoutMs: 2_000,
-  })
-  t.after(() => fromPath.close())
-  await fromPath.run(["list", "apps"])
 
   const explicit = new PeekabooClient({
     executable: explicitExecutable,
     env: {
       ...process.env,
-      PATH: `${dirname(pathExecutable)}:${process.env.PATH ?? ""}`,
       FAKE_PEEKABOO_LOG: explicitLog,
     },
     timeoutMs: 2_000,
@@ -40,7 +26,6 @@ test("finds Peekaboo through PATH and accepts an explicit executable", async (t)
   t.after(() => explicit.close())
   await explicit.run(["list", "screens"])
 
-  assert.deepEqual(startEvents(await readLog(pathLog))[0]?.args, ["list", "apps", "--json"])
   assert.deepEqual(startEvents(await readLog(explicitLog))[0]?.args, ["list", "screens", "--json"])
 })
 

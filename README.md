@@ -127,11 +127,11 @@ Reuse an `agent_id` to continue the same in-process conversation. A new ID start
 <summary><strong>Computer Use with Peekaboo</strong></summary>
 
 ```bash
-brew install steipete/tap/peekaboo
+npm install
 npm run setup:computer
 ```
 
-Shellby MCP delegates permission guidance to Peekaboo. Screen Recording enables observation; Accessibility and Event Synthesizing enable actions. Computer actions are stateful and are never automatically retried.
+Shellby pins Peekaboo as an npm dependency and uses its package-local CLI by default. `MCP_PEEKABOO_BIN` can override the executable for development. Shellby delegates permission guidance to Peekaboo. Screen Recording enables observation; Accessibility and Event Synthesizing enable actions. Computer actions are stateful and are never automatically retried.
 
 </details>
 
@@ -167,7 +167,7 @@ Copy [.env.example](.env.example) to `.env`. The main inputs are:
 | ------------------------------- | --------------------------- | ---------------------------------------------------- |
 | `MCP_CWD`                       | `~/Desktop/agent-workspace` | Initial workspace and `AGENTS.md` root               |
 | `MCP_SHELL`                     | `/bin/zsh`                  | Persistent login shell executable                    |
-| `MCP_PEEKABOO_BIN`              | `peekaboo`                  | Peekaboo executable or absolute path                 |
+| `MCP_PEEKABOO_BIN`              | package-local Peekaboo      | Optional Peekaboo executable override                |
 | `MCP_CHATGPT_CDP_ENDPOINT`      | `http://127.0.0.1:9222`     | Existing Chrome CDP endpoint                         |
 | `MCP_CHATGPT_PROJECT_URL`       | unset                       | Optional ChatGPT Project start URL                   |
 | `MCP_CHATGPT_PROFILE_DIRECTORY` | unset                       | Optional profile within dedicated Chrome data        |

@@ -228,7 +228,7 @@ export class PeekabooClient {
       if (processError.code === "ENOENT") {
         throw new PeekabooError(
           "PEEKABOO_NOT_FOUND",
-          `Peekaboo executable ${JSON.stringify(this.executable)} was not found. Install it with Homebrew or set MCP_PEEKABOO_BIN.`,
+          `Peekaboo executable ${JSON.stringify(this.executable)} was not found. Run npm install or set MCP_PEEKABOO_BIN.`,
           undefined,
           { cause: error }
         )

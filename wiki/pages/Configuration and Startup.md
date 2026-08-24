@@ -19,7 +19,7 @@ This page documents the supported environment surface, first-time workspace init
 | `NGROK_AUTHTOKEN`               | unset                       | Optional ngrok auth token                                   |
 | `MCP_SHELL`                     | `/bin/zsh`                  | Login shell executable                                      |
 | `MCP_CWD`                       | `~/Desktop/agent-workspace` | Absolute-resolved workspace and initial cwd                 |
-| `MCP_PEEKABOO_BIN`              | `peekaboo`                  | Peekaboo executable name or absolute path                   |
+| `MCP_PEEKABOO_BIN`              | package-local Peekaboo      | Optional Peekaboo executable override                       |
 | `MCP_CHATGPT_CDP_ENDPOINT`      | `http://127.0.0.1:9222`     | Already-running Chrome DevTools endpoint for subagents      |
 | `MCP_CHATGPT_PROFILE_DIRECTORY` | unset                       | Optional profile inside the dedicated Chrome data directory |
 | `MCP_CHATGPT_PROJECT_URL`       | unset                       | Optional project start URL; unset uses normal ChatGPT       |
@@ -37,14 +37,14 @@ Inside the MCP process, startup first ensures `~/.shellby/auth.json`, prepares t
 
 ## Computer Use Permission Bootstrap
 
-Install Peekaboo and use its own permission workflow:
+Install dependencies and use Peekaboo's own permission workflow:
 
 ```bash
-brew install steipete/tap/peekaboo
+npm install
 npm run setup:computer
 ```
 
-Normal `npm run setup` invokes `peekaboo permissions status --all-sources` when Peekaboo is installed and prints the CLI's own source-aware status. `setup:computer` delegates directly to `peekaboo permissions grant`; Shellby MCP does not duplicate Peekaboo's macOS permission logic. Screen Recording enables capture; Accessibility and Event Synthesizing enable actions. TCC grants attach to the responsible launching process, so use the source reported by Peekaboo itself (`scripts/peekaboo-permissions.mjs`, `src/tools/computer/peekaboo.ts`, `src/tools/computer/computer-tools.ts`).
+Peekaboo is pinned in `package.json`; Shellby uses `node_modules/.bin/peekaboo` unless `MCP_PEEKABOO_BIN` overrides it. Normal `npm run setup` invokes `peekaboo permissions status --all-sources` and prints the CLI's own source-aware status. `setup:computer` delegates directly to `peekaboo permissions grant`; Shellby MCP does not duplicate Peekaboo's macOS permission logic. Screen Recording enables capture; Accessibility and Event Synthesizing enable actions. TCC grants attach to the responsible launching process, so use the source reported by Peekaboo itself (`package.json`, `scripts/peekaboo-permissions.mjs`, `src/tools/computer/peekaboo.ts`, `src/tools/computer/computer-tools.ts`).
 
 ## Package Scripts
 
