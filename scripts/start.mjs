@@ -1,3 +1,4 @@
+import { existsSync } from "node:fs"
 import { rm } from "node:fs/promises"
 import { dirname, join } from "node:path"
 import { spawnSync } from "node:child_process"
@@ -18,6 +19,13 @@ if (restarting) await rm(join(repoRoot, "agent-commands.yaml"), { force: true })
 
 run("npm", ["run", "build"])
 run(pm2Path, ["startOrReload", "ecosystem.config.cjs", "--update-env"], { quiet: true })
+const peekabooExecutable = process.env.MCP_PEEKABOO_BIN?.trim()
+const cursorHostExecutable =
+  process.env.MCP_PEEKABOO_CURSOR_HOST_BIN?.trim() ||
+  (peekabooExecutable ? join(dirname(peekabooExecutable), "peekaboo-cursor-host") : undefined)
+if (cursorHostExecutable && existsSync(cursorHostExecutable)) {
+  run(pm2Path, ["start", "ecosystem.config.cjs", "--only", "shellby-cursor-host", "--update-env"], { quiet: true })
+}
 run(process.execPath, [join(repoRoot, "scripts", "chatgpt-browser.mjs"), "--auto"])
 
 if (!(await waitForMcp())) {
