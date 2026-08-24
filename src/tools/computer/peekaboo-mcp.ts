@@ -226,8 +226,7 @@ function applyPeekabooToolOverlay(tool: Tool, allowForeground: boolean): Tool {
   const overlay = PEEKABOO_TOOL_OVERLAYS[tool.name as PeekabooUpstreamToolName]
   if (!overlay) throw new Error(`No tool overlay configured for Peekaboo tool ${tool.name}.`)
 
-  let inputSchema = stripDescriptions(tool.inputSchema) as Tool["inputSchema"]
-  if (tool.name === "click") inputSchema = flattenPublicClickSchema(inputSchema)
+  const inputSchema = stripDescriptions(tool.inputSchema) as Tool["inputSchema"]
   const properties = inputSchema.properties as Record<string, unknown> | undefined
   for (const [name, description] of Object.entries(overlay.parameters ?? {})) {
     const property = properties?.[name]
@@ -245,18 +244,6 @@ function applyPeekabooToolOverlay(tool: Tool, allowForeground: boolean): Tool {
     inputSchema,
     ...(tool.outputSchema ? { outputSchema: stripDescriptions(tool.outputSchema) as Tool["outputSchema"] } : {}),
   }
-}
-
-function flattenPublicClickSchema(inputSchema: Tool["inputSchema"]): Tool["inputSchema"] {
-  // Root oneOf/allOf constraints are useful to Peekaboo's own validator, but some MCP hosts expose
-  // schemas containing them as an opaque free-form object. The child still validates every call
-  // against its native schema, so publish the concrete property surface here and leave exclusivity
-  // enforcement to Peekaboo.
-  const { oneOf: _oneOf, allOf: _allOf, ...flat } = inputSchema as Tool["inputSchema"] & {
-    oneOf?: unknown
-    allOf?: unknown
-  }
-  return flat as Tool["inputSchema"]
 }
 
 function stripDescriptions(value: unknown): unknown {
