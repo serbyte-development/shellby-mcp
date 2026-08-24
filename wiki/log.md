@@ -1168,3 +1168,9 @@
 - Replaced the registry Peekaboo dependency and machine-local executable override with a checked-in Universal 2 binary built from the Serbyte fork.
 - Added source-commit, local Commander registration patch, toolchain, signature, size, and hash provenance plus a reproducible vendor build command that leaves the fork checkout unchanged.
 - Updated setup, runtime, validation, public installation guidance, and active risks for the repository-local child MCP.
+
+## [2026-08-24] computer-use | Build directly from the maintained fork
+
+- Removed the local Commander patch because the foreground flag registration now lives in the Serbyte fork itself.
+- Simplified the vendor build and provenance to identify the exact fork commit used for the Universal 2 executable.
+- Matched the background-only adapter catalog to the fork by omitting `computer_drag` unless foreground authority is enabled.

@@ -4,14 +4,19 @@ import test from "node:test"
 import { countTokens } from "../src/tokenizer.js"
 import { createPeekabooMcp, PEEKABOO_TOOL_NAMES, transformPeekabooResult } from "../src/tools/computer/peekaboo-mcp.js"
 
-test("publishes compact Peekaboo descriptions without changing native constraints", { timeout: 10_000 }, async (t) => {
+test("publishes the background-only Peekaboo catalog without changing native constraints", { timeout: 10_000 }, async (t) => {
+  const previous = process.env.PEEKABOO_ALLOW_FOREGROUND
+  delete process.env.PEEKABOO_ALLOW_FOREGROUND
   const child = createPeekabooMcp()
+  if (previous === undefined) delete process.env.PEEKABOO_ALLOW_FOREGROUND
+  else process.env.PEEKABOO_ALLOW_FOREGROUND = previous
+
   t.after(() => child.close())
   await child.start()
 
   assert.deepEqual(
     child.tools.map((tool) => tool.name),
-    PEEKABOO_TOOL_NAMES
+    PEEKABOO_TOOL_NAMES.filter((name) => name !== "computer_drag")
   )
   assert.ok(countTokens(JSON.stringify(child.tools)) < 3_000)
 
@@ -27,7 +32,7 @@ test("publishes compact Peekaboo descriptions without changing native constraint
   assert.match(String(seeMaxElements?.description), /defaults to 100/)
   assert.match(String(inspectMaxChildren?.description), /defaults to 25/)
   assert.deepEqual(app?.inputSchema.properties?.action, {
-    enum: ["launch", "open", "quit", "relaunch", "focus", "hide", "unhide", "switch", "list"],
+    enum: ["launch", "quit", "hide", "list"],
     type: "string",
   })
 })
@@ -42,6 +47,10 @@ test("starts the vendored Peekaboo child with explicit foreground authority", { 
   t.after(() => child.close())
   await child.start()
 
+  assert.deepEqual(
+    child.tools.map((tool) => tool.name),
+    PEEKABOO_TOOL_NAMES
+  )
   const type = child.tools.find((tool) => tool.name === "computer_type")
   const press = child.tools.find((tool) => tool.name === "computer_press")
   assert.equal(type?.inputSchema.required, undefined)

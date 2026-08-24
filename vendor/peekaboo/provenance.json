@@ -1,18 +1,15 @@
 {
   "source_repository": "https://github.com/Serbyte-Development/Peekaboo.git",
-  "source_commit": "1cd3f86128a88b6b7b11e71ad76631a4deb564cf",
-  "build_commit": "fb566c329a8bf0cdf2d2d7d547414c631d2b77f3",
-  "version": "4.2.2",
-  "source_patch": "vendor/peekaboo/commander-foreground.patch",
-  "source_patch_sha256": "d29c6465d4a0f2f600d4d86aec0ec418a6a839d7af9330889803c5718fa68cac",
+  "source_commit": "727e436dcba4afed894e470887b1541a260f3d63",
+  "version": "4.2.3",
   "binary": "peekaboo",
   "targets": [
     "arm64-apple-macos",
     "x86_64-apple-macos"
   ],
-  "build_command": "git apply vendor/peekaboo/commander-foreground.patch; scripts/build-swift-universal.sh",
+  "build_command": "scripts/build-swift-universal.sh",
   "signing": "adhoc",
-  "sha256": "54a9b94e3d5ea2f95875afe061011838f107fb91c6d215cf5740f36f1631f3c1",
-  "size_bytes": 66068992,
+  "sha256": "49a0e388a78f0f973b5c63e0005da8a4d136bbf6e8187c5a897dd1567ca49411",
+  "size_bytes": 69068768,
   "swift": "swift-driver version: 1.148.6 Apple Swift version 6.3.2 (swiftlang-6.3.2.1.108 clang-2100.1.1.101)"
 }

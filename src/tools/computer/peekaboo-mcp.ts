@@ -140,6 +140,11 @@ const PEEKABOO_TOOL_OVERLAYS: Record<PeekabooUpstreamToolName, ToolOverlay> = {
   },
 }
 
+const BACKGROUND_ONLY_OMITTED_PARAMETERS: Partial<Record<PeekabooUpstreamToolName, readonly string[]>> = {
+  app: ["foreground", "openTargets", "to"],
+  window: ["foreground"],
+}
+
 export const PEEKABOO_TOOL_NAMES = PEEKABOO_UPSTREAM_TOOL_NAMES.map((name) => PEEKABOO_TOOL_OVERLAYS[name].name)
 
 const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../../..")
@@ -147,7 +152,9 @@ export const PEEKABOO_EXECUTABLE = resolve(repositoryRoot, "vendor/peekaboo/peek
 
 export function createPeekabooMcp(): ChildMcpClient {
   const env = Object.fromEntries(Object.entries(process.env).filter((entry): entry is [string, string] => typeof entry[1] === "string"))
-  env.PEEKABOO_ALLOW_TOOLS = PEEKABOO_UPSTREAM_TOOL_NAMES.join(",")
+  const allowForeground = process.env.PEEKABOO_ALLOW_FOREGROUND === "1"
+  const upstreamToolNames = allowForeground ? PEEKABOO_UPSTREAM_TOOL_NAMES : PEEKABOO_UPSTREAM_TOOL_NAMES.filter((name) => name !== "drag")
+  env.PEEKABOO_ALLOW_TOOLS = upstreamToolNames.join(",")
   env.PEEKABOO_AX_MAX_DEPTH ??= "8"
   env.PEEKABOO_AX_MAX_ELEMENTS ??= "100"
   env.PEEKABOO_AX_MAX_CHILDREN ??= "25"
@@ -156,10 +163,10 @@ export function createPeekabooMcp(): ChildMcpClient {
   return new ChildMcpClient({
     name: "peekaboo",
     command: PEEKABOO_EXECUTABLE,
-    args: ["mcp", "serve", ...(process.env.PEEKABOO_ALLOW_FOREGROUND === "1" ? ["--allow-foreground"] : [])],
+    args: ["mcp", "serve", ...(allowForeground ? ["--allow-foreground"] : [])],
     env,
-    tools: PEEKABOO_UPSTREAM_TOOL_NAMES,
-    transformTool: applyPeekabooToolOverlay,
+    tools: upstreamToolNames,
+    transformTool: (tool) => applyPeekabooToolOverlay(tool, allowForeground),
     transformResult: transformPeekabooResult,
   })
 }
@@ -213,7 +220,7 @@ export async function transformPeekabooResult(toolName: string, result: CallTool
   }
 }
 
-function applyPeekabooToolOverlay(tool: Tool): Tool {
+function applyPeekabooToolOverlay(tool: Tool, allowForeground: boolean): Tool {
   const overlay = PEEKABOO_TOOL_OVERLAYS[tool.name as PeekabooUpstreamToolName]
   if (!overlay) throw new Error(`No tool overlay configured for Peekaboo tool ${tool.name}.`)
 
@@ -222,6 +229,7 @@ function applyPeekabooToolOverlay(tool: Tool): Tool {
   for (const [name, description] of Object.entries(overlay.parameters ?? {})) {
     const property = properties?.[name]
     if (!property || typeof property !== "object" || Array.isArray(property)) {
+      if (!allowForeground && BACKGROUND_ONLY_OMITTED_PARAMETERS[tool.name as PeekabooUpstreamToolName]?.includes(name)) continue
       throw new Error(`Description overlay for Peekaboo tool ${tool.name} references missing parameter ${name}.`)
     }
     properties![name] = { ...(property as Record<string, unknown>), description }
