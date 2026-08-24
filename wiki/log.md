@@ -1162,3 +1162,9 @@
 - Removed the disabled iOS shell implementation, tests, configuration, and commented registration while retaining its findings as an explicitly historical wiki page and roadmap candidate.
 - Removed the redundant public preflight command and standalone script entry point; guided setup and managed startup continue to share the runtime checker.
 - Marked the clone-distributed package private, removed the stale README preflight step, and corrected the source manifest for the current Peekaboo child-MCP architecture.
+
+## [2026-08-24] computer-use | Vendor the patched Peekaboo binary
+
+- Replaced the registry Peekaboo dependency and machine-local executable override with a checked-in Universal 2 binary built from the Serbyte fork.
+- Added source-commit, local Commander registration patch, toolchain, signature, size, and hash provenance plus a reproducible vendor build command that leaves the fork checkout unchanged.
+- Updated setup, runtime, validation, public installation guidance, and active risks for the repository-local child MCP.

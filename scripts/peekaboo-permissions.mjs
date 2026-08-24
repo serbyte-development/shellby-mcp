@@ -3,12 +3,12 @@ import { fileURLToPath } from "node:url"
 
 const optional = process.argv.includes("--optional")
 const statusOnly = process.argv.includes("--status")
-const executable = fileURLToPath(new URL("../node_modules/.bin/peekaboo", import.meta.url))
+const executable = fileURLToPath(new URL("../vendor/peekaboo/peekaboo", import.meta.url))
 const args = statusOnly ? ["permissions", "status", "--all-sources"] : ["permissions", "grant"]
 const result = spawnSync(executable, args, { stdio: "inherit" })
 
 if (result.error?.code === "ENOENT") {
-  const message = "The bundled Peekaboo executable is missing. Run `npm install`, then run `npm run setup:computer`."
+  const message = "The vendored Peekaboo executable is missing. Restore the repository checkout, then run `npm run setup:computer`."
   if (optional) console.log(`Computer Use: ${message}`)
   else console.error(message)
   process.exit(optional ? 0 : 1)

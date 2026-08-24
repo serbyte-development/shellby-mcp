@@ -1,6 +1,6 @@
 # Configuration and Startup
 
-Verified 2026-08-23.
+Verified 2026-08-24.
 
 ## What This Is
 
@@ -23,6 +23,7 @@ This page documents the supported environment surface, first-time workspace init
 | `MCP_CHATGPT_PROFILE_DIRECTORY` | unset                       | Optional profile inside the dedicated Chrome data directory |
 | `MCP_CHATGPT_PROJECT_URL`       | unset                       | Optional project start URL; unset uses normal ChatGPT       |
 | `CHROME_BIN`                    | normal macOS Chrome path    | Optional dedicated-browser executable override              |
+| `PEEKABOO_ALLOW_FOREGROUND`     | unset                       | Set to `1` to authorize foreground/global child MCP actions |
 
 Shell configuration values are canonical here. Caller-visible lifetime consequences are in [`shell_run` / `shell_poll`](./tools/shell_run.md); manager mechanics are in [Persistent Shell Runtime](./Persistent%20Shell%20Runtime.md).
 
@@ -32,17 +33,17 @@ Production HTTP always binds to `127.0.0.1:3333`; host and port are not environm
 
 Public startup is driven by `scripts/start.mjs`. Package scripts load an optional repository `.env` before setup, startup, browser management, URL printing, or development begins, so their preflight and child processes see the same configuration. Startup runs the Mac/ngrok preflight, builds, starts or reloads the MCP and ngrok through the repository-local PM2 dependency, launches the dedicated ChatGPT Chrome profile when it has been configured, waits for `/healthz`, and prints the public `/mcp` URL. `ecosystem.config.cjs` also loads `.env` when PM2 is invoked directly and resolves ngrok from the caller's `PATH` instead of a maintainer-specific Homebrew path. For first-time setup, `scripts/setup.mjs` performs prerequisite checks and calls `scripts/workspace-setup.mjs`, which creates the workspace plus a starter `AGENTS.md` only when that file is absent; existing workspace instructions are never overwritten (`package.json`, `scripts/preflight.mjs`, `scripts/setup.mjs`, `scripts/workspace-setup.mjs`, `scripts/start.mjs`, `ecosystem.config.cjs`, `test/setup-workspace.test.ts`).
 
-Inside the MCP process, startup first ensures `~/.shellby/auth.json`, prepares the workspace, starts the default shell and configured child MCPs, then binds HTTP. Peekaboo is the first child: startup launches the repository-pinned `@steipete/peekaboo` binary over stdio, discovers its restricted native catalog, and applies the public `computer_*` name/description overlay before serving requests. `apply_patch` resolves its checked-in vendored binary directly from `src/tools/apply-patch/apply-patch.ts`; startup does not install or link it into the workspace. Authentication state is not stored in the repository or `dist`, so ordinary builds and restarts preserve the bound subject. The ChatGPT subagent service remains attach-only; browser launching belongs to `scripts/chatgpt-browser.mjs`. New subagent conversations start from normal `https://chatgpt.com/` unless `MCP_CHATGPT_PROJECT_URL` explicitly selects a project. Normal public startup hides the managed headed Chrome process, while new subagent pages are created through CDP as unfocused background targets so tab creation does not activate the Chrome window. `SIGINT` and `SIGTERM` close HTTP, shells, child MCPs, and any still-managed ChatGPT pages created by the service; the separately launched Chrome process itself is never closed (`package.json`, `src/index.ts`, `src/auth/auth.ts`, `src/server/child-mcp.ts`, `src/server/http-server.ts`, `src/tools/apply-patch/apply-patch.ts`, `src/tools/computer/peekaboo-mcp.ts`, `src/tools/subagent/chatgpt-subagent.ts`, `scripts/chatgpt-browser.mjs`).
+Inside the MCP process, startup first ensures `~/.shellby/auth.json`, prepares the workspace, starts the default shell and configured child MCPs, then binds HTTP. Peekaboo is the first child: startup launches the checked-in Universal 2 binary at `vendor/peekaboo/peekaboo` over stdio, discovers its restricted native catalog, and applies the public `computer_*` name/description overlay before serving requests. The executable is built from the Serbyte fork commit and the small Commander registration patch recorded in `vendor/peekaboo/provenance.json`; `scripts/build-peekaboo.sh` owns intentional refreshes without changing the fork checkout. `apply_patch` follows the same checked-in binary pattern. Startup does not install or link either executable into the workspace. Authentication state is not stored in the repository or `dist`, so ordinary builds and restarts preserve the bound subject. The ChatGPT subagent service remains attach-only; browser launching belongs to `scripts/chatgpt-browser.mjs`. New subagent conversations start from normal `https://chatgpt.com/` unless `MCP_CHATGPT_PROJECT_URL` explicitly selects a project. Normal public startup hides the managed headed Chrome process, while new subagent pages are created through CDP as unfocused background targets so tab creation does not activate the Chrome window. `SIGINT` and `SIGTERM` close HTTP, shells, child MCPs, and any still-managed ChatGPT pages created by the service; the separately launched Chrome process itself is never closed (`package.json`, `src/index.ts`, `src/auth/auth.ts`, `src/server/child-mcp.ts`, `src/server/http-server.ts`, `src/tools/apply-patch/apply-patch.ts`, `src/tools/computer/peekaboo-mcp.ts`, `src/tools/subagent/chatgpt-subagent.ts`, `scripts/build-peekaboo.sh`, `vendor/peekaboo/provenance.json`).
 
 ## Computer Use Permission Bootstrap
 
-Use Peekaboo's own permission workflow through the pinned package:
+Use Peekaboo's own permission workflow through the vendored executable:
 
 ```bash
 npm run setup:computer
 ```
 
-Normal `npm run setup` invokes the package-local `peekaboo permissions status --all-sources` and prints the CLI's own source-aware status. `setup:computer` delegates directly to `peekaboo permissions grant`; Shellby MCP does not duplicate Peekaboo's macOS permission logic. Screen Recording enables capture; Accessibility and Event Synthesizing enable actions (`package.json`, `scripts/peekaboo-permissions.mjs`, `src/tools/computer/peekaboo-mcp.ts`).
+Normal `npm run setup` invokes the repository-local `peekaboo permissions status --all-sources` and prints the CLI's own source-aware status. `setup:computer` delegates directly to `peekaboo permissions grant`; Shellby MCP does not duplicate Peekaboo's macOS permission logic. Screen Recording enables capture; Accessibility and Event Synthesizing enable actions (`package.json`, `scripts/peekaboo-permissions.mjs`, `src/tools/computer/peekaboo-mcp.ts`).
 
 macOS TCC grants for a command-line process are associated with the responsible GUI application in its launch chain. PM2 is a persistent per-user daemon, so Shellby processes retain the context of the application that first created that daemon. If Terminal.app creates it, macOS normally presents Terminal as the permission owner. If Claude, Codex, Cursor, or another GUI application creates it, that application may be the one requiring Screen Recording and Accessibility grants. Re-running `npm start` from Terminal does not change an already-running PM2 daemon's launch context.
 

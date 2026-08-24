@@ -29,13 +29,13 @@
 - Stored as: [ChatGPT and Local Capability Survey 2026-08-01](./ChatGPT%20and%20Local%20Capability%20Survey%202026-08-01.md).
 - Feeds: [Architecture Map](../pages/Architecture%20Map.md) and [Open Questions and Risks](../pages/Open%20Questions%20and%20Risks.md).
 - Secret handling: no tokens, credential values, messages, screenshots, accessibility trees, recordings, history artifacts, or account data were read or stored.
-- Staleness note: its ChatGPT Computer Use child-MCP inventory remains historical evidence, not the current integration contract. Shellby now starts the pinned Peekaboo package as a restricted child MCP through the generic provider and applies its public `computer_*` overlay in the parent (`src/server/child-mcp.ts`, `src/tools/computer/peekaboo-mcp.ts`).
+- Staleness note: its ChatGPT Computer Use child-MCP inventory remains historical evidence, not the current integration contract. Shellby now starts its checked-in Peekaboo binary as a restricted child MCP through the generic provider and applies its public `computer_*` overlay in the parent (`vendor/peekaboo/provenance.json`, `src/server/child-mcp.ts`, `src/tools/computer/peekaboo-mcp.ts`).
 
-### Peekaboo CLI documentation and installed package, verified 2026-08-23
+### Peekaboo CLI documentation and vendored fork build, verified 2026-08-24
 
 - Role: supported CLI contracts for installation, permissions, observation, app/window actions, and JSON output.
-- Sources: `https://github.com/openclaw/Peekaboo/blob/main/docs/permissions.md`, `https://peekaboo.sh/cli-command-reference.html`, `https://peekaboo.sh/permissions.html`, `https://peekaboo.sh/commands/see.html`, and local `@steipete/peekaboo` 4.2.2 help and package files.
-- Reliability: public upstream documentation plus point-in-time installed CLI help; flags and JSON shapes can change with Peekaboo upgrades.
+- Sources: `https://github.com/openclaw/Peekaboo/blob/main/docs/permissions.md`, `https://peekaboo.sh/cli-command-reference.html`, `https://peekaboo.sh/permissions.html`, `https://peekaboo.sh/commands/see.html`, and the Serbyte fork commit recorded in `vendor/peekaboo/provenance.json`.
+- Reliability: public upstream documentation plus a reproducible, checked-in fork build; flags and JSON shapes can change when the vendored binary is refreshed.
 - Feeds: [Architecture Map](../pages/Architecture%20Map.md), [MCP Tool Surface](../pages/MCP%20Tool%20Surface.md), [Configuration and Startup](../pages/Configuration%20and%20Startup.md), and [Open Questions and Risks](../pages/Open%20Questions%20and%20Risks.md).
 - Secret handling: permission status may expose local host/process metadata, so no raw status output or screenshots are stored in the wiki.
 

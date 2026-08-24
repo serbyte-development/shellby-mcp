@@ -68,11 +68,12 @@ const PEEKABOO_TOOL_OVERLAYS: Record<PeekabooUpstreamToolName, ToolOverlay> = {
   },
   type: {
     name: "computer_type",
-    description: "Type text into an element or exact background window. Requires a fresh exact non-dialog snapshot; use computer_press for keys or shortcuts.",
+    description:
+      "Type literal text using a fresh snapshot for background delivery, or use an explicit foreground target when foreground authority is enabled. Use computer_press for keys or shortcuts.",
     parameters: {
       on: "Element ID from the supplied snapshot. Omit to type into its captured window.",
       profile: "Typing profile: linear or human.",
-      snapshot: "Fresh exact non-dialog snapshot from computer_see or computer_inspect_ui.",
+      snapshot: "Fresh exact non-dialog snapshot from computer_see or computer_inspect_ui; required for background delivery.",
       text: "Literal text to type.",
       wpm: "Human typing speed from 80 to 220 WPM; overrides delay.",
     },
@@ -80,12 +81,12 @@ const PEEKABOO_TOOL_OVERLAYS: Record<PeekabooUpstreamToolName, ToolOverlay> = {
   press: {
     name: "computer_press",
     description:
-      "Press either a chord sequence in keys or one key with modifiers. Requires a fresh exact non-dialog snapshot; observe afterward because raw chords cannot verify their effect.",
+      "Press either a chord sequence in keys or one key with modifiers. Background delivery requires a fresh snapshot; observe afterward because raw chords cannot verify their effect.",
     parameters: {
       key: "Single primary key used with modifiers; mutually exclusive with keys.",
       keys: 'Chord sequence such as ["cmd+c", "Return"]; mutually exclusive with key and modifiers.',
       modifiers: "Modifiers for the single-key form.",
-      snapshot: "Fresh exact non-dialog snapshot from computer_see or computer_inspect_ui.",
+      snapshot: "Fresh exact non-dialog snapshot from computer_see or computer_inspect_ui; required for background delivery.",
     },
   },
   scroll: {
@@ -142,7 +143,7 @@ const PEEKABOO_TOOL_OVERLAYS: Record<PeekabooUpstreamToolName, ToolOverlay> = {
 export const PEEKABOO_TOOL_NAMES = PEEKABOO_UPSTREAM_TOOL_NAMES.map((name) => PEEKABOO_TOOL_OVERLAYS[name].name)
 
 const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../../..")
-export const PEEKABOO_EXECUTABLE = resolve(repositoryRoot, "node_modules/.bin/peekaboo")
+export const PEEKABOO_EXECUTABLE = resolve(repositoryRoot, "vendor/peekaboo/peekaboo")
 
 export function createPeekabooMcp(): ChildMcpClient {
   const env = Object.fromEntries(Object.entries(process.env).filter((entry): entry is [string, string] => typeof entry[1] === "string"))
@@ -155,7 +156,7 @@ export function createPeekabooMcp(): ChildMcpClient {
   return new ChildMcpClient({
     name: "peekaboo",
     command: PEEKABOO_EXECUTABLE,
-    args: ["mcp", "serve"],
+    args: ["mcp", "serve", ...(process.env.PEEKABOO_ALLOW_FOREGROUND === "1" ? ["--allow-foreground"] : [])],
     env,
     tools: PEEKABOO_UPSTREAM_TOOL_NAMES,
     transformTool: applyPeekabooToolOverlay,

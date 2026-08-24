@@ -32,6 +32,24 @@ test("publishes compact Peekaboo descriptions without changing native constraint
   })
 })
 
+test("starts the vendored Peekaboo child with explicit foreground authority", { timeout: 10_000 }, async (t) => {
+  const previous = process.env.PEEKABOO_ALLOW_FOREGROUND
+  process.env.PEEKABOO_ALLOW_FOREGROUND = "1"
+  const child = createPeekabooMcp()
+  if (previous === undefined) delete process.env.PEEKABOO_ALLOW_FOREGROUND
+  else process.env.PEEKABOO_ALLOW_FOREGROUND = previous
+
+  t.after(() => child.close())
+  await child.start()
+
+  const type = child.tools.find((tool) => tool.name === "computer_type")
+  const press = child.tools.find((tool) => tool.name === "computer_press")
+  assert.equal(type?.inputSchema.required, undefined)
+  assert.equal(press?.inputSchema.required, undefined)
+  assert.ok(type?.inputSchema.properties?.foreground)
+  assert.ok(press?.inputSchema.properties?.foreground)
+})
+
 test("compresses Peekaboo image blocks without changing unrelated results", async () => {
   const result = await transformPeekabooResult("computer_window", {
     content: [

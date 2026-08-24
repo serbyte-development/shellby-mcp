@@ -43,7 +43,7 @@ Shellby MCP connects ChatGPT Web to a stateful local runtime over MCP. MCP reque
 - An [ngrok](https://ngrok.com/) account and CLI
 - A ChatGPT account where Developer Mode/custom MCP apps are available
 
-Google Chrome is optional for browser-backed subagents. Peekaboo ships as a pinned npm dependency; its macOS permissions are required only when Computer Use tools are called.
+Google Chrome is optional for browser-backed subagents. Shellby includes a Universal 2 Peekaboo binary; its macOS permissions are required only when Computer Use tools are called.
 
 ## Quick start
 
@@ -137,7 +137,7 @@ For predictable macOS permission ownership, run the initial `npm run setup`, `np
 
 If PM2 was first started by another GUI application and you intentionally want Terminal to become the launch context, run `./node_modules/.bin/pm2 kill` from Terminal before starting Shellby again. This stops every application managed by that user's PM2 daemon, not only Shellby.
 
-Shellby starts Peekaboo as a restricted child MCP and publishes ten native schemas under clear `computer_*` names with concise model-facing descriptions. `computer_see` is visual-first: it returns a same-dimension JPEG plus a compact snapshot/coordinate receipt, while `computer_inspect_ui` exposes the bounded accessibility tree only when requested. Argument structure, validation, and execution remain upstream. Screen Recording enables observation; Accessibility and Event Synthesizing enable actions. Computer actions are stateful and are never automatically retried by Shellby.
+Shellby starts its checked-in Peekaboo binary as a restricted child MCP and publishes ten native schemas under clear `computer_*` names with concise model-facing descriptions. `computer_see` is visual-first: it returns a same-dimension JPEG plus a compact snapshot/coordinate receipt, while `computer_inspect_ui` exposes the bounded accessibility tree only when requested. Argument structure, validation, and execution remain upstream. Screen Recording enables observation; Accessibility and Event Synthesizing enable actions. Computer actions are stateful and are never automatically retried by Shellby.
 
 </details>
 
