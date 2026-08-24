@@ -7,7 +7,7 @@ import { asRecord, booleanValue, finiteNumber as numberValue } from "../../utils
 import { PeekabooClient, PeekabooError, type PeekabooObservation, type PeekabooResult, type PeekabooSnapshotTarget } from "./peekaboo.js"
 
 const appInput = z.string().min(1).describe("Application name, bundle identifier, or PID:12345 token.")
-const snapshotInput = z.string().min(1).describe("Snapshot ID returned by computer_observe.")
+const snapshotInput = z.string().min(1).describe("Snapshot ID returned by computer_observe or computer_inspect.")
 const windowIdInput = z.number().int().positive().describe("CoreGraphics window ID.")
 
 const targetFields = {
@@ -17,7 +17,7 @@ const targetFields = {
 }
 
 const interactionRequirement =
-  "Call computer_observe first and pass its snapshot_id when targeting an element. Element IDs and coordinates are valid only for the observed UI state."
+  "Call computer_observe first. If computer_inspect returns a fresh snapshot_id, use that snapshot with its element IDs. Element IDs and coordinates are valid only for the UI state that produced them."
 
 export function registerComputerUseTools(server: McpServer, peekaboo: PeekabooClient): void {
   const listSchema = z.object({
@@ -151,12 +151,12 @@ export function registerComputerUseTools(server: McpServer, peekaboo: PeekabooCl
       snapshot_id: snapshotInput,
       element_id: z.string().min(1).optional(),
       query: z.string().min(1).optional().describe("Visible label or text query."),
-      x: z.number().finite().optional(),
-      y: z.number().finite().optional(),
-      button: z.enum(["left", "right"]).optional(),
-      click_count: z.number().int().min(1).max(2).optional(),
+      x: z.number().finite().optional().describe("Snapshot-local x coordinate. Exact-window coordinates use background delivery by default."),
+      y: z.number().finite().optional().describe("Snapshot-local y coordinate. Exact-window coordinates use background delivery by default."),
+      button: z.enum(["left", "right", "middle"]).optional(),
+      click_count: z.number().int().min(1).max(3).optional(),
       long_press: z.boolean().optional(),
-      foreground: z.boolean().optional(),
+      foreground: z.boolean().optional().describe("Use the shared physical pointer. Exact-window element, query, and coordinate clicks stay background by default."),
       wait_ms: z.number().int().min(0).max(30_000).optional(),
     })
     .superRefine((value, context) => {
@@ -174,10 +174,16 @@ export function registerComputerUseTools(server: McpServer, peekaboo: PeekabooCl
           message: "Supply exactly one target: element_id, query, or x and y.",
         })
       }
-      if (value.long_press && (value.button === "right" || value.click_count === 2)) {
+      if (value.long_press && ((value.button !== undefined && value.button !== "left") || (value.click_count !== undefined && value.click_count !== 1))) {
         context.addIssue({
           code: "custom",
-          message: "long_press cannot be combined with right-click or double-click.",
+          message: "long_press cannot be combined with a non-left button or multi-click.",
+        })
+      }
+      if (value.button !== undefined && value.button !== "left" && value.click_count !== undefined && value.click_count !== 1) {
+        context.addIssue({
+          code: "custom",
+          message: "right and middle buttons cannot be combined with double- or triple-click.",
         })
       }
     })
@@ -209,7 +215,13 @@ export function registerComputerUseTools(server: McpServer, peekaboo: PeekabooCl
           const coordinates = clickCoordinates(target, input.x!, input.y!)
           args.push("--at", `${coordinates.x},${coordinates.y}`)
           addSnapshotTargetArgs(args, target)
-          forceForeground = true
+          const exactWindowTarget = target.windowId !== undefined && !(target.kind?.toLowerCase().includes("screen") ?? false)
+          if (exactWindowTarget) {
+            args.push("--snapshot", input.snapshot_id)
+            if (!input.foreground) args.push("--no-remote")
+          } else {
+            forceForeground = true
+          }
           if (coordinates.global) {
             args.push("--global")
           }
@@ -218,9 +230,11 @@ export function registerComputerUseTools(server: McpServer, peekaboo: PeekabooCl
         }
       }
       if (input.button === "right") args.push("--right")
+      if (input.button === "middle") args.push("--middle")
       if (input.click_count === 2) args.push("--double")
+      if (input.click_count === 3) args.push("--triple")
       if (input.long_press) args.push("--long-press")
-      if (input.foreground || input.click_count === 2 || input.long_press || forceForeground) {
+      if (input.foreground || input.long_press || forceForeground) {
         args.push("--foreground")
       }
       if (input.wait_ms !== undefined) args.push("--wait-for", String(input.wait_ms))
@@ -228,19 +242,31 @@ export function registerComputerUseTools(server: McpServer, peekaboo: PeekabooCl
     }
   )
 
+  const typeSchema = z
+    .object({
+      ...targetFields,
+      text: z.string().min(1).describe("Literal text to type."),
+      clear: z.boolean().optional(),
+      press_return: z.boolean().optional(),
+      foreground: z.boolean().optional(),
+      delay_ms: z.number().int().min(0).max(1_000).optional(),
+    })
+    .superRefine((value, context) => {
+      if (!value.foreground && value.app === undefined && value.window_id === undefined && value.snapshot_id === undefined) {
+        context.addIssue({
+          code: "custom",
+          message: "Background typing requires app, window_id, or snapshot_id; otherwise set foreground=true.",
+        })
+      }
+    })
+
   server.registerTool(
     "computer_type",
     {
       title: "Type on the computer",
-      description: "Type literal text into a targeted or focused app. Use snapshot_id or app to avoid typing into the wrong window.",
-      inputSchema: z.object({
-        ...targetFields,
-        text: z.string().min(1).describe("Literal text to type."),
-        clear: z.boolean().optional(),
-        press_return: z.boolean().optional(),
-        foreground: z.boolean().optional(),
-        delay_ms: z.number().int().min(0).max(1_000).optional(),
-      }),
+      description:
+        "Type literal text into a targeted or focused app. Fresh snapshots or window_id provide exact background targeting; app-only background typing may be rejected when the app has multiple eligible windows.",
+      inputSchema: typeSchema,
       annotations: {
         readOnlyHint: false,
         destructiveHint: false,
@@ -264,17 +290,29 @@ export function registerComputerUseTools(server: McpServer, peekaboo: PeekabooCl
     .regex(/^[A-Za-z0-9_]+$/)
     .describe("Key token such as return, tab, escape, cmd, shift, or a letter.")
 
+  const pressSchema = z
+    .object({
+      ...targetFields,
+      keys: z.array(keyToken).min(1).max(16),
+      count: z.number().int().min(1).max(100).optional(),
+      foreground: z.boolean().optional(),
+    })
+    .superRefine((value, context) => {
+      if (!value.foreground && value.window_id === undefined && value.snapshot_id === undefined) {
+        context.addIssue({
+          code: "custom",
+          message: "Background key presses require an exact window_id or fresh snapshot_id; app-only and targetless presses require foreground=true.",
+        })
+      }
+    })
+
   server.registerTool(
     "computer_press",
     {
       title: "Press computer keys",
-      description: "Press one or more special keys sequentially, such as tab, tab, return. Use computer_hotkey for simultaneous shortcuts.",
-      inputSchema: z.object({
-        ...targetFields,
-        keys: z.array(keyToken).min(1).max(16),
-        count: z.number().int().min(1).max(100).optional(),
-        foreground: z.boolean().optional(),
-      }),
+      description:
+        "Press one or more special keys sequentially, such as tab, tab, return. Background delivery requires an exact window_id or fresh snapshot_id. Use computer_hotkey for simultaneous shortcuts.",
+      inputSchema: pressSchema,
       annotations: {
         readOnlyHint: false,
         destructiveHint: false,
@@ -292,16 +330,28 @@ export function registerComputerUseTools(server: McpServer, peekaboo: PeekabooCl
     }
   )
 
+  const hotkeySchema = z
+    .object({
+      ...targetFields,
+      keys: z.array(keyToken).min(1).max(8),
+      foreground: z.boolean().optional(),
+    })
+    .superRefine((value, context) => {
+      if (!value.foreground && value.window_id === undefined && value.snapshot_id === undefined) {
+        context.addIssue({
+          code: "custom",
+          message: "Background hotkeys require an exact window_id or fresh snapshot_id; app-only and targetless hotkeys require foreground=true.",
+        })
+      }
+    })
+
   server.registerTool(
     "computer_hotkey",
     {
       title: "Press a computer shortcut",
-      description: "Press one simultaneous keyboard shortcut, such as cmd+shift+t. Use computer_press for sequential keys.",
-      inputSchema: z.object({
-        ...targetFields,
-        keys: z.array(keyToken).min(1).max(8),
-        foreground: z.boolean().optional(),
-      }),
+      description:
+        "Press one simultaneous keyboard shortcut, such as cmd+shift+t. Background delivery requires an exact window_id or fresh snapshot_id. Use computer_press for sequential keys.",
+      inputSchema: hotkeySchema,
       annotations: {
         readOnlyHint: false,
         destructiveHint: false,
@@ -325,6 +375,7 @@ export function registerComputerUseTools(server: McpServer, peekaboo: PeekabooCl
       amount: z.number().int().min(1).max(100).optional(),
       element_id: z.string().min(1).optional(),
       smooth: z.boolean().optional(),
+      foreground: z.boolean().optional().describe("Scroll at the current physical pointer. Do not combine with app, window_id, snapshot_id, or element_id."),
     })
     .superRefine((value, context) => {
       if (value.element_id && !value.snapshot_id) {
@@ -333,13 +384,31 @@ export function registerComputerUseTools(server: McpServer, peekaboo: PeekabooCl
           message: "snapshot_id is required when element_id is supplied.",
         })
       }
+      if (!value.element_id && !value.foreground) {
+        context.addIssue({
+          code: "custom",
+          message: "Supply element_id for background scrolling, or set foreground=true to scroll at the current physical pointer.",
+        })
+      }
+      if (value.foreground && (value.element_id !== undefined || value.app !== undefined || value.window_id !== undefined || value.snapshot_id !== undefined)) {
+        context.addIssue({
+          code: "custom",
+          message: "foreground pointer scrolling cannot be combined with element_id, app, window_id, or snapshot_id.",
+        })
+      }
+      if (value.smooth && !value.foreground) {
+        context.addIssue({
+          code: "custom",
+          message: "smooth scrolling requires foreground=true.",
+        })
+      }
     })
 
   server.registerTool(
     "computer_scroll",
     {
       title: "Scroll the computer",
-      description: `Scroll at the pointer or on an observed element. ${interactionRequirement}`,
+      description: `Scroll an observed element in the background, or set foreground=true to scroll at the current physical pointer. ${interactionRequirement}`,
       inputSchema: scrollSchema,
       annotations: {
         readOnlyHint: false,
@@ -352,10 +421,12 @@ export function registerComputerUseTools(server: McpServer, peekaboo: PeekabooCl
     async (input, ctx) => {
       const args = ["scroll", "--direction", input.direction]
       if (input.amount !== undefined) args.push("--amount", String(input.amount))
-      if (input.element_id) args.push("--on", input.element_id)
-      addTargetArgs(args, input)
+      if (input.element_id) {
+        args.push("--on", input.element_id)
+        addTargetArgs(args, input)
+      }
       if (input.smooth) args.push("--smooth")
-      if (!input.element_id || input.smooth) args.push("--foreground")
+      if (input.foreground) args.push("--foreground")
       return callPeekaboo(peekaboo, args, ctx.mcpReq.signal, "Scroll completed.")
     }
   )
