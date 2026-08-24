@@ -476,7 +476,7 @@ export function registerComputerUseTools(server: McpServer, peekaboo: PeekabooCl
     "computer_drag",
     {
       title: "Drag on the computer",
-      description: "Drag between elements, coordinates, or to an application.",
+      description: "Drag between coordinates inside one exact observed window without moving the physical pointer.",
       inputSchema: dragSchema,
       annotations: {
         readOnlyHint: false,
@@ -494,16 +494,38 @@ export function registerComputerUseTools(server: McpServer, peekaboo: PeekabooCl
         return peekabooToolError(error)
       }
 
-      const args = ["drag", "--snapshot", input.snapshot_id]
-      addDragPointArgs(args, "from", input.from, target)
-      if ("app" in input.to) args.push("--to-app", input.to.app)
-      else addDragPointArgs(args, "to", input.to, target)
-      addSnapshotTargetArgs(args, target)
-      if (input.duration_ms !== undefined) args.push("--duration", String(input.duration_ms))
-      if (input.steps !== undefined) args.push("--steps", String(input.steps))
-      if (input.modifiers?.length) args.push("--modifiers", input.modifiers.join(","))
-      args.push("--foreground", "--no-remote")
-      return callPeekaboo(peekaboo, args, ctx.mcpReq.signal, "Drag completed.")
+      try {
+        const screenCapture = target.kind?.toLowerCase().includes("screen") ?? false
+        if (screenCapture || target.windowId === undefined) {
+          throw new PeekabooError("EXACT_WINDOW_REQUIRED", "Background dragging requires an exact window observation.")
+        }
+        if (!("x" in input.from) || !("x" in input.to)) {
+          throw new PeekabooError(
+            "BACKGROUND_DRAG_UNSUPPORTED",
+            "Background dragging currently requires coordinate-to-coordinate points inside one exact window."
+          )
+        }
+        if (input.modifiers?.length) {
+          throw new PeekabooError("BACKGROUND_DRAG_UNSUPPORTED", "Background dragging does not currently support modifier keys.")
+        }
+
+        const args = [
+          "drag",
+          "--from",
+          `${input.from.x},${input.from.y}`,
+          "--to",
+          `${input.to.x},${input.to.y}`,
+          "--window-id",
+          String(target.windowId),
+        ]
+        if (input.duration_ms !== undefined) args.push("--duration", String(input.duration_ms))
+        if (input.steps !== undefined) args.push("--steps", String(input.steps))
+
+        const result = await peekaboo.runWithFreshLocalWindowSnapshot(target, args, ctx.mcpReq.signal)
+        return commandResult(result, "Drag completed.")
+      } catch (error) {
+        return peekabooToolError(error)
+      }
     }
   )
 
@@ -644,24 +666,6 @@ function addTargetArgs(args: string[], target: { app?: string; window_id?: numbe
   if (target.app !== undefined) args.push("--app", target.app)
   if (target.window_id !== undefined) args.push("--window-id", String(target.window_id))
   if (target.snapshot_id !== undefined) args.push("--snapshot", target.snapshot_id)
-}
-
-function addDragPointArgs(args: string[], side: "from" | "to", point: { element_id: string } | { x: number; y: number }, target: PeekabooSnapshotTarget): void {
-  if ("element_id" in point) args.push(`--${side}`, point.element_id)
-  else {
-    const coordinates = foregroundPointerCoordinates(target, point.x, point.y)
-    args.push(`--${side}`, `${coordinates.x},${coordinates.y}`)
-  }
-}
-
-function foregroundPointerCoordinates(target: PeekabooSnapshotTarget, x: number, y: number): { x: number; y: number } {
-  if (!target.bounds) {
-    throw new PeekabooError("SNAPSHOT_BOUNDS_MISSING", "The observation bounds are unavailable. Call computer_observe again.")
-  }
-  return {
-    x: x + target.bounds.x,
-    y: y + target.bounds.y,
-  }
 }
 
 function requireSnapshotTarget(peekaboo: PeekabooClient, snapshotId: string): PeekabooSnapshotTarget {

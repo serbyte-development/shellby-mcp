@@ -144,32 +144,40 @@ test("routes Computer Use through Peekaboo and preserves semantic errors", { tim
       to: { x: 30, y: 40 },
       duration_ms: 500,
       steps: 12,
-      modifiers: ["shift"],
     },
   })
   assert.deepEqual(dragged.structuredContent, {
     command: "drag",
     args: [
       "drag",
-      "--snapshot",
-      "snapshot-inspect",
       "--from",
-      "60,95",
+      "10,20",
       "--to",
-      "80,115",
+      "30,40",
       "--window-id",
       "4242",
       "--duration",
       "500",
       "--steps",
       "12",
-      "--modifiers",
-      "shift",
-      "--foreground",
+      "--snapshot",
+      "snapshot-42",
       "--no-remote",
       "--json",
     ],
   })
+
+  const unsupportedDrag = await connected.client.callTool({
+    name: "computer_drag",
+    arguments: {
+      snapshot_id: "snapshot-inspect",
+      from: { x: 10, y: 20 },
+      to: { x: 30, y: 40 },
+      modifiers: ["shift"],
+    },
+  })
+  assert.equal(unsupportedDrag.isError, true)
+  assert.match(unsupportedDrag.content[0]?.type === "text" ? unsupportedDrag.content[0].text : "", /does not currently support modifier keys/)
 
   const typed = await connected.client.callTool({
     name: "computer_type",
