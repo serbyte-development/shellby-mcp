@@ -475,7 +475,7 @@ export function registerComputerUseTools(server: McpServer, peekaboo: PeekabooCl
       if (input.duration_ms !== undefined) args.push("--duration", String(input.duration_ms))
       if (input.steps !== undefined) args.push("--steps", String(input.steps))
       if (input.modifiers?.length) args.push("--modifiers", input.modifiers.join(","))
-      args.push("--foreground")
+      args.push("--foreground", "--no-remote")
       return callPeekaboo(peekaboo, args, ctx.mcpReq.signal, "Drag completed.")
     }
   )
