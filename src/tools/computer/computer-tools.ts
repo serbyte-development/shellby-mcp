@@ -229,7 +229,7 @@ export function registerComputerUseTools(server: McpServer, peekaboo: PeekabooCl
       if (input.click_count === 2) args.push("--double")
       if (input.click_count === 3) args.push("--triple")
       if (input.long_press) args.push("--long-press")
-      if (input.foreground || input.long_press || forceForeground) {
+      if (input.foreground || forceForeground) {
         args.push("--foreground")
       }
       if (input.wait_ms !== undefined) args.push("--wait-for", String(input.wait_ms))
@@ -374,26 +374,38 @@ export function registerComputerUseTools(server: McpServer, peekaboo: PeekabooCl
       direction: z.enum(["up", "down", "left", "right"]),
       amount: z.number().int().min(1).max(100).optional(),
       element_id: z.string().min(1).optional(),
+      x: z.number().optional(),
+      y: z.number().optional(),
       smooth: z.boolean().optional(),
       foreground: z.boolean().optional().describe("Scroll at the current pointer."),
     })
     .superRefine((value, context) => {
+      const hasCoordinates = value.x !== undefined && value.y !== undefined
+      if ((value.x === undefined) !== (value.y === undefined)) {
+        context.addIssue({ code: "custom", message: "x and y must be supplied together." })
+      }
+      if (value.element_id && hasCoordinates) {
+        context.addIssue({ code: "custom", message: "Supply element_id or x and y, not both." })
+      }
       if (value.element_id && !value.snapshot_id) {
         context.addIssue({
           code: "custom",
           message: "snapshot_id is required when element_id is supplied.",
         })
       }
-      if (!value.element_id && !value.foreground) {
+      if (hasCoordinates && !value.snapshot_id) {
+        context.addIssue({ code: "custom", message: "snapshot_id is required for background coordinate scrolling." })
+      }
+      if (!value.element_id && !hasCoordinates && !value.foreground) {
         context.addIssue({
           code: "custom",
-          message: "Supply element_id for background scrolling, or set foreground=true to scroll at the current physical pointer.",
+          message: "Supply element_id or x and y for background scrolling, or set foreground=true.",
         })
       }
-      if (value.foreground && (value.element_id !== undefined || value.app !== undefined || value.window_id !== undefined || value.snapshot_id !== undefined)) {
+      if (value.foreground && (value.element_id !== undefined || hasCoordinates || value.app !== undefined || value.window_id !== undefined || value.snapshot_id !== undefined)) {
         context.addIssue({
           code: "custom",
-          message: "foreground pointer scrolling cannot be combined with element_id, app, window_id, or snapshot_id.",
+          message: "foreground pointer scrolling cannot be combined with a background target.",
         })
       }
       if (value.smooth && !value.foreground) {
@@ -408,7 +420,7 @@ export function registerComputerUseTools(server: McpServer, peekaboo: PeekabooCl
     "computer_scroll",
     {
       title: "Scroll the computer",
-      description: "Scroll an element from a snapshot, or set foreground=true to scroll at the current pointer.",
+      description: "Scroll an element or screenshot coordinate in the background, or set foreground=true to use the physical pointer.",
       inputSchema: scrollSchema,
       annotations: {
         readOnlyHint: false,
@@ -424,6 +436,21 @@ export function registerComputerUseTools(server: McpServer, peekaboo: PeekabooCl
       if (input.element_id) {
         args.push("--on", input.element_id)
         addTargetArgs(args, input)
+      }
+      if (input.x !== undefined && input.y !== undefined) {
+        try {
+          const target = requireSnapshotTarget(peekaboo, input.snapshot_id!)
+          const screenCapture = target.kind?.toLowerCase().includes("screen") ?? false
+          if (screenCapture || target.windowId === undefined) {
+            throw new PeekabooError("EXACT_WINDOW_REQUIRED", "Background coordinate scrolling requires an exact window observation.")
+          }
+          args.push("--at", `${input.x},${input.y}`, "--window-id", String(target.windowId))
+          if (input.smooth) args.push("--smooth")
+          const result = await peekaboo.runWithFreshLocalWindowSnapshot(target, args, ctx.mcpReq.signal)
+          return commandResult(result, "Scroll completed.")
+        } catch (error) {
+          return peekabooToolError(error)
+        }
       }
       if (input.smooth) args.push("--smooth")
       if (input.foreground) args.push("--foreground")

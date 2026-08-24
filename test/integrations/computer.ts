@@ -82,6 +82,15 @@ test("routes Computer Use through Peekaboo and preserves semantic errors", { tim
     args: ["click", "--at", "10,20", "--window-id", "4242", "--snapshot", "snapshot-42", "--no-remote", "--json"],
   })
 
+  const backgroundLongPress = await connected.client.callTool({
+    name: "computer_click",
+    arguments: { snapshot_id: "snapshot-inspect", x: 10, y: 20, long_press: true },
+  })
+  assert.deepEqual(backgroundLongPress.structuredContent, {
+    command: "click",
+    args: ["click", "--at", "10,20", "--window-id", "4242", "--long-press", "--snapshot", "snapshot-42", "--no-remote", "--json"],
+  })
+
   const middleClick = await connected.client.callTool({
     name: "computer_click",
     arguments: { snapshot_id: "snapshot-inspect", element_id: "B1", button: "middle" },
@@ -107,6 +116,15 @@ test("routes Computer Use through Peekaboo and preserves semantic errors", { tim
   assert.deepEqual(targetedScroll.structuredContent, {
     command: "scroll",
     args: ["scroll", "--direction", "down", "--amount", "4", "--on", "B1", "--snapshot", "snapshot-inspect", "--no-remote", "--json"],
+  })
+
+  const coordinateScroll = await connected.client.callTool({
+    name: "computer_scroll",
+    arguments: { snapshot_id: "snapshot-inspect", x: 10, y: 20, direction: "down", amount: 4 },
+  })
+  assert.deepEqual(coordinateScroll.structuredContent, {
+    command: "scroll",
+    args: ["scroll", "--direction", "down", "--amount", "4", "--at", "10,20", "--window-id", "4242", "--snapshot", "snapshot-42", "--no-remote", "--json"],
   })
 
   const pointerScroll = await connected.client.callTool({
