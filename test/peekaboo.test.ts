@@ -233,6 +233,25 @@ test("returns screenshot bytes and removes observation artifacts", async (t) => 
   await assert.rejects(access(screenshotPath))
 })
 
+test("preserves an exact requested app selector for later snapshot actions", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "peekaboo-observe-target-"))
+  t.after(() => rm(root, { recursive: true, force: true }))
+  const logPath = join(root, "calls.jsonl")
+  const client = fakeClient({
+    FAKE_PEEKABOO_LOG: logPath,
+    FAKE_PEEKABOO_APP_NAME: "Google Chrome",
+    FAKE_PEEKABOO_OMIT_OBSERVATION_TARGET: "1",
+  })
+  t.after(() => client.close())
+
+  const result = await client.observe(["--app", "PID:95973"], { annotate: false })
+
+  assert.deepEqual(result.target, {
+    app: "PID:95973",
+  })
+  assert.deepEqual(client.getSnapshotTarget("snapshot-42"), result.target)
+})
+
 test("removes observation artifacts after a Peekaboo error", async (t) => {
   const root = await mkdtemp(join(tmpdir(), "peekaboo-observe-error-"))
   t.after(() => rm(root, { recursive: true, force: true }))

@@ -167,6 +167,13 @@ export class PeekabooClient {
       const data = asRecord(result.data)
       const snapshotId = stringValue(data?.snapshot_id)
       let target = observationTarget(data)
+      const requestedApp = optionValue(args, "--app")
+      if (requestedApp !== undefined && /^PID:\d+$/.test(requestedApp)) {
+        target = {
+          ...target,
+          app: requestedApp,
+        }
+      }
       const requestedWindowId = integerOption(args, "--window-id")
       if (requestedWindowId !== undefined && target?.windowId === undefined) {
         target = {

@@ -81,20 +81,24 @@ if (
       ],
       screenshot_raw: screenshotPath,
       screenshot_annotated: args.includes("--annotate") ? screenshotPath : undefined,
-      observation: {
-        target: screenCapture
-          ? {
-              resolved_kind: "screen",
-            }
+      application_name: process.env.FAKE_PEEKABOO_APP_NAME,
+      observation:
+        process.env.FAKE_PEEKABOO_OMIT_OBSERVATION_TARGET === "1"
+          ? undefined
           : {
-              resolved_kind: "window-id",
-              window_id: 4242,
-              bounds: [
-                [50, 75],
-                [800, 600],
-              ],
+              target: screenCapture
+                ? {
+                    resolved_kind: "screen",
+                  }
+                : {
+                    resolved_kind: "window-id",
+                    window_id: 4242,
+                    bounds: [
+                      [50, 75],
+                      [800, 600],
+                    ],
+                  },
             },
-      },
     },
     summary: "see:ok",
     messages: ["ready", 42],
