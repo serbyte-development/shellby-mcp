@@ -45,7 +45,7 @@
     "@modelcontextprotocol/node": "2.0.0",
     "@modelcontextprotocol/server": "2.0.0",
     "@steipete/peekaboo": "4.2.2",
-    "cloakbrowser": "^0.5.8",
+    "cloakbrowser": "^0.5.9",
     "express": "^5.2.1",
     "linkedom": "^0.18.13",
     "node-html-markdown": "^2.0.0",
