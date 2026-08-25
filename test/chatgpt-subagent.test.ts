@@ -23,7 +23,7 @@ import {
 } from "../src/tools/subagent/chatgpt-subagent.js"
 
 function createRuntime(options: ChatGptSubagentOptions = {}): ChatGptSubagentRuntimeState {
-  return createChatGptSubagentRuntimeState({ cdpEndpoint: "http://127.0.0.1:1", interactionDelayMs: 0, minInterTurnDelayMs: 0, ...options })
+  return createChatGptSubagentRuntimeState({ cdpEndpoint: "http://127.0.0.1:1", interactionDelayMs: 0, minInterTurnDelayMs: 0, persistAgents: false, ...options })
 }
 
 function installBackgroundPage(runtime: ChatGptSubagentRuntimeState, page: object): void {
@@ -425,7 +425,7 @@ test("conversation URL fallback preserves configured project scope", () => {
   assert.equal(conversationUrlForStart("https://chatgpt.com/", "conversation-1"), "https://chatgpt.com/c/conversation-1")
 })
 test("configured pacing values are retained", () => {
-  const runtime = createChatGptSubagentRuntimeState({ interactionDelayMs: 375, minInterTurnDelayMs: 2_000 })
+  const runtime = createChatGptSubagentRuntimeState({ interactionDelayMs: 375, minInterTurnDelayMs: 2_000, persistAgents: false })
   assert.equal(runtime.interactionDelayMs, 375)
   assert.equal(runtime.minInterTurnDelayMs, 2_000)
 })
@@ -480,7 +480,7 @@ test("rate limit modal starts cooldown and expired cooldown can be dismissed", a
 })
 
 test("service reports unavailable CDP clearly", async () => {
-  const service = createChatGptSubagentService({ cdpEndpoint: "http://127.0.0.1:1", connectTimeoutMs: 100 })
+  const service = createChatGptSubagentService({ cdpEndpoint: "http://127.0.0.1:1", connectTimeoutMs: 100, persistAgents: false })
   await assert.rejects(service.connect(), /already-running debuggable Chrome instance.*attach-only/i)
   await service.dispose()
 })

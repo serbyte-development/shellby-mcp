@@ -157,7 +157,7 @@ test("labels permanently dropped parallel output", { timeout: 10_000 }, async (t
   assert.match(batch.output, /\[run 1 path="\." exit=0 dropped_bytes=1\]\n🙂éA/)
 })
 
-test("inherits the batch cwd when a run directory is omitted and accepts overrides", { timeout: 10_000 }, async (t) => {
+test("inherits the parallel cwd when a run directory is omitted and accepts overrides", { timeout: 10_000 }, async (t) => {
   const shell = createShellSession({ cwd: "/tmp" })
   t.after(() => shell.close())
 
@@ -201,7 +201,7 @@ test("inherits the batch cwd when a run directory is omitted and accepts overrid
       wait_ms: 0,
       max_output_tokens: MCP_CONFIG.shell.defaultOutputTokens,
     }),
-    (error: unknown) => error instanceof ShellSessionError && error.code === "invalid_command" && /Batch syntax must start with '\*\*\* Run:'/.test(error.message)
+    (error: unknown) => error instanceof ShellSessionError && error.code === "invalid_command" && /Parallel syntax must start with '\*\*\* Run:'/.test(error.message)
   )
   const mixed = await runToCompletion(
     shell,

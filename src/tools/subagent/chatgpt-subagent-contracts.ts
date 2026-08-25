@@ -6,6 +6,7 @@ export interface ChatGptSubagentOptions {
   minInterTurnDelayMs?: number
   interactionDelayMs?: number
   timeoutMs?: number
+  persistAgents?: boolean
 }
 
 export interface ChatGptSubagentRequest {

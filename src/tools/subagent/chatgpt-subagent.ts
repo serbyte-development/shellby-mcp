@@ -20,6 +20,7 @@ import {
 } from "./chatgpt-subagent-browser.js"
 import { observeAssistantResponse, type AssistantResponseObservation } from "./chatgpt-subagent-observer.js"
 import { extractConversationMessages, findLatestAssistantAfterPrompt } from "./chatgpt-subagent-protocol.js"
+import { createSubagentStore, type SubagentStore } from "./subagent-store.js"
 import {
   ChatGptSubagentError,
   type ChatGptSubagentActivity,
@@ -88,6 +89,7 @@ export interface ChatGptSubagentRuntimeState {
   context?: BrowserContext
   connectPromise?: Promise<void>
   cleanupTimer?: NodeJS.Timeout
+  store?: SubagentStore
   disposed: boolean
 }
 
@@ -110,6 +112,7 @@ export function createChatGptSubagentRuntimeState(options: ChatGptSubagentOption
     activeOperations: new Map(),
     pendingEvents: [],
     rateLimitedUntil: 0,
+    store: options.persistAgents === false ? undefined : createSubagentStore(),
     disposed: false,
   }
 }
@@ -173,7 +176,7 @@ export async function askSubagent(
 
     observation = await observeAssistantResponse(page, {
       prompt: submittedPrompt,
-      onConversationId: (conversationId) => bindConversation(activeAgent, conversationId, state.chatGptUrl),
+      onConversationId: (conversationId) => bindConversation(state, activeAgent, conversationId, state.chatGptUrl),
       onActivity: (activity) => {
         activeAgent.status = activity
         turn.lastActivityAt = Date.now()
@@ -194,6 +197,7 @@ export async function askSubagent(
     if (agent.status === "idle") agent.status = "Generating response"
     agent.lastUsedAt = Date.now()
     agent.turnCount += 1
+    persistAgent(state, agent)
     turn.observation = observation
     state.turns.set(turnId, turn)
     state.activeOperations.set(agent.agentId, turnId)
@@ -225,7 +229,14 @@ export async function pollSubagent(
 }
 
 export async function createAgent(state: ChatGptSubagentRuntimeState, agentId: string, signal?: AbortSignal): Promise<BrowserAgentState> {
-  const agent: BrowserAgentState = { agentId, status: "idle", lastUsedAt: Date.now(), turnCount: 0 }
+  const persisted = state.store?.get(agentId)
+  const agent: BrowserAgentState = {
+    agentId,
+    status: "idle",
+    lastUsedAt: Date.now(),
+    turnCount: persisted?.turnCount ?? 0,
+    conversationUrl: persisted?.conversationUrl,
+  }
   await ensureAgentPage(state, agent, signal)
   state.agents.set(agentId, agent)
   return agent
@@ -263,7 +274,7 @@ export async function waitForTurnResponse(state: ChatGptSubagentRuntimeState, tu
   try {
     const result = await observation.response
     if (state.disposed || turn.status !== "running" || turn.observation !== observation) return
-    if (result.conversationId) bindConversation(agent, result.conversationId, state.chatGptUrl)
+    if (result.conversationId) bindConversation(state, agent, result.conversationId, state.chatGptUrl)
     completeTurn(state, turn, agent, result.text)
   } catch (error) {
     if (state.disposed || turn.status !== "running" || turn.observation !== observation) return
@@ -349,6 +360,8 @@ export async function disposeSubagents(state: ChatGptSubagentRuntimeState): Prom
   state.browser = undefined
   state.connectPromise = undefined
   state.cleanupTimer = undefined
+  state.store?.close()
+  state.store = undefined
   await Promise.allSettled([...observations.map((observation) => observation.dispose()), ...pages.map((page) => page.close())])
   await browser?.close().catch(() => undefined)
 }
@@ -392,6 +405,7 @@ function completeTurn(state: ChatGptSubagentRuntimeState, turn: BrowserTurnState
   if (turn.status !== "running") return
   const now = Date.now()
   captureConversationUrlFromPage(agent)
+  persistAgent(state, agent)
   agent.lastCompletedAt = now
   agent.lastUsedAt = now
   agent.status = "idle"
@@ -448,18 +462,24 @@ async function createManagedPage(state: ChatGptSubagentRuntimeState): Promise<Pa
   }
 }
 
-function bindConversation(agent: BrowserAgentState, conversationId: string, startUrl: string): void {
+function bindConversation(state: ChatGptSubagentRuntimeState, agent: BrowserAgentState, conversationId: string, startUrl: string): void {
   const pageUrl = agent.page && !agent.page.isClosed() ? agent.page.url() : undefined
   if (pageUrl && extractConversationId(pageUrl) === conversationId) agent.conversationUrl = pageUrl
   else if (extractConversationId(agent.conversationUrl ?? "") !== conversationId) {
     agent.conversationUrl = conversationUrlForStart(startUrl, conversationId)
   }
+  persistAgent(state, agent)
 }
 
 function captureConversationUrlFromPage(agent: BrowserAgentState): void {
   if (agent.conversationUrl || !agent.page || agent.page.isClosed()) return
   const pageUrl = agent.page.url()
   if (extractConversationId(pageUrl)) agent.conversationUrl = pageUrl
+}
+
+function persistAgent(state: ChatGptSubagentRuntimeState, agent: BrowserAgentState): void {
+  if (!agent.conversationUrl) return
+  state.store?.set(agent.agentId, { conversationUrl: agent.conversationUrl, turnCount: agent.turnCount })
 }
 
 export function conversationUrlForStart(startUrl: string, conversationId: string): string {
