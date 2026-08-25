@@ -26,7 +26,7 @@ export function registerApplyPatchTool(server: McpServer, executable = DEFAULT_A
           .describe(
             "A patch beginning with `*** Begin Patch` and ending with `*** End Patch`. Use `*** Add File`, `*** Update File`, or `*** Delete File` sections. Within `*** Update File`, use `*** Move to:` to move or rename a file, `@@ <context>` to scope a hunk to a unique class, function, section, or line, and `*** End of File` when an update specifically targets the file tail. A patch may contain multiple file sections and multiple hunks per file."
           ),
-        cwd: z.string().refine(isAbsolute, "cwd must be an absolute path.").describe("Required absolute directory used as the patch root."),
+        cwd: z.string().refine(isAbsolute, "cwd must be an absolute path.").describe("Absolute directory used as the patch root."),
       }),
       outputSchema: z.object({
         status: z.enum(["completed", "failed", "partial"]),

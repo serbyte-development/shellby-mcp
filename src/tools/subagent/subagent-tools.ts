@@ -13,12 +13,12 @@ const subagentRequestSchema = z.object({
     .max(64)
     .refine((value) => value.trim().length > 0, "agent_id cannot be only whitespace.")
     .transform((value) => value.trim())
-    .describe("Short name for a subagent conversation. Reuse the same agent_id to continue that conversation; use a different one for independent work."),
+    .describe("Unique identifier like api-audit-1. Reuse the same agent_id to continue that conversation; use a different one for independent work."),
   prompt: z
     .string()
     .refine((value) => value.trim().length > 0, "prompt cannot be only whitespace.")
     .transform((value) => value.trim())
-    .describe("Task or next message to send to the subagent."),
+    .describe("Task or next message to send to the subagent.\n- Give the subagent a task with enough context to act."),
   oververbosity: z
     .int()
     .min(1)
@@ -43,7 +43,7 @@ const subagentResultSchema = z.object({
     .enum(["Working", "Searching the web", "Using tools", "Generating response"])
     .optional()
     .describe("Current coarse activity while status is running."),
-  activity_age_ms: z.int().nonnegative().optional().describe("Milliseconds since the last observable subagent progress while status is running."),
+  activity_age_ms: z.int().nonnegative().optional().describe("Time since the last observable subagent progress while status is running."),
   response: z.string().optional(),
   error: z.string().optional(),
 })
@@ -54,7 +54,7 @@ export function registerSubagentTools(server: McpServer, chatGptSubagents: ChatG
     {
       title: "Run ChatGPT subagent tasks",
       description:
-        "Submit 1–3 tasks to ChatGPT subagents. Reuse an agent_id to continue the same subagent conversation. Use the returned turn_id with `subagent_result` to retrieve that specific turn.",
+        "Submit tasks to subagents. Reuse an agent_id to continue the same subagent conversation. Use the returned turn_id with `subagent_result` to retrieve that specific turn.",
       inputSchema: z.object({
         agents: z
           .array(subagentRequestSchema)
@@ -130,7 +130,7 @@ export function registerSubagentTools(server: McpServer, chatGptSubagents: ChatG
           .min(0)
           .max(MCP_CONFIG.chatGpt.maxPollWaitMs)
           .default(MCP_CONFIG.chatGpt.defaultPollWaitMs)
-          .describe("How long this check may wait for completion, up to 4.5 minutes. Use 0 for an immediate status check."),
+          .describe("How long to wait for agent completion. Use 0 only for immediate check. Agent turns average about 1 minute and may run up to 30 minutes."),
       }),
       outputSchema: z.object({
         turns: z.array(subagentResultSchema),

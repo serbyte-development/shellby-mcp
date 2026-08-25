@@ -24,7 +24,7 @@ Pass one to three returned `turn_id` values. Results are retrieved concurrently 
 - `completed`: includes `response`;
 - `failed`: includes `error`.
 
-`wait_ms` waits on the local settlement promise only. It never polls or reloads ChatGPT.
+`wait_ms` defaults to 30 seconds and waits on the local settlement promise only. Use `0` only for an immediate status check. Agent turns average about 1 minute and may run up to 30 minutes. It never polls or reloads ChatGPT.
 
 Activity remains one of `Working`, `Searching the web`, `Using tools`, or `Generating response`.
 

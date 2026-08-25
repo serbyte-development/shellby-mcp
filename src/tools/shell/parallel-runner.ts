@@ -105,7 +105,7 @@ export function parseParallelCommandBatch(value: string): ParallelCommandSpec[] 
   if (!normalized.startsWith("*** Run")) {
     const directiveIndex = lines.findIndex((line) => parseRunMarker(line) !== null)
     if (directiveIndex >= 0) {
-      throw new Error(`Batch syntax must start with '*** Run:'. Found a batch directive on line ${directiveIndex + 1}.`)
+      throw new Error(`Parallel syntax must start with '*** Run:'. Found a parallel directive on line ${directiveIndex + 1}.`)
     }
     return null
   }

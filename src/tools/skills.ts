@@ -111,7 +111,7 @@ export function registerSkillTools(server: McpServer, workspace: string): void {
     "skill_list",
     {
       title: "List reusable skills",
-      description: "List available reusable skills. Use when a task may have a specialized workflow.",
+      description: "List available reusable skills.",
       inputSchema: z.object({}),
       outputSchema: z.object({
         skills: z.array(
@@ -146,7 +146,7 @@ export function registerSkillTools(server: McpServer, workspace: string): void {
     "skill_load",
     {
       title: "Load reusable skill",
-      description: "Load the instructions for a reusable skill. Use when a listed skill matches the current task.",
+      description: "Load the instructions for a reusable skill.",
       inputSchema: z.object({
         name: z.string().min(1).refine(isValidSkillName, "Invalid skill name."),
       }),

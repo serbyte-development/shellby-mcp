@@ -12,9 +12,9 @@ export function registerImageTools(server: McpServer, workspace: string): void {
     "image_view",
     {
       title: "View image",
-      description: "View a local image file. Relative paths resolve from the default workspace.",
+      description: "View a local image file.",
       inputSchema: z.object({
-        path: z.string().min(1).describe("Local image path. Relative paths resolve from the default workspace."),
+        path: z.string().min(1).describe("Absolute path to the local image file."),
       }),
       annotations: {
         readOnlyHint: true,

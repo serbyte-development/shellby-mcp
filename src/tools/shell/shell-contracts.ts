@@ -4,16 +4,13 @@ import { MCP_CONFIG } from "../../config.js"
 
 export const DEFAULT_SHELL_ID = "default"
 
-const requestIdInput = z.string().min(3).max(128).describe("Short operation label, unique within this shell. Reuse only to retry the exact same operation.")
-
+const requestIdInput = z.string().min(3).max(128)
 const shellIdInput = z
   .string()
   .min(3)
   .max(64)
   .default(DEFAULT_SHELL_ID)
-  .describe(
-    "Unique persistent shell label such as api-audit. Reuse for sequential commands that should share cwd or environment. Use another ID only for concurrent stateful work."
-  )
+  .describe("Unique persistent shell label such as api-audit. Reuse for sequential commands that should share cwd or environment.")
 
 const closableShellIdInput = z
   .string()
@@ -31,21 +28,21 @@ const maxOutputTokensInput = z
 export const shellRunInputSchema = z.object({
   shell_id: shellIdInput,
   request_id: requestIdInput.describe(
-    "Short command or step label, unique within this shell, such as scan-routes-1. Reuse only to retry the exact same command."
+    "Short command or step label, unique within this shell_id, such as scan-routes-1. Reuse only to retry the exact same command."
   ),
-  cwd: z.string().min(1).optional().describe("Omit to keep the current cwd. Batch commands inherit current cwd."),
+  cwd: z.string().min(1).optional().describe("Omit to keep the current cwd. Parallel *** Run: commands inherit current cwd."),
   command: z
     .string()
     .min(1)
     .describe(
-      "Exact zsh command or multiline script. For a batch, prefix each command with `*** Run:`. Example: `*** Run:\nnpm test\n*** Run: ./api\nnpm run check`."
+      "Exact zsh command or multiline script. To run independent commands in parallel, prefix each command with *** Run:.\n\nExample:\n *** Run:\nnpm test\n*** Run: ./api\nnpm run check."
     ),
   wait_ms: z
     .int()
     .min(0)
     .max(MCP_CONFIG.shell.maxWaitMs)
     .default(MCP_CONFIG.shell.defaultWaitMs)
-    .describe("How long to wait before returning. Running commands continue; use shell_poll."),
+    .describe("Max wait time before returning. Running commands continue; use shell_poll."),
   max_output_tokens: maxOutputTokensInput,
 })
 
@@ -60,14 +57,14 @@ export const shellPollInputSchema = z.object({
     .min(0)
     .max(MCP_CONFIG.shell.maxPollWaitMs)
     .default(MCP_CONFIG.shell.defaultPollWaitMs)
-    .describe("How long to wait for more output before returning."),
+    .describe("Max wait time for more output before returning."),
   max_output_tokens: maxOutputTokensInput,
 })
 
 export type ShellPollInput = z.infer<typeof shellPollInputSchema>
 
 export const shellResetInputSchema = z.object({
-  shell_id: shellIdInput,
+  shell_id: shellIdInput.describe("ID of the shell to reset."),
   reason: z.string().max(256).optional(),
 })
 
@@ -99,7 +96,7 @@ export type ShellBatchCommandOutput = z.infer<typeof shellBatchCommandOutputSche
 export const shellRunOutputSchema = z.object({
   shell_id: z.string().optional(),
   status: shellCommandStatusSchema,
-  exit_code: exitCodeSchema.optional().describe("For batches, 0 only when every command succeeded; otherwise 1."),
+  exit_code: exitCodeSchema.optional().describe("0 only when every command succeeded; otherwise 1."),
   cwd: z.string(),
   output: z.string(),
   request_id: z.string().optional(),
@@ -107,7 +104,7 @@ export const shellRunOutputSchema = z.object({
   cursor_expired: z.literal(true).optional(),
   output_truncated: z.literal(true).optional().describe("More retained output is available through shell_poll."),
   dropped_output_bytes: z.int().positive().optional().describe("Output permanently discarded."),
-  commands: z.array(shellBatchCommandOutputSchema).optional().describe("Per-command results for a batch."),
+  commands: z.array(shellBatchCommandOutputSchema).optional().describe("Per-command results for a parallel run"),
 })
 
 export type ShellRunOutput = z.infer<typeof shellRunOutputSchema>
