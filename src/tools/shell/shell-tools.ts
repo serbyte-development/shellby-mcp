@@ -19,8 +19,9 @@ import {
 import { ShellSessionError, type ShellSnapshot } from "./session.js"
 import type { ShellSessionManager } from "./session-manager.js"
 
-const APPLY_PATCH_TOOL_HINT = "apply_patch_tool_required: Use the apply_patch tool directly; do not run apply_patch through shell_run."
-const APPLY_PATCH_COMMAND_NOT_FOUND = /command not found:\s*apply_patch(?:\s|$)/i
+const APPLY_PATCH_TOOL_GUIDANCE =
+  "`apply_patch` is a separate MCP tool and cannot be used through `shell_run`. For local file changes, including creating, updating, deleting, moving, or renaming files, use the `apply_patch` MCP tool directly."
+const APPLY_PATCH_COMMAND_NOT_FOUND_LINE = /(^|\n)[^\n]*command not found:\s*apply_patch[^\n]*(?=\n|$)/gi
 
 export function registerShellExecutionTools(server: McpServer, shells: ShellSessionManager, workspace: string): void {
   const workspaceDescription = JSON.stringify(workspace)
@@ -29,7 +30,7 @@ export function registerShellExecutionTools(server: McpServer, shells: ShellSess
     "shell_run",
     {
       title: "Run a local shell command",
-      description: `Run zsh in a persistent macOS shell. Reuse shell_id to keep cwd or environment. For independent commands, use a batch; batch commands run concurrently and inherit cwd and exported environment variables. Use *** Run: <directory> only to change cwd for that command. Relative directories resolve from cwd; absolute paths are allowed. New shells start in ${workspaceDescription}.`,
+      description: `Run zsh in a persistent macOS shell. Reuse shell_id to keep cwd or environment. For independent commands, use a batch; batch commands run concurrently and inherit cwd and exported environment variables. Use *** Run: <directory> only to change cwd for that command. Relative directories resolve from cwd; absolute paths are allowed. New shells start in ${workspaceDescription}. Use the apply_patch tool over shell_run for file changes.`,
       inputSchema: shellRunInputSchema,
       outputSchema: shellRunOutputSchema,
       annotations: {
@@ -239,8 +240,8 @@ function compactShellSnapshot(snapshot: ShellSnapshot, shellId: string): ShellRu
 }
 
 function withApplyPatchToolHint(output: string): string {
-  if (!APPLY_PATCH_COMMAND_NOT_FOUND.test(output)) return output
-  return `${output}${output.endsWith("\n") ? "" : "\n"}${APPLY_PATCH_TOOL_HINT}`
+  const replaced = output.replace(APPLY_PATCH_COMMAND_NOT_FOUND_LINE, (_, prefix: string) => `${prefix}${APPLY_PATCH_TOOL_GUIDANCE}`)
+  return replaced === `${APPLY_PATCH_TOOL_GUIDANCE}\n` ? APPLY_PATCH_TOOL_GUIDANCE : replaced
 }
 
 function toolError(error: unknown) {

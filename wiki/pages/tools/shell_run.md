@@ -14,7 +14,7 @@ Inputs:
 - `request_id`: unique operation name inside that shell. Same ID + same command = retry/reuse. Same ID + changed command = conflict.
 - `cwd`: optional cwd change. Omit to keep current cwd.
 - `command`: exact zsh.
-- `wait_ms`: how long this call waits. Default 1500 ms, max 10 s. Returning does not stop the command.
+- `wait_ms`: how long this call waits. Default 3000 ms, max 10 s. Returning does not stop the command.
 - `max_output_tokens`: usually omit. Default 1024, max 16384. Controls one response chunk, not total retained output.
 
 Normal commands run in the persistent shell. `cd`, exported env, functions, aliases, and other live shell state persist while that shell stays live.
