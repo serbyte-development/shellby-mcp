@@ -1,7 +1,7 @@
 <h1 align="center">Shellby MCP</h1>
 
 <p align="center">
-  <strong>A local coding harness that gives ChatGPT Web persistent shells, direct file editing, Computer Use, and browser-backed subagents.</strong>
+  A local MCP server that gives ChatGPT Web persistent shells, direct file editing, Computer Use, browser-backed subagents, webpage tools, and reusable skills on macOS.
 </p>
 
 <p align="center">
@@ -12,28 +12,26 @@
 
 <p align="center">
   <a href="#quick-start">Quick start</a> ·
-  <a href="#how-it-works">How it works</a> ·
-  <a href="#security-model">Security</a> ·
+  <a href="#operations">Operations</a> ·
+  <a href="#security">Security</a> ·
   <a href="wiki/">Maintainer wiki</a>
 </p>
 
 > [!CAUTION]
-> Shellby MCP deliberately gives an authorized ChatGPT caller the authority of your local macOS user. It can run commands, edit files, and control supported applications. It is not a sandbox and is intended for experienced software engineers.
-
-Shellby MCP connects ChatGPT Web to a stateful local runtime over MCP. MCP requests remain stateless at the HTTP boundary, while shells, browser conversations, webpage documents, Computer Use targets, and skills persist in the local process.
-
-## What you get
-
-| Capability        | What it provides                                                                                       |
-| ----------------- | ------------------------------------------------------------------------------------------------------ |
-| Persistent shells | Named login shells retain cwd, exported environment, processes, and command history across MCP calls.  |
-| Direct editing    | Native ChatGPT `apply_patch` binary edits files independently of shell state.                          |
-| Browser subagents | Up to three detached ChatGPT Web conversations with follow-up context and concurrent result retrieval. |
-| Computer Use      | Focused macOS observation and interaction tools backed by [Peekaboo](https://peekaboo.sh/).            |
-| Web and images    | Rendered webpage extraction, bounded document pagination, and native image transport.                  |
-| Dynamic skills    | Workspace skills load directly from `<workspace>/skills/*/SKILL.md`.                                   |
+> Shellby MCP runs with the permissions of your local macOS user. An authorized ChatGPT caller can run commands, edit files, fetch webpages, and control supported applications. Review [SECURITY.md](SECURITY.md) before using it.
 
 ![Shellby MCP architecture showing ChatGPT Web connecting to the local harness and its persistent tools, Computer Use, and subagent runtime](docs/assets/shellby-mcp-architecture.svg)
+
+## Capabilities
+
+| Capability        | Description                                                                                            |
+| ----------------- | ------------------------------------------------------------------------------------------------------ |
+| Persistent shells | Named login shells retain cwd, environment, processes, and command history across MCP calls.           |
+| Direct editing    | `apply_patch` edits files independently of shell state.                                                |
+| Computer Use      | Focused macOS observation and interaction backed by [Peekaboo](https://peekaboo.sh/).                  |
+| Browser subagents | Up to three detached ChatGPT Web conversations with follow-up context and concurrent result retrieval. |
+| Web and images    | Rendered webpage extraction, bounded document pagination, and native image transport.                  |
+| Dynamic skills    | Reusable workflows loaded from `<workspace>/skills/*/SKILL.md`.                                        |
 
 ## Requirements
 
@@ -41,13 +39,19 @@ Shellby MCP connects ChatGPT Web to a stateful local runtime over MCP. MCP reque
 - Node.js 22.13.0 or newer
 - npm
 - An [ngrok](https://ngrok.com/) account and CLI
-- A ChatGPT account where Developer Mode/custom MCP apps are available
+- A ChatGPT account with Developer Mode and custom MCP apps available
 
-Google Chrome is optional for browser-backed subagents. Peekaboo is optional for Computer Use. The core shell, patch, web, image, and skill tools still start when either optional capability is unavailable.
+Google Chrome is optional and is used for browser-backed subagents. Computer Use is optional and uses the Peekaboo package installed with this repository.
 
 ## Quick start
 
-1. Install ngrok and clone the repository:
+### Install with your agent
+
+If your coding agent has terminal access, give it [`skills/install-shellby-mcp/SKILL.md`](skills/install-shellby-mcp/SKILL.md) and ask it to install Shellby MCP. The skill handles terminal setup and stops for human actions such as ngrok authentication, macOS permissions, ChatGPT sign-in, and the first managed start from Terminal.app.
+
+### Manual install
+
+1. Install ngrok, clone the repository, and install dependencies:
 
    ```bash
    brew install --cask ngrok
@@ -56,132 +60,166 @@ Google Chrome is optional for browser-backed subagents. Peekaboo is optional for
    npm ci
    ```
 
-2. Authenticate ngrok once:
+2. Authenticate ngrok:
 
    ```bash
    ngrok config add-authtoken <your-token>
    ```
 
-   > [!NOTE]
-   > If you don't have an ngrok authtoken, you can get one for free [here](https://dashboard.ngrok.com/get-started/your-authtoken).
+   Get an authtoken from the [ngrok dashboard](https://dashboard.ngrok.com/get-started/your-authtoken) if needed.
 
-3. Check the machine and run guided setup:
+3. Run guided setup:
 
    ```bash
-   npm run preflight
    npm run setup
    ```
 
-   Setup prepares the workspace, builds the server, checks optional Peekaboo permissions, and creates a dedicated Chrome profile when Chrome is installed. Sign into ChatGPT once in the dedicated window if it opens.
+   Setup checks the machine, prepares the workspace, builds Shellby MCP, checks Computer Use permissions, and prepares a dedicated Chrome profile when Chrome is installed. Sign into ChatGPT in the dedicated Chrome window if it opens.
 
-4. Start everything:
+4. Run the first managed start from Terminal.app:
 
    ```bash
    npm start
    ```
 
-   Startup builds the server, starts or reloads the local MCP and ngrok through the repository's PM2 dependency, launches the configured ChatGPT browser, waits for `/healthz`, and prints the public MCP URL.
+   This creates or reuses the repository-local PM2 runtime, starts Shellby MCP and ngrok, launches the configured ChatGPT browser, waits for local health, and prints the public `/mcp` URL. Starting from Terminal.app gives the managed process tree the intended macOS permission context for Computer Use.
 
-5. In ChatGPT Developer Mode, create a custom app using the printed `https://…/mcp` URL and select no authentication.
+5. In ChatGPT Developer Mode, create a custom MCP app with the printed `https://.../mcp` URL and select **No authentication**.
 
 > [!IMPORTANT]
-> The first trusted remote `tools/call` binds this installation to that ChatGPT subject. Later remote tool calls must come from the same subject. Use `npm run auth:reset` to intentionally clear the binding.
+> The first trusted remote tool call binds the installation to that ChatGPT subject. Use `npm run auth:reset` only when you intend to clear that binding.
 
-## How it works
+### Verify the installation
 
-```mermaid
-flowchart LR
-    ChatGPT[ChatGPT Web] -->|HTTPS / MCP| Tunnel[ngrok policy]
-    Tunnel --> Server[Local Shellby MCP]
-    Server --> Shells[Persistent shells]
-    Server --> Files[apply_patch]
-    Server --> Browser[ChatGPT subagents]
-    Server --> Computer[Computer Use]
-    Server --> Web[Web, images, skills]
+```bash
+npm run status
+curl -fsS http://127.0.0.1:3333/healthz
+npm run print-url
 ```
 
-- Production HTTP listens only on `127.0.0.1:3333`.
-- The checked-in ngrok policy accepts ChatGPT-origin traffic on the exact `/mcp` route and marks it as remote.
-- Remote calls are subject-bound; direct localhost MCP clients are intentionally unauthenticated.
-- Runtime state stays local. Remote ownership is stored at `~/.shellby/auth.json` with owner-only permissions.
-
-The local development endpoint is `http://127.0.0.1:3333/mcp`.
+The local MCP endpoint is `http://127.0.0.1:3333/mcp`.
 
 ## Optional capabilities
 
 <details>
-<summary><strong>Browser-backed ChatGPT subagents</strong></summary>
+<summary><strong>Computer Use</strong></summary>
+
+Shellby uses the package-local Peekaboo CLI by default. Check or grant permissions with:
 
 ```bash
-npm run setup:chatgpt
-npm run chatgpt
-```
-
-The setup command creates a dedicated Chrome profile under `~/.shellby/chatgpt-chrome`. The runtime attaches over CDP at `127.0.0.1:9222`; it never copies or modifies your normal Chrome profile. Managed subagent tabs are created as unfocused background targets.
-
-Reuse an `agent_id` to continue the same conversation. Conversation URL and turn count are persisted best-effort across MCP restarts; a new ID starts a new conversation. See [Browser ChatGPT Subagents](wiki/pages/browser-chatgpt-subagents.md).
-
-</details>
-
-<details>
-<summary><strong>Computer Use with Peekaboo</strong></summary>
-
-```bash
-npm install
 npm run setup:computer
 ```
 
-Shellby pins Peekaboo as an npm dependency and uses its package-local CLI by default. `MCP_PEEKABOO_BIN` can override the executable for development. Shellby delegates permission guidance to Peekaboo. Screen Recording enables observation; Accessibility and Event Synthesizing enable actions. Computer actions are stateful and are never automatically retried.
+Screen Recording enables observation. Accessibility and Event Synthesizing enable actions. `MCP_PEEKABOO_BIN` can select another Peekaboo executable, and `MCP_PEEKABOO_CURSOR_HOST_BIN` can select the optional cursor-host executable.
+
+See [Computer Use](wiki/pages/computer-use.md) for runtime details.
 
 </details>
 
-## Security model
+<details>
+<summary><strong>Browser-backed ChatGPT subagents</strong></summary>
 
-> [!WARNING]
-> The configured workspace is a starting directory and agent convention, not a filesystem boundary. Shells, patches, webpage fetching, browser delegation, and Computer Use retain the permissions of the current macOS user.
+Run the dedicated browser setup when Chrome was unavailable during initial setup or when you want to configure it later:
 
-- Local MCP access is intentionally unauthenticated. Do not expose port 3333 through an untrusted proxy.
-- The authenticated Chrome profile is part of the trust boundary for `subagent_run`.
-- `agent-commands.yaml` is gitignored and permission-restricted, but it may contain sensitive tool inputs. Treat it as private.
-- Review [SECURITY.md](SECURITY.md) before deployment and report vulnerabilities privately.
+```bash
+npm run setup:chatgpt
+```
+
+This creates a dedicated Chrome profile under `~/.shellby/chatgpt-chrome` and attaches over CDP at `127.0.0.1:9222`. Sign into ChatGPT once in that profile. Future `npm start` runs launch it automatically.
+
+Conversation URL and turn count are persisted for reused `agent_id` values. Use `npm run reset-agents` to forget those local mappings.
+
+See [Browser ChatGPT Subagents](wiki/pages/browser-chatgpt-subagents.md) for lifecycle details.
+
+</details>
 
 ## Operations
 
-| Command             | Purpose                                                               |
-| ------------------- | --------------------------------------------------------------------- |
-| `npm start`         | Build and start/reload MCP, ngrok, and the configured ChatGPT browser |
-| `npm run restart`   | Clear the current audit log, rebuild, and reload managed processes    |
-| `npm run status`    | Show PM2 process state                                                |
-| `npm run logs`      | Follow PM2 logs                                                       |
-| `npm run print-url` | Print the active public `/mcp` URL                                    |
-| `npm run stop`      | Stop the managed MCP and ngrok processes                              |
+| Command                | Purpose                                                                           |
+| ---------------------- | --------------------------------------------------------------------------------- |
+| `npm start`            | Build and start or reload Shellby MCP, ngrok, and the configured ChatGPT browser. |
+| `npm run restart`      | Clear the current audit log, rebuild, and reload the managed runtime.             |
+| `npm run status`       | Show PM2 process state.                                                           |
+| `npm run logs`         | Follow PM2 logs.                                                                  |
+| `npm run print-url`    | Print the active public `/mcp` URL.                                               |
+| `npm run stop`         | Stop the managed Shellby MCP and ngrok processes.                                 |
+| `npm run auth:reset`   | Clear the bound remote ChatGPT subject after confirmation.                        |
+| `npm run reset-agents` | Forget persisted subagent conversation mappings.                                  |
 
-PM2 is a repository dependency; no global PM2 installation is required.
+PM2 is installed as a repository dependency.
+
+### Update an existing installation
+
+```bash
+git pull
+npm ci
+npm start
+```
+
+## Configuration
+
+Copy [`.env.example`](.env.example) to `.env` when you need to change a default.
+
+| Variable                        | Default                     | Purpose                                                          |
+| ------------------------------- | --------------------------- | ---------------------------------------------------------------- |
+| `MCP_CWD`                       | `~/Desktop/agent-workspace` | Initial workspace and `AGENTS.md` root.                          |
+| `MCP_SHELL`                     | `/bin/zsh`                  | Persistent login shell executable.                               |
+| `MCP_PEEKABOO_BIN`              | package-local Peekaboo      | Optional Peekaboo executable override.                           |
+| `MCP_PEEKABOO_CURSOR_HOST_BIN`  | beside configured Peekaboo  | Optional cursor-host executable override.                        |
+| `MCP_CHATGPT_CDP_ENDPOINT`      | `http://127.0.0.1:9222`     | Chrome DevTools endpoint for subagents.                          |
+| `MCP_CHATGPT_PROFILE_DIRECTORY` | unset                       | Optional profile inside the dedicated Chrome data directory.     |
+| `MCP_CHATGPT_PROJECT_URL`       | unset                       | Optional ChatGPT Project URL for new subagent conversations.     |
+| `NGROK_URL`                     | unset                       | Optional fixed ngrok domain.                                     |
+| `NGROK_BIN`                     | `ngrok`                     | Optional ngrok executable override.                              |
+| `NGROK_AUTHTOKEN`               | unset                       | Optional ngrok token supplied through environment configuration. |
+| `CHROME_BIN`                    | standard macOS path         | Optional Chrome executable override.                             |
+
+Host, port, runtime limits, and other fixed settings are defined in [`src/config.ts`](src/config.ts).
+
+## Troubleshooting
 
 <details>
-<summary><strong>Configuration</strong></summary>
+<summary><strong>Setup or startup fails</strong></summary>
 
-Copy [.env.example](.env.example) to `.env`. The main inputs are:
+Run:
 
-| Variable                        | Default                     | Purpose                                              |
-| ------------------------------- | --------------------------- | ---------------------------------------------------- |
-| `MCP_CWD`                       | `~/Desktop/agent-workspace` | Initial workspace and `AGENTS.md` root               |
-| `MCP_SHELL`                     | `/bin/zsh`                  | Persistent login shell executable                    |
-| `MCP_PEEKABOO_BIN`              | package-local Peekaboo      | Optional Peekaboo executable override                |
-| `MCP_CHATGPT_CDP_ENDPOINT`      | `http://127.0.0.1:9222`     | Existing Chrome CDP endpoint                         |
-| `MCP_CHATGPT_PROJECT_URL`       | unset                       | Optional ChatGPT Project start URL                   |
-| `MCP_CHATGPT_PROFILE_DIRECTORY` | unset                       | Optional profile within dedicated Chrome data        |
-| `NGROK_URL`                     | unset                       | Optional fixed ngrok domain                          |
-| `NGROK_BIN`                     | `ngrok`                     | Optional ngrok executable override                   |
-| `NGROK_AUTHTOKEN`               | unset                       | Optional token when ngrok is not globally configured |
-| `CHROME_BIN`                    | standard macOS path         | Optional Chrome executable override                  |
+```bash
+npm run preflight
+npm run status
+npm run logs
+```
 
-Host, port, output bounds, shell capacity, and lifecycle limits are fixed in [`src/config.ts`](src/config.ts).
+`preflight` checks the supported macOS/Node environment, local dependencies, ngrok installation, and ngrok authentication. If `/healthz` does not become available after startup, inspect PM2 status and logs first.
 
 </details>
 
 <details>
-<summary><strong>Development and validation</strong></summary>
+<summary><strong>Computer Use permissions are missing</strong></summary>
+
+Run `npm run setup:computer` from Terminal.app and follow Peekaboo's permission guidance. Keep the managed Shellby process associated with the same intended Terminal permission context.
+
+</details>
+
+<details>
+<summary><strong>The PM2 daemon needs to be recreated</strong></summary>
+
+Check whether that PM2 daemon manages other applications before killing it. `./node_modules/.bin/pm2 kill` stops every application attached to the daemon. After recreating it, run `npm start` from Terminal.app.
+
+</details>
+
+More startup and recovery details are in [Configuration and Startup](wiki/pages/configuration-and-startup.md).
+
+## Security
+
+- The checked-in ngrok traffic policy exposes the local MCP endpoint to ChatGPT.
+- Direct localhost MCP access is unauthenticated. Do not expose the local endpoint through another untrusted proxy.
+- Trusted remote tool calls are bound to the first ChatGPT subject stored in `~/.shellby/auth.json`.
+- The dedicated authenticated Chrome profile is part of the trust boundary for browser subagents.
+- `agent-commands.yaml` can contain sensitive tool inputs. It is gitignored and permission-restricted and should be treated as private.
+
+See [SECURITY.md](SECURITY.md) for reporting and scope.
+
+## Development
 
 ```bash
 npm run dev
@@ -191,27 +229,24 @@ npm test
 npm run build
 ```
 
-Use `npm run inspect` for the MCP inspector and `npm run schemas` to print the exact published tool schemas. Real authenticated-browser tests are manual and excluded from CI; see [Build and Test](wiki/pages/build-and-test.md).
-
-</details>
+Use `npm run inspect` for the MCP inspector and `npm run schemas` to print the published tool schemas. Authenticated browser tests are excluded from CI. See [Build and Test](wiki/pages/build-and-test.md).
 
 ## Documentation
 
-The [maintainer wiki](wiki/) is the detailed source of truth:
+The [maintainer wiki](wiki/) contains implementation and operational details:
 
 - [Project Overview](wiki/pages/project-overview.md)
 - [Architecture Map](wiki/pages/architecture-map.md)
 - [Configuration and Startup](wiki/pages/configuration-and-startup.md)
+- [Computer Use](wiki/pages/computer-use.md)
 - [MCP Tool Surface](wiki/pages/mcp-tool-surface.md)
 - [Build and Test](wiki/pages/build-and-test.md)
 - [Open Questions and Risks](wiki/pages/open-questions-and-risks.md)
 
 ## Contributing
 
-Contributions are welcome. Read [CONTRIBUTING.md](CONTRIBUTING.md), keep changes focused, and run the validation commands above before opening a pull request.
+Read [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request. Run the development validation commands above for code changes.
 
 ## License
 
 [MIT](LICENSE). The vendored `apply_patch` binary retains its upstream OpenAI Codex license and notices under [`vendor/apply-patch/`](vendor/apply-patch/).
-
-Developed and maintained by [Serbyte Development](https://www.serbyte.net/).
