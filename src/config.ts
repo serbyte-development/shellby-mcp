@@ -13,9 +13,9 @@ export const MCP_CONFIG = {
     version: "0.1.0",
     icons: [
       {
-        src: `data:image/png;base64,${readFileSync(new URL("../icon-256_square.png", import.meta.url)).toString("base64")}`,
+        src: `data:image/png;base64,${readFileSync(new URL("../docs/assets/icon-80_square-compressed.png", import.meta.url)).toString("base64")}`,
         mimeType: "image/png",
-        sizes: ["256x256"],
+        sizes: ["80x80"],
       },
     ],
   },

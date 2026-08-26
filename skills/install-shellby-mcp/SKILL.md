@@ -5,13 +5,13 @@ description: Install and verify Shellby MCP on a Mac using terminal access only.
 
 # Install Shellby MCP
 
-Install Shellby MCP collaboratively with the human. Assume you have terminal access but no GUI or Computer Use access.
+Install Shellby MCP collaboratively with the human.
 
 ## Boundaries
 
 - Inspect current machine and repository state before changing anything. Resume partial installs instead of blindly repeating setup.
 - Never ask the user to paste an ngrok authtoken, ChatGPT credential, or other secret into chat. Have them enter secrets directly in their own Terminal or browser.
-- Do not require GUI access from the installing agent. Give the human concise instructions whenever macOS, Chrome, ChatGPT, or another GUI requires interaction.
+- Give the human concise instructions whenever macOS, Chrome, ChatGPT, or another GUI requires interaction.
 - Do not run `npm start`, `npm run restart`, `npm run status`, `npm run logs`, `npm run stop`, or a direct `pm2` command before the human establishes the PM2 daemon from Terminal.app. A PM2 command may create the daemon under the wrong macOS permission source.
 - Never kill an existing PM2 daemon until you know what it manages and the human explicitly agrees to disrupt those processes. `pm2 kill` affects the whole user-level PM2 daemon, not only Shellby.
 - Treat Computer Use permission status observed from the agent's own host process as non-authoritative for Terminal.app. macOS TCC permissions follow the responsible launching process.
@@ -28,13 +28,13 @@ Confirm:
 
 If the repository is not already checked out, clone `https://github.com/Serbyte-Development/shellby-mcp.git` and enter it.
 
-Install missing non-secret prerequisites when safe. Prefer the repository's documented ngrok installation command when Homebrew is available:
+Install missing prerequisites when safe. Prefer the repository's documented ngrok installation command when Homebrew is available:
 
 ```bash
 brew install --cask ngrok
 ```
 
-Do not silently replace the user's Node installation strategy or package manager. If Node is missing or too old and there is no obvious existing version manager, tell the human what is required and let them choose how Node should be installed.
+Do not silently replace the user's Node installation strategy or package manager. If Node is missing or too old and there is no obvious existing version manager, tell the human what is required and let them choose how Node should be installed. Never chat $PATH without explicit approval.
 
 ## 2. Install repository dependencies
 
@@ -66,11 +66,11 @@ If ngrok is not authenticated, stop and ask the human to run this themselves in 
 ngrok config add-authtoken <their-token>
 ```
 
-Tell them to obtain the token from their own ngrok account if necessary. Do not ask them to send the token to you. Continue only after they say authentication is complete, then rerun `npm run preflight`.
+Tell them to obtain the token from their own ngrok account if necessary (its free). Do not ask them to send the token to you. Continue only after they say authentication is complete, then rerun `npm run preflight`.
 
 ## 4. Configure only necessary overrides
 
-Shellby has usable defaults. Do not create `.env` merely because `.env.example` exists.
+Shellby has usable defaults. Do not create `.env` merely because `.env.example` exists. env variables are for explicitly overriding defaults.
 
 Read `.env.example` and current repository documentation before setting overrides. Create or edit `.env` only when the user's machine or desired installation requires a non-default value, such as a different workspace, Chrome path, Peekaboo binary, CDP endpoint, or fixed ngrok domain.
 
@@ -144,20 +144,27 @@ The installing agent does not need browser control.
 
 Ask the human to:
 
-1. Open ChatGPT Developer Mode.
-2. Create a custom MCP app using the printed `https://.../mcp` URL.
-3. Select **no authentication** for the custom app.
-4. Enable or refresh the app so ChatGPT fetches Shellby's tool list.
+1. Enable ChatGPT Developer Mode: https://developers.openai.com/api/docs/guides/developer-mode
+2. Create a new plugin using the printed `https://.../mcp` URL. Run `npm run print-url` to get the URL.
+
+- To add custom plugins in chatGPT developer mode must be enabled, and the user must be on the Desktop web, at this point after clicking Plugins they will see a + button on the page:
+  ![Screenshot of the add plugin menu](../../docs/assets/add-plugin-menu-screenshot.png)
+- Name the plugin something like "Shellby MCP" and add a description. like "Gives full access to my mac".
+- Enter the URL from `npm run print-url` in the URL field.
+- optionally add a logo and icon (it will appear nicely in the chat when using): ![Shellby MCP icon](../../docs/assets/icon-80_square-compressed.png)
+
+3. Select **no authentication** for the plugin.
+4. Enable or refresh the plugin so ChatGPT fetches Shellby's tool list.
 
 After they do this, verify locally that `agent-commands.yaml` received a new `tools/list` entry. Do not display unrelated audit-log contents because tool inputs may be sensitive.
 
 ## 9. Verify first trusted tool use
 
-Ask the human to make one simple Shellby tool call from ChatGPT, such as listing the workspace or running `pwd` in a shell. The first trusted remote `tools/call` binds this installation to that ChatGPT subject.
+Ask the human to make one simple Shellby tool call from ChatGPT web, such as listing the workspace or running `pwd` in a shell. The first trusted remote `tools/call` binds this installation to that ChatGPT user using their subject header.
 
 Verify that the call reached Shellby from the audit log and that `~/.shellby/auth.json` now exists. Do not print the stored subject value.
 
-Use `npm run auth:reset` only when the human intentionally wants to clear that binding.
+Use `npm run auth:reset` only when the human intentionally wants to clear that binding. (This MCP can only bind to a single ChatGPT user.)
 
 ## 10. Verify optional capabilities
 

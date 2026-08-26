@@ -18,20 +18,20 @@
 </p>
 
 > [!CAUTION]
-> Shellby MCP runs with the permissions of your local macOS user. An authorized ChatGPT caller can run commands, edit files, fetch webpages, and control supported applications. Review [SECURITY.md](SECURITY.md) before using it.
+> Shellby MCP runs with the full permissions of your local macOS user. An authorized ChatGPT caller can run commands, edit files, fetch webpages, and control supported applications.
 
 ![Shellby MCP architecture showing ChatGPT Web connecting to the local harness and its persistent tools, Computer Use, and subagent runtime](docs/assets/shellby-mcp-architecture.svg)
 
 ## Capabilities
 
-| Capability        | Description                                                                                            |
-| ----------------- | ------------------------------------------------------------------------------------------------------ |
-| Persistent shells | Named login shells retain cwd, environment, processes, and command history across MCP calls.           |
-| Direct editing    | `apply_patch` edits files independently of shell state.                                                |
-| Computer Use      | Focused macOS observation and interaction backed by [Peekaboo](https://peekaboo.sh/).                  |
-| Browser subagents | Up to three detached ChatGPT Web conversations with follow-up context and concurrent result retrieval. |
-| Web and images    | Rendered webpage extraction, bounded document pagination, and native image transport.                  |
-| Dynamic skills    | Reusable workflows loaded from `<workspace>/skills/*/SKILL.md`.                                        |
+| Capability           | Description                                                                                  |
+| -------------------- | -------------------------------------------------------------------------------------------- |
+| Persistent shells    | Named login shells retain cwd, environment, processes, and command history across MCP calls. |
+| Native `apply_patch` | Native ChatGPT `apply_patch` binary used to edit files independently of shell state.         |
+| Computer Use         | Focused macOS observation and interaction backed by [Peekaboo](https://peekaboo.sh/).        |
+| Browser subagents    | Detached ChatGPT Web conversations with follow-up context and concurrent result retrieval.   |
+| Web and images       | Rendered webpage extraction, bounded document pagination, and native image transport.        |
+| Dynamic skills       | Reusable workflows loaded from `<workspace>/skills/*/SKILL.md`.                              |
 
 ## Requirements
 
@@ -39,17 +39,20 @@
 - Node.js 22.13.0 or newer
 - npm
 - An [ngrok](https://ngrok.com/) account and CLI
-- A ChatGPT account with Developer Mode and custom MCP apps available
+- A ChatGPT Plus or Higher account with Developer Mode turned on
 
 Google Chrome is optional and is used for browser-backed subagents. Computer Use is optional and uses the Peekaboo package installed with this repository.
 
 ## Quick start
 
-### Install with your agent
+### Install with your coding agent
 
-If your coding agent has terminal access, give it [`skills/install-shellby-mcp/SKILL.md`](skills/install-shellby-mcp/SKILL.md) and ask it to install Shellby MCP. The skill handles terminal setup and stops for human actions such as ngrok authentication, macOS permissions, ChatGPT sign-in, and the first managed start from Terminal.app.
+[`skills/install-shellby-mcp/SKILL.md`](skills/install-shellby-mcp/SKILL.md)
 
 ### Manual install
+
+> [!TIP]
+> The manual install process should be ran from Terminal.app for the best macOS permission context.
 
 1. Install ngrok, clone the repository, and install dependencies:
 
@@ -84,7 +87,7 @@ If your coding agent has terminal access, give it [`skills/install-shellby-mcp/S
 
    This creates or reuses the repository-local PM2 runtime, starts Shellby MCP and ngrok, launches the configured ChatGPT browser, waits for local health, and prints the public `/mcp` URL. Starting from Terminal.app gives the managed process tree the intended macOS permission context for Computer Use.
 
-5. In ChatGPT Developer Mode, create a custom MCP app with the printed `https://.../mcp` URL and select **No authentication**.
+5. In ChatGPT Developer Mode, create a custom MCP app with the printed `https://.../mcp` URL and select **No Auth**.
 
 > [!IMPORTANT]
 > The first trusted remote tool call binds the installation to that ChatGPT subject. Use `npm run auth:reset` only when you intend to clear that binding.
