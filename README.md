@@ -113,7 +113,7 @@ Shellby uses the package-local Peekaboo CLI by default. Check or grant permissio
 npm run setup:computer
 ```
 
-Screen Recording enables observation. Accessibility and Event Synthesizing enable actions. `MCP_PEEKABOO_BIN` can select another Peekaboo executable, and `MCP_PEEKABOO_CURSOR_HOST_BIN` can select the optional cursor-host executable.
+Screen Recording enables observation. Accessibility and Event Synthesizing enable actions. `MCP_PEEKABOO_BIN` can select another Peekaboo executable.
 
 See [Computer Use](wiki/pages/computer-use.md) for runtime details.
 
@@ -168,7 +168,6 @@ Copy [`.env.example`](.env.example) to `.env` when you need to change a default.
 | `MCP_CWD`                       | `~/Desktop/agent-workspace` | Initial workspace and `AGENTS.md` root.                          |
 | `MCP_SHELL`                     | `/bin/zsh`                  | Persistent login shell executable.                               |
 | `MCP_PEEKABOO_BIN`              | package-local Peekaboo      | Optional Peekaboo executable override.                           |
-| `MCP_PEEKABOO_CURSOR_HOST_BIN`  | beside configured Peekaboo  | Optional cursor-host executable override.                        |
 | `MCP_CHATGPT_CDP_ENDPOINT`      | `http://127.0.0.1:9222`     | Chrome DevTools endpoint for subagents.                          |
 | `MCP_CHATGPT_PROFILE_DIRECTORY` | unset                       | Optional profile inside the dedicated Chrome data directory.     |
 | `MCP_CHATGPT_PROJECT_URL`       | unset                       | Optional ChatGPT Project URL for new subagent conversations.     |

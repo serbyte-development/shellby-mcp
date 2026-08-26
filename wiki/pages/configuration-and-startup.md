@@ -20,7 +20,6 @@ This page documents the supported environment surface, first-time workspace init
 | `MCP_SHELL`                     | `/bin/zsh`                  | Login shell executable                                      |
 | `MCP_CWD`                       | `~/Desktop/agent-workspace` | Absolute-resolved workspace and initial cwd                 |
 | `MCP_PEEKABOO_BIN`              | package-local Peekaboo      | Optional Peekaboo executable override                       |
-| `MCP_PEEKABOO_CURSOR_HOST_BIN`  | beside configured Peekaboo  | Optional `peekaboo-cursor-host` executable override         |
 | `MCP_CHATGPT_CDP_ENDPOINT`      | `http://127.0.0.1:9222`     | Already-running Chrome DevTools endpoint for subagents      |
 | `MCP_CHATGPT_PROFILE_DIRECTORY` | unset                       | Optional profile inside the dedicated Chrome data directory |
 | `MCP_CHATGPT_PROJECT_URL`       | unset                       | Optional project start URL; unset uses normal ChatGPT       |

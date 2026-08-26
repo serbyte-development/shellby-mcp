@@ -4,6 +4,7 @@ import { dirname, join, resolve } from "node:path"
 import { fileURLToPath } from "node:url"
 
 const bundledPeekabooExecutable = fileURLToPath(new URL("../node_modules/.bin/peekaboo", import.meta.url))
+const peekabooExecutable = process.env.MCP_PEEKABOO_BIN?.trim() || bundledPeekabooExecutable
 
 export type ToolOutputStructuredMode = "always" | "optional" | "never"
 
@@ -26,10 +27,8 @@ export const MCP_CONFIG = {
   port: 3333,
   workspace: resolveWorkspacePath(process.env.MCP_CWD ?? "~/Desktop/agent-workspace"),
   peekaboo: {
-    executable: process.env.MCP_PEEKABOO_BIN?.trim() || bundledPeekabooExecutable,
-    cursorHostExecutable:
-      process.env.MCP_PEEKABOO_CURSOR_HOST_BIN?.trim() ||
-      join(dirname(process.env.MCP_PEEKABOO_BIN?.trim() || bundledPeekabooExecutable), "peekaboo-cursor-host"),
+    executable: peekabooExecutable,
+    cursorHostExecutable: join(dirname(peekabooExecutable), "peekaboo-cursor-host"),
   },
   chatGpt: {
     cdpEndpoint: process.env.MCP_CHATGPT_CDP_ENDPOINT ?? "http://127.0.0.1:9222",

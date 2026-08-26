@@ -1152,3 +1152,8 @@
 - Updated subagent docs for SQLite-backed conversation persistence, shell docs for the `shell-process.ts` ownership split, configuration for cursor-host/reset-agent behavior, audit scope for `tools/list`, current schema-token counts, `apply_patch` cwd/line-ending behavior, and current MCP instructions.
 - Recorded the unforced permissions risk for `~/.shellby/subagents.sqlite`; turn results remain process-local even though conversation identity now survives restart.
 
+## [2026-08-26] config | Derive the Peekaboo cursor host path
+
+- Removed the separate `MCP_PEEKABOO_CURSOR_HOST_BIN` override. The optional cursor host is now always resolved beside the selected Peekaboo executable, including when `MCP_PEEKABOO_BIN` is set.
+- Removed the unused override from public setup and wiki configuration documentation.
+

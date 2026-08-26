@@ -12,7 +12,7 @@ Focused Computer Use is `computer_*` -> one serialized `PeekabooClient` -> confi
 
 Raw Peekaboo commands through `shell_run` are outside this adapter and may use Peekaboo's daemon unless the caller supplies `--no-remote`.
 
-Shellby also owns an optional `peekaboo-cursor-host` child process. `MCP_PEEKABOO_CURSOR_HOST_BIN` overrides its path; otherwise Shellby resolves it beside the configured Peekaboo executable. `CursorHostManager` starts it with the MCP, restarts it after unexpected exit, and terminates it during shutdown. If the executable is absent, Computer Use remains available without the cursor host (`src/config.ts`, `src/index.ts`, `src/tools/computer/cursor-host.ts`).
+Shellby also owns an optional `peekaboo-cursor-host` child process resolved beside the configured Peekaboo executable. `CursorHostManager` starts it with the MCP, restarts it after unexpected exit, and terminates it during shutdown. If the executable is absent, Computer Use remains available without the cursor host (`src/config.ts`, `src/index.ts`, `src/tools/computer/cursor-host.ts`).
 
 ## Snapshots and Coordinates
 
