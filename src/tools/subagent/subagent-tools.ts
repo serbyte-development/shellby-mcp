@@ -54,7 +54,7 @@ export function registerSubagentTools(server: McpServer, chatGptSubagents: ChatG
     {
       title: "Run ChatGPT subagent tasks",
       description:
-        "Submit tasks to subagents. Reuse an agent_id to continue the same subagent conversation. Use the returned turn_id with `subagent_result` to retrieve that specific turn.",
+        "Submit tasks to subagents and continue working. Reuse an agent_id to continue the same subagent conversation. Use the returned turn_id with `subagent_result` to retrieve that specific turn.",
       inputSchema: z.object({
         agents: z
           .array(subagentRequestSchema)

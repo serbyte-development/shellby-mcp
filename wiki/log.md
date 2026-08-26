@@ -1139,3 +1139,8 @@
 - Replaced the fixed one-second render delay with a bounded DOM-settle window that waits at least two seconds, extends while mutations continue, and caps at five seconds.
 - Stripped terminal control sequences from browser error messages before returning them to MCP clients.
 - Added deterministic browser integration coverage for empty success responses, HTTP metadata, and client rendering delayed beyond one second.
+
+## [2026-08-25] roadmap | Explore MCP resources for deeper tool guidance
+
+- Added an experiment to test `resources/list` / `resources/read` as an on-demand Shellby instruction surface before relocating any critical guidance from existing MCP, tool, or workspace instructions.
+
