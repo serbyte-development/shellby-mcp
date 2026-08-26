@@ -6,7 +6,7 @@
 - Ingested `README.md` as a potentially stale raw source and verified claims against `src/`, `test/`, `package.json`, `tsconfig.json`, `ngrok-traffic-policy.yml`, and recent Git history.
 - Created nine maintained pages covering transport, tools, shell lifecycle, transcript semantics, workspace integration, configuration, testing, and risks.
 - Recorded README drift around generated-tool provisioning, transcript units, best-effort process cleanup, coupled tunnel ports, and external ChatGPT instructions.
-- Assumed no feature is deliberately parked; disconnected or unenforced behavior is listed in [Open Questions and Risks](./pages/Open%20Questions%20and%20Risks.md).
+- Assumed no feature is deliberately parked; disconnected or unenforced behavior is listed in [Open Questions and Risks](./pages/open-questions-and-risks.md).
 - Validated all wiki links and index entries, verified the private-notes ignore rule, scanned for common secret patterns, and passed the repository test suite and TypeScript check.
 
 ## [2026-07-19] reconcile | update README from verified architecture
@@ -258,7 +258,7 @@
 
 ## [2026-08-07] design | document browser-backed ChatGPT subagents
 
-- Added [Browser ChatGPT Subagents](./pages/Browser%20ChatGPT%20Subagents.md) with the proposed CDP/Playwright architecture, process-level agent-to-page registry, same-tab continuation, stale-target recovery, and per-agent concurrency rules.
+- Added [Browser ChatGPT Subagents](./pages/browser-chatgpt-subagents.md) with the proposed CDP/Playwright architecture, process-level agent-to-page registry, same-tab continuation, stale-target recovery, and per-agent concurrency rules.
 - Documented network-level conversation tracking using message IDs and turn/graph metadata so each delegated call returns only its new final assistant response.
 - Defined a minimal `chatgpt_subagent` MCP contract and an implementation/test plan that fits the current composition and exact tool-list contracts.
 
@@ -329,7 +329,7 @@
 
 ## [2026-08-09] document | add tool metadata design standard
 
-- Added [Tool Naming and Schema Design](./pages/Tool%20Naming%20and%20Schema%20Design.md) as the reusable ChatGPT-focused standard for tool names, descriptions, input schemas, parameter descriptions, and output schemas.
+- Added [Tool Naming and Schema Design](./pages/tool-naming-and-schema-design.md) as the reusable ChatGPT-focused standard for tool names, descriptions, input schemas, parameter descriptions, and output schemas.
 - Defined the core split as: name identifies, description routes, schema constrains, parameter descriptions disambiguate, output schema guides the next move, and the wiki explains implementation.
 - Made negative boundary instructions reactive rather than default: add them for observed misuse or a clear recurring tool-selection collision.
 
@@ -1143,4 +1143,12 @@
 ## [2026-08-25] roadmap | Explore MCP resources for deeper tool guidance
 
 - Added an experiment to test `resources/list` / `resources/read` as an on-demand Shellby instruction surface before relocating any critical guidance from existing MCP, tool, or workspace instructions.
+
+## [2026-08-26] docs | Lint and refresh the Shellby wiki
+
+- Renamed maintained pages, raw sources, and templates to lowercase kebab-case filenames; rewrote current wiki, README, and security references to the new paths; codified the filename rule in `wiki/AGENTS.md`.
+- Added the required `wiki/CLAUDE.md -> AGENTS.md` symlink and restored missing `What This Is` sections.
+- Added `pages/computer-use.md` for the local-only Peekaboo path, cursor-host lifecycle, snapshots, background delivery, and coordinate invariants.
+- Updated subagent docs for SQLite-backed conversation persistence, shell docs for the `shell-process.ts` ownership split, configuration for cursor-host/reset-agent behavior, audit scope for `tools/list`, current schema-token counts, `apply_patch` cwd/line-ending behavior, and current MCP instructions.
+- Recorded the unforced permissions risk for `~/.shellby/subagents.sqlite`; turn results remain process-local even though conversation identity now survives restart.
 

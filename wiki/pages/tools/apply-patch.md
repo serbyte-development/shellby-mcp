@@ -1,6 +1,6 @@
 # `apply_patch`
 
-Verified 2026-08-18.
+Verified 2026-08-26.
 
 ## What This Is
 
@@ -9,7 +9,8 @@ Canonical behavior notes for the first-class `apply_patch` MCP tool and vendored
 ## Runtime
 
 - MCP tool. No shell ID, request ID, polling, or shell lock.
-- Requires absolute `cwd`; patch goes to native stdin.
+- Requires absolute `cwd`; the wrapper rejects a missing path or non-directory before spawning the binary. Patch text goes to native stdin (`src/tools/apply-patch/apply-patch.ts`).
+- The child receives `CODEX_APPLY_PATCH_PRESERVE_LINE_ENDINGS=1`, preserving the vendored binary's line-ending behavior expected by Shellby (`src/tools/apply-patch/apply-patch.ts`).
 - Binary: `vendor/apply-patch/apply_patch`, macOS Universal 2, built from pinned Codex source (`vendor/apply-patch/provenance.json`, `scripts/build-apply-patch.sh`).
 - Failure stdout+stderr share a hard 1,024 `o200k_base` token cap. Extra diagnostic text is dropped.
 - Abort: detached POSIX process group, `SIGTERM`, 500 ms, `SIGKILL`, then one more bounded grace before forced settlement. Windows signals child directly (`src/tools/apply-patch/apply-patch.ts`).
@@ -125,16 +126,16 @@ These are implementation observations, not model-facing promises.
 
 Common native failures name the failing path and expected text/context, for example missing expected lines, missing delete target, or missing context. Wrapper/startup failures without structured native output return `apply_patch_failed: ...` text.
 
-Audit retention for successful and failed patches is canonical in [Audit Logging](../Audit%20Logging.md).
+Audit retention for successful and failed patches is canonical in [Audit Logging](../audit-logging.md).
 
 ## Tests
 
-Validation ownership and current coverage are documented in [Build and Test](../Build%20and%20Test.md). The focused sources are `test/apply-patch-vendor.test.ts` and `test/mcp-integration.test.ts`.
+Validation ownership and current coverage are documented in [Build and Test](../build-and-test.md). The focused sources are `test/apply-patch-vendor.test.ts` and `test/mcp-integration.test.ts`.
 
 ## Related
 
-- [MCP Tool Surface](../MCP%20Tool%20Surface.md)
-- [Workspace Tooling](../Workspace%20Tooling.md)
-- [Build and Test](../Build%20and%20Test.md)
-- [Open Questions and Risks](../Open%20Questions%20and%20Risks.md)
-- [Audit Logging](../Audit%20Logging.md)
+- [MCP Tool Surface](../mcp-tool-surface.md)
+- [Workspace Tooling](../workspace-tooling.md)
+- [Build and Test](../build-and-test.md)
+- [Open Questions and Risks](../open-questions-and-risks.md)
+- [Audit Logging](../audit-logging.md)

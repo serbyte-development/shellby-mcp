@@ -71,7 +71,7 @@ Revisit the execution/handoff model before re-enabling the MCP tool. Shortcuts r
 
 ## Related
 
-- [ROADMAP](./ROADMAP.md)
-- [MCP Tool Surface](./MCP%20Tool%20Surface.md)
-- [Architecture Map](./Architecture%20Map.md)
-- [Open Questions and Risks](./Open%20Questions%20and%20Risks.md)
+- [Roadmap](./roadmap.md)
+- [MCP Tool Surface](./mcp-tool-surface.md)
+- [Architecture Map](./architecture-map.md)
+- [Open Questions and Risks](./open-questions-and-risks.md)

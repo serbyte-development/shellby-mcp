@@ -128,5 +128,5 @@ Poll `wait_ms`: default 2000 ms, max 270 s (4.5 minutes).
 
 ## Related
 
-- [Persistent Shell Runtime](../Persistent%20Shell%20Runtime.md)
-- [MCP Tool Surface](../MCP%20Tool%20Surface.md)
+- [Persistent Shell Runtime](../persistent-shell-runtime.md)
+- [MCP Tool Surface](../mcp-tool-surface.md)

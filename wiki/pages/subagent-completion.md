@@ -1,6 +1,10 @@
 # Subagent Completion
 
-Verified 2026-08-23 against current source and deterministic tests.
+Verified 2026-08-26 against current source and deterministic tests.
+
+## What This Is
+
+This page defines how submitted subagent turns complete, recover, settle locally, and interact with durable agent conversation identity.
 
 ## Completion Authority
 
@@ -26,12 +30,12 @@ This is separate from pre-submit restoration: a closed idle page or mismatched c
 
 `subagent_result(wait_ms)` only waits on the turn's local settlement promise. It never contacts ChatGPT, refreshes the browser, or performs reconciliation.
 
-Completed/failed results remain available locally even after idle cleanup closes the agent's page. Idle cleanup preserves the agent conversation reference and turn count so a later turn can restore context.
+Completed/failed results remain available only in the current MCP process, even after idle cleanup closes the agent's page. The agent conversation URL and turn count are persisted separately in `~/.shellby/subagents.sqlite`, so context can survive process restart even though old `turn_id` results cannot (`src/tools/subagent/chatgpt-subagent.ts`, `src/tools/subagent/subagent-store.ts`).
 
 ## Invariants
 
 1. Submit each requested turn at most once.
-2. Same `agent_id` remains bound to the same ChatGPT conversation, even across background-page replacement.
+2. Same `agent_id` remains bound to the same ChatGPT conversation across background-page replacement and, when persistence succeeds, MCP process restart.
 3. Raw CDP turn data is the only normal completion authority.
 4. Bind a stream only to the exact submitted prompt.
 5. Tool-call messages cannot masquerade as final answers.
@@ -43,6 +47,6 @@ Completed/failed results remain available locally even after idle cleanup closes
 
 ## Related
 
-- [Browser ChatGPT Subagents](./Browser%20ChatGPT%20Subagents.md)
-- [ChatGPT CDP Transport](./ChatGPT%20CDP%20Transport.md)
+- [Browser ChatGPT Subagents](./browser-chatgpt-subagents.md)
+- [ChatGPT CDP Transport](./chatgpt-cdp-transport.md)
 - [`subagent_run` / `subagent_result`](./tools/subagent.md)

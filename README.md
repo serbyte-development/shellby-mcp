@@ -119,7 +119,7 @@ npm run chatgpt
 
 The setup command creates a dedicated Chrome profile under `~/.shellby/chatgpt-chrome`. The runtime attaches over CDP at `127.0.0.1:9222`; it never copies or modifies your normal Chrome profile. Managed subagent tabs are created as unfocused background targets.
 
-Reuse an `agent_id` to continue the same in-process conversation. A new ID starts a new conversation. See [Browser ChatGPT Subagents](wiki/pages/Browser%20ChatGPT%20Subagents.md).
+Reuse an `agent_id` to continue the same conversation. Conversation URL and turn count are persisted best-effort across MCP restarts; a new ID starts a new conversation. See [Browser ChatGPT Subagents](wiki/pages/browser-chatgpt-subagents.md).
 
 </details>
 
@@ -191,7 +191,7 @@ npm test
 npm run build
 ```
 
-Use `npm run inspect` for the MCP inspector and `npm run schemas` to print the exact published tool schemas. Real authenticated-browser tests are manual and excluded from CI; see [Build and Test](wiki/pages/Build%20and%20Test.md).
+Use `npm run inspect` for the MCP inspector and `npm run schemas` to print the exact published tool schemas. Real authenticated-browser tests are manual and excluded from CI; see [Build and Test](wiki/pages/build-and-test.md).
 
 </details>
 
@@ -199,12 +199,12 @@ Use `npm run inspect` for the MCP inspector and `npm run schemas` to print the e
 
 The [maintainer wiki](wiki/) is the detailed source of truth:
 
-- [Project Overview](wiki/pages/Project%20Overview.md)
-- [Architecture Map](wiki/pages/Architecture%20Map.md)
-- [Configuration and Startup](wiki/pages/Configuration%20and%20Startup.md)
-- [MCP Tool Surface](wiki/pages/MCP%20Tool%20Surface.md)
-- [Build and Test](wiki/pages/Build%20and%20Test.md)
-- [Open Questions and Risks](wiki/pages/Open%20Questions%20and%20Risks.md)
+- [Project Overview](wiki/pages/project-overview.md)
+- [Architecture Map](wiki/pages/architecture-map.md)
+- [Configuration and Startup](wiki/pages/configuration-and-startup.md)
+- [MCP Tool Surface](wiki/pages/mcp-tool-surface.md)
+- [Build and Test](wiki/pages/build-and-test.md)
+- [Open Questions and Risks](wiki/pages/open-questions-and-risks.md)
 
 ## Contributing
 

@@ -1,16 +1,16 @@
 # `subagent_run` / `subagent_result`
 
-Verified 2026-08-23.
+Verified 2026-08-26.
 
 ## What This Is
 
-Caller-facing contract for detached browser-backed ChatGPT delegation. Public tool descriptions and schemas are defined in `src/tools/subagent/subagent-tools.ts`. Browser implementation lives in [Browser ChatGPT Subagents](../Browser%20ChatGPT%20Subagents.md); completion lives in [Subagent Completion](../Subagent%20Completion.md).
+Caller-facing contract for detached browser-backed ChatGPT delegation. Public tool descriptions and schemas are defined in `src/tools/subagent/subagent-tools.ts`. Browser implementation lives in [Browser ChatGPT Subagents](../browser-chatgpt-subagents.md); completion lives in [Subagent Completion](../subagent-completion.md).
 
 ## `subagent_run`
 
 One call accepts one to three distinct agents. Each entry provides:
 
-- `agent_id`: persistent in-process conversation identity; reuse it for multi-turn context.
+- `agent_id`: durable conversation identity; reuse it for multi-turn context. Conversation URL and turn count are persisted best-effort across MCP restarts.
 - `prompt`: task for that turn.
 - `oververbosity`: optional 1-5 value applied only when that `agent_id` creates its first conversation.
 
@@ -30,7 +30,7 @@ Activity remains one of `Working`, `Searching the web`, `Using tools`, or `Gener
 
 ## Lifetime and Failures
 
-Agent state and turn records are process-local. A full MCP restart loses the local `agent_id` conversation mapping.
+Turn records and prior `turn_id` results are process-local. Conversation URL and turn count are persisted best-effort in `~/.shellby/subagents.sqlite`, so reusing an `agent_id` after restart restores the saved conversation when that mapping exists. `npm run reset-agents` intentionally clears persisted agent mappings (`src/tools/subagent/subagent-store.ts`, `scripts/reset-agents.mjs`).
 
 After 30 idle minutes, only the managed background page closes; the saved conversation identity and prior results remain. A later call restores that conversation. Submitted turns also have a 30-minute no-progress cutoff and one recovery attempt that reopens and reads the saved conversation once but never resubmits the prompt or waits on a second observer. If recovery cannot prove the submitted turn finished, that agent is marked `uncertain` and rejects later prompts with `AGENT_BUSY`; use a new `agent_id` instead of risking an overlapping upstream turn.
 
@@ -40,6 +40,6 @@ Detached completion queues one `agent_finished` event for delivery on the next M
 
 ## Related
 
-- [Browser ChatGPT Subagents](../Browser%20ChatGPT%20Subagents.md)
-- [Subagent Completion](../Subagent%20Completion.md)
-- [MCP Tool Surface](../MCP%20Tool%20Surface.md)
+- [Browser ChatGPT Subagents](../browser-chatgpt-subagents.md)
+- [Subagent Completion](../subagent-completion.md)
+- [MCP Tool Surface](../mcp-tool-surface.md)

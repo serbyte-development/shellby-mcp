@@ -102,6 +102,6 @@ When tool-use mistakes are observed, fix the smallest layer that caused the ambi
 
 ## Related
 
-- [MCP Tool Surface](./MCP%20Tool%20Surface.md)
-- [Architecture Map](./Architecture%20Map.md)
-- [Build and Test](./Build%20and%20Test.md)
+- [MCP Tool Surface](./mcp-tool-surface.md)
+- [Architecture Map](./architecture-map.md)
+- [Build and Test](./build-and-test.md)

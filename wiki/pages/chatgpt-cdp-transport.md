@@ -1,6 +1,10 @@
 # ChatGPT CDP Transport
 
-Verified 2026-08-23 against authenticated ChatGPT CDP probes and the production subagent tracker.
+Verified 2026-08-26 against authenticated ChatGPT CDP probes and the production subagent tracker.
+
+## What This Is
+
+This page records the private ChatGPT Web transport behavior Shellby's subagent completion tracker currently relies on.
 
 ## Observed Transport
 
@@ -33,6 +37,6 @@ The HTTP/turn-WebSocket schemas are private and can change. Deterministic protoc
 
 ## Related
 
-- [Browser ChatGPT Subagents](./Browser%20ChatGPT%20Subagents.md)
-- [Subagent Completion](./Subagent%20Completion.md)
-- [Build and Test](./Build%20and%20Test.md)
+- [Browser ChatGPT Subagents](./browser-chatgpt-subagents.md)
+- [Subagent Completion](./subagent-completion.md)
+- [Build and Test](./build-and-test.md)

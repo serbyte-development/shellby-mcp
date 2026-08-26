@@ -26,7 +26,7 @@ Shellby MCP currently uses `X-OpenAI-Subject` as the remote owner identifier (`s
 
 Every accepted POST creates a new v2 `McpServer` and `NodeStreamableHTTPServerTransport` with no session ID generator. The response's `finish` or `close` event closes that request's transport/server, while all requests share the process-level `ShellSessionManager`, `WebPageOpener`, `PeekabooClient`, `ChatGptSubagentService`, and production `ShellbyAuthStore`. The HTTP boundary creates default services or accepts explicit instances for production-specific behavior and tests (`src/server/http-server.ts`, `src/index.ts`).
 
-Production also injects the repository-local MCP audit logger at this boundary. Its storage, truncation, token-accounting, and sensitivity rules are canonical in [Audit Logging](./Audit%20Logging.md).
+Production also injects the repository-local MCP audit logger at this boundary. Its storage, truncation, token-accounting, and sensitivity rules are canonical in [Audit Logging](./audit-logging.md).
 
 Because no MCP session ID is retained by the HTTP layer, an existing client can send its next request after the server is rebuilt and restarted on the same URL without reconnecting. The bound owner survives because it lives outside the repository in `~/.shellby/auth.json`; process-local shell and webpage-cache state still reset. ChatGPT needs an app refresh when advertised tool metadata or server instructions change (`src/auth/auth.ts`, `src/server/http-server.ts`).
 
@@ -36,9 +36,9 @@ Integration tests prove state sharing across SDK clients, continued client use a
 
 ## Related
 
-- [Project Overview](./Project%20Overview.md)
-- [Architecture Map](./Architecture%20Map.md)
-- [Configuration and Startup](./Configuration%20and%20Startup.md)
-- [MCP Tool Surface](./MCP%20Tool%20Surface.md)
-- [Open Questions and Risks](./Open%20Questions%20and%20Risks.md)
-- [Audit Logging](./Audit%20Logging.md)
+- [Project Overview](./project-overview.md)
+- [Architecture Map](./architecture-map.md)
+- [Configuration and Startup](./configuration-and-startup.md)
+- [MCP Tool Surface](./mcp-tool-surface.md)
+- [Open Questions and Risks](./open-questions-and-risks.md)
+- [Audit Logging](./audit-logging.md)

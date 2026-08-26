@@ -7,7 +7,7 @@ The vault lives at `wiki/`.
 ## Purpose
 
 - Preserve the architecture, runtime contracts, operational knowledge, risks, and decisions needed to maintain the Shellby MCP local MCP harness.
-- Start with [Project Overview](./pages/Project%20Overview.md) for the project's purpose, audience, status, workflows, boundaries, constraints, and deeper wiki entry points.
+- Start with [Project Overview](./pages/project-overview.md) for the project's purpose, audience, status, workflows, boundaries, constraints, and deeper wiki entry points.
 - Keep current implementation synthesis in the vault so future agents can verify rather than rediscover how the harness works.
 - Keep end-user setup details only when they constrain an implemented server or operational contract.
 
@@ -29,9 +29,10 @@ The vault lives at `wiki/`.
 - If evidence conflicts, preserve the current fact in the maintained page and record the conflict with the supporting source in `raw/source-manifest.md`.
 - Update an existing page before adding one. Keep every page extremely concise and marked `Verified YYYY-MM-DD`.
 - Give each page one cohesive subject or question. Keep one natural home for each fact and link to it instead of repeating the explanation elsewhere.
-- Treat `Project Overview.md` as orientation, not a compressed copy of the wiki. Architecture, routes, data, operations, tool contracts, and subsystem internals belong on dedicated pages.
+- Treat `project-overview.md` as orientation, not a compressed copy of the wiki. Architecture, routes, data, operations, tool contracts, and subsystem internals belong on dedicated pages.
 - Give every maintained page a short `What This Is` section and a `Related` section with standard relative Markdown links.
-- Resolve relative links from the file that contains them. Use `%20` for spaces in link destinations.
+- Use lowercase kebab-case filenames for maintained pages, raw sources, and templates. Keep only the conventional vault entry files (`AGENTS.md`, `CLAUDE.md`, `index.md`, `log.md`) outside that convention.
+- Resolve relative links from the file that contains them. Wiki filenames must not contain spaces.
 - Keep roadmap and experimental work explicitly labeled as uncommitted or disabled rather than current behavior.
 - After tool schemas, descriptions, or server instructions change, remember that ChatGPT may retain previously imported metadata until the MCP app is updated on the ChatGPT website. A local rebuild or restart alone does not prove that client has refreshed metadata.
 - Never store secret values anywhere in the vault, including `_private/`.
@@ -59,6 +60,7 @@ The vault lives at `wiki/`.
 Periodically check for:
 
 - Dead `index.md` entries and orphan pages.
+- Non-slug wiki filenames or a missing/broken `CLAUDE.md -> AGENTS.md` symlink.
 - Broken relative Markdown links or leftover Obsidian wikilinks.
 - Fake/template destinations that intentionally resolve to nonexistent pages.
 - Missing `What This Is`, `Verified`, `Related`, citations, or backlinks.

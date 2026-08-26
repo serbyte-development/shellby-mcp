@@ -64,6 +64,6 @@ For a defensible SWE-Lancer comparison, give both systems the exact same task ch
 
 ## Related
 
-- [ROADMAP](./ROADMAP.md)
-- [Project Overview](./Project%20Overview.md)
-- [Browser ChatGPT Subagents](./Browser%20ChatGPT%20Subagents.md)
+- [Roadmap](./roadmap.md)
+- [Project Overview](./project-overview.md)
+- [Browser ChatGPT Subagents](./browser-chatgpt-subagents.md)
