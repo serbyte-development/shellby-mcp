@@ -8,7 +8,7 @@ import { fileURLToPath } from "node:url"
 import { PeekabooClient } from "../../src/tools/computer/peekaboo.js"
 import { connectClient, startMcpHttpServer } from "./helpers.js"
 
-test("routes Computer Use through Peekaboo and preserves semantic errors", { timeout: 10_000 }, async (t) => {
+test("routes Computer Use through Peekaboo and preserves semantic errors", { timeout: 30_000 }, async (t) => {
   const root = await mkdtemp(join(tmpdir(), "peekaboo-mcp-integration-"))
   const logPath = join(root, "peekaboo.jsonl")
   const fixture = fileURLToPath(new URL("../fixtures/fake-peekaboo.mjs", import.meta.url))

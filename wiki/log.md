@@ -1157,3 +1157,7 @@
 - Removed the separate `MCP_PEEKABOO_CURSOR_HOST_BIN` override. The optional cursor host is now always resolved beside the selected Peekaboo executable, including when `MCP_PEEKABOO_BIN` is set.
 - Removed the unused override from public setup and wiki configuration documentation.
 
+## [2026-08-26] test | Relax Computer Use integration timeout on Intel CI
+
+- Increased the Computer Use MCP integration test timeout from 10 seconds to 30 seconds. The test performs 22 sequential fake Peekaboo tool calls, and Intel GitHub runners can exceed the old bound under load even though each individual fake CLI invocation remains within its own timeout.
+
