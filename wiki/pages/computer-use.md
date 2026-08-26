@@ -1,6 +1,6 @@
 # Computer Use
 
-Verified 2026-08-26 against current source and Peekaboo 4.2.2 integration tests.
+Verified 2026-08-26 against current source and the vendored Peekaboo integration.
 
 ## What This Is
 
@@ -8,11 +8,11 @@ This page documents Shellby's focused `computer_*` execution path, Peekaboo owne
 
 ## Runtime Path
 
-Focused Computer Use is `computer_*` -> one serialized `PeekabooClient` -> configured Peekaboo CLI. Production constructs the client in local-only mode, so focused tools append `--no-remote` and do not depend on Peekaboo's daemon. `MCP_PEEKABOO_BIN` selects the CLI; otherwise Shellby uses package-local `node_modules/.bin/peekaboo` (`src/config.ts`, `src/index.ts`, `src/tools/computer/peekaboo.ts`).
+Focused Computer Use is `computer_*` -> one serialized `PeekabooClient` -> configured Peekaboo CLI. Production constructs the client in local-only mode, so focused tools append `--no-remote` and do not depend on Peekaboo's daemon. Shellby ships the compatible CLI in `vendor/peekaboo/peekaboo`; `MCP_PEEKABOO_BIN` remains an explicit development/debug override (`src/config.ts`, `src/index.ts`, `src/tools/computer/peekaboo.ts`).
 
 Raw Peekaboo commands through `shell_run` are outside this adapter and may use Peekaboo's daemon unless the caller supplies `--no-remote`.
 
-Shellby also owns an optional `peekaboo-cursor-host` child process resolved beside the configured Peekaboo executable. `CursorHostManager` starts it with the MCP, restarts it after unexpected exit, and terminates it during shutdown. If the executable is absent, Computer Use remains available without the cursor host (`src/config.ts`, `src/index.ts`, `src/tools/computer/cursor-host.ts`).
+Shellby also ships `vendor/peekaboo/peekaboo-cursor-host` and resolves the cursor host beside the configured Peekaboo executable. `CursorHostManager` starts it with the MCP, restarts it after unexpected exit, and terminates it during shutdown. If the executable is absent, Computer Use remains available without the cursor host (`src/config.ts`, `src/index.ts`, `src/tools/computer/cursor-host.ts`).
 
 ## Snapshots and Coordinates
 

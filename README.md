@@ -107,13 +107,13 @@ The local MCP endpoint is `http://127.0.0.1:3333/mcp`.
 <details>
 <summary><strong>Computer Use</strong></summary>
 
-Shellby uses the package-local Peekaboo CLI by default. Check or grant permissions with:
+Shellby ships a package-local Peekaboo CLI build that matches its Computer Use adapter. Check or grant permissions with:
 
 ```bash
 npm run setup:computer
 ```
 
-Screen Recording enables observation. Accessibility and Event Synthesizing enable actions. `MCP_PEEKABOO_BIN` can select another Peekaboo executable.
+Screen Recording enables observation. Accessibility and Event Synthesizing enable actions. `MCP_PEEKABOO_BIN` can select another Peekaboo executable for development or debugging.
 
 See [Computer Use](wiki/pages/computer-use.md) for runtime details.
 

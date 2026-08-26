@@ -44,7 +44,9 @@ npm install
 npm run setup:computer
 ```
 
-Peekaboo is pinned in `package.json`; Shellby uses `node_modules/.bin/peekaboo` unless `MCP_PEEKABOO_BIN` overrides it. Normal `npm run setup` invokes `peekaboo permissions status --all-sources` and prints the CLI's own source-aware status. `setup:computer` delegates directly to `peekaboo permissions grant`; Shellby MCP does not duplicate Peekaboo's macOS permission logic. Screen Recording enables capture; Accessibility and Event Synthesizing enable actions. TCC grants attach to the responsible launching process, so use the source reported by Peekaboo itself (`package.json`, `scripts/peekaboo-permissions.mjs`, `src/tools/computer/peekaboo.ts`, `src/tools/computer/computer-tools.ts`).
+Shellby ships its compatible Peekaboo CLI and cursor host under `vendor/peekaboo/`; Peekaboo is not an npm dependency. `MCP_PEEKABOO_BIN` can override the vendored CLI for development or debugging, and the cursor host is resolved beside the selected executable. Normal `npm run setup` invokes `peekaboo permissions status --all-sources` and prints the CLI's own source-aware status. `setup:computer` delegates directly to `peekaboo permissions grant`; Shellby MCP does not duplicate Peekaboo's macOS permission logic. Screen Recording enables capture; Accessibility and Event Synthesizing enable actions. TCC grants attach to the responsible launching process, so use the source reported by Peekaboo itself (`vendor/peekaboo/`, `scripts/peekaboo-permissions.mjs`, `src/tools/computer/peekaboo.ts`, `src/tools/computer/computer-tools.ts`).
+
+Maintainers rebuild the checked-in Universal 2 binaries from the local Peekaboo fork with `npm run vendor:peekaboo -- /absolute/path/to/Peekaboo`. The build script records source commit, hashes, toolchain, and target architectures in `vendor/peekaboo/provenance.json` (`scripts/build-peekaboo.sh`).
 
 ## Package Scripts
 

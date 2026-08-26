@@ -3,7 +3,7 @@ import { homedir } from "node:os"
 import { dirname, join, resolve } from "node:path"
 import { fileURLToPath } from "node:url"
 
-const bundledPeekabooExecutable = fileURLToPath(new URL("../node_modules/.bin/peekaboo", import.meta.url))
+const bundledPeekabooExecutable = fileURLToPath(new URL("../vendor/peekaboo/peekaboo", import.meta.url))
 const peekabooExecutable = process.env.MCP_PEEKABOO_BIN?.trim() || bundledPeekabooExecutable
 
 export type ToolOutputStructuredMode = "always" | "optional" | "never"

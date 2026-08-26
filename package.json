@@ -36,6 +36,7 @@
     "test:live:subagent": "RUN_LIVE_SUBAGENT_TESTS=1 tsx --test test/live/subagent-live.test.ts",
     "type-check": "tsc -p tsconfig.json --noEmit",
     "vendor:apply-patch": "scripts/build-apply-patch.sh",
+    "vendor:peekaboo": "scripts/build-peekaboo.sh",
     "lint": "eslint src test",
     "lint:fix": "eslint src test --fix",
     "format": "prettier --write src test scripts package.json tsconfig.json tsconfig.build.json eslint.config.js ecosystem.config.cjs"
@@ -45,7 +46,6 @@
     "@modelcontextprotocol/express": "2.0.0",
     "@modelcontextprotocol/node": "2.0.0",
     "@modelcontextprotocol/server": "2.0.0",
-    "@steipete/peekaboo": "4.2.2",
     "cloakbrowser": "^0.5.9",
     "express": "^5.2.1",
     "linkedom": "^0.18.13",
