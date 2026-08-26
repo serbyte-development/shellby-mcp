@@ -252,3 +252,5 @@ Read [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request. Run the d
 ## License
 
 [MIT](LICENSE). The vendored `apply_patch` binary retains its upstream OpenAI Codex license and notices under [`vendor/apply-patch/`](vendor/apply-patch/).
+
+Shellby MCP is created and maintained by [Serbyte Development](https://www.serbyte.net/).
