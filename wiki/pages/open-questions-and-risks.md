@@ -1,6 +1,11 @@
-# Open Questions and Risks
+---
+summary: "Current trust, resource, external-integration, persistence, and intentionally unenforced maintenance risks."
+paths:
+  - src/
+  - ngrok-traffic-policy.yml
+---
 
-Verified 2026-08-26.
+# Open Questions and Risks
 
 ## What This Is
 
@@ -27,7 +32,7 @@ This page is the maintenance lint target for current trust, resource, external-i
 
 - The workspace location is prompt guidance and an initial cwd, not a filesystem boundary (`src/index.ts`, `src/server/mcp-server.ts`).
 
-`README.md` is the concise public entry point; the maintained wiki remains the detailed maintainer source. Update implementation truth here first and mirror only user-relevant setup or capability changes into the README (`wiki/raw/source-manifest.md`). Raw host-capability surveys are point-in-time evidence, not a roadmap.
+`README.md` is the concise public entry point; the maintained wiki remains the detailed maintainer source. Update implementation truth in the relevant maintained page first and mirror only user-relevant setup or capability changes into the README. Raw host-capability surveys are point-in-time evidence, not a roadmap.
 
 ## Related
 

@@ -1,6 +1,13 @@
-# MCP Tool Surface
+---
+summary: "Published MCP tools and the shared registration, output, instruction, pagination, and capability boundaries shaping their contracts."
+paths:
+  - src/server/mcp-server.ts
+  - src/server/tool-registration-boundary.ts
+  - src/server/tool-output.ts
+  - src/tools/
+---
 
-Verified 2026-08-26.
+# MCP Tool Surface
 
 ## What This Is
 

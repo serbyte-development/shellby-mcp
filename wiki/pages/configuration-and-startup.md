@@ -1,6 +1,14 @@
-# Configuration and Startup
+---
+summary: "Supported configuration, workspace initialization, setup, managed startup, shutdown, and operational recovery."
+paths:
+  - src/config.ts
+  - src/index.ts
+  - scripts/
+  - ecosystem.config.cjs
+  - .env.example
+---
 
-Verified 2026-08-26.
+# Configuration and Startup
 
 ## What This Is
 

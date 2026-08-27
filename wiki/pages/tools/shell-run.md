@@ -1,6 +1,12 @@
-# `shell_run` / `shell_poll`
+---
+summary: "Caller-facing shell_run and shell_poll contract for persistent state, batches, polling, output retention, and lifecycle behavior."
+paths:
+  - src/tools/shell/shell-tools.ts
+  - src/tools/shell/shell-contracts.ts
+  - src/tools/shell/session.ts
+---
 
-Verified 2026-08-23.
+# `shell_run` / `shell_poll`
 
 ## What This Is
 
@@ -92,7 +98,7 @@ If zsh reports `command not found: apply_patch`, normal, batch, and polled outpu
 - `output_truncated=true`: this response chunk hit its token limit. More retained output exists.
 - `next_cursor`: continue from here with `shell_poll`.
 - `dropped_output_bytes`: output was permanently discarded. Cannot recover it.
-- `cursor_expired`: requested retained output no longer exists. Rerun if full output is required.
+- Expired retained output is reported by `shell_poll` as an MCP error with `cursor_expired`; it is not a normal structured response field. Rerun if full output is required.
 
 ## `shell_poll`
 

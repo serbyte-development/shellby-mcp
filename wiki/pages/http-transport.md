@@ -1,6 +1,12 @@
-# HTTP Transport
+---
+summary: "Local HTTP/MCP routing, ngrok trust boundary, remote owner binding, request lifetime, and shared process state."
+paths:
+  - src/server/http-server.ts
+  - src/auth/
+  - ngrok-traffic-policy.yml
+---
 
-Verified 2026-08-18.
+# HTTP Transport
 
 ## What This Is
 

@@ -1,6 +1,11 @@
-# Browser ChatGPT Subagents
+---
+summary: "Browser-backed ChatGPT subagent lifecycle, conversation persistence, page ownership, submission, and recovery behavior."
+paths:
+  - src/tools/subagent/
+  - scripts/chatgpt-browser.mjs
+---
 
-Verified 2026-08-26 against current source and deterministic tests.
+# Browser ChatGPT Subagents
 
 ## What This Is
 

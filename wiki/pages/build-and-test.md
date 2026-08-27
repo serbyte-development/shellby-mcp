@@ -1,6 +1,14 @@
-# Build and Test
+---
+summary: "Build boundaries, validation commands, test responsibilities, CI coverage, and known verification gaps."
+paths:
+  - package.json
+  - tsconfig.json
+  - tsconfig.build.json
+  - test/
+  - .github/workflows/
+---
 
-Verified 2026-08-26.
+# Build and Test
 
 ## What This Is
 

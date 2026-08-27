@@ -1,6 +1,11 @@
-# `subagent_run` / `subagent_result`
+---
+summary: "Caller-facing subagent_run and subagent_result contract for delegation, continuity, capacity, polling, completion, and failures."
+paths:
+  - src/tools/subagent/subagent-tools.ts
+  - src/tools/subagent/chatgpt-subagent-contracts.ts
+---
 
-Verified 2026-08-26.
+# `subagent_run` / `subagent_result`
 
 ## What This Is
 

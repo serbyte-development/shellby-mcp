@@ -1,3 +1,7 @@
+---
+summary: "Point-in-time survey of reusable binaries bundled with local macOS applications and their possible Shellby integration patterns."
+---
+
 # Host App Binary Survey 2026-07-20
 
 ## Scope

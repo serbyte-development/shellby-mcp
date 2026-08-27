@@ -1,6 +1,12 @@
-# Computer Use
+---
+summary: "Focused Computer Use execution through Peekaboo, including snapshots, coordinates, background delivery, and cursor-host ownership."
+paths:
+  - src/tools/computer/
+  - src/tools/image/image-encoding.ts
+  - vendor/peekaboo/
+---
 
-Verified 2026-08-26 against current source and the vendored Peekaboo integration.
+# Computer Use
 
 ## What This Is
 

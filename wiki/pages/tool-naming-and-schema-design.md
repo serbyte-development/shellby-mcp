@@ -1,6 +1,12 @@
-# Tool Naming and Schema Design
+---
+summary: "Model-facing conventions for tool names, routing descriptions, schemas, parameter descriptions, and compact outputs."
+paths:
+  - src/server/tool-registration-boundary.ts
+  - src/server/tool-output.ts
+  - src/tools/
+---
 
-Verified 2026-08-15.
+# Tool Naming and Schema Design
 
 ## What This Is
 
@@ -81,11 +87,11 @@ name: Skill name returned by `skill_list`.
 
 Do not repeat enum values, ranges, required status, defaults, or formats already encoded in the schema.
 
-## Output Schemas
+## Output Contracts
 
-Return the smallest structured result that lets ChatGPT decide what to do next. Prefer explicit fields over prose summaries when the structure is stable.
+Design the smallest stable result shape that lets ChatGPT decide what to do next, but do not assume the production client sees an `outputSchema`. Production uses `toolOutputStructured: "never"`, so the registration boundary strips ordinary public output schemas and renders ordinary typed results as compact Markdown. Computer Use and `image_view` keep their native MCP content blocks (`src/config.ts`, `src/server/tool-registration-boundary.ts`).
 
-Do not duplicate the full output contract in the tool description when the output schema already makes it clear.
+Keep tool descriptions focused on routing. Result-shape details belong in schemas when a structured mode exposes them, in compact output shaping, or in the wiki when callers need durable semantics.
 
 ## Review Checklist
 

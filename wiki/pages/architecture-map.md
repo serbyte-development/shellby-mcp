@@ -1,6 +1,12 @@
-# Architecture Map
+---
+summary: "Process-level architecture and request flow across Shellby's HTTP boundary, shared runtime services, and capability handlers."
+paths:
+  - src/index.ts
+  - src/server/
+  - src/tools/
+---
 
-Verified 2026-08-26.
+# Architecture Map
 
 ## What This Is
 

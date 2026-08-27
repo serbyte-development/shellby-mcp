@@ -1,6 +1,12 @@
-# Project Overview
+---
+summary: "Concise orientation to Shellby MCP's purpose, audience, project boundaries, current status, and deeper maintainer knowledge."
+paths:
+  - README.md
+  - package.json
+  - src/index.ts
+---
 
-Verified 2026-08-18.
+# Project Overview
 
 ## What This Is
 

@@ -1,6 +1,13 @@
-# Secret Handling
+---
+summary: "Rules for authentication metadata, local state, provider credentials, audit data, and secret-sensitive repository documentation."
+paths:
+  - src/auth/
+  - src/server/audit-log.ts
+  - src/tools/subagent/subagent-store.ts
+  - .gitignore
+---
 
-Verified 2026-08-26.
+# Secret Handling
 
 ## What This Is
 

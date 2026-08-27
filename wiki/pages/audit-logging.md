@@ -1,6 +1,12 @@
-# Audit Logging
+---
+summary: "Repository-local MCP audit logging, retention limits, token accounting, status markers, and sensitivity rules."
+paths:
+  - src/server/audit-log.ts
+  - src/tokenizer.ts
+  - test/mcp-audit-log.test.ts
+---
 
-Verified 2026-08-26.
+# Audit Logging
 
 ## What This Is
 

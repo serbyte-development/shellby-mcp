@@ -1,6 +1,12 @@
-# iOS Shell
+---
+summary: "Deferred experimental iPhone shell bridge, its proven architecture, limitations, and conditions for revisiting it."
+paths:
+  - src/tools/ios/ios-shell.ts
+  - src/server/mcp-server.ts
+  - src/config.ts
+---
 
-Verified 2026-08-12.
+# iOS Shell
 
 ## What This Is
 

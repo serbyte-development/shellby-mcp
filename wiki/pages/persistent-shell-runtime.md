@@ -1,6 +1,13 @@
-# Persistent Shell Runtime
+---
+summary: "Persistent shell manager and session internals, including lifecycle, transcripts, concurrency, polling, and recovery."
+paths:
+  - src/tools/shell/
+  - test/shell-session.test.ts
+  - test/shell-session-manager.test.ts
+  - test/shell-parallel.test.ts
+---
 
-Verified 2026-08-26.
+# Persistent Shell Runtime
 
 ## What This Is
 

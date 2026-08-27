@@ -1,6 +1,12 @@
-# Subagent Completion
+---
+summary: "Subagent completion detection, event delivery, bounded recovery, result settlement, and failure semantics."
+paths:
+  - src/tools/subagent/chatgpt-subagent.ts
+  - src/tools/subagent/chatgpt-subagent-observer.ts
+  - src/tools/subagent/subagent-tools.ts
+---
 
-Verified 2026-08-26 against current source and deterministic tests.
+# Subagent Completion
 
 ## What This Is
 

@@ -1,6 +1,10 @@
-# Roadmap
+---
+summary: "Uncommitted experiments and deferred architectural work that may be revisited when a concrete need justifies it."
+paths:
+  - experiments/mcp-2026-tasks-probe/
+---
 
-Verified 2026-08-22.
+# Roadmap
 
 ## What This Is
 

@@ -1,6 +1,12 @@
-# ChatGPT CDP Transport
+---
+summary: "Observed private ChatGPT Web turn transport used by Shellby's raw-CDP subagent completion tracker."
+paths:
+  - src/tools/subagent/chatgpt-subagent-observer.ts
+  - src/tools/subagent/chatgpt-subagent-protocol.ts
+  - src/tools/subagent/chatgpt-subagent.ts
+---
 
-Verified 2026-08-26 against authenticated ChatGPT CDP probes and the production subagent tracker.
+# ChatGPT CDP Transport
 
 ## What This Is
 

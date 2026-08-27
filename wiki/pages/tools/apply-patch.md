@@ -1,6 +1,12 @@
-# `apply_patch`
+---
+summary: "Caller-facing apply_patch grammar, execution model, partial-failure behavior, result summaries, limits, and tested semantics."
+paths:
+  - src/tools/apply-patch/apply-patch.ts
+  - test/apply-patch-vendor.test.ts
+  - test/integrations/apply-patch.ts
+---
 
-Verified 2026-08-26.
+# `apply_patch`
 
 ## What This Is
 

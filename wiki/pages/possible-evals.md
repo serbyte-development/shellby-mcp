@@ -1,6 +1,8 @@
-# Possible Evals
+---
+summary: "Candidate real-work coding benchmarks for comparing ChatGPT Web plus Shellby MCP with Codex under equivalent task conditions."
+---
 
-Verified 2026-08-10.
+# Possible Evals
 
 ## What This Is
 

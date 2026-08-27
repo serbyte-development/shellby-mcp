@@ -1,3 +1,7 @@
+---
+summary: "Point-in-time survey of ChatGPT, Codex, and local host capability surfaces that informed Shellby's integration architecture."
+---
+
 # ChatGPT and Local Capability Survey 2026-08-01
 
 ## Scope

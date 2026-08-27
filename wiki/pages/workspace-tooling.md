@@ -1,6 +1,13 @@
-# Workspace Tooling
+---
+summary: "Default coding workspace behavior and the dynamic reusable-skill catalog exposed through skill_list and skill_load."
+paths:
+  - src/tools/skills.ts
+  - scripts/workspace-setup.mjs
+  - test/skills.test.ts
+  - test/setup-workspace.test.ts
+---
 
-Verified 2026-08-26.
+# Workspace Tooling
 
 ## What This Is
 
