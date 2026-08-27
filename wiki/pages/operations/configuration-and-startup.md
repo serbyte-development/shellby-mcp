@@ -1,9 +1,10 @@
 ---
-summary: "Supported configuration, workspace initialization, setup, managed startup, shutdown, and operational recovery."
+summary: "Configuration ownership and startup composition across workspace bootstrap, managed runtime, shutdown, and recovery boundaries."
 paths:
   - src/config.ts
   - src/index.ts
   - scripts/
+  - skills/create-skill/SKILL.md
   - ecosystem.config.cjs
   - .env.example
 ---
@@ -12,7 +13,7 @@ paths:
 
 ## What This Is
 
-This page documents the supported environment surface, first-time workspace initialization, managed production lifecycle, and operational recovery path.
+This page maps configuration ownership, workspace bootstrap, managed runtime composition, process lifecycle, and failure boundaries to their implementation sources.
 
 ## Static MCP Configuration
 
@@ -39,20 +40,13 @@ Production HTTP always binds to `127.0.0.1:3333`; host and port are not environm
 
 ## Startup and Shutdown
 
-Public startup is driven by `scripts/start.mjs`. Package scripts load an optional repository `.env` before setup, startup, browser management, URL printing, or development begins, so their preflight and child processes see the same configuration. Startup runs the Mac/ngrok preflight, builds, starts or reloads the MCP and ngrok through the repository-local PM2 dependency, launches the dedicated ChatGPT Chrome profile when it has been configured, waits for `/healthz`, and prints the public `/mcp` URL. `ecosystem.config.cjs` also loads `.env` when PM2 is invoked directly and resolves ngrok from the caller's `PATH` instead of a maintainer-specific Homebrew path. For first-time setup, `scripts/setup.mjs` performs prerequisite checks and calls `scripts/workspace-setup.mjs`, which creates the workspace plus a starter `AGENTS.md` only when that file is absent; existing workspace instructions are never overwritten (`package.json`, `scripts/preflight.mjs`, `scripts/setup.mjs`, `scripts/workspace-setup.mjs`, `scripts/start.mjs`, `ecosystem.config.cjs`, `test/setup-workspace.test.ts`).
+Public startup is driven by `scripts/start.mjs`. Package scripts load an optional repository `.env` before setup, startup, browser management, URL printing, or development begins, so their preflight and child processes see the same configuration. Startup runs the Mac/ngrok preflight, requires the configured workspace to already exist, builds, starts or reloads the MCP and ngrok through the repository-local PM2 dependency, launches the dedicated ChatGPT Chrome profile when it has been configured, waits for `/healthz`, and prints the public `/mcp` URL. `ecosystem.config.cjs` also loads `.env` when PM2 is invoked directly and resolves ngrok from the caller's `PATH` instead of a maintainer-specific Homebrew path. For first-time setup, `scripts/setup.mjs` performs prerequisite checks and calls `scripts/workspace-setup.mjs`, which creates the workspace, creates a starter `AGENTS.md` only when absent, and copies `skills/create-skill/SKILL.md` into the workspace only when that skill is absent. Existing workspace instructions and customized starter skills are never overwritten (`package.json`, `scripts/preflight.mjs`, `scripts/setup.mjs`, `scripts/workspace-setup.mjs`, `scripts/start.mjs`, `skills/create-skill/SKILL.md`, `ecosystem.config.cjs`, `test/setup-workspace.test.ts`).
 
-Inside the MCP process, startup first ensures `~/.shellby/auth.json`, prepares the workspace, constructs shared adapters, starts the optional `CursorHostManager`, creates the default shell, and starts HTTP. The cursor host is a child of the MCP process rather than a PM2 app; it restarts after unexpected exit and is closed during MCP shutdown. `apply_patch` resolves its checked-in vendored binary directly from `src/tools/apply-patch/apply-patch.ts`; startup does not install or link it into the workspace. Authentication state and best-effort subagent conversation mappings are stored under `~/.shellby/`, so ordinary builds and restarts preserve them. The ChatGPT subagent service remains attach-only; browser launching belongs to `scripts/chatgpt-browser.mjs`. `SIGINT` and `SIGTERM` close HTTP, shells, the cursor host, and managed subagent pages; the separately launched Chrome process itself is never closed (`src/index.ts`, `src/auth/auth.ts`, `src/tools/computer/cursor-host.ts`, `src/tools/subagent/subagent-store.ts`, `src/tools/subagent/chatgpt-subagent.ts`, `scripts/chatgpt-browser.mjs`).
+Inside the MCP process, startup first ensures `~/.shellby/auth.json`, assumes the workspace is already prepared, constructs shared adapters, starts the optional `CursorHostManager`, creates the default shell, and starts HTTP. The cursor host is a child of the MCP process rather than a PM2 app; it restarts after unexpected exit and is closed during MCP shutdown. `apply_patch` resolves its checked-in vendored binary directly from `src/tools/apply-patch/apply-patch.ts`; startup does not install or link it into the workspace. Authentication state and best-effort subagent conversation mappings are stored under `~/.shellby/`, so ordinary builds and restarts preserve them. The ChatGPT subagent service remains attach-only; browser launching belongs to `scripts/chatgpt-browser.mjs`. `SIGINT` and `SIGTERM` close HTTP, shells, the cursor host, and managed subagent pages; the separately launched Chrome process itself is never closed (`src/index.ts`, `src/auth/auth.ts`, `src/tools/computer/cursor-host.ts`, `src/tools/subagent/subagent-store.ts`, `src/tools/subagent/chatgpt-subagent.ts`, `scripts/chatgpt-browser.mjs`).
 
-## Computer Use Permission Bootstrap
+## Peekaboo Permission Integration
 
-Install dependencies and use Peekaboo's own permission workflow:
-
-```bash
-npm install
-npm run setup:computer
-```
-
-Shellby ships its compatible Peekaboo CLI and cursor host under `vendor/peekaboo/`; Peekaboo is not an npm dependency. `MCP_PEEKABOO_BIN` can override the vendored CLI for development or debugging, and the cursor host is resolved beside the selected executable. Normal `npm run setup` invokes `peekaboo permissions status --all-sources` and prints the CLI's own source-aware status. `setup:computer` delegates directly to `peekaboo permissions grant`; Shellby MCP does not duplicate Peekaboo's macOS permission logic. Screen Recording enables capture; Accessibility and Event Synthesizing enable actions. TCC grants attach to the responsible launching process, so use the source reported by Peekaboo itself (`vendor/peekaboo/`, `scripts/peekaboo-permissions.mjs`, `src/tools/computer/peekaboo.ts`, `src/tools/computer/computer-tools.ts`).
+Shellby ships its compatible Peekaboo CLI and cursor host under `vendor/peekaboo/`; Peekaboo is not an npm dependency. `MCP_PEEKABOO_BIN` can override the vendored CLI for development or debugging, and the cursor host is resolved beside the selected executable. `scripts/setup.mjs` requests source-aware permission status through `scripts/peekaboo-permissions.mjs`; `setup:computer` delegates grants to Peekaboo rather than duplicating macOS permission logic. TCC grants attach to the responsible launching process, which is why process ancestry and PM2 launch context matter when debugging permission behavior (`vendor/peekaboo/`, `scripts/peekaboo-permissions.mjs`, `src/tools/computer/peekaboo.ts`, `src/tools/computer/computer-tools.ts`).
 
 Maintainers rebuild the checked-in Universal 2 binaries from the local Peekaboo fork with `npm run vendor:peekaboo -- /absolute/path/to/Peekaboo`. The build script records source commit, hashes, toolchain, and target architectures in `vendor/peekaboo/provenance.json` (`scripts/build-peekaboo.sh`).
 
@@ -70,11 +64,11 @@ Remote trust and subject binding are canonical in [HTTP Transport](../http-trans
 
 Production HTTP, health checks, the PM2 ngrok app, and the trusted Host rewrite deliberately share fixed local port 3333. The injectable HTTP server still accepts a port override for isolated tests. `NGROK_URL` changes only the optional public domain passed to ngrok (`src/config.ts`, `src/server/http-server.ts`, `scripts/start.mjs`, `package.json`, `ecosystem.config.cjs`, `ngrok-traffic-policy.yml`).
 
-## Operational Recovery
+## Failure and Recovery Boundaries
 
-- `npm run restart` removes the current audit log, rebuilds, and asks PM2 to `startOrReload` only the MCP and ngrok definitions in `ecosystem.config.cjs`. It then ensures the dedicated ChatGPT browser is available; it does not recreate the PM2 daemon or replace the authenticated browser profile (`package.json`, `scripts/start.mjs`, `scripts/chatgpt-browser.mjs`, `ecosystem.config.cjs`).
-- If startup reaches `MCP server did not become healthy`, inspect `npm run status` and `npm run logs` before treating the health timeout as the root cause. The health loop only proves that `/healthz` did not respond within five seconds after PM2 returned (`scripts/start.mjs`, `package.json`).
-- A repository move, macOS permission-context change, PM2 upgrade, or inconsistent daemon state can require recreating PM2. Confirm that condition first; `./node_modules/.bin/pm2 kill` stops every application managed by that daemon, not only Shellby MCP. Afterward, `npm run restart` creates the configured MCP and ngrok processes from the current repository path (`scripts/start.mjs`, `ecosystem.config.cjs`).
+- `restart` removes the current audit log, rebuilds, and asks PM2 to `startOrReload` only the MCP and ngrok definitions in `ecosystem.config.cjs`; it does not recreate the PM2 daemon or replace the authenticated browser profile (`package.json`, `scripts/start.mjs`, `scripts/chatgpt-browser.mjs`, `ecosystem.config.cjs`).
+- `MCP server did not become healthy` is emitted only after PM2 returns and the bounded `/healthz` loop fails. It identifies a failed health observation, not the underlying startup cause (`scripts/start.mjs`, `package.json`).
+- The PM2 daemon is user-global rather than repository-scoped. Recreating it affects every application attached to that daemon, which matters when debugging repository moves, permission-context changes, PM2 upgrades, or inconsistent daemon state (`scripts/start.mjs`, `ecosystem.config.cjs`).
 
 ## Related
 

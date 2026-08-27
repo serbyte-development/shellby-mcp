@@ -7,5 +7,5 @@ summary: "Operational setup, validation, logging, and secret-handling knowledge 
 
 - [Audit Logging](./audit-logging.md) — Repository-local MCP audit logging, retention limits, token accounting, status markers, and sensitivity rules.
 - [Build and Test](./build-and-test.md) — Build boundaries, validation commands, test responsibilities, CI coverage, and known verification gaps.
-- [Configuration and Startup](./configuration-and-startup.md) — Supported configuration, workspace initialization, setup, managed startup, shutdown, and operational recovery.
+- [Configuration and Startup](./configuration-and-startup.md) — Configuration ownership and startup composition across workspace bootstrap, managed runtime, shutdown, and recovery boundaries.
 - [Secret Handling](./secret-handling.md) — Rules for authentication metadata, local state, provider credentials, audit data, and secret-sensitive repository documentation.

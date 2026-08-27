@@ -21,6 +21,7 @@ Each call is one compact YAML document containing the tool name, duration, bound
 ## Retention Rules
 
 - `shell_run` command text is retained as a block scalar capped at 2,000 characters.
+- `shell_run` entries retain `shell_id/request_id` as one `shell` key plus optional cwd; `shell_poll` entries retain the same shell/request identity plus the requested cursor. Failed shell calls also retain their MCP failure message capped at 1,000 characters.
 - Ordinary tool arguments are capped at 600 characters.
 - Successful `apply_patch` calls retain cwd and patch size, not patch text.
 - Failed `apply_patch` calls may retain the bounded failure message and up to 32,000 patch characters.
@@ -31,7 +32,7 @@ The logger records serialized tool arguments as model-facing `in` tokens. For or
 
 ## Status Markers and Sensitivity
 
-Calls lasting at least five seconds use `~`; tool, HTTP, and connection failures use `!`; normal calls have no Better Comments marker (`src/server/audit-log.ts`).
+Calls lasting at least five seconds use `~`; tool, HTTP, and connection failures use `!`; normal calls have no Better Comments marker. Explicit `structured=true` and `max_output_tokens` arguments are surfaced in the heading, and abnormal HTTP completion adds `HTTP <status> <finished|closed>` so transport failures can be identified directly (`src/server/audit-log.ts`, `test/mcp-audit-log.test.ts`).
 
 The log can contain shell commands, prompt prefixes, URLs, Computer Use inputs, and failed patch text. Treat the entire file as sensitive local operational data even though it is gitignored and permission-restricted. See [Secret Handling](./secret-handling.md).
 

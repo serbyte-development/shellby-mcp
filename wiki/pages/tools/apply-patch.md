@@ -136,7 +136,7 @@ Audit retention for successful and failed patches is canonical in [Audit Logging
 
 ## Tests
 
-Validation ownership and current coverage are documented in [Build and Test](../operations/build-and-test.md). The focused sources are `test/apply-patch-vendor.test.ts` and `test/mcp-integration.test.ts`.
+Validation ownership and current coverage are documented in [Build and Test](../operations/build-and-test.md). The focused sources are `test/apply-patch-vendor.test.ts` and `test/integrations/apply-patch.ts`.
 
 ## Related
 
