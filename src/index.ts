@@ -1,4 +1,3 @@
-import { mkdir } from "node:fs/promises"
 import { dirname, resolve } from "node:path"
 import { fileURLToPath } from "node:url"
 
@@ -17,7 +16,6 @@ const auditLogger = new McpAuditLogger(auditLogPath)
 const authStore = new ShellbyAuthStore()
 await authStore.ensureState()
 const cwd = MCP_CONFIG.workspace
-await mkdir(cwd, { recursive: true })
 const chatGptSubagents = createChatGptSubagentService()
 const cursorHost = new CursorHostManager({ executable: MCP_CONFIG.peekaboo.cursorHostExecutable })
 const cursorHostStarted = cursorHost.start()

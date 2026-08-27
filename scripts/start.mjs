@@ -1,9 +1,10 @@
-import { rm } from "node:fs/promises"
+import { access, rm } from "node:fs/promises"
 import { dirname, join } from "node:path"
 import { spawnSync } from "node:child_process"
 import { fileURLToPath } from "node:url"
 
 import { checkPublicRuntime, printPreflightErrors } from "./preflight.mjs"
+import { DEFAULT_WORKSPACE, resolveWorkspacePath } from "./workspace-setup.mjs"
 
 const repoRoot = dirname(dirname(fileURLToPath(import.meta.url)))
 const restarting = process.argv.includes("--restart")
@@ -11,6 +12,14 @@ const { errors, pm2Path } = await checkPublicRuntime()
 
 if (errors.length > 0) {
   printPreflightErrors(errors)
+  process.exit(1)
+}
+
+const workspace = resolveWorkspacePath(process.env.MCP_CWD ?? DEFAULT_WORKSPACE)
+try {
+  await access(workspace)
+} catch {
+  console.error(`Agent workspace does not exist at ${workspace}. Run \`npm run setup\` first.`)
   process.exit(1)
 }
 
