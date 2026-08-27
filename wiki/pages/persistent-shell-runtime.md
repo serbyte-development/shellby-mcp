@@ -40,7 +40,7 @@ Each named shell accepts one foreground command. Different shell IDs run indepen
 
 ## Live Shells, Hibernation, and Restoration
 
-Named live shells form an LRU working set. When a live slot is needed, the least-recently-used non-busy named shell may be hibernated; busy shells and `default` are protected. If no eligible slot exists, creation fails instead of killing active work (`src/tools/shell/session-manager.ts`). Configuration values are canonical in [Configuration and Startup](./configuration-and-startup.md).
+Named live shells form an LRU working set. When a live slot is needed, the least-recently-used non-busy named shell may be hibernated; busy shells and `default` are protected. If no eligible slot exists, creation fails instead of killing active work (`src/tools/shell/session-manager.ts`). Configuration values are canonical in [Configuration and Startup](./operations/configuration-and-startup.md).
 
 Idle hibernation captures only current cwd and exported environment, closes the live shell/process group, and drops command records, transcript state, functions, aliases, and running/background processes. Reusing a still-cached `shell_id` transparently creates a fresh shell restored from cached cwd/environment. Cache expiry uses the manager's shared lifecycle sweep (`src/tools/shell/session-manager.ts`, `src/tools/shell/session.ts`, `src/tools/shell/shell-process.ts`). Caller-visible consequences are canonical in [`shell_run` / `shell_poll`](./tools/shell-run.md).
 
@@ -66,4 +66,4 @@ Process-group kill failures such as macOS `EPERM` are deliberately swallowed so 
 - [MCP Tool Surface](./mcp-tool-surface.md)
 - [Architecture Map](./architecture-map.md)
 - [Workspace Tooling](./workspace-tooling.md)
-- [Open Questions and Risks](./open-questions-and-risks.md)
+- [Open Questions and Risks](./project/open-questions-and-risks.md)

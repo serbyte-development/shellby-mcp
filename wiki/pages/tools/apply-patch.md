@@ -132,16 +132,16 @@ These are implementation observations, not model-facing promises.
 
 Common native failures name the failing path and expected text/context, for example missing expected lines, missing delete target, or missing context. Wrapper/startup failures without structured native output return `apply_patch_failed: ...` text.
 
-Audit retention for successful and failed patches is canonical in [Audit Logging](../audit-logging.md).
+Audit retention for successful and failed patches is canonical in [Audit Logging](../operations/audit-logging.md).
 
 ## Tests
 
-Validation ownership and current coverage are documented in [Build and Test](../build-and-test.md). The focused sources are `test/apply-patch-vendor.test.ts` and `test/mcp-integration.test.ts`.
+Validation ownership and current coverage are documented in [Build and Test](../operations/build-and-test.md). The focused sources are `test/apply-patch-vendor.test.ts` and `test/mcp-integration.test.ts`.
 
 ## Related
 
 - [MCP Tool Surface](../mcp-tool-surface.md)
 - [Workspace Tooling](../workspace-tooling.md)
-- [Build and Test](../build-and-test.md)
-- [Open Questions and Risks](../open-questions-and-risks.md)
-- [Audit Logging](../audit-logging.md)
+- [Build and Test](../operations/build-and-test.md)
+- [Open Questions and Risks](../project/open-questions-and-risks.md)
+- [Audit Logging](../operations/audit-logging.md)

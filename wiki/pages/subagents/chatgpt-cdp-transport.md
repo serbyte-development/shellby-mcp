@@ -45,4 +45,4 @@ The HTTP/turn-WebSocket schemas are private and can change. Deterministic protoc
 
 - [Browser ChatGPT Subagents](./browser-chatgpt-subagents.md)
 - [Subagent Completion](./subagent-completion.md)
-- [Build and Test](./build-and-test.md)
+- [Build and Test](../operations/build-and-test.md)

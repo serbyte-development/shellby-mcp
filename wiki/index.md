@@ -4,21 +4,14 @@
 
 - [Project Overview](./pages/project-overview.md) — Concise orientation to Shellby MCP's purpose, audience, project boundaries, current status, and deeper maintainer knowledge.
 - [Architecture Map](./pages/architecture-map.md) — Process-level architecture and request flow across Shellby's HTTP boundary, shared runtime services, and capability handlers.
-- [Audit Logging](./pages/audit-logging.md) — Repository-local MCP audit logging, retention limits, token accounting, status markers, and sensitivity rules.
-- [Browser ChatGPT Subagents](./pages/browser-chatgpt-subagents.md) — Browser-backed ChatGPT subagent lifecycle, conversation persistence, page ownership, submission, and recovery behavior.
-- [Build and Test](./pages/build-and-test.md) — Build boundaries, validation commands, test responsibilities, CI coverage, and known verification gaps.
-- [ChatGPT CDP Transport](./pages/chatgpt-cdp-transport.md) — Observed private ChatGPT Web turn transport used by Shellby's raw-CDP subagent completion tracker.
 - [Computer Use](./pages/computer-use.md) — Focused Computer Use execution through Peekaboo, including snapshots, coordinates, background delivery, and cursor-host ownership.
-- [Configuration and Startup](./pages/configuration-and-startup.md) — Supported configuration, workspace initialization, setup, managed startup, shutdown, and operational recovery.
 - [HTTP Transport](./pages/http-transport.md) — Local HTTP/MCP routing, ngrok trust boundary, remote owner binding, request lifetime, and shared process state.
 - [iOS Shell](./pages/ios-shell.md) — Deferred experimental iPhone shell bridge, its proven architecture, limitations, and conditions for revisiting it.
 - [MCP Tool Surface](./pages/mcp-tool-surface.md) — Published MCP tools and the shared registration, output, instruction, pagination, and capability boundaries shaping their contracts.
-- [Open Questions and Risks](./pages/open-questions-and-risks.md) — Current trust, resource, external-integration, persistence, and intentionally unenforced maintenance risks.
+- [Operations](./pages/operations/index.md) — Operational setup, validation, logging, and secret-handling knowledge for running and maintaining Shellby MCP.
 - [Persistent Shell Runtime](./pages/persistent-shell-runtime.md) — Persistent shell manager and session internals, including lifecycle, transcripts, concurrency, polling, and recovery.
-- [Possible Evals](./pages/possible-evals.md) — Candidate real-work coding benchmarks for comparing ChatGPT Web plus Shellby MCP with Codex under equivalent task conditions.
-- [Roadmap](./pages/roadmap.md) — Uncommitted experiments and deferred architectural work that may be revisited when a concrete need justifies it.
-- [Secret Handling](./pages/secret-handling.md) — Rules for authentication metadata, local state, provider credentials, audit data, and secret-sensitive repository documentation.
-- [Subagent Completion](./pages/subagent-completion.md) — Subagent completion detection, event delivery, bounded recovery, result settlement, and failure semantics.
+- [Project](./pages/project/index.md) — Project-level risks, roadmap ideas, and evaluation research that guide future Shellby MCP work.
+- [Subagents](./pages/subagents/index.md) — Browser-backed ChatGPT subagent architecture, completion, recovery, and private ChatGPT transport behavior.
 - [Tool Naming and Schema Design](./pages/tool-naming-and-schema-design.md) — Model-facing conventions for tool names, routing descriptions, schemas, parameter descriptions, and compact outputs.
 - [Tools](./pages/tools/index.md) — Caller-facing contracts for Shellby MCP's core shell, patch, and subagent tools.
 - [Workspace Tooling](./pages/workspace-tooling.md) — Default coding workspace behavior and the dynamic reusable-skill catalog exposed through skill_list and skill_load.

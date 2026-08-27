@@ -69,7 +69,7 @@ After 30 minutes without an active turn, cleanup closes only the background page
 
 ## Related
 
-- [`subagent_run` / `subagent_result`](./tools/subagent.md)
+- [`subagent_run` / `subagent_result`](../tools/subagent.md)
 - [Subagent Completion](./subagent-completion.md)
 - [ChatGPT CDP Transport](./chatgpt-cdp-transport.md)
-- [Build and Test](./build-and-test.md)
+- [Build and Test](../operations/build-and-test.md)

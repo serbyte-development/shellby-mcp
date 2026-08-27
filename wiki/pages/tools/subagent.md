@@ -9,7 +9,7 @@ paths:
 
 ## What This Is
 
-Caller-facing contract for detached browser-backed ChatGPT delegation. Public tool descriptions and schemas are defined in `src/tools/subagent/subagent-tools.ts`. Browser implementation lives in [Browser ChatGPT Subagents](../browser-chatgpt-subagents.md); completion lives in [Subagent Completion](../subagent-completion.md).
+Caller-facing contract for detached browser-backed ChatGPT delegation. Public tool descriptions and schemas are defined in `src/tools/subagent/subagent-tools.ts`. Browser implementation lives in [Browser ChatGPT Subagents](../subagents/browser-chatgpt-subagents.md); completion lives in [Subagent Completion](../subagents/subagent-completion.md).
 
 ## `subagent_run`
 
@@ -45,6 +45,6 @@ Detached completion queues one `agent_finished` event for delivery on the next M
 
 ## Related
 
-- [Browser ChatGPT Subagents](../browser-chatgpt-subagents.md)
-- [Subagent Completion](../subagent-completion.md)
+- [Browser ChatGPT Subagents](../subagents/browser-chatgpt-subagents.md)
+- [Subagent Completion](../subagents/subagent-completion.md)
 - [MCP Tool Surface](../mcp-tool-surface.md)

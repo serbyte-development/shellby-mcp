@@ -55,4 +55,4 @@ Completed/failed results remain available only in the current MCP process, even 
 
 - [Browser ChatGPT Subagents](./browser-chatgpt-subagents.md)
 - [ChatGPT CDP Transport](./chatgpt-cdp-transport.md)
-- [`subagent_run` / `subagent_result`](./tools/subagent.md)
+- [`subagent_run` / `subagent_result`](../tools/subagent.md)

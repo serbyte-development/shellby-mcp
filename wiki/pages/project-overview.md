@@ -23,18 +23,18 @@ The current release supports macOS arm64 and Intel x64 with Node.js 22.13.0 or n
 - Repository code, tests, and configuration are implementation authority; README and raw surveys are supporting evidence.
 - Tool execution uses the current macOS user's authority. Runtime limits are resource controls, not a filesystem or process sandbox (`src/tools/`).
 - The product is a local MCP harness, not a hosted relay or multi-user service. Remote transport and ownership are documented in [HTTP Transport](./http-transport.md).
-- Setup and managed process lifecycle live in [Configuration and Startup](./configuration-and-startup.md); published capabilities live in [MCP Tool Surface](./mcp-tool-surface.md); component boundaries live in [Architecture Map](./architecture-map.md).
+- Setup and managed process lifecycle live in [Configuration and Startup](./operations/configuration-and-startup.md); published capabilities live in [MCP Tool Surface](./mcp-tool-surface.md); component boundaries live in [Architecture Map](./architecture-map.md).
 - Roadmap and evaluation pages are explicitly noncommittal. The implemented iOS bridge remains unregistered (`src/tools/ios/ios-shell.ts`, `src/server/mcp-server.ts`).
 
 ## Current Status
 
-The core local runtime, managed startup, remote ownership boundary, tool surface, macOS CI, and browser-agent lifecycle are implemented. Drift-prone external boundaries are tracked in [Open Questions and Risks](./open-questions-and-risks.md).
+The core local runtime, managed startup, remote ownership boundary, tool surface, macOS CI, and browser-agent lifecycle are implemented. Drift-prone external boundaries are tracked in [Open Questions and Risks](./project/open-questions-and-risks.md).
 
 ## Related
 
 - [Architecture Map](./architecture-map.md)
-- [Configuration and Startup](./configuration-and-startup.md)
+- [Configuration and Startup](./operations/configuration-and-startup.md)
 - [MCP Tool Surface](./mcp-tool-surface.md)
-- [Build and Test](./build-and-test.md)
-- [Open Questions and Risks](./open-questions-and-risks.md)
-- [Roadmap](./roadmap.md)
+- [Build and Test](./operations/build-and-test.md)
+- [Open Questions and Risks](./project/open-questions-and-risks.md)
+- [Roadmap](./project/roadmap.md)

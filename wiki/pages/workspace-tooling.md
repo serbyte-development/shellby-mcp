@@ -28,7 +28,7 @@ Skill names accept only alphanumeric-leading names containing letters, numbers, 
 ## Related
 
 - [Project Overview](./project-overview.md)
-- [Configuration and Startup](./configuration-and-startup.md)
+- [Configuration and Startup](./operations/configuration-and-startup.md)
 - [MCP Tool Surface](./mcp-tool-surface.md)
 - [Persistent Shell Runtime](./persistent-shell-runtime.md)
 - [apply_patch](./tools/apply-patch.md)

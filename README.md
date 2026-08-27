@@ -132,7 +132,7 @@ This creates a dedicated Chrome profile under `~/.shellby/chatgpt-chrome` and at
 
 Conversation URL and turn count are persisted for reused `agent_id` values. Use `npm run reset-agents` to forget those local mappings.
 
-See [Browser ChatGPT Subagents](wiki/pages/browser-chatgpt-subagents.md) for lifecycle details.
+See [Browser ChatGPT Subagents](wiki/pages/subagents/browser-chatgpt-subagents.md) for lifecycle details.
 
 </details>
 
@@ -209,7 +209,7 @@ Check whether that PM2 daemon manages other applications before killing it. `./n
 
 </details>
 
-More startup and recovery details are in [Configuration and Startup](wiki/pages/configuration-and-startup.md).
+More startup and recovery details are in [Configuration and Startup](wiki/pages/operations/configuration-and-startup.md).
 
 ## Security
 
@@ -231,7 +231,7 @@ npm test
 npm run build
 ```
 
-Use `npm run inspect` for the MCP inspector and `npm run schemas` to print the published tool schemas. Authenticated browser tests are excluded from CI. See [Build and Test](wiki/pages/build-and-test.md).
+Use `npm run inspect` for the MCP inspector and `npm run schemas` to print the published tool schemas. Authenticated browser tests are excluded from CI. See [Build and Test](wiki/pages/operations/build-and-test.md).
 
 ## Documentation
 
@@ -239,11 +239,11 @@ The [maintainer wiki](wiki/) contains implementation and operational details:
 
 - [Project Overview](wiki/pages/project-overview.md)
 - [Architecture Map](wiki/pages/architecture-map.md)
-- [Configuration and Startup](wiki/pages/configuration-and-startup.md)
+- [Configuration and Startup](wiki/pages/operations/configuration-and-startup.md)
 - [Computer Use](wiki/pages/computer-use.md)
 - [MCP Tool Surface](wiki/pages/mcp-tool-surface.md)
-- [Build and Test](wiki/pages/build-and-test.md)
-- [Open Questions and Risks](wiki/pages/open-questions-and-risks.md)
+- [Build and Test](wiki/pages/operations/build-and-test.md)
+- [Open Questions and Risks](wiki/pages/project/open-questions-and-risks.md)
 
 ## Contributing
 

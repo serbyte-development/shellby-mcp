@@ -19,8 +19,8 @@ This page records uncommitted experiments and deferred architectural work; none 
 
 ## Related
 
-- [Project Overview](./project-overview.md)
+- [Project Overview](../project-overview.md)
 - [Open Questions and Risks](./open-questions-and-risks.md)
-- [iOS Shell](./ios-shell.md)
+- [iOS Shell](../ios-shell.md)
 - [Possible Evals](./possible-evals.md)
-- [Browser ChatGPT Subagents](./browser-chatgpt-subagents.md)
+- [Browser ChatGPT Subagents](../subagents/browser-chatgpt-subagents.md)

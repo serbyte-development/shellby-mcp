@@ -33,7 +33,7 @@ This page documents the supported environment surface, first-time workspace init
 | `MCP_CHATGPT_PROJECT_URL`       | unset                       | Optional project start URL; unset uses normal ChatGPT       |
 | `CHROME_BIN`                    | normal macOS Chrome path    | Optional dedicated-browser executable override              |
 
-Shell configuration values are canonical here. Caller-visible lifetime consequences are in [`shell_run` / `shell_poll`](./tools/shell-run.md); manager mechanics are in [Persistent Shell Runtime](./persistent-shell-runtime.md).
+Shell configuration values are canonical here. Caller-visible lifetime consequences are in [`shell_run` / `shell_poll`](../tools/shell-run.md); manager mechanics are in [Persistent Shell Runtime](../persistent-shell-runtime.md).
 
 Production HTTP always binds to `127.0.0.1:3333`; host and port are not environment-configurable. `MCP_CWD` expands `~`, resolves relative values from startup cwd, and becomes the shell/workspace/instruction root. Its `AGENTS.md` is the coding-instructions path advertised to MCP clients. Shell limits and lifetimes are fixed in `MCP_CONFIG`. Audit retention and token-accounting behavior are documented in [Audit Logging](./audit-logging.md).
 
@@ -66,7 +66,7 @@ Maintainers rebuild the checked-in Universal 2 binaries from the local Peekaboo 
 - Authentication: `auth:reset` performs the local warning/confirmation flow and clears the bound subject. Reset does not generate or rotate an ngrok URL (`package.json`, `src/auth/reset.ts`).
 - Subagent state: `reset-agents` deletes `~/.shellby/subagents.sqlite` plus SQLite sidecars, intentionally forgetting persisted `agent_id` conversation mappings. It does not affect ChatGPT conversations themselves (`package.json`, `scripts/reset-agents.mjs`, `src/tools/subagent/subagent-store.ts`).
 
-Remote trust and subject binding are canonical in [HTTP Transport](./http-transport.md).
+Remote trust and subject binding are canonical in [HTTP Transport](../http-transport.md).
 
 Production HTTP, health checks, the PM2 ngrok app, and the trusted Host rewrite deliberately share fixed local port 3333. The injectable HTTP server still accepts a port override for isolated tests. `NGROK_URL` changes only the optional public domain passed to ngrok (`src/config.ts`, `src/server/http-server.ts`, `scripts/start.mjs`, `package.json`, `ecosystem.config.cjs`, `ngrok-traffic-policy.yml`).
 
@@ -78,11 +78,11 @@ Production HTTP, health checks, the PM2 ngrok app, and the trusted Host rewrite 
 
 ## Related
 
-- [Project Overview](./project-overview.md)
-- [Architecture Map](./architecture-map.md)
-- [HTTP Transport](./http-transport.md)
-- [Workspace Tooling](./workspace-tooling.md)
-- [Computer Use](./computer-use.md)
+- [Project Overview](../project-overview.md)
+- [Architecture Map](../architecture-map.md)
+- [HTTP Transport](../http-transport.md)
+- [Workspace Tooling](../workspace-tooling.md)
+- [Computer Use](../computer-use.md)
 - [Build and Test](./build-and-test.md)
-- [Open Questions and Risks](./open-questions-and-risks.md)
+- [Open Questions and Risks](../project/open-questions-and-risks.md)
 - [Audit Logging](./audit-logging.md)

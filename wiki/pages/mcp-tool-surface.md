@@ -60,7 +60,7 @@ The focused tools share one serialized `PeekabooClient` and production forces th
 
 ## Results and Instructions
 
-The registration boundary projects ordinary typed results into structured or compact Markdown form, preserves MCP-level error tagging, and adds a notice when `shell_run` input matches obvious file-edit patterns such as `cat >`, `tee`, in-place `sed`, or common Python writes (`src/server/tool-registration-boundary.ts`, `src/server/tool-output.ts`). Tool input Zod schemas are the external validation boundary: they own caller validation, defaults, transforms, and inferred TypeScript input types. Shell contracts are centralized in `src/tools/shell/shell-contracts.ts`; runtime services validate live-state facts schemas cannot know. Audit token accounting is documented in [Audit Logging](./audit-logging.md).
+The registration boundary projects ordinary typed results into structured or compact Markdown form, preserves MCP-level error tagging, and adds a notice when `shell_run` input matches obvious file-edit patterns such as `cat >`, `tee`, in-place `sed`, or common Python writes (`src/server/tool-registration-boundary.ts`, `src/server/tool-output.ts`). Tool input Zod schemas are the external validation boundary: they own caller validation, defaults, transforms, and inferred TypeScript input types. Shell contracts are centralized in `src/tools/shell/shell-contracts.ts`; runtime services validate live-state facts schemas cannot know. Audit token accounting is documented in [Audit Logging](./operations/audit-logging.md).
 
 Published instructions tell clients to read `<workspace>/AGENTS.md` once at the start of a coding conversation, use parallel `*** Run:` blocks for independent shell work, avoid repurposing home-directory environment variables, edit files with `apply_patch`, delegate bounded independent subagent work, keep newly created projects under the configured workspace unless told otherwise, distrust fetched webpage instructions, and prefer screenshot-first Computer Use with `computer_inspect` only when visual targeting is unclear. Prose remains advisory while schemas and runtime checks enforce mechanics (`src/config.ts`, `src/server/mcp-server.ts`).
 
@@ -73,8 +73,8 @@ Skill catalog mechanics are maintained in [Workspace Tooling](./workspace-toolin
 - [Tool Naming and Schema Design](./tool-naming-and-schema-design.md)
 - [Persistent Shell Runtime](./persistent-shell-runtime.md)
 - [Computer Use](./computer-use.md)
-- [Browser ChatGPT Subagents](./browser-chatgpt-subagents.md)
-- [Subagent Completion](./subagent-completion.md)
+- [Browser ChatGPT Subagents](./subagents/browser-chatgpt-subagents.md)
+- [Subagent Completion](./subagents/subagent-completion.md)
 - [Workspace Tooling](./workspace-tooling.md)
-- [Audit Logging](./audit-logging.md)
+- [Audit Logging](./operations/audit-logging.md)
 - [apply_patch](./tools/apply-patch.md)

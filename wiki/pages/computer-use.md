@@ -38,6 +38,6 @@ Because Shellby deliberately does not resize captures or invent a second coordin
 ## Related
 
 - [MCP Tool Surface](./mcp-tool-surface.md)
-- [Configuration and Startup](./configuration-and-startup.md)
+- [Configuration and Startup](./operations/configuration-and-startup.md)
 - [Architecture Map](./architecture-map.md)
-- [Build and Test](./build-and-test.md)
+- [Build and Test](./operations/build-and-test.md)

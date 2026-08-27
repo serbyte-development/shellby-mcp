@@ -37,8 +37,8 @@ The log can contain shell commands, prompt prefixes, URLs, Computer Use inputs, 
 
 ## Related
 
-- [HTTP Transport](./http-transport.md)
+- [HTTP Transport](../http-transport.md)
 - [Configuration and Startup](./configuration-and-startup.md)
 - [Secret Handling](./secret-handling.md)
-- [Open Questions and Risks](./open-questions-and-risks.md)
-- [apply_patch](./tools/apply-patch.md)
+- [Open Questions and Risks](../project/open-questions-and-risks.md)
+- [apply_patch](../tools/apply-patch.md)
