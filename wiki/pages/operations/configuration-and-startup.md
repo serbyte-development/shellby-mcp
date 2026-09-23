@@ -1,100 +1,46 @@
 ---
-summary: "Configuration ownership and startup composition across workspace bootstrap, managed runtime, shutdown, and recovery boundaries."
+summary: "Config ownership, create-only setup, enabled-service composition, and concurrent installations."
 paths:
-  - src/config.ts
   - src/public-config.cts
+  - src/config.ts
   - src/index.ts
-  - scripts/
-  - skills/create-skill/SKILL.md
+  - scripts/setup.ts
+  - scripts/workspace-setup.ts
+  - scripts/preflight.ts
+  - scripts/start.ts
+  - scripts/pm2.ts
+  - scripts/ngrok-config.cjs
+  - scripts/print-url.ts
+  - scripts/chatgpt/browser.mjs
   - ecosystem.config.cjs
 ---
 
 # Configuration and Startup
 
-## What This Is
+## Configuration owner
 
-This page maps configuration ownership, workspace bootstrap, managed runtime composition, process lifecycle, and failure boundaries to their implementation sources.
+[public-config.cts](../../../src/public-config.cts) owns the public schema, defaults, and `.shellby/config.toml` loader. [config.ts](../../../src/config.ts) resolves paths and derives `MCP_CONFIG`; internal retention/wait/resource limits remain code-owned there. Read those files for setting inventories and values.
 
-## Static MCP Configuration
+Missing fields default silently. Invalid values warn and fall back individually; valid siblings survive. Unknown keys warn and are ignored. Missing/unreadable files or malformed TOML remain errors: whole-file fallback could silently re-enable disabled tools or lose a reserved tunnel URL.
 
-`src/public-config.cts` owns the public schema, defaults, and TOML loader. `src/config.ts` loads the repo-local `.shellby/config.toml` through it and exports process-wide `MCP_CONFIG`. Missing settings use defaults silently. Invalid values warn with their field path and fall back individually; unknown keys warn and are ignored. Valid sibling values, including disabled tool groups, survive normalization. Invalid sections use that section’s defaults. Pooling without a valid ngrok URL warns and disables pooling. `npm run setup -- --config-only` creates a config showing every supported setting for new installations, with defaults active and the optional `ngrok.url` as a commented example. Later setup runs leave existing files untouched, including partial configs, comments, and formatting; runtime supplies omitted defaults without a migration. Full `npm run setup` follows the same create-only behavior before loading runtime config. The local file remains gitignored. Model-facing text response limits use `o200k_base` tokens; internal retention, cache, record, wait, and shutdown limits stay literal code-owned values. The delegated-ID admission limit is separately public, as described below. `buildMcpInstructions()` supplies minimal global routing instructions. `start_here` loads shared and mode-specific prompt files; it does not interpolate the configured workspace or automatically read its `AGENTS.md` (`src/config.ts`, `src/public-config.cts`, `scripts/setup.ts`, `scripts/workspace-setup.ts`).
+The same module compiles to CommonJS for PM2's ecosystem file while serving the ESM runtime. [workspace-setup.ts](../../../scripts/workspace-setup.ts) derives initial TOML from shared defaults. Do not add another parser/default table in a launcher. Public configuration changes require restart; [startup prompts and skills](../mcp-tool-surface.md) have separate dynamic loading.
 
-Public TOML fields are intentionally small: root `state_dir`, `port`, and `workspace`; `shell.path` and `shell.rtk`; `chatgpt.cdp_endpoint`, `chatgpt.project_url`, and `chatgpt.max_delegated_agents`; `mcp.tool_output` (`compact` or `structured`); `ui.enabled`; `ngrok.enabled`, `ngrok.api_port`, `ngrok.url`, and `ngrok.pooling_enabled`; and the `review`, `shell`, `apply_patch`, `file_read`, `file_write`, `clones`, `subagents`, `web`, `skills`, `image`, and `computer` booleans under `[tools]`. `state_dir` defaults to `~/.shellby` and controls machine-local runtime state including authentication, subagent persistence, the managed ChatGPT Chrome profile, and the PM2 daemon. The setup-generated config enables every tool group, defaults `shell.rtk` to `false`, defaults MCP tool output to `compact`, and leaves the UI and ngrok pooling disabled. `chatgpt.max_delegated_agents` defaults to `3`, accepts positive integers, and caps delegated IDs per main-agent session across subagents and clones, including saved mappings and in-flight creations. Existing IDs remain reusable when the limit is reached or lowered. RTK is optional. When enabled, Shellby resolves `rtk` once from startup `PATH`, validates the RTK Token Killer `rewrite` interface during setup/startup, and transparently rewrites supported shell commands immediately before execution; unsupported rewrites fail open to the exact original command. `compact` removes ordinary public output schemas and projects results through Shellby's compact formatter; `structured` preserves the tools' native structured results and output schemas. Computer Use, `image_view`, and `file_read` keep native MCP content in either mode. `start_here` is always enabled. Public config changes require a Shellby restart (`src/config.ts`, `src/tools/shell/rtk.ts`, `scripts/preflight.ts`, `src/mcp/server-factory.ts`, `src/mcp/tool-registration-boundary.ts`).
+Shellby does not load repository `.env` files. ngrok credentials stay in native ngrok configuration; package-local binaries and managed Chrome profile location are derived by Shellby. Optional RTK is resolved from startup PATH and validated when enabled.
 
-Valid TOML syntax is independent of template layout: comments, whitespace, reordered sections, dotted keys, quoted keys, and inline tables pass through the TOML parser before validation. Keys remain case-sensitive. Setup never reformats existing files. A missing file still directs the operator to setup; unreadable files and malformed TOML remain errors. Syntax diagnostics include the parser's numbered location. Never replace an unparseable file with global defaults, since doing so would lose valid operator choices.
+## Bootstrap and composition
 
-The shared module compiles to `dist/public-config.cjs`, allowing PM2's CommonJS ecosystem file to use the same normalized values as the ESM runtime. `scripts/workspace-setup.ts` imports the source through setup's existing `tsx` loader and derives the new-user scaffold from the schema defaults. Keep those paths synchronized; do not reintroduce raw TOML parsing in the ngrok launcher.
+`npm run setup -- --config-only` creates the config only if missing. Full [setup.ts](../../../scripts/setup.ts) loads it before prerequisite checks, creates workspace/state directories, builds backend, and checks browser/computer integrations only when enabled. Existing TOML, workspace instructions, and copied starter skills remain untouched. See [Workspace Tooling](../workspace-tooling.md).
 
-## Configuration Ownership
+Managed [start.ts](../../../scripts/start.ts) requires config/workspace, runs preflight, builds, prepares dedicated Chrome when delegation is enabled, reconciles ngrok, then reloads MCP through [pm2.ts](../../../scripts/pm2.ts). The runtime delegation service itself is attach-only. [src/index.ts](../../../src/index.ts) owns service construction and disposal; [Architecture Map](../architecture-map.md) owns request/state flow.
 
-Shellby does not load a repository `.env` file and does not expose environment-variable overrides for its binaries or browser profile. Shellby user configuration belongs in `.shellby/config.toml`. `state_dir` is the single configurable root for machine-local Shellby state and defaults to `~/.shellby`; separate installations can use different values for runtime isolation. `ngrok.url` may pin a reserved public endpoint and `ngrok.pooling_enabled` enables ngrok endpoint pooling for that URL; omitting `ngrok.url` preserves ngrok's assigned public URL behavior. ngrok authentication belongs to ngrok's native user configuration and is set with `ngrok config add-authtoken`; the executable is resolved from `PATH`. Chrome is discovered in the normal macOS application locations and uses `<state_dir>/chatgpt-chrome` as its managed user-data directory. Computer Use uses the package-local Peekaboo build. RTK is an optional external CLI: when `shell.rtk = true`, its executable is resolved from the Shellby process `PATH`, while RTK's normal filtering/exclusion configuration still applies. Shellby forces RTK's separate failure tee and telemetry off and routes RTK history writes to `/dev/null` so Shellby commands are not duplicated into RTK-local persistence. Shell caller-visible lifetime consequences are in [`shell_run` / `shell_poll`](../tools/shell-run.md); manager mechanics are in [Persistent Shell Runtime](../persistent-shell-runtime.md).
+`ui.enabled` composes the observer and serves `ui/dist`. Root setup/build/start do not install or build UI dependencies; use `ui:install`/`ui:build`, or `ui:dev` with its API proxy. Frontend: [UI wiki](../../../ui/wiki/AGENTS.md).
 
-```toml
-[ngrok]
-url = "https://your-reserved-domain.ngrok.app"
-pooling_enabled = true
-```
+## Isolation and local-only mode
 
-Production HTTP binds to loopback `127.0.0.1` at the configured root `port` (default `3333`). ngrok's local API uses `ngrok.api_port` (default `4040`). Both accept integers from 1 through 65535. The configured `workspace` expands `~`, resolves relative values from the repository root, and becomes the shell/workspace/instruction root. Setup creates its `AGENTS.md` as workspace guidance; startup instructions do not automatically load that file. Shell limits and lifetimes remain fixed in `MCP_CONFIG`. Audit retention and token-accounting behavior are documented in [Audit Logging](./audit-logging.md).
+`state_dir` owns auth, delegated conversation mappings, managed Chrome profile, and PM2 home. Concurrent repository copies additionally need distinct MCP ports, local CDP ports when delegation is enabled, and ngrok API ports/public endpoints when tunneled. Independent copies should not use endpoint pooling. Shared workspace and desktop remain shared.
 
-## Local-only Runtime
+[ngrok-config.cjs](../../../scripts/ngrok-config.cjs) combines native credentials with a secret-free per-instance API-address overlay; it supports native config v2/v3 layout. [print-url.ts](../../../scripts/print-url.ts) selects the matching upstream/reserved domain. Health checks verify repository/state identity; browser startup rejects an occupied local CDP endpoint belonging to another profile.
 
-`ngrok.enabled` defaults to `true` for compatibility. With `false`, setup and preflight skip ngrok checks, the ecosystem omits ngrok without resolving its executable or reading native config, and `print-url` reports the loopback MCP URL without querying ngrok. Full setup initializes/loads config before prerequisite checks, allowing config-only setup followed by disabling ngrok on a machine without it installed.
+With `ngrok.enabled=false`, setup/preflight skip ngrok and URL discovery returns loopback directly. Start must explicitly remove an existing managed tunnel before MCP reload; omitting it from the ecosystem alone leaves it running. Cleanup failures abort startup. Unmanaged tunnels are outside this lifecycle.
 
-Ordinary start/restart queries this instance's PM2 list and deletes an existing `shellby-ngrok` entry before MCP reload. Merely omitting an app from the ecosystem does not stop it. List/delete failures abort startup; hard restart already removes the daemon's apps. PM2, browser startup, tools, and UI otherwise retain existing behavior. Native ngrok credentials and saved URL/pooling config remain untouched for re-enabling. Unmanaged tunnels are outside this lifecycle boundary (`scripts/start.ts`, `scripts/setup.ts`, `scripts/preflight.ts`, `ecosystem.config.cjs`, `scripts/print-url.ts`, `test/start.test.ts`, `test/preflight.test.ts`).
-
-## Concurrent Repository Copies
-
-`state_dir` isolates saved runtime state and the PM2 daemon. Running copied repositories simultaneously also requires distinct root `port` and local `chatgpt.cdp_endpoint` ports when agent tools are enabled. Copies using ngrok additionally require distinct `ngrok.api_port` values and public URLs. Keep pooling disabled for independent copies. Configure the new copy before full setup or startup; see the concrete example in README. Defaults preserve the original single-instance setup. Different state directories do not isolate a shared workspace or the macOS desktop.
-
-`scripts/ngrok-config.cjs` locates ngrok's native config with `ngrok config check`, reads its v2/v3 version, and writes a secret-free `<state_dir>/ngrok-agent.json` overlay setting the local API address. The ecosystem passes native config first and overlay second, retaining native authentication without rewriting or copying credentials. v3 places `web_addr` under `agent`; v2 uses the root. `print-url` selects only the matching upstream and reserved domain. Startup's health check verifies an instance header derived from the repository and resolved state root, preventing a different copy from producing a false success. Browser setup/auto-start refuses an occupied local CDP endpoint unless the Chrome process matches this copy's profile and debug port (`scripts/ngrok-config.cjs`, `ecosystem.config.cjs`, `scripts/print-url.ts`, `scripts/chatgpt/browser.mjs`, `test/instance-isolation.test.ts`, `test/start.test.ts`).
-
-## Startup and Shutdown
-
-Public startup is driven by `scripts/start.ts`. The startup scripts import the same `MCP_CONFIG` used by runtime, so workspace and ChatGPT routing have one interpretation. Startup runs the Mac preflight and, when enabled, ngrok checks, requires the configured workspace to already exist, builds, launches the dedicated ChatGPT Chrome profile only when clone or subagent tools are enabled, then reconciles optional ngrok before starting or reloading MCP through the repository-local PM2 dependency. An external caller can then wait for `/healthz` and print the configured local or public `/mcp` URL. `ecosystem.config.cjs` resolves ngrok from the caller's `PATH` only when enabled and reads normalized config through the compiled shared loader; it does not load repository environment files. For first-time setup, `scripts/setup.ts` prepares the workspace and runs optional Computer Use or browser setup only for enabled tool groups. Existing workspace instructions and customized starter skills are never overwritten (`package.json`, `src/config.ts`, `scripts/preflight.ts`, `scripts/setup.ts`, `scripts/workspace-setup.ts`, `scripts/start.ts`, `skills/create-skill/SKILL.md`, `ecosystem.config.cjs`, `test/setup-workspace.test.ts`).
-
-Inside the MCP process, `src/index.ts` is the production composition root. It constructs, starts, and disposes the shell manager, Peekaboo client, cursor host, and browser-backed agent service required by enabled tool groups; it constructs the webpage opener when web tools are enabled. `src/mcp/server-factory.ts` binds those capability services and snapshots server identity, enabled tool groups, and tool-output mode into an immutable process-level factory profile. `src/server/http-server.ts` receives that factory plus transport-owned auth/audit state and the optional observer; the observer is supplied once there and shared by MCP tool observation and dashboard routes. HTTP listener configuration remains process-wide in `MCP_CONFIG`. `apply_patch` resolves its checked-in vendored binary directly in its tool module. Authentication state and best-effort delegated-conversation mappings live under the configured `state_dir` (`src/index.ts`, `src/server/http-server.ts`, `src/mcp/server-factory.ts`, `src/tools/apply-patch/apply-patch.ts`).
-
-## Dashboard Build Boundary
-
-`ui.enabled` defaults to `false`. Enabling it composes the observer and serves `ui/dist` from the MCP process. Root `setup`, `build`, and `start` build only the backend; they do not install or build UI dependencies. Use `npm run ui:install` and `npm run ui:build` for production assets, or `npm run ui:dev` for Vite with its API proxy to the configured MCP port. See the [UI wiki](../../../ui/wiki/index.md) and [HTTP Transport](../http-transport.md).
-
-## Peekaboo Permission Integration
-
-Shellby ships its compatible Peekaboo CLI and cursor host under `vendor/peekaboo/`; Peekaboo is not an npm dependency and is not runtime-selectable. The cursor host is resolved beside the bundled executable. `scripts/setup.ts` requests source-aware permission status through `scripts/peekaboo-permissions.mjs`; `setup:computer` delegates grants to Peekaboo rather than duplicating macOS permission logic. TCC grants attach to the responsible launching process, which is why process ancestry and PM2 launch context matter when debugging permission behavior (`vendor/peekaboo/`, `scripts/peekaboo-permissions.mjs`, `src/tools/computer/peekaboo.ts`, `src/tools/computer/computer-tools.ts`).
-
-Maintainers rebuild the checked-in Universal 2 binaries from the local Peekaboo fork with `npm run vendor:peekaboo -- /absolute/path/to/Peekaboo`. The build script records source commit, hashes, toolchain, and target architectures in `vendor/peekaboo/provenance.json` (`scripts/vendor/build-peekaboo.sh`).
-
-## Package Scripts
-
-- Runtime check: `preflight` accepts macOS arm64 and x64, then validates Node 22.18.0+, local dependencies, and enabled ngrok installation/authentication without changing runtime state. `setup -- --config-only` creates `.shellby/config.toml` when absent and checks the effective configuration; full `setup` initializes and loads config before the runtime checks and workspace/build flow, then checks Peekaboo or Chrome only when their corresponding tool groups are enabled. `setup:computer` and `setup:chatgpt` remain explicit commands for those optional integrations (`scripts/preflight.ts`, `scripts/setup.ts`, `scripts/setup-console.ts`, `scripts/peekaboo-permissions.mjs`, `scripts/chatgpt/browser.mjs`).
-- Production runtime: `start` builds and starts/reloads MCP and optional ngrok; `restart` also clears the current audit log, keeping the existing PM2 daemon. `restart -- --hard` builds, kills the dedicated PM2 daemon and its apps, then clears the audit and starts fresh services. Both modes auto-launch the configured ChatGPT browser when clone or subagent tools are enabled. `status`, `logs`, and `stop` expose the small PM2 management surface. Startup removes any obsolete PM2 `shellby-cursor-host` app because cursor-host ownership now lives inside MCP. PM2 gives MCP 10 seconds to complete signal-driven cleanup before forcing termination (`package.json`, `scripts/start.ts`, `ecosystem.config.cjs`, `src/tools/computer/cursor-host.ts`).
-- Development: `dev`, `build`, and `inspect` keep direct local development separate from the managed production runtime.
-- Tunnel: `npm run tunnel` starts/reloads the managed PM2 ngrok process when enabled, which exposes the configured MCP port through the checked-in traffic policy with the local HTTP inspector disabled. When local config supplies `ngrok.url`, startup passes that reserved URL to ngrok and optionally enables pooling. Without it, ngrok assigns the public URL (`ecosystem.config.cjs`, `.shellby/config.toml`).
-- URL discovery: `print-url` prints the loopback MCP URL immediately when ngrok is disabled; otherwise it reads the configured ngrok API port, matches the local upstream MCP port and any configured reserved URL, and prints the matching `https://<domain>/mcp` URL. `start` and `restart` call it after the managed runtime is healthy (`package.json`, `scripts/print-url.ts`, `scripts/start.ts`).
-- Authentication: `auth:reset` performs the local warning/confirmation flow and clears the bound subject. Reset does not generate or rotate an ngrok URL (`package.json`, `src/auth/reset.ts`).
-- Subagent state: `reset-agents` deletes `<state_dir>/subagents.sqlite` plus SQLite sidecars, intentionally forgetting persisted `agent_id` conversation mappings. It does not affect ChatGPT conversations themselves (`package.json`, `scripts/chatgpt/reset-delegation-state.ts`, `src/tools/delegation/store.ts`).
-
-Remote trust and subject binding are canonical in [HTTP Transport](../http-transport.md).
-
-Production HTTP, health checks, the PM2 ngrok upstream, and the Vite API proxy share the configured MCP port. The trusted Host rewrite uses `localhost` without a fixed port. `src/server/http-server.ts` reads that process-wide value directly from `MCP_CONFIG` (`src/config.ts`, `src/server/http-server.ts`, `scripts/start.ts`, `package.json`, `ecosystem.config.cjs`, `ngrok-traffic-policy.yml`).
-
-## Failure and Recovery Boundaries
-
-- Routine `npm run restart` works through `shell_run`: PM2 owns each app's stop/start operation inside its surviving daemon. Browser preparation and ngrok reload or removal finish before MCP reload is requested, since MCP shutdown can kill the requesting CLI. The initiating call can disconnect and its shell record disappears; after recovery, use a fresh tool call rather than polling the old record. Final CLI health/URL output is only available when the caller survives. No tool-specific restart behavior or detached worker is involved (`scripts/start.ts`, `test/start.test.ts`).
-- Only `npm run restart -- --hard` recreates PM2. It refuses before build or mutation when inherited PM2 metadata identifies the caller as a `shellby-mcp` descendant. Killing the daemon from its own app tree can terminate the supervising command before it starts replacement services. Run hard resets from a healthy external Terminal.app session. If an earlier reset left both apps stopped, restore with external `npm start`; preserve the reserved ngrok URL. Build must succeed before either restart mode mutates services or clears the audit; hard shutdown must succeed before audit deletion or startup. The authenticated browser profile is reused (`scripts/start.ts`, `scripts/chatgpt/browser.mjs`, `ecosystem.config.cjs`, `test/start.test.ts`).
-- `This Shellby instance did not become healthy` is emitted only after PM2 returns and the bounded `/healthz` loop fails. It identifies a failed health observation, not the underlying startup cause (`scripts/start.ts`, `package.json`).
-- `scripts/pm2.ts` is the shared CLI boundary for startup, restart, stop, status, logs, and `npm run pm2 -- <args>`. It sets `PM2_HOME` to `<state_dir>/pm2` even when the caller exports another PM2 home, uses the local package, and resolves ecosystem paths from the repo root. Shellby's daemon, sockets, logs, and process list are isolated from the default `~/.pm2` daemon, and separate installations can use different configured state roots. Concurrent copies also require distinct MCP ports, ngrok API ports when enabled, and local CDP ports when agent tools are enabled (`scripts/pm2.ts`, `scripts/start.ts`, `package.json`, `test/start.test.ts`).
-- Existing installations must remove only the `shellby-mcp` and `shellby-ngrok` entries from the old shared daemon before starting the dedicated runtime; also remove `shellby-cursor-host` there if present. Use `PM2_HOME="$HOME/.pm2" ./node_modules/.bin/pm2 delete shellby-mcp shellby-ngrok`, then `npm run restart` from Terminal.app. No automatic migration touches the shared daemon. Other projects remain running. Authentication and browser state stay in place; see README Operations.
-- Use `restart -- --hard` from a healthy Terminal.app session to recover stale macOS service context. That failure can leave MCP reachable while Chromium aborts in `_RegisterApplication` and shell DNS fails. On 2026-09-08, both failures were isolated to PM2 descendants; recreating PM2 from a healthy session restored fetching. Ordinary restart preserves the daemon's context. The dedicated home limits daemon resets to Shellby; Terminal-independent lifecycle still requires a macOS LaunchAgent, which startup does not currently install.
-
-## Related
-
-- [Project Overview](../project-overview.md)
-- [Architecture Map](../architecture-map.md)
-- [HTTP Transport](../http-transport.md)
-- [Workspace Tooling](../workspace-tooling.md)
-- [Computer Use](../computer-use.md)
-- [Build and Test](./build-and-test.md)
-- [Open Questions and Risks](../project/open-questions-and-risks.md)
-- [Audit Logging](./audit-logging.md)
+Operational recovery, restart ordering, and macOS launch-context failures: [Runtime Recovery](./runtime-recovery.md). Focused validation: [Build and Test](./build-and-test.md).

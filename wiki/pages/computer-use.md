@@ -1,45 +1,34 @@
 ---
-summary: "Focused Computer Use execution through Peekaboo, including snapshots, coordinates, background delivery, and cursor-host ownership."
+summary: "Peekaboo ownership, snapshot coordinates, background delivery, and permission debugging."
 paths:
   - src/tools/computer/
   - src/tools/image/image-encoding.ts
+  - src/index.ts
+  - src/config.ts
   - vendor/peekaboo/
+  - scripts/peekaboo-permissions.mjs
 ---
 
 # Computer Use
 
-## What This Is
+[computer-tools.ts](../../src/tools/computer/computer-tools.ts) owns focused `computer_*` schemas and semantic validation. One serialized [PeekabooClient](../../src/tools/computer/peekaboo.ts) owns argv translation, bounded JSON, capture cleanup, and snapshot targets. Production invokes the bundled CLI directly, without a shell, using `--no-remote`. Raw Peekaboo commands through `shell_run` bypass this adapter.
 
-This page documents Shellby's focused `computer_*` execution path, Peekaboo ownership boundary, snapshot/target semantics, background input behavior, and coordinate rules (`src/tools/computer/computer-tools.ts`, `src/tools/computer/peekaboo.ts`, `src/tools/computer/cursor-host.ts`).
+## Snapshot invariants
 
-## Runtime Path
+- Observation retains resolved target metadata under its snapshot ID. Mappings are bounded and process-local; missing/evicted targets require re-observation.
+- [Shared image encoding](./tools/files-and-images.md) preserves dimensions and orientation. Screen captures require display-origin translation; window actions use capture-relative coordinates. Adapter owns both interpretations.
+- Explicit `PID:<pid>` selectors survive Peekaboo's normalized/omitted metadata so follow-up actions stay process-bound.
+- `computer_inspect` creates a new snapshot and propagates the target. Its element IDs belong to that returned snapshot, not the earlier screenshot.
+- Exact-window actions may require a fresh local Peekaboo snapshot receipt. Re-observe after ambiguous mutations; stateful actions are not automatically retried.
 
-Focused Computer Use is `computer_*` -> one serialized `PeekabooClient` -> Shellby's bundled Peekaboo CLI. Tool handlers pass typed observation target intent to the adapter; `PeekabooClient` owns translation of that intent to Peekaboo argv plus retained snapshot-target interpretation. Production constructs the client in local-only mode, so focused tools append `--no-remote` and do not depend on Peekaboo's daemon. The package-local CLI in `vendor/peekaboo/peekaboo` is the only production executable, keeping the adapter and CLI version coupled (`src/config.ts`, `src/index.ts`, `src/tools/computer/peekaboo.ts`).
+For targeting errors, inspect capture bounds and dimensions before adding coordinate transforms. Multi-display behavior needs real-CLI validation.
 
-Raw Peekaboo commands through `shell_run` are outside this adapter and may use Peekaboo's daemon unless the caller supplies `--no-remote`.
+## Delivery and lifecycle
 
-Shellby also ships `vendor/peekaboo/peekaboo-cursor-host` beside the bundled Peekaboo executable. `CursorHostManager` starts it with the MCP, restarts it after unexpected exit, and terminates it during shutdown. If the executable is absent, Computer Use remains available without the cursor host (`src/config.ts`, `src/index.ts`, `src/tools/computer/cursor-host.ts`).
+Schemas define which actions permit background delivery. Coordinate dragging requires one exact observed window; screen targets, element endpoints, and modifiers are rejected. App-only/targetless presses and hotkeys require foreground delivery; typing can target an app in the background. Pointer and smooth scrolling require foreground mode.
 
-## Snapshots and Coordinates
+[cursor-host.ts](../../src/tools/computer/cursor-host.ts) owns the optional bundled companion child, relaunch after unexpected exit, and shutdown. Missing companion leaves Computer Use available. MCP composition owns it; it is not a separate PM2 app.
 
-`computer_observe` captures the target at its original dimensions and retains the resolved target metadata with the returned snapshot ID. Shellby does not resize screenshots, so screenshot coordinates remain in the capture's coordinate space. `PeekabooClient` owns snapshot lookup, screen-coordinate translation, and exact-window classification; exact-window coordinate actions use the retained window target and, where required, a fresh local Peekaboo snapshot receipt (`src/tools/computer/computer-tools.ts`, `src/tools/computer/peekaboo.ts`, `src/tools/image/image-encoding.ts`).
+For TCC problems, inspect the responsible launching process and [runtime recovery](./operations/runtime-recovery.md). [peekaboo-permissions.mjs](../../scripts/peekaboo-permissions.mjs) delegates permission checks/grants to Peekaboo. Vendor rebuild/provenance: `scripts/vendor/build-peekaboo.sh`, `vendor/peekaboo/provenance.json`.
 
-When observation explicitly targets `PID:<pid>`, Shellby preserves that exact app selector in the retained snapshot target even if Peekaboo omits or normalizes the returned observation target. Follow-up actions therefore remain process-bound (`src/tools/computer/peekaboo.ts`, `test/peekaboo.test.ts`).
-
-`computer_inspect` delegates snapshot lookup, retained-target to Peekaboo-argv translation, tree observation, and propagation of the retained target onto the returned snapshot ID to `PeekabooClient`. Element IDs from inspection belong to that returned snapshot and must not be paired with the older screenshot snapshot (`src/tools/computer/computer-tools.ts`, `src/tools/computer/peekaboo.ts`).
-
-Because Shellby deliberately does not resize captures or invent a second coordinate transform, upstream capture-scaling changes can surface directly as targeting errors. When targeting appears wrong, verify the configured Peekaboo binary's reported bounds and screenshot dimensions before changing Shellby coordinate logic (`src/tools/computer/peekaboo.ts`, `src/tools/image/image-encoding.ts`, `test/peekaboo.test.ts`).
-
-## Background Delivery
-
-- Exact-window clicks, long presses, coordinate scrolls, and coordinate-to-coordinate drags can use Shellby's local background path without moving the physical pointer where the tool schema permits it (`src/tools/computer/computer-tools.ts`, `src/tools/computer/peekaboo.ts`).
-- `computer_drag` currently requires one exact observed window and coordinate-to-coordinate points; screen targets, element endpoints, app destinations, and modifiers are rejected for background dragging (`src/tools/computer/computer-tools.ts`).
-- Targetless/app-only raw presses and hotkeys require explicit foreground delivery. Typing can target an app, exact window, or snapshot in the background. Pointer scrolling and smooth scrolling require explicit foreground delivery (`src/tools/computer/computer-tools.ts`).
-- Stateful actions are not retried automatically. Re-observe after an ambiguous result before issuing another mutation.
-
-## Related
-
-- [MCP Tool Surface](./mcp-tool-surface.md)
-- [Configuration and Startup](./operations/configuration-and-startup.md)
-- [Architecture Map](./architecture-map.md)
-- [Build and Test](./operations/build-and-test.md)
+Tests: [adapter](../../test/peekaboo.test.ts), [MCP computer cases](../../test/integrations/computer.ts), [vendor smoke](../../test/peekaboo-vendor.test.ts), [image geometry](../../test/image-encoding.test.ts).

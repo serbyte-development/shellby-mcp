@@ -1,26 +1,21 @@
 ---
-summary: "Clone branching, shared delegated-ID ownership, persistence, and reuse through the ChatGPT agent runtime."
+summary: "Conversation branching and clone reuse; differences from the shared subagent contract."
 paths:
   - src/tools/delegation/clone-tools.ts
   - src/tools/delegation/chatgpt-service.ts
   - src/tools/delegation/chatgpt-browser.ts
-  - src/tools/delegation/store.ts
-  - src/config.ts
-  - src/public-config.cts
+  - src/tools/delegation/lifecycle.ts
+  - src/tools/delegation/turn-results.ts
 ---
 
 # Clones
 
-Clone tools share the browser service, caller scope, and `chatgpt.max_delegated_agents` admission limit with subagents. `clone_id` and `agent_id` occupy the same per-caller namespace. Keep admission checks before browser work so persisted mappings and in-flight creations prevent duplicate allocation.
+[clone-tools.ts](../../../src/tools/delegation/clone-tools.ts) adapts the same [delegation runtime](../subagents/browser-chatgpt-subagents.md). `clone_id` and `agent_id` share caller scope and admission capacity.
 
-`clone_self` navigates a managed source page to the supplied ChatGPT conversation, branches its latest turn through ChatGPT's UI, closes the temporary source page when separate, then submits the caller's first prompt in the branch. A previously used clone ID is rejected. Failed creation releases the operation and closes pages created by that attempt.
+`clone_self` opens the supplied conversation, branches its latest forkable assistant turn through ChatGPT UI, closes the temporary source page when separate, then submits the first prompt in the branch. Existing clone IDs are rejected. Failed creation releases its reservation and closes pages created by the attempt.
 
-`clone_run` reuses a live clone or restores a persisted mapping whose kind is `clone`; an ordinary subagent mapping cannot be treated as a clone. Clones always retain memory and branched context. They do not receive the extra first-turn instructions injected for new ordinary subagents.
+`clone_run` reuses a live clone or restores a saved mapping with kind `clone`; ordinary subagent mappings cannot pass that restore path. Clones keep memory and branched context without ordinary subagents' first-turn instruction injection.
 
-`clone_result` uses the same local poll implementation as `subagent_result`. Completion events, one-shot recovery, uncertain upstream state, and process-local turn results follow [Subagent Completion](../subagents/subagent-completion.md). The public batch result limit remains independent of the configured delegated-ID cap.
+`clone_result` shares concurrent local polling through [turn-results.ts](../../../src/tools/delegation/turn-results.ts). Recovery/result lifetime follow [Subagent Completion](../subagents/subagent-completion.md). Adapter behavior differs: clone failures expose backend error codes/messages and do not aggregate failed turns into top-level `isError` as `subagent_result` does. Inspect this boundary before assuming the two public families are interchangeable.
 
-## Related
-
-- [Browser ChatGPT Subagents](../subagents/browser-chatgpt-subagents.md)
-- [Subagent caller contract](./subagent.md)
-- [Session Tracking](../subagents/subagent-tracking.md)
+[chatgpt-browser.ts](../../../src/tools/delegation/chatgpt-browser.ts) owns UI branching; [MCP delegation cases](../../../test/integrations/subagent.ts) cover the public adapter. Real upstream branching/recovery needs targeted live validation.

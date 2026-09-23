@@ -1,38 +1,22 @@
 ---
-summary: "Rules for authentication metadata, local state, provider credentials, audit data, and secret-sensitive repository documentation."
+summary: "Sensitive runtime files, permission boundaries, and what may enter committed context."
 paths:
-  - src/auth/
-  - src/server/audit/
+  - src/auth/store.ts
   - src/tools/delegation/store.ts
+  - src/server/audit/audit-log.ts
   - .gitignore
 ---
 
 # Secret Handling
 
-## What This Is
+Keep actual credentials, bound subjects, conversation identifiers, and private tool data out of committed wiki/examples. Names of settings, services, and source paths are safe routing context. Provider credentials stay in provider/user configuration or a password manager.
 
-This page defines what authentication, provider, audit-log, and machine-local information may enter the committed wiki.
+| Local state | Sensitivity and owner |
+| --- | --- |
+| `<state_dir>/auth.json` | Bound OpenAI subject; [auth store](../../../src/auth/store.ts) enforces private directory/file permissions. HTTP errors do not echo it. |
+| `<state_dir>/subagents.sqlite` and sidecars | Parent session IDs, conversation URLs/counts, agent kind. [Delegation store](../../../src/tools/delegation/store.ts) does not explicitly chmod SQLite files; preserve directory protection. |
+| `agent-commands.yaml` | Tool inputs and failed patch material; [Audit Logging](./audit-logging.md) owns retention/exclusions. |
+| `test/live/artifacts/` | Browser probes/canary diagnostics may contain private prompts and answers despite header redaction. |
+| Managed Chrome profile | Authenticated account state under `state_dir`; do not copy into repository evidence. |
 
-## Current State
-
-Remote ChatGPT ownership state is stored outside the repository in `<state_dir>/auth.json` with owner-only permissions; `state_dir` defaults to `~/.shellby`. Treat the bound OpenAI subject as private authentication metadata; transport and binding mechanics are documented in [HTTP Transport](../http-transport.md) (`src/auth/store.ts`, `src/server/http-server.ts`).
-
-Delegated-agent conversation mappings are stored best-effort in `<state_dir>/subagents.sqlite`. The database contains parent MCP session IDs, ChatGPT conversation URLs, and turn counts, which can expose private account/conversation identifiers. Unlike the auth store, `store.ts` does not explicitly chmod the SQLite database; treat the file and its `-wal` / `-shm` sidecars as sensitive local state (`src/tools/delegation/store.ts`, `scripts/chatgpt/reset-delegation-state.ts`).
-
-Provider credentials such as ngrok, npm, or future CI tokens belong in provider/user configuration or a password manager, not repository Markdown (`package.json`).
-
-## Rules
-
-- Public wiki pages may list environment variable names, service names, and code paths.
-- Local-only ownership or rotation pointers may go in `_private/secrets-map.local.md`.
-- Never place actual values in logs, shell examples, tests, or uploaded context.
-- Authentication errors must not echo the bound subject (`src/server/http-server.ts`).
-- Treat `agent-commands.yaml` as sensitive local operational data because it can contain tool inputs and failed patch text. Exact retention behavior is canonical in [Audit Logging](./audit-logging.md).
-
-## Related
-
-- [Project Overview](../project-overview.md)
-- [HTTP Transport](../http-transport.md)
-- [Configuration and Startup](./configuration-and-startup.md)
-- [Open Questions and Risks](../project/open-questions-and-risks.md)
-- [Audit Logging](./audit-logging.md)
+[.gitignore](../../../.gitignore) excludes local config, audit, live artifacts, and `wiki/_private/`. Local ownership pointers may live in `_private/secrets-map.local.md`; it is not a credential store. Gitignore is not redaction: inspect material before committing or sharing it.

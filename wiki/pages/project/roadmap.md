@@ -1,30 +1,18 @@
 ---
-summary: "Uncommitted experiments and deferred architectural work that may be revisited when a concrete need justifies it."
+summary: "Deferred experiments and the constraints that would justify revisiting them."
 ---
 
 # Roadmap
 
-## What This Is
+Ideas below are uncommitted; presence here grants no implementation approval.
 
-This page records uncommitted experiments and deferred architectural work; none of these items is approved or implemented merely because it appears here.
+- **Portability:** broaden beyond macOS when a concrete host need justifies platform work. Avoid speculative abstractions.
+- **Caller lineage:** revisit only after proving a shared identifier between browser calls and incoming MCP sessions. [Agent Context](../agent-context.md) records failed heuristic correlation.
+- **Shell ergonomics:** consider interruption without full reset, or a simpler one-shot call with optional persistent state. Preserve retry safety and batch support. Descriptive request IDs may provide useful task orientation; evaluate before replacing them with opaque IDs.
+- **Authenticated fetching:** test a small headed/CDP alternative when current headless acquisition fails important tasks. Establish benefit before adding shared-browser lifecycle/configuration complexity.
+- **Distribution:** consider bundling only after measuring a startup/artifact/distribution problem; current build uses plain TypeScript compilation.
+- **Client capabilities:** earlier resources/tasks probes did not establish useful ChatGPT support. Recheck actual client behavior before introducing either surface; modern protocol transport alone does not prove extension support.
 
-## Future experiments
+Configuration customization and binary file-transfer tools already exist. Route implementation work to [Configuration](../operations/configuration-and-startup.md) and [Files and Images](../tools/files-and-images.md); end-to-end client transfer behavior still needs empirical validation.
 
-- [x] Add a repo-local, gitignored `.shellby/` configuration area for user customization. `.shellby/config.toml` is the complete active public Shellby configuration surface and `.shellby/prompts/` remains the optional `start_here` prompt override surface. `npm run setup` scaffolds TOML only when absent; missing or invalid values resolve through shared defaults at load time; runtime and startup scripts consume one validated `MCP_CONFIG`; Shellby-owned workspace, shell, ChatGPT routing, and static tool-group settings come only from TOML, while validation and non-configurable limits remain code-owned in `src/config.ts`.
-
-- [ ] Broaden host portability beyond the current macOS release without weakening the local-agent model or adding platform abstractions before they are needed.
-- [ ] Add deterministic subagent lineage to `AgentIdentity` if ChatGPT exposes a proven shared identifier between a browser-backed subagent conversation and its incoming MCP `X-OpenAI-Session`. The target would let an MCP caller know whether it is a root agent, subagent, or clone and retain its parent `AgentIdentity` / browser `agent_id`. Do not restore time-window, tool-name, argument-matching, or other heuristic correlation; only implement this when the browser and MCP sides expose a deterministic join.
-- [ ] Consider adding `CTRL_C` support to `shell_run` so an agent can interrupt a stuck foreground command without resetting the persistent shell and losing cwd/environment state, or adding a tool that lets the agent interrupt a foreground command.
-- [ ] Redesign `shell_run` to feel closer to ChatGPT's native `container.exec`: make the common one-shot call minimal and self-contained (`command`/argv, cwd, env, timeout), make `shell_id` optional and meaningful only when persistent cwd/environment state is wanted, and simplify continuation/polling bookkeeping without weakening retry safety. Consider keeping `request_id` model-generated and descriptive rather than replacing it with an opaque server ID: naming the operation may act as a lightweight semantic anchor that helps the model stay oriented to the purpose of a command across execution and `shell_poll`. Preserve explicit persistent shells and parallel-command support as advanced capabilities rather than making every call pay their schema/state cost.
-- [ ] Explore an optional headed `fetch_url` backend that reuses Shellby's existing managed Chrome/CDP profile when real-browser behavior or authenticated browsing materially improves access to sites that challenge the current headless CloakBrowser path. Keep the experiment small before introducing configuration or shared-browser lifecycle complexity.
-- [ ] Experiment with minimal MCP file-transfer tools in both directions. Add a file-read tool that accepts a local path and returns the raw file through ChatGPT's supported tool file mechanism, verifying that a file on the Shellby host can become a ChatGPT conversation file that the agent can materialize directly into its Python `/mnt/data` environment. Add a file-write tool that accepts a ChatGPT file input plus a local destination path and writes the file onto the Shellby host, verifying that files created in the agent's Python environment can be sent back to the user's machine. Keep both paths free of textual Base64 transfer.
-- [ ] Reconsider backend bundling only if a measured distribution, startup, or artifact-size problem justifies adding another build layer; keep the plain-`tsc` production build while it remains sufficient.
-- [x] Experiment with MCP resources as a deeper Shellby instruction surface. Expose a small set of Markdown guides through `resources/list` / `resources/read` or `prompts/list` / `prompts/read` for topics such as ... The experiment was complete, and chatGPT does not support `modelcontextprotocol/resources` yet.
-- [x] Revisit the `io.modelcontextprotocol/tasks` extension when a supported client makes it useful. Production `/mcp` now serves MCP `2026-07-28` through the v2 `createMcpHandler` entry while retaining the SDK's stateless 2025 compatibility leg. The task probe was complete, and chatGPT does not support `modelcontextprotocol/tasks` yet.
-
-## Related
-
-- [Project Overview](../project-overview.md)
-- [Open Questions and Risks](./open-questions-and-risks.md)
-- [Possible Evals](./possible-evals.md)
-- [Browser ChatGPT Subagents](../subagents/browser-chatgpt-subagents.md)
+[Possible Evals](./possible-evals.md) preserves comparison goals and prior benchmark blockers.

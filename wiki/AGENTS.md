@@ -1,32 +1,13 @@
 # Shellby MCP Wiki
 
-Project knowledge for coding agents. Usage Steps:
+Repository routing for coding agents:
 
 1. Read [Project Overview](./pages/project-overview.md).
-2. Read `index.md`.
-3. Follow only branches relevant to the current task.
-4. Open the smallest useful set of pages.
-5. Verify drift-prone facts against repository evidence.
+2. Read [index.md](./index.md).
+3. Follow relevant branches to the smallest useful page, then its source links.
+4. Verify changeable facts against source. Load related pages only when the task crosses their boundary.
 
-Use `raw/index.md` only when supporting evidence is needed. Raw source bodies are preserved evidence, not maintained synthesis.
-Read `log.md` only when historical context or the reason behind past decisions matters.
-
-Routable pages use:
-
-`<descriptive-filename-slug>.md`:
-
-```md
----
-summary: "Concise description of this page."
-paths:
-  - src/related-files/
-  - src/related-file.ts
----
-
-[content]
-```
-
-For maintenance, read [maintenance.md](maintenance.md).
+Use [raw/index.md](./raw/index.md) for captured evidence and [log.md](./log.md) for historical reasoning. For wiki edits, read [maintenance.md](./maintenance.md).
 
 ## Agent Rules
 

@@ -1,59 +1,39 @@
 ---
-summary: "Subagent completion detection, event delivery, bounded recovery, result settlement, and failure semantics."
+summary: "Completion authority, bounded history recovery, uncertain agents, and restart/event semantics."
 paths:
   - src/tools/delegation/chatgpt-service.ts
   - src/tools/delegation/lifecycle.ts
   - src/tools/delegation/response-observer.ts
-  - src/tools/delegation/subagent-tools.ts
+  - src/tools/delegation/turn-protocol.ts
+  - src/tools/delegation/chatgpt-browser.ts
 ---
 
 # Subagent Completion
 
-## What This Is
+## Normal completion
 
-This page defines how submitted subagent turns complete, recover, settle locally, and interact with durable agent conversation identity.
+[response-observer.ts](../../../src/tools/delegation/response-observer.ts) installs one observation before Send. HTTP conversation SSE and turn WebSocket frames use separate instances of the same [turn tracker](../../../src/tools/delegation/turn-protocol.ts); first valid completion wins. HTTP also has a completed-response-body fallback.
 
-## Completion Authority
+A tracker binds only to the submitted prompt, after NFKC/whitespace normalization. It reconstructs assistant deltas and requires nonempty final text, `finished_successfully`, `end_turn=true`, recipient `all`/empty, and explicit stream completion. Tool-call messages cannot complete a turn.
 
-One authority completes normal turns: structured ChatGPT turn data observed directly through CDP. The observer accepts either `/backend-api/f/conversation` SSE (`Network.streamResourceContent` + `Network.dataReceived`) or `conversation-turn-*` WebSocket frames (`Network.webSocketFrameReceived`); both feed the same exact-prompt tracker.
+After binding, nonempty stream blocks refresh activity even without a new coarse label: SSE heartbeats and safety-review events count. Pre-binding traffic does not. [CDP Transport](./chatgpt-cdp-transport.md) owns acquisition/probe details. DOM text is not completion authority.
 
-The tracker binds only when a candidate stream contains the exact submitted user prompt. It then reconstructs assistant v1 text patches. Completion requires a final assistant message with `status: finished_successfully`, `end_turn: true`, recipient `all`/empty, plus an explicit stream-completion signal. Tool-call assistant messages such as `recipient: web.run` cannot complete the turn.
+## Bounded recovery
 
-The same stream provides `conversation_id`; the runtime uses it to capture or construct the stable conversation URL stored on the owning agent. Any bound turn-stream traffic refreshes the turn's activity timestamp, including HTTP SSE heartbeats and non-message events such as `safety_review_update`. Assistant/tool messages may additionally update the coarse activity label; unlabeled traffic leaves the current label unchanged.
+[lifecycle.ts](../../../src/tools/delegation/lifecycle.ts) schedules recovery after three minutes without activity for saved agents, or the longer idle cutoff for other turns. Page/observer failure enters the same path. Recovery is attempted at most once and requires a saved conversation URL.
 
-There is no DOM completion observer or application-level `stream_status` polling.
+Current [recoverSubmittedTurn](../../../src/tools/delegation/chatgpt-service.ts) sequence:
 
-## Recovery
+1. Dispose old observation. If the existing page still matches the conversation, try a page-context GET to `/backend-api/conversations/<id>`.
+2. If that does not prove completion, create one replacement background page and capture conversation JSON during navigation.
+3. Accept history only when user-turn count matches the recorded count and a final answer follows the submitted prompt. This rejects an older identical prompt. History prompt matching is trimmed equality, stricter than live-stream normalization.
 
-Every submitted turn gets at most one catastrophic recovery attempt. A memory-backed turn with three minutes of no bound observable activity enters recovery; the hard idle limit remains 30 minutes. Regular SSE heartbeats refresh the activity timestamp and keep a healthy long-running turn out of this path even when no assistant/tool message is visible. Observer/page failure follows the same recovery path. Recovery disposes the old observer and opens one fresh background page at the saved conversation URL. The recovery navigation reads ChatGPT's conversation payload once and completes locally only when it contains a final assistant answer after the exact submitted prompt.
+No Send, resubmission, second live observer, or repeated reconciliation loop. Unproven recovery fails locally and marks the agent `uncertain`, blocking reuse with `AGENT_BUSY`; upstream work may still be running. History with extra/inherited user turns may fail the count check. The older singular-endpoint failure in [log.md](../../log.md) is historical evidence, not a description of this current plural-endpoint fallback.
 
-Recovery never clicks Send, resubmits the prompt, or attaches a second turn observer. If that single history read has no matching final answer, or the recovery navigation fails, the turn fails immediately and releases that agent's active operation, but the agent becomes `uncertain` because ChatGPT may still be processing upstream. That `agent_id` rejects later submissions with `AGENT_BUSY`; callers can use another existing agent ID rather than risk overlapping turns in the same conversation.
+## Results and events
 
-This is separate from pre-submit restoration: a closed idle page or mismatched conversation URL is corrected before observation and submission, using the existing managed page when possible and one new background page otherwise.
+Result polling waits only on local settlement; it never contacts ChatGPT. Turn results vanish on MCP restart even when saved conversation mappings survive.
 
-## Detached Result Lifecycle
+Successful settlement queues one `agent_finished` notice for the captured launching identity. Failed turns settle without that success notice. The first event drain per caller also emits `existing_agent` hints from saved mappings. Those hints identify reusable conversations; their `latest_turn_id` does not imply an old result was restored.
 
-`subagent_run` returns after one successful submission. The submitted turn captures the launching caller's shared `AgentIdentity`; the delegation lifecycle settles the turn and queues exactly one `agent_finished agent_id=<agent_id> turn_id=<turn_id>` event for that captured parent. A different ChatGPT conversation cannot drain that notice because event draining uses the current request's `AgentIdentity`. No separate notification-session identifier is carried through the delegation API (`src/agent/context.ts`, `src/mcp/server-factory.ts`, `src/tools/delegation/chatgpt-service.ts`, `src/tools/delegation/lifecycle.ts`).
-
-`subagent_result(wait_ms)` only waits on the turn's local settlement promise. It never contacts ChatGPT, refreshes the browser, or performs reconciliation.
-
-Completed/failed results remain available only in the current MCP process, even after idle cleanup closes the agent's page. `DelegationLifecycle` owns those process-local turn records and hydrates durable agent identity from `<state_dir>/subagents.sqlite`; conversation URL and turn count can survive process restart even though old `turn_id` results cannot. Persistence reads fail closed before a new browser submission if the store becomes unavailable. A post-submit write failure does not retroactively fail the detached turn (`src/tools/delegation/lifecycle.ts`, `src/tools/delegation/store.ts`).
-
-## Invariants
-
-1. Submit each requested turn at most once.
-2. Same `agent_id` remains bound to the same ChatGPT conversation across background-page replacement and, when persistence succeeds, MCP process restart.
-3. Raw CDP turn data is the only normal completion authority.
-4. Bind a stream only to the exact submitted prompt.
-5. Tool-call messages cannot masquerade as final answers.
-6. `subagent_result` reads local state only.
-7. Recovery may navigate and read conversation history once, but never resubmits.
-8. Bound turn-stream traffic counts as activity even when it does not change the coarse activity label; a memory-backed turn gets one recovery attempt after three minutes without such activity, with a 30-minute hard idle limit.
-9. An unreconciled submitted turn leaves its agent `uncertain` and unavailable for reuse.
-10. Existing interaction/inter-turn delays and rate-limit cooldown remain in force.
-
-## Related
-
-- [Browser ChatGPT Subagents](./browser-chatgpt-subagents.md)
-- [ChatGPT CDP Transport](./chatgpt-cdp-transport.md)
-- [`subagent_run` / `subagent_result`](../tools/subagent.md)
+[Registration Boundary](../mcp-tool-registration-boundary.md) appends/drains notices on eligible tool responses. Tests: [protocol/repeated-prompt cases](../../../test/tools/delegation/turn-protocol.test.ts), [restart hints](../../../test/tools/delegation/delegated-agent-limit.test.ts), [lifecycle](../../../test/tools/delegation/chatgpt-service.test.ts). Live compatibility requires [separate validation](../operations/build-and-test.md).

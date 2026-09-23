@@ -29,3 +29,7 @@ The operator clarified that `state_dir` exists so a copied repository can run as
 ## 2026-09-22 — Subagent failures preserve the caller abstraction
 
 A real `BROWSER_UNAVAILABLE` response caused the calling agent to rewrite the delegated prompt around Chrome even though the prompt was unrelated to the infrastructure failure. Caller-facing subagent errors now hide browser, authentication, and UI implementation details and return recovery guidance at the subagent-service level. Keep backend-specific diagnostics internal so callers respond to delegation availability instead of attempting to repair the hidden transport through prompt changes.
+
+## 2026-09-23 — Freshness fingerprints require correct knowledge ownership
+
+A full wiki audit found stale shell limits on a page still marked current: its paths omitted the configuration/scheduler owners. Copied limits and repeated subsystem summaries amplified drift. Keep changeable values in source, give durable semantics one owning page, and use fingerprints as review prompts rather than correctness certificates. Preserve historical probes as dated evidence; they cannot establish current private-client behavior.
