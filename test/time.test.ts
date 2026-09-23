@@ -1,8 +1,9 @@
 import assert from "node:assert/strict"
 import test from "node:test"
-import { formatLogTime } from "../src/time.js"
+import { getTimeStamp } from "../src/time.js"
 
-test("formats Pacific time across midnight, noon, and daylight-saving transitions", () => {
+test("formats Pacific time across midnight, noon, and daylight-saving transitions", (t) => {
+  t.mock.timers.enable({ apis: ["Date"] })
   const cases = [
     ["2026-01-01T07:59:00Z", "Dec 31 11:59 PM"],
     ["2026-01-01T08:00:00Z", "Jan 1 12:00 AM"],
@@ -14,6 +15,7 @@ test("formats Pacific time across midnight, noon, and daylight-saving transition
     ["2026-11-01T09:00:00Z", "Nov 1 1:00 AM"],
   ] as const
   for (const [instant, expected] of cases) {
-    assert.equal(formatLogTime(new Date(instant)), expected, instant)
+    t.mock.timers.setTime(new Date(instant).getTime())
+    assert.equal(getTimeStamp(), expected, instant)
   }
 })

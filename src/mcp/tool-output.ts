@@ -1,3 +1,5 @@
+import { isRecord } from "../utils.js"
+
 const SHORT_STRING_MAX = 120
 const MAX_INLINE_LINE = 240
 const BARE_STRING_PATTERN = /^[A-Za-z0-9_./:@%+,-]+$/u
@@ -256,8 +258,4 @@ function minifiedJson(value: unknown): string {
   } catch {
     return String(value)
   }
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value)
 }

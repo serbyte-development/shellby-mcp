@@ -13,6 +13,7 @@ import type { McpAuditRequest } from "../server/audit/audit-log.js"
 import type { ReviewPromptTracker } from "../tools/review/review-tool.js"
 import { shellRunFileEditNotices } from "../tools/shell/apply-patch-guidance.js"
 import { START_HERE_TOOL_NAME } from "../tools/start-here/start-here.js"
+import { isRecord } from "../utils.js"
 import { appendToolEvents, compactToolResult } from "./tool-output.js"
 import { prepareToolRegistration } from "./tool-schema-presentation.js"
 
@@ -168,8 +169,4 @@ function startupRequiredResult() {
       },
     ],
   }
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value)
 }

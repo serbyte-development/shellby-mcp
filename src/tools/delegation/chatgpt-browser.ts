@@ -1,6 +1,7 @@
 import process from "node:process"
 import type { Browser, BrowserContext, Locator, Page } from "playwright-core"
 import { ChatGptDelegationError } from "./contracts.js"
+import { delay } from "./delay.js"
 
 const BACKGROUND_PAGE_BIND_TIMEOUT_MS = 5_000
 const CHATGPT_OPERATION_TIMEOUT_MS = 120_000
@@ -35,7 +36,7 @@ export async function createBackgroundPage(
         if (knownPages.has(page) || page.isClosed()) continue
         if ((await pageTargetId(context, page)) === targetId) return page
       }
-      await delay(25)
+      await delay(100)
     }
     throw new ChatGptDelegationError(
       "BROWSER_UNAVAILABLE",
@@ -253,24 +254,6 @@ export async function waitForPromise<T>(promise: Promise<T>, signal?: AbortSigna
       )
     signal.addEventListener("abort", onAbort, { once: true })
     promise.then(resolve, reject).finally(() => signal.removeEventListener("abort", onAbort))
-  })
-}
-
-export function delay(ms: number, signal?: AbortSignal): Promise<void> {
-  if (!signal) return new Promise((resolve) => setTimeout(resolve, ms))
-  throwIfAborted(signal)
-  return new Promise((resolve, reject) => {
-    const timer = setTimeout(() => {
-      signal.removeEventListener("abort", onAbort)
-      resolve()
-    }, ms)
-    const onAbort = () => {
-      clearTimeout(timer)
-      reject(
-        new ChatGptDelegationError("REQUEST_ABORTED", "The ChatGPT subagent request was cancelled.")
-      )
-    }
-    signal.addEventListener("abort", onAbort, { once: true })
   })
 }
 

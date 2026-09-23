@@ -1,3 +1,5 @@
+import { isRecord } from "../utils.js"
+
 const SCHEMA_KEY_ORDER = [
   "description",
   "type",
@@ -198,8 +200,4 @@ function isStandardSchemaJsonSource(value: unknown): value is StandardSchemaJson
   return (
     typeof value.jsonSchema.input === "function" && typeof value.jsonSchema.output === "function"
   )
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value)
 }

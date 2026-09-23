@@ -1,7 +1,7 @@
 import { appendFileSync, chmodSync, existsSync } from "node:fs"
 
 import { getAgentIdentity } from "../../agent/context.js"
-import { formatLogTime } from "../../time.js"
+import { getTimeStamp } from "../../time.js"
 import { countTokens } from "../../tokenizer.js"
 import { errorMessage, formatAuditEntry, summarizeToolResult } from "./audit-format.js"
 import { createAuditRequest, type McpAuditCall, type McpAuditRequest } from "./audit-request.js"
@@ -11,7 +11,6 @@ export type { McpAuditRequest } from "./audit-request.js"
 export class McpAuditLogger {
   constructor(
     private readonly filePath: string,
-    private readonly now: () => Date = () => new Date(),
     private readonly clock: () => number = () => Date.now()
   ) {
     try {
@@ -36,7 +35,7 @@ export class McpAuditLogger {
       agentLabel = identity.taskSlug ? `${identity.agent}/${identity.taskSlug}` : identity.agent
     }
     const startedAt = this.clock()
-    const startedTime = this.now()
+    const timestamp = getTimeStamp()
     const inputTokens = countTokens(JSON.stringify(argumentsValue ?? {}))
     let finished = false
 
@@ -58,7 +57,7 @@ export class McpAuditLogger {
 
         this.append(
           formatAuditEntry({
-            time: startedTime,
+            timestamp,
             toolName,
             argumentsValue,
             durationMs: Math.max(0, this.clock() - startedAt),
@@ -80,7 +79,7 @@ export class McpAuditLogger {
   }
 
   private appendToolList(): void {
-    this.append(`--- # tools/list - ${formatLogTime(this.now())}\n`)
+    this.append(`--- # tools/list - ${getTimeStamp()}\n`)
   }
 
   private append(entry: string): void {

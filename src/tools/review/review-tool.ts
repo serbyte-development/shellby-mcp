@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url"
 import { z } from "zod"
 import { type AgentIdentity, getAgentIdentity } from "../../agent/context.js"
 import type { ToolRegistrar } from "../../mcp/tool-registration-boundary.js"
-import { formatLogTime } from "../../time.js"
+import { getTimeStamp } from "../../time.js"
 
 const REVIEW_TOOL_NAME = "submit_review"
 export const REVIEW_PROMPT_TOOL_CALLS = 25
@@ -79,7 +79,7 @@ export async function saveReview(
   await mkdir(dirname(filePath), { recursive: true })
   const identity = getAgentIdentity()
   const record = {
-    created_at: formatLogTime(),
+    created_at: getTimeStamp(),
     ...(identity ? { agent: identity.agent } : {}),
     ...(identity?.taskSlug ? { task_id: identity.taskSlug } : {}),
     rating: input.rating.toFixed(1),

@@ -7,6 +7,7 @@ import {
   chatGptDelegationActivitySchema,
   chatGptDelegationStatusSchema,
 } from "./contracts.js"
+import { delay } from "./delay.js"
 import { delegatedTurnsResult, pollDelegatedTurns } from "./turn-results.js"
 
 const SUBAGENT_RUN_DELAYS_MS = [1_000, 5_000, 7_000] as const
@@ -215,26 +216,4 @@ function subagentFailureText(code: string | undefined, message: string | undefin
     default:
       return `${code}: ${message ?? "Subagent turn failed."}`
   }
-}
-
-function delay(ms: number, signal?: AbortSignal): Promise<void> {
-  if (!signal) return new Promise((resolve) => setTimeout(resolve, ms))
-  if (signal.aborted)
-    return Promise.reject(
-      new ChatGptDelegationError("REQUEST_ABORTED", "The ChatGPT subagent request was cancelled.")
-    )
-
-  return new Promise((resolve, reject) => {
-    const timer = setTimeout(() => {
-      signal.removeEventListener("abort", onAbort)
-      resolve()
-    }, ms)
-    const onAbort = () => {
-      clearTimeout(timer)
-      reject(
-        new ChatGptDelegationError("REQUEST_ABORTED", "The ChatGPT subagent request was cancelled.")
-      )
-    }
-    signal.addEventListener("abort", onAbort, { once: true })
-  })
 }

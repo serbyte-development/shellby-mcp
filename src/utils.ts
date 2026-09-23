@@ -1,3 +1,11 @@
+import { isAbsolute, resolve } from "node:path"
+import { MCP_CONFIG } from "./config.js"
+
+/** Preserve absolute paths; resolve relative paths from the configured workspace. */
+export function resolveWorkspacePath(path: string): string {
+  return isAbsolute(path) ? path : resolve(MCP_CONFIG.workspace, path)
+}
+
 export function positiveInteger(value: number | undefined, fallback: number): number {
   if (value === undefined) return fallback
   if (!Number.isSafeInteger(value) || value <= 0) {

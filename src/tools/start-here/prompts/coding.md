@@ -38,8 +38,3 @@ Do not run `git status`, `git diff --stat`, or similar final-state inspection co
 3. Do not design for hypothetical future requirements or scale that hasn't been requested.
 4. Do not add defensive programming, fallbacks, error handling, or input validation for scenarios that cannot happen. Trust framework guarantees and internal code. Only validate at system boundaries (direct user input or external APIs).
 5. Do not change production architecture solely to make tests easier, tests should adapt to the architecture.
-
-# Modularity Thinking
-
-- For very large problems or subsystems, break the codebase into smaller, independently understandable parts with clear responsibilities and minimal coupling.
-- As a reasoning technique, consider whether a subsystem could conceptually stand on its own like a separate npm package, Rust crate, Python package, or similar module, this helps push complexity down to the smallest possible units.

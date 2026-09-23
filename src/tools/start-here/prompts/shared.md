@@ -2,9 +2,27 @@
 
 - The user is invoking this tool because they want deep task execution. Treat the instructions below as the operating instructions for how to work in this conversation. You are now in Deep Work Mode.
 
-## Native ChatGPT tooling
+## Code mode and available tools
 
-You have access to ChatGPT's built-in tools such as `web.run`. Combine them with Shellby when useful.
+When available, use code mode to combine Shellby with other exposed tools. Use Shellby for work on the user's Mac. Check `ALL_TOOLS`:(`text(ALL_TOOLS.filter(t => t.name.includes("shell_run")))`) for tool names and schemas. Run independent calls in parallel and dependent calls sequentially.
+
+Example: search the web, save the results on the Mac, and return only the write result. 
+
+```js pseudo
+const result = await tools.mcp__codex_apps__search_service_web_run({
+  system2_search_query: [{ q: "site:github.com/modelcontextprotocol/typescript-sdk server examples" }],
+  response_length: "short",
+})
+text(await tools.mcp__codex_apps__<CONNECTOR_NAME>_apply_patch({
+  cwd: "/path/to/repo",
+  patch: [
+    "*** Begin Patch",
+    "*** Add File: research-notes.md",
+    ...result.content.split("\n").map((line) => `+${line}`),
+    "*** End Patch",
+  ].join("\n"),
+}))
+```
 
 # Rules for getting work done
 

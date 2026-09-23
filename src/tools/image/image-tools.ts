@@ -1,8 +1,8 @@
 import { readFile } from "node:fs/promises"
-import { basename, isAbsolute, resolve } from "node:path"
+import { basename } from "node:path"
 import { z } from "zod"
-import { MCP_CONFIG } from "../../config.js"
 import type { ToolRegistrar } from "../../mcp/tool-registration-boundary.js"
+import { resolveWorkspacePath } from "../../utils.js"
 import { encodeImageForMcp, formatBytes, ImageEncodingError } from "./image-encoding.js"
 
 export function registerImageTools(registerTool: ToolRegistrar): void {
@@ -25,7 +25,7 @@ export function registerImageTools(registerTool: ToolRegistrar): void {
       },
     },
     async ({ path }, ctx) => {
-      const imagePath = isAbsolute(path) ? path : resolve(MCP_CONFIG.workspace, path)
+      const imagePath = resolveWorkspacePath(path)
       try {
         const encoded = await encodeImageForMcp(
           await readFile(imagePath, { signal: ctx.mcpReq.signal })

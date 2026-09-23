@@ -13,11 +13,8 @@ test("writes one compact YAML document for a shell command", async (t) => {
 
   const timestamp = new Date("2026-08-07T20:58:30-07:00")
   let clock = 1_000
-  const logger = new McpAuditLogger(
-    file,
-    () => timestamp,
-    () => clock
-  )
+  t.mock.timers.enable({ apis: ["Date"], now: timestamp })
+  const logger = new McpAuditLogger(file, () => clock)
   const [call] = claimAuditToolCalls(logger, {
     jsonrpc: "2.0",
     id: 1,
@@ -52,11 +49,8 @@ test("writes one compact YAML document for a shell command", async (t) => {
 test("logs shell output token count", async (t) => {
   const file = await auditFile(t)
 
-  const logger = new McpAuditLogger(
-    file,
-    () => new Date("2026-08-13T19:13:46-07:00"),
-    () => 1_380
-  )
+  t.mock.timers.enable({ apis: ["Date"], now: new Date("2026-08-13T19:13:46-07:00") })
+  const logger = new McpAuditLogger(file, () => 1_380)
   const [call] = claimAuditToolCalls(logger, {
     method: "tools/call",
     params: {
@@ -86,11 +80,8 @@ test("logs shell output token count", async (t) => {
 
 test("does not persist file download URLs or tokenize embedded file blobs", async (t) => {
   const file = await auditFile(t)
-  const logger = new McpAuditLogger(
-    file,
-    () => new Date("2026-09-22T20:00:00-07:00"),
-    () => 0
-  )
+  t.mock.timers.enable({ apis: ["Date"], now: new Date("2026-09-22T20:00:00-07:00") })
+  const logger = new McpAuditLogger(file, () => 0)
 
   const [writeCall] = claimAuditToolCalls(logger, {
     method: "tools/call",
@@ -140,11 +131,8 @@ test("does not persist file download URLs or tokenize embedded file blobs", asyn
 
 test("puts audit heading before entry details with time last", async (t) => {
   const file = await auditFile(t)
-  const logger = new McpAuditLogger(
-    file,
-    () => new Date("2026-08-18T18:25:00-07:00"),
-    () => 0
-  )
+  t.mock.timers.enable({ apis: ["Date"], now: new Date("2026-08-18T18:25:00-07:00") })
+  const logger = new McpAuditLogger(file, () => 0)
   const [call] = claimAuditToolCalls(logger, {
     method: "tools/call",
     params: { name: "shell_list", arguments: {} },
@@ -160,11 +148,8 @@ test("puts audit heading before entry details with time last", async (t) => {
 
 test("aliases audit sessions in first-seen order without logging raw ids", async (t) => {
   const file = await auditFile(t)
-  const logger = new McpAuditLogger(
-    file,
-    () => new Date("2026-08-18T18:30:00-07:00"),
-    () => 0
-  )
+  t.mock.timers.enable({ apis: ["Date"], now: new Date("2026-08-18T18:30:00-07:00") })
+  const logger = new McpAuditLogger(file, () => 0)
   const request = { method: "tools/call", params: { name: "shell_list", arguments: {} } }
 
   const firstContext = runWithAgent("raw-session-a", () => ({
@@ -191,11 +176,8 @@ test("aliases audit sessions in first-seen order without logging raw ids", async
 
 test("adds the successful start_here task slug to later audit session aliases", async (t) => {
   const file = await auditFile(t)
-  const logger = new McpAuditLogger(
-    file,
-    () => new Date("2026-09-01T18:00:00-07:00"),
-    () => 0
-  )
+  t.mock.timers.enable({ apis: ["Date"], now: new Date("2026-09-01T18:00:00-07:00") })
+  const logger = new McpAuditLogger(file, () => 0)
   const agent = runWithAgent("raw-session-task-slug", () => {
     const identity = getAgentIdentity()!
     const [startHere] = claimAuditToolCalls(logger, {
@@ -239,11 +221,8 @@ test("adds the successful start_here task slug to later audit session aliases", 
 
 test("keeps shell-specific yield and output arguments in the tool body", async (t) => {
   const file = await auditFile(t)
-  const logger = new McpAuditLogger(
-    file,
-    () => new Date("2026-08-14T08:11:00-07:00"),
-    () => 0
-  )
+  t.mock.timers.enable({ apis: ["Date"], now: new Date("2026-08-14T08:11:00-07:00") })
+  const logger = new McpAuditLogger(file, () => 0)
   const [call] = claimAuditToolCalls(logger, {
     method: "tools/call",
     params: {
@@ -293,11 +272,8 @@ test("keeps shell-specific yield and output arguments in the tool body", async (
 test("audits batched tool calls independently", async (t) => {
   const file = await auditFile(t)
 
-  const logger = new McpAuditLogger(
-    file,
-    () => new Date("2026-08-14T00:30:00-07:00"),
-    () => 1_000
-  )
+  t.mock.timers.enable({ apis: ["Date"], now: new Date("2026-08-14T00:30:00-07:00") })
+  const logger = new McpAuditLogger(file, () => 1_000)
   const calls = claimAuditToolCalls(logger, [
     {
       jsonrpc: "2.0",
@@ -338,11 +314,8 @@ test("audits batched tool calls independently", async (t) => {
 
 test("correlates same-name batched calls by MCP request id", async (t) => {
   const file = await auditFile(t)
-  const logger = new McpAuditLogger(
-    file,
-    () => new Date("2026-08-14T00:30:00-07:00"),
-    () => 1_000
-  )
+  t.mock.timers.enable({ apis: ["Date"], now: new Date("2026-08-14T00:30:00-07:00") })
+  const logger = new McpAuditLogger(file, () => 1_000)
   const auditRequest = logger.startRequest([
     {
       jsonrpc: "2.0",
@@ -395,11 +368,8 @@ test("logs apply_patch bodies only when the tool fails", async (t) => {
 
   const timestamp = new Date("2026-08-07T21:12:03-07:00")
   let clock = 2_000
-  const logger = new McpAuditLogger(
-    file,
-    () => timestamp,
-    () => clock
-  )
+  t.mock.timers.enable({ apis: ["Date"], now: timestamp })
+  const logger = new McpAuditLogger(file, () => clock)
   const patch = "*** Begin Patch\n*** Update File: src/a.ts\n@@\n-old\n+new\n*** End Patch"
   const [call] = claimAuditToolCalls(logger, {
     jsonrpc: "2.0",
@@ -460,11 +430,8 @@ test("logs apply_patch bodies only when the tool fails", async (t) => {
 test("logs shell tool errors with their MCP failure reason", async (t) => {
   const file = await auditFile(t)
 
-  const logger = new McpAuditLogger(
-    file,
-    () => new Date("2026-08-11T22:50:00-07:00"),
-    () => 100
-  )
+  t.mock.timers.enable({ apis: ["Date"], now: new Date("2026-08-11T22:50:00-07:00") })
+  const logger = new McpAuditLogger(file, () => 100)
   const [poll] = claimAuditToolCalls(logger, {
     method: "tools/call",
     params: {
@@ -554,11 +521,8 @@ test("logs shell tool errors with their MCP failure reason", async (t) => {
 test("caps large ordinary tool arguments", async (t) => {
   const file = await auditFile(t)
 
-  const logger = new McpAuditLogger(
-    file,
-    () => new Date("2026-08-07T22:00:00-07:00"),
-    () => 0
-  )
+  t.mock.timers.enable({ apis: ["Date"], now: new Date("2026-08-07T22:00:00-07:00") })
+  const logger = new McpAuditLogger(file, () => 0)
   const [call] = claimAuditToolCalls(logger, {
     method: "tools/call",
     params: { name: "skill_use", arguments: { name: "x".repeat(2_000) } },
@@ -576,11 +540,8 @@ test("uses Better Comments tags for slow and failed calls", async (t) => {
   const file = await auditFile(t)
 
   let clock = 0
-  const logger = new McpAuditLogger(
-    file,
-    () => new Date("2026-08-07T22:30:00-07:00"),
-    () => clock
-  )
+  t.mock.timers.enable({ apis: ["Date"], now: new Date("2026-08-07T22:30:00-07:00") })
+  const logger = new McpAuditLogger(file, () => clock)
   const request = { method: "tools/call", params: { name: "shell_list", arguments: {} } }
 
   const [normal] = claimAuditToolCalls(logger, request)
@@ -609,7 +570,8 @@ test("records tools/list as one timestamped line and ignores other non-tool MCP 
   const file = await auditFile(t)
 
   const timestamp = new Date("2026-08-07T22:30:00-07:00")
-  const logger = new McpAuditLogger(file, () => timestamp)
+  t.mock.timers.enable({ apis: ["Date"], now: timestamp })
+  const logger = new McpAuditLogger(file)
   logger.startRequest({ jsonrpc: "2.0", id: 1, method: "tools/list" })
   logger.startRequest({ jsonrpc: "2.0", id: 2, method: "initialize" })
   assert.equal(await readFile(file, "utf8"), "--- # tools/list - Aug 7 10:30 PM\n")
@@ -617,11 +579,8 @@ test("records tools/list as one timestamped line and ignores other non-tool MCP 
 
 test("logs tool calls that never reach a handler without adding a generic error notice", async (t) => {
   const file = await auditFile(t)
-  const logger = new McpAuditLogger(
-    file,
-    () => new Date("2026-08-28T21:00:00-07:00"),
-    () => 0
-  )
+  t.mock.timers.enable({ apis: ["Date"], now: new Date("2026-08-28T21:00:00-07:00") })
+  const logger = new McpAuditLogger(file, () => 0)
   const request = runWithAgent("validation-session", () =>
     logger.startRequest({
       method: "tools/call",
@@ -639,11 +598,8 @@ test("logs tool calls that never reach a handler without adding a generic error 
 
 test("logs compact computer metadata without retaining screenshot or inspection contents", async (t) => {
   const file = await auditFile(t)
-  const logger = new McpAuditLogger(
-    file,
-    () => new Date("2026-08-26T23:00:00-07:00"),
-    () => 0
-  )
+  t.mock.timers.enable({ apis: ["Date"], now: new Date("2026-08-26T23:00:00-07:00") })
+  const logger = new McpAuditLogger(file, () => 0)
   const [call] = claimAuditToolCalls(logger, {
     method: "tools/call",
     params: { name: "computer_observe", arguments: { window_id: 42, annotate: false } },
@@ -676,11 +632,8 @@ test("logs compact computer metadata without retaining screenshot or inspection 
 
 test("counts large model-facing results without an audit byte cap", async (t) => {
   const file = await auditFile(t)
-  const logger = new McpAuditLogger(
-    file,
-    () => new Date("2026-08-26T23:05:00-07:00"),
-    () => 0
-  )
+  t.mock.timers.enable({ apis: ["Date"], now: new Date("2026-08-26T23:05:00-07:00") })
+  const logger = new McpAuditLogger(file, () => 0)
   const [call] = claimAuditToolCalls(logger, {
     method: "tools/call",
     params: { name: "computer_observe", arguments: {} },

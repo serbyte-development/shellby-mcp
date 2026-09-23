@@ -1,4 +1,3 @@
-import { formatLogTime } from "../../time.js"
 import { asRecord } from "../../utils.js"
 
 const MAX_INLINE_ARGUMENT_CHARS = 600
@@ -15,7 +14,7 @@ export interface ToolResponseSummary {
 }
 
 export function formatAuditEntry(input: {
-  time: Date
+  timestamp: string
   toolName: string
   argumentsValue: unknown
   durationMs: number
@@ -35,7 +34,7 @@ export function formatAuditEntry(input: {
   const tokenCounts = ` - ${input.inputTokens} in${input.outputTokens !== undefined ? ` / ${input.outputTokens} out` : ""}`
   const tag = auditTag(input)
   const tagPrefix = tag ? `${tag} ` : ""
-  const heading = `--- # ${tagPrefix}${input.toolName} - ${input.durationMs}ms${tokenCounts}${abnormal} - ${formatLogTime(input.time)}`
+  const heading = `--- # ${tagPrefix}${input.toolName} - ${input.durationMs}ms${tokenCounts}${abnormal} - ${input.timestamp}`
   const details = [
     formatAgentLabel(input.agentLabel),
     formatArguments(input.toolName, input.argumentsValue, input.toolFailed, input.failureMessage),

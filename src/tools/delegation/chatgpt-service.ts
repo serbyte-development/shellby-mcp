@@ -6,7 +6,6 @@ import { log } from "../../logging.js"
 import {
   assertAuthenticated,
   createBackgroundPage,
-  delay,
   dismissBlockingChatGptOverlay,
   enterPrompt,
   extractConversationId,
@@ -28,6 +27,7 @@ import {
   type ChatGptDelegationService,
   type ChatGptSubagentRequest,
 } from "./contracts.js"
+import { delay } from "./delay.js"
 import {
   type ActiveAgentOperation,
   type BrowserAgentState,

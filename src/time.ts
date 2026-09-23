@@ -8,9 +8,9 @@ const logTimeFormatter = new Intl.DateTimeFormat("en-US", {
 })
 
 /** Shared Pacific timestamp for audit entries, reviews, and runtime logs. */
-export function formatLogTime(date: Date = new Date()): string {
+export function getTimeStamp(): string {
   const parts = Object.fromEntries(
-    logTimeFormatter.formatToParts(date).map(({ type, value }) => [type, value])
+    logTimeFormatter.formatToParts(new Date()).map(({ type, value }) => [type, value])
   )
   return `${parts.month} ${parts.day} ${parts.hour}:${parts.minute} ${parts.dayPeriod}`
 }

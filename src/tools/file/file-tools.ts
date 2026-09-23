@@ -1,9 +1,9 @@
 import { readFile, writeFile } from "node:fs/promises"
-import { basename, isAbsolute, resolve } from "node:path"
+import { basename } from "node:path"
 import { pathToFileURL } from "node:url"
 import { z } from "zod"
-import { MCP_CONFIG } from "../../config.js"
 import type { ToolRegistrar } from "../../mcp/tool-registration-boundary.js"
+import { resolveWorkspacePath } from "../../utils.js"
 
 const openAiFileSchema = z.object({
   download_url: z.url(),
@@ -32,7 +32,7 @@ export function registerFileReadTool(registerTool: ToolRegistrar): void {
       },
     },
     async ({ path }, ctx) => {
-      const filePath = resolveLocalPath(path)
+      const filePath = resolveWorkspacePath(path)
       try {
         const data = await readFile(filePath, { signal: ctx.mcpReq.signal })
         return {
@@ -77,7 +77,7 @@ export function registerFileWriteTool(registerTool: ToolRegistrar): void {
       },
     },
     async ({ file, path }, ctx) => {
-      const filePath = resolveLocalPath(path)
+      const filePath = resolveWorkspacePath(path)
       try {
         const response = await fetch(file.download_url, { signal: ctx.mcpReq.signal })
         if (!response.ok) throw new Error(`Download failed with HTTP ${response.status}.`)
@@ -96,10 +96,6 @@ export function registerFileWriteTool(registerTool: ToolRegistrar): void {
       }
     }
   )
-}
-
-function resolveLocalPath(path: string): string {
-  return isAbsolute(path) ? path : resolve(MCP_CONFIG.workspace, path)
 }
 
 function toolError(code: string, error: unknown) {
