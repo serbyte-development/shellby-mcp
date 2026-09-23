@@ -11,7 +11,7 @@ import { tempDir } from "../helpers/temp.js"
 test("writes one compact YAML document for a shell command", async (t) => {
   const file = await auditFile(t)
 
-  const timestamp = new Date(2026, 7, 7, 20, 58, 30)
+  const timestamp = new Date("2026-08-07T20:58:30-07:00")
   let clock = 1_000
   const logger = new McpAuditLogger(
     file,
@@ -54,7 +54,7 @@ test("logs shell output token count", async (t) => {
 
   const logger = new McpAuditLogger(
     file,
-    () => new Date(2026, 7, 13, 19, 13, 46),
+    () => new Date("2026-08-13T19:13:46-07:00"),
     () => 1_380
   )
   const [call] = claimAuditToolCalls(logger, {
@@ -88,7 +88,7 @@ test("does not persist file download URLs or tokenize embedded file blobs", asyn
   const file = await auditFile(t)
   const logger = new McpAuditLogger(
     file,
-    () => new Date(2026, 8, 22, 20, 0, 0),
+    () => new Date("2026-09-22T20:00:00-07:00"),
     () => 0
   )
 
@@ -142,7 +142,7 @@ test("puts audit heading before entry details with time last", async (t) => {
   const file = await auditFile(t)
   const logger = new McpAuditLogger(
     file,
-    () => new Date(2026, 7, 18, 18, 25, 0),
+    () => new Date("2026-08-18T18:25:00-07:00"),
     () => 0
   )
   const [call] = claimAuditToolCalls(logger, {
@@ -162,7 +162,7 @@ test("aliases audit sessions in first-seen order without logging raw ids", async
   const file = await auditFile(t)
   const logger = new McpAuditLogger(
     file,
-    () => new Date(2026, 7, 18, 18, 30, 0),
+    () => new Date("2026-08-18T18:30:00-07:00"),
     () => 0
   )
   const request = { method: "tools/call", params: { name: "shell_list", arguments: {} } }
@@ -193,7 +193,7 @@ test("adds the successful start_here task slug to later audit session aliases", 
   const file = await auditFile(t)
   const logger = new McpAuditLogger(
     file,
-    () => new Date(2026, 8, 1, 18, 0, 0),
+    () => new Date("2026-09-01T18:00:00-07:00"),
     () => 0
   )
   const agent = runWithAgent("raw-session-task-slug", () => {
@@ -241,7 +241,7 @@ test("keeps shell-specific yield and output arguments in the tool body", async (
   const file = await auditFile(t)
   const logger = new McpAuditLogger(
     file,
-    () => new Date(2026, 7, 14, 8, 11, 0),
+    () => new Date("2026-08-14T08:11:00-07:00"),
     () => 0
   )
   const [call] = claimAuditToolCalls(logger, {
@@ -295,7 +295,7 @@ test("audits batched tool calls independently", async (t) => {
 
   const logger = new McpAuditLogger(
     file,
-    () => new Date(2026, 7, 14, 0, 30, 0),
+    () => new Date("2026-08-14T00:30:00-07:00"),
     () => 1_000
   )
   const calls = claimAuditToolCalls(logger, [
@@ -340,7 +340,7 @@ test("correlates same-name batched calls by MCP request id", async (t) => {
   const file = await auditFile(t)
   const logger = new McpAuditLogger(
     file,
-    () => new Date(2026, 7, 14, 0, 30, 0),
+    () => new Date("2026-08-14T00:30:00-07:00"),
     () => 1_000
   )
   const auditRequest = logger.startRequest([
@@ -393,7 +393,7 @@ test("creates and repairs audit logs with owner-only permissions", async (t) => 
 test("logs apply_patch bodies only when the tool fails", async (t) => {
   const file = await auditFile(t)
 
-  const timestamp = new Date(2026, 7, 7, 21, 12, 3)
+  const timestamp = new Date("2026-08-07T21:12:03-07:00")
   let clock = 2_000
   const logger = new McpAuditLogger(
     file,
@@ -462,7 +462,7 @@ test("logs shell tool errors with their MCP failure reason", async (t) => {
 
   const logger = new McpAuditLogger(
     file,
-    () => new Date(2026, 7, 11, 22, 50, 0),
+    () => new Date("2026-08-11T22:50:00-07:00"),
     () => 100
   )
   const [poll] = claimAuditToolCalls(logger, {
@@ -556,7 +556,7 @@ test("caps large ordinary tool arguments", async (t) => {
 
   const logger = new McpAuditLogger(
     file,
-    () => new Date(2026, 7, 7, 22, 0, 0),
+    () => new Date("2026-08-07T22:00:00-07:00"),
     () => 0
   )
   const [call] = claimAuditToolCalls(logger, {
@@ -578,7 +578,7 @@ test("uses Better Comments tags for slow and failed calls", async (t) => {
   let clock = 0
   const logger = new McpAuditLogger(
     file,
-    () => new Date(2026, 7, 7, 22, 30, 0),
+    () => new Date("2026-08-07T22:30:00-07:00"),
     () => clock
   )
   const request = { method: "tools/call", params: { name: "shell_list", arguments: {} } }
@@ -608,7 +608,7 @@ test("uses Better Comments tags for slow and failed calls", async (t) => {
 test("records tools/list as one timestamped line and ignores other non-tool MCP requests", async (t) => {
   const file = await auditFile(t)
 
-  const timestamp = new Date(2026, 7, 7, 22, 30, 0)
+  const timestamp = new Date("2026-08-07T22:30:00-07:00")
   const logger = new McpAuditLogger(file, () => timestamp)
   logger.startRequest({ jsonrpc: "2.0", id: 1, method: "tools/list" })
   logger.startRequest({ jsonrpc: "2.0", id: 2, method: "initialize" })
@@ -619,7 +619,7 @@ test("logs tool calls that never reach a handler without adding a generic error 
   const file = await auditFile(t)
   const logger = new McpAuditLogger(
     file,
-    () => new Date(2026, 7, 28, 21, 0, 0),
+    () => new Date("2026-08-28T21:00:00-07:00"),
     () => 0
   )
   const request = runWithAgent("validation-session", () =>
@@ -641,7 +641,7 @@ test("logs compact computer metadata without retaining screenshot or inspection 
   const file = await auditFile(t)
   const logger = new McpAuditLogger(
     file,
-    () => new Date(2026, 7, 26, 23, 0, 0),
+    () => new Date("2026-08-26T23:00:00-07:00"),
     () => 0
   )
   const [call] = claimAuditToolCalls(logger, {
@@ -678,7 +678,7 @@ test("counts large model-facing results without an audit byte cap", async (t) =>
   const file = await auditFile(t)
   const logger = new McpAuditLogger(
     file,
-    () => new Date(2026, 7, 26, 23, 5, 0),
+    () => new Date("2026-08-26T23:05:00-07:00"),
     () => 0
   )
   const [call] = claimAuditToolCalls(logger, {

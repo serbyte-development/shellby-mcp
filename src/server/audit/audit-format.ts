@@ -1,3 +1,4 @@
+import { formatLogTime } from "../../time.js"
 import { asRecord } from "../../utils.js"
 
 const MAX_INLINE_ARGUMENT_CHARS = 600
@@ -34,7 +35,7 @@ export function formatAuditEntry(input: {
   const tokenCounts = ` - ${input.inputTokens} in${input.outputTokens !== undefined ? ` / ${input.outputTokens} out` : ""}`
   const tag = auditTag(input)
   const tagPrefix = tag ? `${tag} ` : ""
-  const heading = `--- # ${tagPrefix}${input.toolName} - ${input.durationMs}ms${tokenCounts}${abnormal} - ${formatAuditTime(input.time)}`
+  const heading = `--- # ${tagPrefix}${input.toolName} - ${input.durationMs}ms${tokenCounts}${abnormal} - ${formatLogTime(input.time)}`
   const details = [
     formatAgentLabel(input.agentLabel),
     formatArguments(input.toolName, input.argumentsValue, input.toolFailed, input.failureMessage),
@@ -77,13 +78,6 @@ export function summarizeToolResult(
     if (message) return { failed: true, failureMessage: message, modelOutput, structuredContent }
   }
   return { failed: true, modelOutput, structuredContent }
-}
-
-export function formatAuditTime(date: Date): string {
-  const hours = date.getHours()
-  const hour = hours % 12 || 12
-  const meridiem = hours < 12 ? "AM" : "PM"
-  return `${MONTH_NAMES[date.getMonth()]} ${date.getDate()} ${hour}:${twoDigits(date.getMinutes())} ${meridiem}`
 }
 
 function characterCount(value: string): number {
@@ -328,22 +322,3 @@ function truncate(value: string, maxChars: number): string {
   const omitted = characters.length - maxChars
   return `${characters.slice(0, maxChars).join("")}… [${omitted} chars omitted]`
 }
-
-function twoDigits(value: number): string {
-  return String(value).padStart(2, "0")
-}
-
-const MONTH_NAMES = [
-  "Jan",
-  "Feb",
-  "Mar",
-  "Apr",
-  "May",
-  "Jun",
-  "Jul",
-  "Aug",
-  "Sep",
-  "Oct",
-  "Nov",
-  "Dec",
-] as const

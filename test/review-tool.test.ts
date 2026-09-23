@@ -8,6 +8,7 @@ import { getAgentIdentity, runWithAgent, setAgentTaskSlug } from "../src/agent/c
 import { saveReview } from "../src/tools/review/review-tool.js"
 
 test("saves Shellby reviews with the agent audit alias and task slug", async (t) => {
+  t.mock.timers.enable({ apis: ["Date"], now: new Date("2026-09-23T19:05:00Z") })
   const root = await mkdtemp(join(tmpdir(), "shellby-review-"))
   t.after(() => rm(root, { recursive: true, force: true }))
   const path = join(root, ".shellby", "reviews.jsonl")
@@ -26,6 +27,7 @@ test("saves Shellby reviews with the agent audit alias and task slug", async (t)
     .split("\n")
     .map((line) => JSON.parse(line) as Record<string, unknown>)
   assert.equal(records.length, 1)
+  assert.equal(records[0]?.created_at, "Sep 23 12:05 PM")
   assert.equal(records[0]?.agent, agent)
   assert.equal(records[0]?.task_id, "first-name-parser-release-dry-run")
   assert.equal(records[0]?.rating, "8.7")

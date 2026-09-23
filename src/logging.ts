@@ -7,6 +7,7 @@ import process from "node:process"
 import pino, { type Logger } from "pino"
 import pinoRoll from "pino-roll"
 import { getAgentIdentity } from "./agent/context.js"
+import { formatLogTime } from "./time.js"
 
 type LogLevel = "info" | "warn" | "error" | "fatal"
 type LogFields = Record<string, unknown>
@@ -41,7 +42,7 @@ export async function startRuntimeLogging(stateDir: string): Promise<{
   const path = runtimeLogPath(stateDir)
   const options = {
     base: { pid: process.pid, run_id: randomUUID() },
-    timestamp: pino.stdTimeFunctions.isoTime,
+    timestamp: () => `,"time":${JSON.stringify(formatLogTime())}`,
     serializers: { err: serializeError },
     redact: ["password", "token", "authorization", "cookie"],
     mixin: () => {

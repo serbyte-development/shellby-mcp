@@ -32,7 +32,9 @@ Run focused suites with `node --import tsx --test <test-file>`. `npm test` uses 
 | Resource adapters | `web-fetch.test.ts`, `peekaboo.test.ts`, image/patch suites, vendor smoke tests |
 | Wiki decision-log ordering | `wiki-log.test.ts` |
 
-Use `npm run typecheck` and `npm run lint` for shared TypeScript/style changes. `npm run schemas -- <tool-name>` lists published schemas through an isolated ephemeral HTTP listener; it does not restart production. It uses configured services/state, so do not mistake it for a wholly mocked runtime.
+Use `npm run typecheck` and `npm run lint` for shared TypeScript changes. `lint` checks lint rules, and `lint:fix` applies their safe fixes. `npm run format` owns formatting; finish file-writing commands before running checks. Import organization belongs to Biome assists and is separate from these lint commands.
+
+`npm run schemas -- <tool-name>` lists published schemas through an isolated ephemeral HTTP listener; it does not restart production. It uses configured services/state, so do not mistake it for a wholly mocked runtime.
 
 Tests use temporary directories, local listeners, and real child shells. Some adapters use fake executables; vendored binary suites require supported macOS. [CI](../../../.github/workflows/ci.yml) runs install, config-only setup, lint, typecheck, tests, and backend build on arm64/x64 macOS.
 

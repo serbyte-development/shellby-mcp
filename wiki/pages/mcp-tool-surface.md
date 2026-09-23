@@ -34,4 +34,6 @@ For callers with `X-OpenAI-Session`, successful loading sets `AgentIdentity.task
 
 [review-tool.ts](../../src/tools/review/review-tool.ts) owns `submit_review`, the process-local usage trigger, and `.shellby/reviews.jsonl`. Factory shares one tracker across requests. This records optional product feedback; it is independent of runtime correctness and authorization.
 
+Review `created_at` uses the [shared Pacific timestamp formatter](./operations/runtime-logging.md#event-ownership), also used by audit and runtime logs.
+
 Validate registration, profiles, and startup through [Build and Test](./operations/build-and-test.md), especially `test/integrations/mcp-runtime.ts` and `session-initialization.ts`.

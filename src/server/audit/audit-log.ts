@@ -1,13 +1,9 @@
 import { appendFileSync, chmodSync, existsSync } from "node:fs"
 
 import { getAgentIdentity } from "../../agent/context.js"
+import { formatLogTime } from "../../time.js"
 import { countTokens } from "../../tokenizer.js"
-import {
-  errorMessage,
-  formatAuditEntry,
-  formatAuditTime,
-  summarizeToolResult,
-} from "./audit-format.js"
+import { errorMessage, formatAuditEntry, summarizeToolResult } from "./audit-format.js"
 import { createAuditRequest, type McpAuditCall, type McpAuditRequest } from "./audit-request.js"
 
 export type { McpAuditRequest } from "./audit-request.js"
@@ -84,7 +80,7 @@ export class McpAuditLogger {
   }
 
   private appendToolList(): void {
-    this.append(`--- # tools/list - ${formatAuditTime(this.now())}\n`)
+    this.append(`--- # tools/list - ${formatLogTime(this.now())}\n`)
   }
 
   private append(entry: string): void {

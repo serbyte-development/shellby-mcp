@@ -10,7 +10,8 @@ import { log, startRuntimeLogging, withLogContext } from "../src/logging.js"
 import { createToolRegistrar } from "../src/mcp/tool-registration-boundary.js"
 import { startMcpHttpServer } from "../src/server/http-server.js"
 
-test("runtime log preserves concurrent identity, original errors, and flushes on close", async () => {
+test("runtime log preserves concurrent identity, original errors, and flushes on close", async (t) => {
+  t.mock.timers.enable({ apis: ["Date"], now: new Date("2026-09-23T19:05:00Z") })
   const directory = await mkdtemp(join(tmpdir(), "shellby-log-"))
   const logging = await startRuntimeLogging(directory)
   try {
@@ -34,6 +35,7 @@ test("runtime log preserves concurrent identity, original errors, and flushes on
       .split("\n")
       .map((line) => JSON.parse(line))
     assert.equal(records.length, 4)
+    assert.ok(records.every((record) => record.time === "Sep 23 12:05 PM"))
     for (const requestId of ["first", "second"]) {
       const events = records.filter((record) => record.request_id === requestId)
       assert.deepEqual(

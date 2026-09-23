@@ -17,25 +17,25 @@
       "fingerprint": "sha256:d180621bc1fdb00cf1b89f1e831fd7c4518e448127d0b200ea82e0834e069322"
     },
     "pages/mcp-tool-surface.md": {
-      "fingerprint": "sha256:e993c6840e1950918a74322673d6bbcde5cd9edfaea03c57413d247afa667140"
+      "fingerprint": "sha256:1bc7014d4cc6a21a5062681d9a6c066aeeb94f1b231711e83e770cf2f18376fb"
     },
     "pages/operations/audit-logging.md": {
-      "fingerprint": "sha256:48c4335843e962e83369a9391bb29d49f86d9b932e02cb423b9f6393c7ca498a"
+      "fingerprint": "sha256:e0346f1ca25c577f12c15faf711d27d2b5a97484e95a6235d6a9c6fef697fa0f"
     },
     "pages/operations/build-and-test.md": {
-      "fingerprint": "sha256:36596f0317a783cbc9f13eb6f606577eb8e832fe4045f7b6c2fbe192a0a0c2be"
+      "fingerprint": "sha256:eb720b2a6ef0146c6f7a7505f118abbb0db347a9a534c3eac6a46514e3c951d6"
     },
     "pages/operations/configuration-and-startup.md": {
       "fingerprint": "sha256:6fe45934c67327733f349ebde1e3b07b3d3932d3a1b120061276e4222d7e8ba6"
     },
     "pages/operations/runtime-logging.md": {
-      "fingerprint": "sha256:a1b82babcfd7f53b596c41273b2caca2809506ed9e676054b513d065f5dfcc04"
+      "fingerprint": "sha256:4898f18d8d17224d6a8f5dd7c23df089ad24b8bd8cd663610185b9d4dd242642"
     },
     "pages/operations/runtime-recovery.md": {
-      "fingerprint": "sha256:57b77b41ce77fb49bf13b2f8ba63d6c5134a624e7ecbf0e88c7001f60e2d7e81"
+      "fingerprint": "sha256:f98c4844f35cb8620fedf743a3b7ea39e09c903d5ef8cc056a59783ac6bfe3ff"
     },
     "pages/operations/secret-handling.md": {
-      "fingerprint": "sha256:dbb377b4c30b36d1edd03757fa989c9cca38cfb0ddc7db8e8bfc1f5d92d824de"
+      "fingerprint": "sha256:67d3aa9667e969e76e9049a59962090356b70823be2e26e578e5b34b963abbc2"
     },
     "pages/persistent-shell-runtime.md": {
       "fingerprint": "sha256:34eb84015a14f54b3d7f49391b64f5ebe65d38895ef5c39eb334aef785689269"
