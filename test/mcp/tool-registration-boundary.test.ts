@@ -4,7 +4,7 @@ import { Client } from "@modelcontextprotocol/client"
 import { InMemoryTransport, McpServer } from "@modelcontextprotocol/server"
 import { z } from "zod"
 
-import { installToolRegistrationBoundary } from "../../src/mcp/tool-registration-boundary.js"
+import { createToolRegistrar } from "../../src/mcp/tool-registration-boundary.js"
 
 for (const structuredOutput of [false, true]) {
   test(`preserves SDK validation and callback conventions with structuredOutput=${structuredOutput}`, async (t) => {
@@ -14,7 +14,8 @@ for (const structuredOutput of [false, true]) {
     let inputCalls = 0
     let contextCalls = 0
     let notices = 0
-    installToolRegistrationBoundary(server, {
+    const originalRegisterTool = server.registerTool
+    const registerTool = createToolRegistrar(server, {
       structuredOutput,
       drainPendingEvents: () => {
         notices += 1
@@ -22,7 +23,9 @@ for (const structuredOutput of [false, true]) {
       },
     })
 
-    server.registerTool(
+    assert.equal(server.registerTool, originalRegisterTool)
+
+    registerTool(
       "with_input",
       {
         inputSchema: z.object({ name: z.string().trim().min(1) }),
@@ -34,12 +37,12 @@ for (const structuredOutput of [false, true]) {
         return { structuredContent: { name }, content: [] }
       }
     )
-    server.registerTool("without_input", {}, async (context) => {
+    registerTool("without_input", {}, async (context) => {
       contextCalls += 1
       assert.notEqual(context.mcpReq.id, undefined)
       return { content: [{ type: "text", text: "context received" }] }
     })
-    server.registerTool("throwing", {}, async () => {
+    registerTool("throwing", {}, async () => {
       throw new Error("fixture failure")
     })
 
@@ -82,3 +85,41 @@ for (const structuredOutput of [false, true]) {
     assert.equal(notices, 2)
   })
 }
+
+test("native result policy is explicit and independent of tool names", async (t) => {
+  const server = new McpServer({ name: "native-policy", version: "1.0.0" })
+  const client = new Client({ name: "native-policy-client", version: "1.0.0" })
+  t.after(() => Promise.all([client.close(), server.close()]))
+  const registerTool = createToolRegistrar(server, { structuredOutput: false })
+  registerTool(
+    "renamed_asset",
+    {
+      nativeContent: true,
+      outputSchema: z.object({ caption: z.string() }),
+    },
+    async () => ({
+      structuredContent: { caption: "native metadata" },
+      content: [{ type: "image", data: "AA==", mimeType: "image/png" }],
+    })
+  )
+  registerTool(
+    "computer_plain",
+    {
+      outputSchema: z.object({ value: z.string() }),
+    },
+    async () => ({ structuredContent: { value: "compact value" }, content: [] })
+  )
+
+  const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair()
+  await Promise.all([server.connect(serverTransport), client.connect(clientTransport)])
+  const listed = await client.listTools()
+  assert.ok(listed.tools.find((tool) => tool.name === "renamed_asset")?.outputSchema)
+  assert.equal(listed.tools.find((tool) => tool.name === "computer_plain")?.outputSchema, undefined)
+  assert.doesNotMatch(JSON.stringify(listed.tools), /nativeContent/u)
+  const native = await client.callTool({ name: "renamed_asset", arguments: {} })
+  assert.deepEqual(native.structuredContent, { caption: "native metadata" })
+  assert.deepEqual(native.content, [{ type: "image", data: "AA==", mimeType: "image/png" }])
+  const compact = await client.callTool({ name: "computer_plain", arguments: {} })
+  assert.equal(compact.structuredContent, undefined)
+  assert.match(JSON.stringify(compact.content), /compact value/u)
+})

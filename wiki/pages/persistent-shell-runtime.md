@@ -16,7 +16,8 @@ Caller semantics: [shell_run / shell_poll](./tools/shell-run.md). Source ownersh
 | [session.ts](../../src/tools/shell/session.ts) | Foreground arbitration, single-command records, retry identity, snapshots/waits |
 | [shell-process.ts](../../src/tools/shell/shell-process.ts) | Child shell, protocol parsing, cwd/env capture, generation/reset |
 | [parallel-session.ts](../../src/tools/shell/parallel-session.ts) | Batch records, grouped output, retries, settlement/cancellation |
-| [parallel-runner.ts](../../src/tools/shell/parallel-runner.ts) | Per-shell scheduling, isolated child execution, output caps, timeouts |
+| [parallel-runner.ts](../../src/tools/shell/parallel-runner.ts) | Per-shell scheduling, isolated child execution, timeouts |
+| [output-capture.ts](../../src/tools/shell/output-capture.ts) | Shared UTF-8 byte budget and discarded-byte accounting for single and parallel commands |
 | [transcript.ts](../../src/tools/shell/transcript.ts) | Rolling retained text and absolute JavaScript-string cursors |
 
 ## Process and output invariants
@@ -31,7 +32,7 @@ Wait loops follow execution state, not page fullness. Preserve this separation w
 
 ## Lifecycle and cleanup
 
-Manager leases protect shells while callers use them. Eviction excludes busy/leased shells and `default`; it fails admission when no safe slot exists. Capture failure leaves the live shell intact. Hibernation caches only cwd/exported env, then closes the process. Missing cached cwd falls back to a clean baseline. Cache age is measured from last use and expires in the shared sweep.
+Manager exposes `runCommand`, `pollCommand`, and `resetShell`; it owns session lookup, restoration, and leases throughout each operation. Callers cannot retrieve raw sessions or choose cache-restoration policy. Eviction excludes busy/leased shells and `default`; it fails admission when no safe slot exists. Capture failure leaves the live shell intact. Hibernation caches only cwd/exported env, then closes the process. Missing cached cwd falls back to a clean baseline. Cache age is measured from last use and expires in the shared sweep.
 
 Reset/close signal detached POSIX process groups through [child-process-termination.ts](../../src/child-process-termination.ts). TERM-to-KILL escalation is shared; generation, forced settlement, and recovery remain with each owner. Signaling is best effort; OS-denied cleanup must not crash MCP, but descendants may survive.
 

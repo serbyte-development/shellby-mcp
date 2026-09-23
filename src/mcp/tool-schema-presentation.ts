@@ -91,11 +91,6 @@ export interface ToolRegistrationConfig {
   [key: string]: unknown
 }
 
-export interface PreparedToolRegistration {
-  acceptsInput: boolean
-  nativeContent: boolean
-}
-
 interface StandardSchemaJsonSource {
   jsonSchema: {
     input: (options: unknown) => unknown
@@ -107,26 +102,18 @@ interface StandardSchemaJsonSource {
  * Apply Shellby's model-facing registration rules to one tool config.
  *
  * This owns the public schema projection contract: compact-output schema visibility,
- * native-content exceptions, annotation pruning, and JSON Schema
- * canonicalization. Runtime dispatch should use only the returned execution metadata.
+ * annotation pruning, and JSON Schema canonicalization. The registrar owns result policy.
  */
 export function prepareToolRegistration(
-  name: string,
   config: ToolRegistrationConfig,
-  structuredOutput: boolean
-): PreparedToolRegistration {
-  const acceptsInput = config.inputSchema !== undefined
-
-  const nativeContent =
-    name.startsWith("computer_") || name === "image_view" || name === "file_read"
-  if (!nativeContent && !structuredOutput) config.outputSchema = undefined
+  preserveStructuredOutput: boolean
+): void {
+  if (!preserveStructuredOutput) config.outputSchema = undefined
 
   canonicalizeStandardSchema(config.inputSchema)
   canonicalizeStandardSchema(config.outputSchema)
 
   config.annotations = compactToolAnnotations(config.annotations)
-
-  return { acceptsInput, nativeContent }
 }
 
 export function compactToolAnnotations(value: unknown): unknown {

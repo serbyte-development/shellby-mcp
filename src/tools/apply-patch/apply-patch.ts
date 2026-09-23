@@ -5,12 +5,12 @@ import { isAbsolute } from "node:path"
 import process from "node:process"
 import { StringDecoder } from "node:string_decoder"
 import { fileURLToPath } from "node:url"
-import type { McpServer } from "@modelcontextprotocol/server"
 import { z } from "zod"
 import {
   type ProcessGroupTermination,
   startProcessGroupTermination,
 } from "../../child-process-termination.js"
+import type { ToolRegistrar } from "../../mcp/tool-registration-boundary.js"
 import { tokenPrefix } from "../../tokenizer.js"
 import { summarizePatchExecution } from "./patch-summary.js"
 
@@ -20,8 +20,8 @@ const DEFAULT_APPLY_PATCH_BINARY = fileURLToPath(
   new URL("../../../vendor/apply-patch/apply_patch", import.meta.url)
 )
 
-export function registerApplyPatchTool(server: McpServer): void {
-  server.registerTool(
+export function registerApplyPatchTool(registerTool: ToolRegistrar): void {
+  registerTool(
     "apply_patch",
     {
       description:

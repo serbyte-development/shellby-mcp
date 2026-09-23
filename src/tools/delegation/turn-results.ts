@@ -18,6 +18,15 @@ interface PollDelegatedTurnsOptions {
   formatError: (error: unknown) => string
 }
 
+/** Preserve every batch entry; any failed entry marks the MCP call as an error. */
+export function delegatedTurnsResult<T extends { status: string }>(turns: T[]) {
+  return {
+    structuredContent: { turns },
+    content: [],
+    isError: turns.some((turn) => turn.status === "failed"),
+  }
+}
+
 /** Poll delegated turns concurrently and project the service result into the shared MCP shape. */
 export function pollDelegatedTurns(
   options: PollDelegatedTurnsOptions

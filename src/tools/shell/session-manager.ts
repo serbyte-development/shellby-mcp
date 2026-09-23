@@ -2,11 +2,15 @@ import { MCP_CONFIG } from "../../config.js"
 import { nonNegativeInteger, positiveInteger } from "../../utils.js"
 import {
   createShellSession,
+  type PollCommandInput,
+  type ResetShellInput,
+  type RunCommandInput,
   type ShellRecoverableState,
   type ShellSession,
   ShellSessionError,
+  type ShellSnapshot,
 } from "./session.js"
-import { DEFAULT_SHELL_ID, type ShellListOutput } from "./shell-contracts.js"
+import { DEFAULT_SHELL_ID, type ShellListOutput, type ShellResetOutput } from "./shell-contracts.js"
 
 const DEFAULT_CLEANUP_INTERVAL_MS = 60 * 1000
 export interface ShellSessionManagerOptions {
@@ -30,18 +34,12 @@ export interface ShellSessionManager {
   readonly shellCount: number
   readonly maximumShells: number
   readonly idleTimeoutMilliseconds: number
-  readonly cacheTimeoutMilliseconds: number
-  readonly defaultShell: ShellSession
-  getOrCreate(shellId: string, options?: { restoreCached?: boolean }): Promise<ShellSession>
-  getExisting(shellId: string): ShellSession
-  withShell<T>(
-    shellId: string,
-    operation: (shell: ShellSession) => Promise<T>,
-    options?: { restoreCached?: boolean }
-  ): Promise<T>
-  withExistingShell<T>(shellId: string, operation: (shell: ShellSession) => Promise<T>): Promise<T>
-  listShellIds(): string[]
-  listCachedShellIds(now?: number): string[]
+  /** Lease a shell for command execution; creation and restoration are internal. */
+  runCommand(shellId: string, input: RunCommandInput): Promise<ShellSnapshot>
+  /** Poll retained work in a live shell without creating or restoring one. */
+  pollCommand(shellId: string, input: PollCommandInput): Promise<ShellSnapshot>
+  /** Reset also discards any cached environment before recreating the shell. */
+  resetShell(shellId: string, input: ResetShellInput): Promise<ShellResetOutput>
   listShells(now?: number): ManagedShellInfo[]
   closeShell(shellId: string): Promise<void>
   startDefault(): Promise<void>
@@ -97,28 +95,6 @@ export function createShellSessionManager(
     return shell
   }
 
-  async function getOrCreate(
-    shellId: string,
-    operationOptions: { restoreCached?: boolean } = {}
-  ): Promise<ShellSession> {
-    return withLifecycleLock(() =>
-      getOrCreateUnlocked(shellId, operationOptions.restoreCached !== false)
-    )
-  }
-
-  function getExisting(shellId: string): ShellSession {
-    assertOpen()
-    const existing = sessions.get(shellId)
-    if (!existing) {
-      throw new ShellSessionError(
-        "request_not_found",
-        `No live shell exists for shell_id ${JSON.stringify(shellId)}. Start a new command in that shell before polling it.`
-      )
-    }
-    touch(shellId)
-    return existing
-  }
-
   async function withShell<T>(
     shellId: string,
     operation: (shell: ShellSession) => Promise<T>,
@@ -158,15 +134,6 @@ export function createShellSessionManager(
     } finally {
       releaseLease(shellId, shell)
     }
-  }
-
-  function listShellIds(): string[] {
-    return [...sessions.keys()]
-  }
-
-  function listCachedShellIds(at = now()): string[] {
-    removeExpiredCachedStates(at)
-    return [...cachedStates.keys()]
   }
 
   function listShells(at = now()): ManagedShellInfo[] {
@@ -362,18 +329,11 @@ export function createShellSessionManager(
     get idleTimeoutMilliseconds() {
       return idleTimeoutMs
     },
-    get cacheTimeoutMilliseconds() {
-      return cacheTimeoutMs
-    },
-    get defaultShell() {
-      return getDefaultShell()
-    },
-    getOrCreate,
-    getExisting,
-    withShell,
-    withExistingShell,
-    listShellIds,
-    listCachedShellIds,
+    runCommand: (shellId, input) => withShell(shellId, (shell) => shell.runCommand(input)),
+    pollCommand: (shellId, input) =>
+      withExistingShell(shellId, (shell) => shell.pollCommand(input)),
+    resetShell: (shellId, input) =>
+      withShell(shellId, (shell) => shell.reset(input), { restoreCached: false }),
     listShells,
     closeShell,
     startDefault,

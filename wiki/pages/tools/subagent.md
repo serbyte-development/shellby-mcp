@@ -19,9 +19,9 @@ paths:
 
 [subagent_result](../../../src/tools/delegation/turn-results.ts) retrieves local turn state concurrently: `running` with optional activity/age, `completed` with response, or `failed` with error. `wait_ms` waits for local settlement and does not set a generation deadline or poll ChatGPT.
 
-Any failed polled turn sets top-level `isError=true`, including unknown IDs and polling exceptions. Mixed batches preserve successful answers. Submission failures are per-entry `status=failed`; `subagent_run` does not use the same top-level error aggregation.
+Any failed entry sets top-level `isError=true` for submission and polling, including unknown IDs and polling exceptions. Mixed batches preserve successful entries; retry only the failed work when its error guidance permits it.
 
-Turn results are process-local. Saved conversation mappings can restore identity, not old answers or polling records. Completion notices and restart hints are defined in [Subagent Completion](../subagents/subagent-completion.md).
+Turn results are process-local with bounded retention. Saved conversation mappings can restore identity, not old answers or polling records. [Subagent Completion](../subagents/subagent-completion.md#results-and-events) owns result lifetime, completion notices, and restart hints.
 
 ## Failure semantics
 

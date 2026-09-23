@@ -1,14 +1,12 @@
 import { readFile } from "node:fs/promises"
 import { basename, isAbsolute, resolve } from "node:path"
-
-import type { McpServer } from "@modelcontextprotocol/server"
 import { z } from "zod"
-
 import { MCP_CONFIG } from "../../config.js"
+import type { ToolRegistrar } from "../../mcp/tool-registration-boundary.js"
 import { encodeImageForMcp, formatBytes, ImageEncodingError } from "./image-encoding.js"
 
-export function registerImageTools(server: McpServer): void {
-  server.registerTool(
+export function registerImageTools(registerTool: ToolRegistrar): void {
+  registerTool(
     "image_view",
     {
       description: "View a local image file.",
@@ -18,6 +16,7 @@ export function registerImageTools(server: McpServer): void {
           .min(1)
           .describe("Local image path. Relative paths resolve from the workspace."),
       }),
+      nativeContent: true,
       annotations: {
         readOnlyHint: true,
         destructiveHint: false,

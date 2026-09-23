@@ -1,14 +1,13 @@
-import type { McpServer } from "@modelcontextprotocol/server"
 import { z } from "zod"
-
 import { MCP_CONFIG } from "../../config.js"
+import type { ToolRegistrar } from "../../mcp/tool-registration-boundary.js"
 import {
   ChatGptDelegationError,
   type ChatGptDelegationService,
   chatGptDelegationActivitySchema,
   chatGptDelegationStatusSchema,
 } from "./contracts.js"
-import { pollDelegatedTurns } from "./turn-results.js"
+import { delegatedTurnsResult, pollDelegatedTurns } from "./turn-results.js"
 
 const SUBAGENT_RUN_DELAYS_MS = [1_000, 5_000, 7_000] as const
 const SUBAGENT_UNAVAILABLE_ERROR =
@@ -67,10 +66,10 @@ const subagentResultSchema = z.object({
 })
 
 export function registerSubagentTools(
-  server: McpServer,
+  registerTool: ToolRegistrar,
   chatGptDelegation: ChatGptDelegationService
 ): void {
-  server.registerTool(
+  registerTool(
     "subagent_run",
     {
       description:
@@ -131,14 +130,11 @@ export function registerSubagentTools(
         }
       }
 
-      return {
-        structuredContent: { turns },
-        content: [],
-      }
+      return delegatedTurnsResult(turns)
     }
   )
 
-  server.registerTool(
+  registerTool(
     "subagent_result",
     {
       description:
@@ -182,11 +178,7 @@ export function registerSubagentTools(
         formatError: subagentErrorText,
       })
 
-      return {
-        structuredContent: { turns: results },
-        content: [],
-        isError: results.some((result) => result.status === "failed"),
-      }
+      return delegatedTurnsResult(results)
     }
   )
 }

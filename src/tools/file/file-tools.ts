@@ -1,11 +1,9 @@
 import { readFile, writeFile } from "node:fs/promises"
 import { basename, isAbsolute, resolve } from "node:path"
 import { pathToFileURL } from "node:url"
-
-import type { McpServer } from "@modelcontextprotocol/server"
 import { z } from "zod"
-
 import { MCP_CONFIG } from "../../config.js"
+import type { ToolRegistrar } from "../../mcp/tool-registration-boundary.js"
 
 const openAiFileSchema = z.object({
   download_url: z.url(),
@@ -14,8 +12,8 @@ const openAiFileSchema = z.object({
   file_name: z.string().optional(),
 })
 
-export function registerFileReadTool(server: McpServer): void {
-  server.registerTool(
+export function registerFileReadTool(registerTool: ToolRegistrar): void {
+  registerTool(
     "file_read",
     {
       description: "Read a local file as binary MCP content.",
@@ -25,6 +23,7 @@ export function registerFileReadTool(server: McpServer): void {
           .min(1)
           .describe("Local file path. Relative paths resolve from the workspace."),
       }),
+      nativeContent: true,
       annotations: {
         readOnlyHint: true,
         destructiveHint: false,
@@ -55,8 +54,8 @@ export function registerFileReadTool(server: McpServer): void {
   )
 }
 
-export function registerFileWriteTool(server: McpServer): void {
-  server.registerTool(
+export function registerFileWriteTool(registerTool: ToolRegistrar): void {
+  registerTool(
     "file_write",
     {
       description: "Write a ChatGPT file to the local filesystem.",

@@ -1,11 +1,9 @@
 import { appendFile, mkdir } from "node:fs/promises"
 import { dirname, join, resolve } from "node:path"
 import { fileURLToPath } from "node:url"
-
-import type { McpServer } from "@modelcontextprotocol/server"
 import { z } from "zod"
-
 import { type AgentIdentity, getAgentIdentity } from "../../agent/context.js"
+import type { ToolRegistrar } from "../../mcp/tool-registration-boundary.js"
 
 const REVIEW_TOOL_NAME = "submit_review"
 export const REVIEW_PROMPT_TOOL_CALLS = 25
@@ -30,8 +28,8 @@ export function createReviewPromptTracker(): ReviewPromptTracker {
   }
 }
 
-export function registerReviewTool(server: McpServer): void {
-  server.registerTool(
+export function registerReviewTool(registerTool: ToolRegistrar): void {
+  registerTool(
     REVIEW_TOOL_NAME,
     {
       description: "Submit feedback specifically about Shellby MCP itself.",

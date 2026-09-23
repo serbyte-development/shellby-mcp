@@ -15,6 +15,8 @@ paths:
 
 [skill-catalog.ts](../../src/tools/skills/skill-catalog.ts) discovers `<workspace>/skills/<name>/SKILL.md`, validates names and byte limits, follows directory symlinks, and reads frontmatter descriptions. Validation stays inside the catalog so direct callers are safe too. Leading underscores are supported; path traversal is rejected.
 
+Frontmatter uses the existing YAML parser with its JSON schema. Only nonempty string descriptions enter the catalog. Malformed YAML or non-string descriptions omit that metadata while keeping the skill discoverable and its complete instructions loadable.
+
 [skill-tools.ts](../../src/tools/skills/skill-tools.ts) adapts the catalog to `skill_list` and `skill_use`. Lists omit missing/oversized entries; direct loads return explicit errors. `skill_use` returns local path plus complete instructions. Catalog changes need no rebuild because skills are data, not generated MCP schema entries.
 
 Recent same-agent/same-skill loads share the [load deduper](../../src/agent/load-deduper.ts); failed loads remain retryable. Shared behavior with `start_here` is documented in [MCP Tool Surface](./mcp-tool-surface.md).

@@ -16,6 +16,6 @@ paths:
 
 `clone_run` reuses a live clone or restores a saved mapping with kind `clone`; ordinary subagent mappings cannot pass that restore path. Clones keep memory and branched context without ordinary subagents' first-turn instruction injection.
 
-`clone_result` shares concurrent local polling through [turn-results.ts](../../../src/tools/delegation/turn-results.ts). Recovery/result lifetime follow [Subagent Completion](../subagents/subagent-completion.md). Adapter behavior differs: clone failures expose backend error codes/messages and do not aggregate failed turns into top-level `isError` as `subagent_result` does. Inspect this boundary before assuming the two public families are interchangeable.
+`clone_result` shares concurrent local polling through [turn-results.ts](../../../src/tools/delegation/turn-results.ts). Recovery/result lifetime follow [Subagent Completion](../subagents/subagent-completion.md). Failed submissions and any failed polled entry set top-level `isError=true`; mixed results preserve successful answers. Clone failures still expose backend error codes/messages, while ordinary subagents project them into caller guidance.
 
 [chatgpt-browser.ts](../../../src/tools/delegation/chatgpt-browser.ts) owns UI branching; [MCP delegation cases](../../../test/integrations/subagent.ts) cover the public adapter. Real upstream branching/recovery needs targeted live validation.

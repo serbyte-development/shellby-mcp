@@ -2,12 +2,10 @@ import { readdirSync } from "node:fs"
 import { readFile } from "node:fs/promises"
 import { dirname, join, resolve } from "node:path"
 import { fileURLToPath } from "node:url"
-
-import type { McpServer } from "@modelcontextprotocol/server"
 import { z } from "zod"
-
 import { setAgentTaskSlug } from "../../agent/context.js"
 import { createAgentLoadDeduper } from "../../agent/load-deduper.js"
+import type { ToolRegistrar } from "../../mcp/tool-registration-boundary.js"
 
 export const START_HERE_TOOL_NAME = "start_here"
 const SHARED_PROMPT_NAME = "shared"
@@ -22,12 +20,12 @@ type PromptSource = {
 
 const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../../..")
 
-export function registerStartHereTool(server: McpServer): void {
+export function registerStartHereTool(registerTool: ToolRegistrar): void {
   const modes = discoverPromptModes()
   const [firstMode, ...remainingModes] = modes
   if (firstMode === undefined) throw new Error("start_here requires at least one prompt mode")
 
-  server.registerTool(
+  registerTool(
     START_HERE_TOOL_NAME,
     {
       description:

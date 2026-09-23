@@ -1,3 +1,4 @@
+/** biome-ignore-all lint/style/noUnusedTemplateLiteral: in order to get sql syntax highlighting, a template literal is required */
 import { mkdirSync } from "node:fs"
 import { dirname } from "node:path"
 import { DatabaseSync } from "node:sqlite"
@@ -84,7 +85,7 @@ export function createDelegationStore(path: string): DelegationStore {
   try {
     mkdirSync(dirname(path), { recursive: true })
     const db = new DatabaseSync(path)
-    db.exec(`
+    db.exec(/*sql*/ `
       CREATE TABLE IF NOT EXISTS agents (
         parent_session_id TEXT NOT NULL,
         agent_id TEXT NOT NULL,
@@ -95,12 +96,12 @@ export function createDelegationStore(path: string): DelegationStore {
       )
     `)
     const get = db.prepare(
-      "SELECT conversation_url, turn_count, kind FROM agents WHERE parent_session_id = ? AND agent_id = ?"
+      /*sql*/ `SELECT conversation_url, turn_count, kind FROM agents WHERE parent_session_id = ? AND agent_id = ?`
     )
     const list = db.prepare(
-      "SELECT agent_id, conversation_url, turn_count, kind FROM agents WHERE parent_session_id = ? ORDER BY agent_id"
+      /*sql*/ `SELECT agent_id, conversation_url, turn_count, kind FROM agents WHERE parent_session_id = ? ORDER BY agent_id`
     )
-    const set = db.prepare(`
+    const set = db.prepare(/*sql*/ `
       INSERT INTO agents (parent_session_id, agent_id, conversation_url, turn_count, kind)
       VALUES (?, ?, ?, ?, ?)
       ON CONFLICT(parent_session_id, agent_id) DO UPDATE SET

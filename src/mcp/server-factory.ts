@@ -25,7 +25,7 @@ import { registerSkillTools } from "../tools/skills/skill-tools.js"
 import { registerStartHereTool } from "../tools/start-here/start-here.js"
 import type { WebPageOpener } from "../tools/web/web-open.js"
 import { registerWebTool } from "../tools/web/web-tool.js"
-import { installToolRegistrationBoundary } from "./tool-registration-boundary.js"
+import { createToolRegistrar } from "./tool-registration-boundary.js"
 
 export interface CreateMcpServerOptions {
   shellManager?: ShellSessionManager
@@ -91,7 +91,7 @@ function createMcpServer(options: CreateMcpServerOptions, profile: McpRuntimePro
     instructions: buildMcpInstructions(),
   })
   const chatGptDelegation = options.chatGptDelegation
-  installToolRegistrationBoundary(server, {
+  const registerTool = createToolRegistrar(server, {
     structuredOutput: profile.toolOutput === "structured",
     drainPendingEvents: chatGptDelegation ? () => chatGptDelegation.drainEvents() : undefined,
     agentObserver: options.agentObserver,
@@ -99,26 +99,29 @@ function createMcpServer(options: CreateMcpServerOptions, profile: McpRuntimePro
     auditRequest: options.auditRequest,
   })
 
-  registerStartHereTool(server)
+  registerStartHereTool(registerTool)
   const shells = profile.tools.shell
     ? requireCapabilityService(options.shellManager, "shell")
     : undefined
-  if (shells) registerShellExecutionTools(server, shells)
-  if (profile.tools.applyPatch) registerApplyPatchTool(server)
-  if (profile.tools.fileRead) registerFileReadTool(server)
-  if (profile.tools.fileWrite) registerFileWriteTool(server)
-  if (shells) registerShellManagementTools(server, shells)
+  if (shells) registerShellExecutionTools(registerTool, shells)
+  if (profile.tools.applyPatch) registerApplyPatchTool(registerTool)
+  if (profile.tools.fileRead) registerFileReadTool(registerTool)
+  if (profile.tools.fileWrite) registerFileWriteTool(registerTool)
+  if (shells) registerShellManagementTools(registerTool, shells)
   if (profile.tools.subagents)
-    registerSubagentTools(server, requireCapabilityService(options.chatGptDelegation, "subagent"))
+    registerSubagentTools(
+      registerTool,
+      requireCapabilityService(options.chatGptDelegation, "subagent")
+    )
   if (profile.tools.web)
-    registerWebTool(server, requireCapabilityService(options.webPageOpener, "web"))
-  if (profile.tools.skills) registerSkillTools(server)
-  if (profile.tools.image) registerImageTools(server)
+    registerWebTool(registerTool, requireCapabilityService(options.webPageOpener, "web"))
+  if (profile.tools.skills) registerSkillTools(registerTool)
+  if (profile.tools.image) registerImageTools(registerTool)
   if (profile.tools.computer)
-    registerComputerUseTools(server, requireCapabilityService(options.peekaboo, "computer"))
+    registerComputerUseTools(registerTool, requireCapabilityService(options.peekaboo, "computer"))
   if (profile.tools.clones)
-    registerCloneTools(server, requireCapabilityService(options.chatGptDelegation, "clone"))
-  if (profile.tools.review) registerReviewTool(server)
+    registerCloneTools(registerTool, requireCapabilityService(options.chatGptDelegation, "clone"))
+  if (profile.tools.review) registerReviewTool(registerTool)
 
   return server
 }

@@ -6,7 +6,7 @@ import {
   signalProcessGroup,
   startProcessGroupTermination,
 } from "../../child-process-termination.js"
-import { utf8Chunk } from "../../utils.js"
+import { createOutputCapture } from "./output-capture.js"
 import { prepareShellCommand } from "./rtk.js"
 import type { ParallelCommandStatus } from "./shell-contracts.js"
 
@@ -115,7 +115,11 @@ export function executeParallelCommand(
   }
 
   return new Promise((resolve) => {
-    const output = createBoundedOutput(input.outputLimitBytes)
+    const capture = createOutputCapture(input.outputLimitBytes)
+    let output = ""
+    const appendOutput = (chunk: string) => {
+      output += capture.append(chunk)
+    }
     const stdoutDecoder = new StringDecoder("utf8")
     const stderrDecoder = new StringDecoder("utf8")
     let child: ChildProcess
@@ -134,9 +138,9 @@ export function executeParallelCommand(
       input.signal.removeEventListener("abort", onAbort)
       const stdoutTail = stdoutDecoder.end()
       const stderrTail = stderrDecoder.end()
-      if (stdoutTail) output.append(stdoutTail)
-      if (stderrTail) output.append(stderrTail)
-      resolve({ status, exitCode, output: output.value, droppedOutputBytes: output.droppedBytes })
+      if (stdoutTail) appendOutput(stdoutTail)
+      if (stderrTail) appendOutput(stderrTail)
+      resolve({ status, exitCode, output, droppedOutputBytes: capture.droppedBytes })
     }
 
     const stop = () => {
@@ -178,10 +182,10 @@ export function executeParallelCommand(
       return
     }
 
-    child.stdout?.on("data", (chunk: Buffer) => output.append(stdoutDecoder.write(chunk)))
-    child.stderr?.on("data", (chunk: Buffer) => output.append(stderrDecoder.write(chunk)))
+    child.stdout?.on("data", (chunk: Buffer) => appendOutput(stdoutDecoder.write(chunk)))
+    child.stderr?.on("data", (chunk: Buffer) => appendOutput(stderrDecoder.write(chunk)))
     child.once("error", (error) => {
-      output.append(error.message)
+      appendOutput(error.message)
       signalProcessGroup(child, "SIGKILL")
       finish(requestedStatus(resetRequested, timeoutRequested, "failed"), null)
     })
@@ -215,38 +219,4 @@ function requestedStatus(
   if (resetRequested) return "reset"
   if (timeoutRequested) return "timed_out"
   return fallback
-}
-
-function createBoundedOutput(maxBytes: number) {
-  let value = ""
-  let capturedBytes = 0
-  let droppedBytes = 0
-
-  function append(chunk: string): void {
-    if (chunk.length === 0) return
-    const remaining = Math.max(0, maxBytes - capturedBytes)
-    const bounded = utf8Chunk(chunk, 0, remaining)
-    const captured = bounded.value
-    const dropped = chunk.slice(bounded.nextOffset)
-    if (captured.length > 0) {
-      value += captured
-      capturedBytes += Buffer.byteLength(captured, "utf8")
-    }
-    if (dropped.length > 0) {
-      droppedBytes = Math.min(
-        Number.MAX_SAFE_INTEGER,
-        droppedBytes + Buffer.byteLength(dropped, "utf8")
-      )
-    }
-  }
-
-  return {
-    append,
-    get value() {
-      return value
-    },
-    get droppedBytes() {
-      return droppedBytes
-    },
-  }
 }

@@ -3,7 +3,8 @@ import { statSync } from "node:fs"
 import { isAbsolute, resolve } from "node:path"
 import process from "node:process"
 import { MCP_CONFIG } from "../../config.js"
-import { positiveInteger, utf8Chunk } from "../../utils.js"
+import { positiveInteger } from "../../utils.js"
+import { createOutputCapture } from "./output-capture.js"
 import { DEFAULT_PARALLEL_COMMAND_TIMEOUT_MS } from "./parallel-runner.js"
 import { createParallelSession } from "./parallel-session.js"
 import type {
@@ -48,9 +49,9 @@ interface ParallelCommandSnapshot extends Record<string, unknown> {
   dropped_output_bytes?: number
 }
 
-type RunCommandInput = Omit<ShellRunInput, "shell_id"> & { signal?: AbortSignal }
-type PollCommandInput = Omit<ShellPollInput, "shell_id"> & { signal?: AbortSignal }
-type ResetShellInput = Omit<ShellResetInput, "shell_id">
+export type RunCommandInput = Omit<ShellRunInput, "shell_id"> & { signal?: AbortSignal }
+export type PollCommandInput = Omit<ShellPollInput, "shell_id"> & { signal?: AbortSignal }
+export type ResetShellInput = Omit<ShellResetInput, "shell_id">
 
 export interface ShellSessionOptions {
   shellPath?: string
@@ -71,8 +72,7 @@ interface CommandRecord {
   endCursor: number | null
   status: ShellCommandStatus
   exitCode: number | null
-  capturedOutputBytes: number
-  droppedOutputBytes: number
+  outputCapture: ReturnType<typeof createOutputCapture>
 }
 
 type ResetResult = ShellResetOutput
@@ -262,8 +262,7 @@ export function createShellSession(options: ShellSessionOptions = {}): ShellSess
       endCursor: null,
       status: "running",
       exitCode: null,
-      capturedOutputBytes: 0,
-      droppedOutputBytes: 0,
+      outputCapture: createOutputCapture(commandTranscriptBytes),
     }
 
     pruneCommandRecords()
@@ -372,8 +371,8 @@ export function createShellSession(options: ShellSessionOptions = {}): ShellSess
       next_cursor: read.nextCursor,
       output_truncated: read.hasMore,
       cursor_expired: read.cursorExpired,
-      output_dropped: record.droppedOutputBytes > 0,
-      dropped_output_bytes: record.droppedOutputBytes,
+      output_dropped: record.outputCapture.droppedBytes > 0,
+      dropped_output_bytes: record.outputCapture.droppedBytes,
     }
   }
 
@@ -407,24 +406,11 @@ export function createShellSession(options: ShellSessionOptions = {}): ShellSess
 
   function appendCommandOutput(record: CommandRecord, chunk: string): void {
     if (chunk.length === 0) return
-
-    const remaining = Math.max(0, commandTranscriptBytes - record.capturedOutputBytes)
-    const bounded = utf8Chunk(chunk, 0, remaining)
-    const captured = bounded.value
-    const dropped = chunk.slice(bounded.nextOffset)
-
-    if (captured.length > 0) {
-      record.capturedOutputBytes += Buffer.byteLength(captured, "utf8")
-      appendTranscript(captured)
-    }
-    if (dropped.length > 0) {
-      const wasTruncated = record.droppedOutputBytes > 0
-      record.droppedOutputBytes = Math.min(
-        Number.MAX_SAFE_INTEGER,
-        record.droppedOutputBytes + Buffer.byteLength(dropped, "utf8")
-      )
-      if (!wasTruncated && captured.length === 0) updates.notify()
-    }
+    const wasTruncated = record.outputCapture.droppedBytes > 0
+    const captured = record.outputCapture.append(chunk)
+    appendTranscript(captured)
+    if (!wasTruncated && record.outputCapture.droppedBytes > 0 && captured.length === 0)
+      updates.notify()
   }
 
   return {

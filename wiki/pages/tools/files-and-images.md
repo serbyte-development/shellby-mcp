@@ -3,7 +3,7 @@ summary: "Local binary transfer, ChatGPT file inputs, image encoding, and output
 paths:
   - src/tools/file/file-tools.ts
   - src/tools/image/
-  - src/mcp/tool-schema-presentation.ts
+  - src/mcp/tool-registration-boundary.ts
 ---
 
 # Files and Images

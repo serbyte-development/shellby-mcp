@@ -3,6 +3,7 @@ import type { Page } from "playwright-core"
 
 import type { AgentIdentity } from "../../agent/context.js"
 import { MCP_CONFIG } from "../../config.js"
+import { extractConversationId } from "./chatgpt-browser.js"
 import {
   type ChatGptDelegationActivity,
   type ChatGptDelegationCallContext,
@@ -14,10 +15,14 @@ import { createDelegationStore, DelegationStoreError } from "./store.js"
 
 const AGENT_IDLE_TTL_MS = 30 * 60_000
 const STALE_TURN_RECOVERY_MS = 3 * 60_000
+const TURN_RESULT_TTL_MS = 24 * 60 * 60_000
+const MAX_RETAINED_TURNS = 100
+const PROJECT_PATH_PATTERN = /\/g\/g-p-[^/]+\/project\/?$/u
+const PROJECT_SUFFIX_PATTERN = /\/project\/?$/u
 
 type BrowserAgentStatus = "idle" | "uncertain" | ChatGptDelegationActivity
 
-export interface BrowserAgentState {
+interface AgentState {
   agentId: string
   kind: "subagent" | "clone"
   memory: boolean
@@ -30,7 +35,7 @@ export interface BrowserAgentState {
   turnCount: number
 }
 
-export interface BrowserTurnState {
+interface TurnState {
   turnId: string
   agentId: string
   parentAgent?: AgentIdentity
@@ -41,18 +46,23 @@ export interface BrowserTurnState {
   errorCode?: string
   errorMessage?: string
   prompt: string
+  settledAt?: number
   observation?: AssistantResponseObservation
   settled: Promise<void>
   settle: () => void
 }
+
+/** Live read-only views; lifecycle operations own record mutations. */
+export type BrowserAgentState = Readonly<AgentState>
+export type BrowserTurnState = Readonly<TurnState>
 
 export interface ActiveAgentOperation extends ChatGptDelegationCallContext {
   turnId?: string
 }
 
 interface DelegationScope {
-  agents: Map<string, BrowserAgentState>
-  turns: Map<string, BrowserTurnState>
+  agents: Map<string, AgentState>
+  turns: Map<string, TurnState>
   activeOperations: Map<string, ActiveAgentOperation>
   pendingEvents: string[]
 }
@@ -174,16 +184,51 @@ export class DelegationLifecycle {
     }
   }
 
-  registerAgent(parentAgent: AgentIdentity | undefined, agent: BrowserAgentState): void {
+  registerAgent(parentAgent: AgentIdentity | undefined, agent: AgentState): void {
     this.getScope(parentAgent).agents.set(agent.agentId, agent)
   }
 
-  removeAgent(parentAgent: AgentIdentity | undefined, agent: BrowserAgentState): void {
+  removeAgent(parentAgent: AgentIdentity | undefined, agent: AgentState): void {
     const scope = this.scopes.get(parentAgent)
     if (scope?.agents.get(agent.agentId) === agent) scope.agents.delete(agent.agentId)
   }
 
-  resetUnsubmittedAgent(agent: BrowserAgentState): void {
+  /** Adopt a usable page after navigation; browser orchestration owns closing the old page. */
+  recordPageReady(agent: AgentState, page: Page, now: number): void {
+    agent.page = page
+    agent.lastUsedAt = now
+  }
+
+  /** Bind the observed conversation and persist its identity without invalidating submitted work. */
+  recordConversation(
+    parentAgent: AgentIdentity | undefined,
+    agent: AgentState,
+    conversationId?: string
+  ): void {
+    if (!agent.memory) return
+    const pageUrl = agent.page && !agent.page.isClosed() ? agent.page.url() : undefined
+    if (conversationId) {
+      if (pageUrl && extractConversationId(pageUrl) === conversationId) {
+        agent.conversationUrl = pageUrl
+      } else if (extractConversationId(agent.conversationUrl ?? "") !== conversationId) {
+        const url = new URL(MCP_CONFIG.chatGpt.projectUrl)
+        const encodedId = encodeURIComponent(conversationId)
+        if (PROJECT_PATH_PATTERN.test(url.pathname)) {
+          url.pathname = `${url.pathname.replace(PROJECT_SUFFIX_PATTERN, "")}/c/${encodedId}`
+          url.search = ""
+          url.hash = ""
+          agent.conversationUrl = url.toString()
+        } else {
+          agent.conversationUrl = `https://chatgpt.com/c/${encodedId}`
+        }
+      }
+    } else if (!agent.conversationUrl && pageUrl && extractConversationId(pageUrl)) {
+      agent.conversationUrl = pageUrl
+    }
+    this.persistAgent(parentAgent, agent)
+  }
+
+  resetUnsubmittedAgent(agent: AgentState): void {
     agent.status = "idle"
   }
 
@@ -196,7 +241,7 @@ export class DelegationLifecycle {
 
   createTurn(
     parentAgent: AgentIdentity | undefined,
-    agent: BrowserAgentState,
+    agent: AgentState,
     prompt: string,
     now: number
   ): BrowserTurnState {
@@ -215,19 +260,20 @@ export class DelegationLifecycle {
   }
 
   recordActivity(
-    agent: BrowserAgentState,
-    turn: BrowserTurnState,
+    agent: AgentState,
+    turn: TurnState,
     activity: ChatGptDelegationActivity | undefined,
     now: number
   ): void {
+    if (turn.status !== "running") return
     if (activity) agent.status = activity
     turn.lastActivityAt = now
   }
 
   recordSubmittedTurn(
     parentAgent: AgentIdentity | undefined,
-    agent: BrowserAgentState,
-    turn: BrowserTurnState,
+    agent: AgentState,
+    turn: TurnState,
     observation: AssistantResponseObservation,
     now: number
   ): void {
@@ -251,14 +297,16 @@ export class DelegationLifecycle {
   }
 
   requireTurn(parentAgent: AgentIdentity | undefined, turnId: string): BrowserTurnState {
-    const turn = this.scopes.get(parentAgent)?.turns.get(turnId)
+    const scope = this.scopes.get(parentAgent)
+    if (scope) this.pruneTurns(scope, Date.now())
+    const turn = scope?.turns.get(turnId)
     if (!turn) throw new ChatGptDelegationError("UNKNOWN_TURN", `Unknown agent turn: ${turnId}`)
     return turn
   }
 
   pollResult(
     parentAgent: AgentIdentity | undefined,
-    turn: BrowserTurnState,
+    turn: TurnState,
     now: number
   ): ChatGptDelegationPollResult {
     const agentStatus = this.scopes.get(parentAgent)?.agents.get(turn.agentId)?.status
@@ -273,11 +321,11 @@ export class DelegationLifecycle {
     }
   }
 
-  agentForTurn(turn: BrowserTurnState): BrowserAgentState | undefined {
+  agentForTurn(turn: TurnState): BrowserAgentState | undefined {
     return this.scopes.get(turn.parentAgent)?.agents.get(turn.agentId)
   }
 
-  persistAgent(parentAgent: AgentIdentity | undefined, agent: BrowserAgentState): void {
+  private persistAgent(parentAgent: AgentIdentity | undefined, agent: AgentState): void {
     if (!agent.memory || !agent.conversationUrl) return
     try {
       this.store.set(parentAgent, agent.agentId, {
@@ -292,7 +340,7 @@ export class DelegationLifecycle {
     }
   }
 
-  startRecovery(turn: BrowserTurnState, agent: BrowserAgentState, now: number): boolean {
+  startRecovery(turn: TurnState, agent: AgentState, now: number): boolean {
     if (turn.recoveryAttempted || !agent.conversationUrl) return false
     turn.recoveryAttempted = true
     turn.lastActivityAt = now
@@ -300,18 +348,14 @@ export class DelegationLifecycle {
     return true
   }
 
-  markUncertain(agent: BrowserAgentState): void {
-    agent.status = "uncertain"
-  }
-
-  detachObservation(turn: BrowserTurnState): AssistantResponseObservation | undefined {
+  detachObservation(turn: TurnState): AssistantResponseObservation | undefined {
     const observation = turn.observation
     turn.observation = undefined
     return observation
   }
 
   completeTurn(
-    turn: BrowserTurnState,
+    turn: TurnState,
     response: string,
     now: number
   ): AssistantResponseObservation | undefined {
@@ -325,22 +369,25 @@ export class DelegationLifecycle {
       )
     }
 
+    this.recordConversation(turn.parentAgent, agent)
     agent.lastCompletedAt = now
     agent.lastUsedAt = now
     agent.status = "idle"
     turn.status = "completed"
     turn.response = response
-    const observation = this.settleTurn(turn)
+    const observation = this.settleTurn(turn, now)
     scope.pendingEvents.push(`agent_finished agent_id=${turn.agentId} turn_id=${turn.turnId}`)
     return observation
   }
 
-  failTurn(turn: BrowserTurnState, error: unknown): AssistantResponseObservation | undefined {
+  failTurn(turn: TurnState, error: unknown): AssistantResponseObservation | undefined {
     if (turn.status !== "running") return
+    const agent = this.scopes.get(turn.parentAgent)?.agents.get(turn.agentId)
+    if (agent) agent.status = "uncertain"
     turn.status = "failed"
     turn.errorCode = error instanceof ChatGptDelegationError ? error.code : "subagent_failed"
     turn.errorMessage = error instanceof Error ? error.message : String(error)
-    return this.settleTurn(turn)
+    return this.settleTurn(turn, Date.now())
   }
 
   drainEvents(parentAgent: AgentIdentity | undefined): string[] {
@@ -367,6 +414,7 @@ export class DelegationLifecycle {
   idleCleanupActions(now: number): IdleCleanupAction[] {
     const actions: IdleCleanupAction[] = []
     for (const scope of this.scopes.values()) {
+      this.pruneTurns(scope, now)
       for (const agent of scope.agents.values()) {
         const action = this.idleCleanupAction(scope, agent, now)
         if (action) actions.push(action)
@@ -375,7 +423,7 @@ export class DelegationLifecycle {
     return actions
   }
 
-  commitIdlePageClosed(agent: BrowserAgentState, page: Page): void {
+  commitIdlePageClosed(agent: AgentState, page: Page): void {
     if (agent.page !== page) return
     agent.page = undefined
     if (!agent.memory) agent.idleExpired = true
@@ -415,7 +463,7 @@ export class DelegationLifecycle {
   private assertAgentOperationAvailable(
     scope: DelegationScope,
     agentId: string,
-    agent: BrowserAgentState | undefined
+    agent: AgentState | undefined
   ): void {
     if (agent?.idleExpired) {
       throw new ChatGptDelegationError(
@@ -439,7 +487,7 @@ export class DelegationLifecycle {
 
   private idleCleanupAction(
     scope: DelegationScope,
-    agent: BrowserAgentState,
+    agent: AgentState,
     now: number
   ): IdleCleanupAction | undefined {
     const activeOperation = scope.activeOperations.get(agent.agentId)
@@ -518,14 +566,34 @@ export class DelegationLifecycle {
     )
   }
 
-  private settleTurn(turn: BrowserTurnState): AssistantResponseObservation | undefined {
+  private settleTurn(turn: TurnState, now: number): AssistantResponseObservation | undefined {
     const observation = this.detachObservation(turn)
     const scope = this.scopes.get(turn.parentAgent)
     if (scope?.activeOperations.get(turn.agentId)?.turnId === turn.turnId) {
       scope.activeOperations.delete(turn.agentId)
     }
+    turn.prompt = ""
+    turn.settledAt = now
     turn.settle()
+    if (scope) {
+      scope.turns.delete(turn.turnId)
+      scope.turns.set(turn.turnId, turn)
+      this.pruneTurns(scope, now)
+    }
     return observation
+  }
+
+  /** Retain the newest 100 settled results per caller for 24 hours; running turns never expire here. */
+  private pruneTurns(scope: DelegationScope, now: number): void {
+    let retained = 0
+    for (const turn of [...scope.turns.values()].reverse()) {
+      if (turn.settledAt === undefined) continue
+      if (now - turn.settledAt >= TURN_RESULT_TTL_MS || retained >= MAX_RETAINED_TURNS) {
+        scope.turns.delete(turn.turnId)
+      } else {
+        retained += 1
+      }
+    }
   }
 
   private readPersistedAgent(parentAgent: AgentIdentity | undefined, agentId: string) {

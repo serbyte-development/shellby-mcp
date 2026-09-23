@@ -1,6 +1,8 @@
 import type { Dirent, Stats } from "node:fs"
 import { readdir, readFile, stat } from "node:fs/promises"
 import { join } from "node:path"
+import { JSON_SCHEMA, load, YAMLException } from "js-yaml"
+import { asRecord } from "../../utils.js"
 
 export const MAX_SKILL_BYTES = 256 * 1024
 
@@ -119,27 +121,17 @@ function skillTooLarge(name: string): SkillCatalogError {
 function frontmatterValue(markdown: string, key: string): string | undefined {
   const lines = markdown.split(LINE_BREAK_RE)
   if (lines[0]?.trim() !== "---") return undefined
-
-  for (let index = 1; index < lines.length; index += 1) {
-    const line = lines[index]
-    if (line === undefined) break
-    if (line.trim() === "---") break
-
-    const separator = line.indexOf(":")
-    if (separator < 0 || line.slice(0, separator).trim() !== key) continue
-    return unquote(line.slice(separator + 1).trim())
+  const end = lines.findIndex((line, index) => index > 0 && line.trim() === "---")
+  if (end < 0) return undefined
+  try {
+    const metadata = asRecord(load(lines.slice(1, end).join("\n"), { schema: JSON_SCHEMA }))
+    const value = metadata?.[key]
+    return typeof value === "string" ? value.trim() || undefined : undefined
+  } catch (error) {
+    // A malformed description must not hide an otherwise readable skill.
+    if (error instanceof YAMLException) return undefined
+    throw error
   }
-  return undefined
-}
-
-function unquote(value: string): string {
-  if (value.length < 2) return value
-  const first = value[0]
-  const last = value[value.length - 1]
-  if ((first === '"' && last === '"') || (first === "'" && last === "'")) {
-    return value.slice(1, -1)
-  }
-  return value
 }
 
 function isFsError(error: unknown, code: string): boolean {

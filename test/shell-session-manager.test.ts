@@ -6,35 +6,43 @@ import test from "node:test"
 
 import { MCP_CONFIG } from "../src/config.js"
 import { createShellSession, type ShellSession } from "../src/tools/shell/session.js"
-import { createShellSessionManager } from "../src/tools/shell/session-manager.js"
+import {
+  createShellSessionManager,
+  type ShellSessionManager,
+} from "../src/tools/shell/session-manager.js"
 import { DEFAULT_SHELL_ID } from "../src/tools/shell/shell-contracts.js"
-import { runToCompletion, waitForProcessExit } from "./helpers/shell.js"
+import { waitForProcessExit } from "./helpers/shell.js"
 
 test("creates named shells lazily and keeps their state isolated", async (t) => {
   const manager = createShellSessionManager()
   t.after(() => manager.close())
 
-  assert.deepEqual(manager.listShellIds(), [DEFAULT_SHELL_ID])
+  assert.deepEqual(
+    manager.listShells().map(({ shell_id }) => shell_id),
+    [DEFAULT_SHELL_ID]
+  )
 
-  const alpha = await manager.getOrCreate("alpha")
-  const beta = await manager.getOrCreate("beta")
-  assert.notEqual(alpha, beta)
-  assert.equal(await manager.getOrCreate("alpha"), alpha)
-  assert.deepEqual(manager.listShellIds(), [DEFAULT_SHELL_ID, "alpha", "beta"])
+  await runManaged(manager, "alpha", "initialize", ":")
+  await runManaged(manager, "beta", "initialize", ":")
 
-  await alpha.runCommand({
+  assert.deepEqual(
+    manager.listShells().map(({ shell_id }) => shell_id),
+    [DEFAULT_SHELL_ID, "alpha", "beta"]
+  )
+
+  await manager.runCommand("alpha", {
     request_id: "state1",
     command: "cd /tmp && export NAMED_SHELL_STATE=alpha",
     yield_time_ms: MCP_CONFIG.shell.defaultWaitMs,
     max_output_tokens: MCP_CONFIG.shell.defaultOutputTokens,
   })
-  const alphaState = await alpha.runCommand({
+  const alphaState = await manager.runCommand("alpha", {
     request_id: "state2",
     command: `printf '%s|%s' "$PWD" "$NAMED_SHELL_STATE"`,
     yield_time_ms: MCP_CONFIG.shell.defaultWaitMs,
     max_output_tokens: MCP_CONFIG.shell.defaultOutputTokens,
   })
-  const betaState = await beta.runCommand({
+  const betaState = await manager.runCommand("beta", {
     request_id: "state2",
     command: `printf '%s|%s' "$PWD" "\${NAMED_SHELL_STATE-unset}"`,
     yield_time_ms: MCP_CONFIG.shell.defaultWaitMs,
@@ -50,16 +58,18 @@ test("pressure-evicts the least recently used non-busy named shell", async (t) =
   const manager = createShellSessionManager({ maxShells: 3, now: () => now })
   t.after(() => manager.close())
 
-  await manager.getOrCreate("alpha")
+  await runManaged(manager, "alpha", "initialize", ":")
   now = 10
-  await manager.getOrCreate("beta")
+  await runManaged(manager, "beta", "initialize", ":")
   now = 20
-  await manager.getOrCreate("beta")
+  await runManaged(manager, "beta", "initialize", ":")
   now = 30
-  await manager.getOrCreate("gamma")
+  await runManaged(manager, "gamma", "initialize", ":")
 
-  assert.deepEqual(manager.listShellIds(), [DEFAULT_SHELL_ID, "beta", "gamma"])
-  assert.deepEqual(manager.listCachedShellIds(), ["alpha"])
+  assert.deepEqual(
+    manager.listShells().map(({ shell_id }) => shell_id),
+    [DEFAULT_SHELL_ID, "beta", "gamma"]
+  )
 })
 
 test("lists shells without refreshing their idle timers", async (t) => {
@@ -70,7 +80,7 @@ test("lists shells without refreshing their idle timers", async (t) => {
   })
   t.after(() => manager.close())
 
-  await manager.getOrCreate("alpha")
+  await runManaged(manager, "alpha", "initialize", ":")
   now = 75
   assert.deepEqual(manager.listShells(), [
     {
@@ -95,15 +105,27 @@ test("closes named shells and immediately releases their slot", async (t) => {
   const manager = createShellSessionManager({ maxShells: 2 })
   t.after(() => manager.close())
 
-  const alpha = await manager.getOrCreate("alpha")
+  await runManaged(manager, "alpha", "initialize", ":")
   await manager.closeShell("alpha")
-  assert.deepEqual(manager.listShellIds(), [DEFAULT_SHELL_ID])
-  assert.deepEqual(manager.listCachedShellIds(), [])
-  await manager.getOrCreate("beta")
-  assert.deepEqual(manager.listShellIds(), [DEFAULT_SHELL_ID, "beta"])
+  assert.deepEqual(
+    manager.listShells().map(({ shell_id }) => shell_id),
+    [DEFAULT_SHELL_ID]
+  )
+
+  await runManaged(manager, "beta", "initialize", ":")
+  assert.deepEqual(
+    manager.listShells().map(({ shell_id }) => shell_id),
+    [DEFAULT_SHELL_ID, "beta"]
+  )
   await assert.rejects(
-    () => alpha.start(),
-    (error: unknown) => error instanceof Error && error.message.includes("closed")
+    () =>
+      manager.pollCommand("alpha", {
+        request_id: "missing",
+        cursor: 0,
+        yield_time_ms: 0,
+        max_output_tokens: 100,
+      }),
+    (error: unknown) => error instanceof Error && error.message.includes("No live shell")
   )
 })
 
@@ -119,17 +141,16 @@ test("protects the default shell from close while allowing reset", async (t) => 
       error.message.includes("shell_reset")
   )
 
-  const reset = await manager.defaultShell.reset({ reason: "test default reset" })
+  const reset = await manager.resetShell(DEFAULT_SHELL_ID, { reason: "test default reset" })
   assert.equal(reset.status, "ready")
-  assert.equal(await manager.getOrCreate(DEFAULT_SHELL_ID), manager.defaultShell)
 })
 
 test("closing a named shell terminates its active foreground command", async (t) => {
   const manager = createShellSessionManager()
   t.after(() => manager.close())
-  const alpha = await manager.getOrCreate("alpha")
+  await runManaged(manager, "alpha", "initialize", ":")
 
-  const running = await alpha.runCommand({
+  const running = await manager.runCommand("alpha", {
     request_id: "long-running",
     command: "sleep 5; printf should-not-complete",
     yield_time_ms: 0,
@@ -138,10 +159,19 @@ test("closing a named shell terminates its active foreground command", async (t)
   assert.equal(running.status, "running")
 
   await manager.closeShell("alpha")
-  assert.deepEqual(manager.listShellIds(), [DEFAULT_SHELL_ID])
+  assert.deepEqual(
+    manager.listShells().map(({ shell_id }) => shell_id),
+    [DEFAULT_SHELL_ID]
+  )
   await assert.rejects(
-    () => alpha.start(),
-    (error: unknown) => error instanceof Error && error.message.includes("closed")
+    () =>
+      manager.pollCommand("alpha", {
+        request_id: "missing",
+        cursor: 0,
+        yield_time_ms: 0,
+        max_output_tokens: 100,
+      }),
+    (error: unknown) => error instanceof Error && error.message.includes("No live shell")
   )
 })
 
@@ -153,18 +183,30 @@ test("evicts idle named shells while keeping the default shell", async (t) => {
   })
   t.after(() => manager.close())
 
-  const alpha = await manager.getOrCreate("alpha")
+  await runManaged(manager, "alpha", "initialize", ":")
   now = 99
   assert.deepEqual(await manager.cleanupIdle(), [])
   now = 100
   assert.deepEqual(await manager.cleanupIdle(), ["alpha"])
-  assert.deepEqual(manager.listShellIds(), [DEFAULT_SHELL_ID])
-  assert.deepEqual(manager.listCachedShellIds(now), ["alpha"])
-  await manager.getOrCreate("beta")
-  assert.deepEqual(manager.listShellIds(), [DEFAULT_SHELL_ID, "beta"])
+  assert.deepEqual(
+    manager.listShells().map(({ shell_id }) => shell_id),
+    [DEFAULT_SHELL_ID]
+  )
+
+  await runManaged(manager, "beta", "initialize", ":")
+  assert.deepEqual(
+    manager.listShells().map(({ shell_id }) => shell_id),
+    [DEFAULT_SHELL_ID, "beta"]
+  )
   await assert.rejects(
-    () => alpha.start(),
-    (error: unknown) => error instanceof Error && error.message.includes("closed")
+    () =>
+      manager.pollCommand("alpha", {
+        request_id: "missing",
+        cursor: 0,
+        yield_time_ms: 0,
+        max_output_tokens: 100,
+      }),
+    (error: unknown) => error instanceof Error && error.message.includes("No live shell")
   )
 })
 
@@ -176,8 +218,8 @@ test("does not evict a named shell while it has active work", async (t) => {
   })
   t.after(() => manager.close())
 
-  const alpha = await manager.getOrCreate("alpha")
-  const running = await alpha.runCommand({
+  await runManaged(manager, "alpha", "initialize", ":")
+  const running = await manager.runCommand("alpha", {
     request_id: "active",
     command: "sleep 0.15; printf done",
     yield_time_ms: 0,
@@ -187,11 +229,14 @@ test("does not evict a named shell while it has active work", async (t) => {
 
   now = 100
   assert.deepEqual(await manager.cleanupIdle(), [])
-  assert.deepEqual(manager.listShellIds(), [DEFAULT_SHELL_ID, "alpha"])
+  assert.deepEqual(
+    manager.listShells().map(({ shell_id }) => shell_id),
+    [DEFAULT_SHELL_ID, "alpha"]
+  )
 
   let snapshot = running
   for (let attempt = 0; attempt < 20 && snapshot.status === "running"; attempt += 1) {
-    snapshot = await alpha.pollCommand({
+    snapshot = await manager.pollCommand("alpha", {
       request_id: "active",
       cursor: snapshot.next_cursor,
       yield_time_ms: 100,
@@ -214,8 +259,8 @@ test("closes every created shell", async () => {
       return shell
     },
   })
-  await manager.getOrCreate("alpha")
-  await manager.getOrCreate("beta")
+  await runManaged(manager, "alpha", "initialize", ":")
+  await runManaged(manager, "beta", "initialize", ":")
 
   await manager.close()
 
@@ -236,14 +281,19 @@ test("restores cwd and exported environment after idle hibernation", async (t) =
   })
   t.after(() => manager.close())
 
-  const first = await manager.getOrCreate("alpha")
-  await runToCompletion(first, "prepare", "cd /tmp && export RESTORED_VALUE=kept")
+  await runManaged(manager, "alpha", "initialize", ":")
+  await runManaged(manager, "alpha", "prepare", "cd /tmp && export RESTORED_VALUE=kept")
   now = 100
   assert.deepEqual(await manager.cleanupIdle(), ["alpha"])
 
-  const restored = await manager.getOrCreate("alpha")
-  assert.notEqual(restored, first)
-  const state = await runToCompletion(restored, "verify", `printf '%s|%s' "$PWD" "$RESTORED_VALUE"`)
+  await runManaged(manager, "alpha", "initialize", ":")
+
+  const state = await runManaged(
+    manager,
+    "alpha",
+    "verify",
+    `printf '%s|%s' "$PWD" "$RESTORED_VALUE"`
+  )
   assert.equal(state.output, "/tmp|kept")
 })
 
@@ -251,14 +301,14 @@ test("shell_close discards live and cached state", async (t) => {
   const manager = createShellSessionManager({ cacheTimeoutMs: 10_000 })
   t.after(() => manager.close())
 
-  const first = await manager.getOrCreate("alpha")
-  await runToCompletion(first, "prepare-close", "cd /tmp && export CLOSE_VALUE=kept")
+  await runManaged(manager, "alpha", "initialize", ":")
+  await runManaged(manager, "alpha", "prepare-close", "cd /tmp && export CLOSE_VALUE=kept")
   await manager.closeShell("alpha")
 
-  assert.deepEqual(manager.listCachedShellIds(), [])
-  const fresh = await manager.getOrCreate("alpha")
-  const state = await runToCompletion(
-    fresh,
+  await runManaged(manager, "alpha", "initialize", ":")
+  const state = await runManaged(
+    manager,
+    "alpha",
     "after-close",
     `printf '%s|%s' "$PWD" "\${CLOSE_VALUE-unset}"`
   )
@@ -275,17 +325,17 @@ test("expires cached logical shell state after cache TTL", async (t) => {
   })
   t.after(() => manager.close())
 
-  const alpha = await manager.getOrCreate("alpha")
-  await runToCompletion(alpha, "cache-expire", "cd /tmp && export EXPIRES=yes")
+  await runManaged(manager, "alpha", "initialize", ":")
+  await runManaged(manager, "alpha", "cache-expire", "cd /tmp && export EXPIRES=yes")
   now = 100
   await manager.cleanupIdle()
   now = 1_000
   await manager.cleanupIdle()
-  assert.deepEqual(manager.listCachedShellIds(now), [])
 
-  const fresh = await manager.getOrCreate("alpha")
-  const state = await runToCompletion(
-    fresh,
+  await runManaged(manager, "alpha", "initialize", ":")
+  const state = await runManaged(
+    manager,
+    "alpha",
     "fresh-state",
     `printf '%s|%s' "$PWD" "\${EXPIRES-unset}"`
   )
@@ -296,8 +346,8 @@ test("expires cached logical shell state after cache TTL", async (t) => {
 test("never pressure-evicts busy shells and blocks when no evictable slot exists", async (t) => {
   const manager = createShellSessionManager({ maxShells: 2 })
   t.after(() => manager.close())
-  const alpha = await manager.getOrCreate("alpha")
-  const running = await alpha.runCommand({
+  await runManaged(manager, "alpha", "initialize", ":")
+  const running = await manager.runCommand("alpha", {
     request_id: "busy-capacity",
     command: "sleep 0.2",
     yield_time_ms: 0,
@@ -306,23 +356,26 @@ test("never pressure-evicts busy shells and blocks when no evictable slot exists
   assert.equal(running.status, "running")
 
   await assert.rejects(
-    () => manager.getOrCreate("beta"),
+    () => runManaged(manager, "beta", "initialize", ":"),
     (error: unknown) =>
       error instanceof Error &&
       error.message.includes("shell slots are unavailable") &&
       error.message.includes("never pressure-evicted")
   )
-  assert.deepEqual(manager.listShellIds(), [DEFAULT_SHELL_ID, "alpha"])
+  assert.deepEqual(
+    manager.listShells().map(({ shell_id }) => shell_id),
+    [DEFAULT_SHELL_ID, "alpha"]
+  )
 })
 
 test("pressure eviction skips a busy older shell and evicts the next LRU shell", async (t) => {
   let now = 0
   const manager = createShellSessionManager({ maxShells: 3, now: () => now })
   t.after(() => manager.close())
-  const alpha = await manager.getOrCreate("alpha")
+  await runManaged(manager, "alpha", "initialize", ":")
   now = 10
-  await manager.getOrCreate("beta")
-  const running = await alpha.runCommand({
+  await runManaged(manager, "beta", "initialize", ":")
+  const running = await manager.runCommand("alpha", {
     request_id: "busy-lru",
     command: "sleep 0.2",
     yield_time_ms: 0,
@@ -331,9 +384,11 @@ test("pressure eviction skips a busy older shell and evicts the next LRU shell",
   assert.equal(running.status, "running")
 
   now = 20
-  await manager.getOrCreate("gamma")
-  assert.deepEqual(manager.listShellIds(), [DEFAULT_SHELL_ID, "alpha", "gamma"])
-  assert.deepEqual(manager.listCachedShellIds(), ["beta"])
+  await runManaged(manager, "gamma", "initialize", ":")
+  assert.deepEqual(
+    manager.listShells().map(({ shell_id }) => shell_id),
+    [DEFAULT_SHELL_ID, "alpha", "gamma"]
+  )
 })
 
 test("hibernation restores only cwd and exported environment and terminates background processes", async (t) => {
@@ -344,9 +399,10 @@ test("hibernation restores only cwd and exported environment and terminates back
     now: () => now,
   })
   t.after(() => manager.close())
-  const alpha = await manager.getOrCreate("alpha")
-  const prepared = await runToCompletion(
-    alpha,
+  await runManaged(manager, "alpha", "initialize", ":")
+  const prepared = await runManaged(
+    manager,
+    "alpha",
     "limited-state",
     "cd /tmp; export PERSISTED_VALUE=yes; LOCAL_ONLY=hidden; function __mcp_ephemeral_fn { printf no; }; sleep 30 & printf '%s' $!"
   )
@@ -357,9 +413,10 @@ test("hibernation restores only cwd and exported environment and terminates back
   assert.deepEqual(await manager.cleanupIdle(), ["alpha"])
   assert.equal(await waitForProcessExit(backgroundPid), true)
 
-  const restored = await manager.getOrCreate("alpha")
-  const state = await runToCompletion(
-    restored,
+  await runManaged(manager, "alpha", "initialize", ":")
+  const state = await runManaged(
+    manager,
+    "alpha",
     "limited-state-check",
     `printf '%s|%s|' "$PERSISTED_VALUE" "\${LOCAL_ONLY-unset}"; if (( $+functions[__mcp_ephemeral_fn] )); then printf present; else printf missing; fi`
   )
@@ -374,18 +431,20 @@ test("resetting a cached shell discards cached cwd and environment", async (t) =
     now: () => now,
   })
   t.after(() => manager.close())
-  const alpha = await manager.getOrCreate("alpha")
-  await runToCompletion(alpha, "prepare-reset-cache", "cd /tmp && export RESET_CACHE_VALUE=kept")
+  await runManaged(manager, "alpha", "initialize", ":")
+  await runManaged(
+    manager,
+    "alpha",
+    "prepare-reset-cache",
+    "cd /tmp && export RESET_CACHE_VALUE=kept"
+  )
   now = 100
   await manager.cleanupIdle()
-  assert.deepEqual(manager.listCachedShellIds(), ["alpha"])
 
-  await manager.withShell("alpha", (shell) => shell.reset({ reason: "test cached reset" }), {
-    restoreCached: false,
-  })
-  const live = manager.getExisting("alpha")
-  const state = await runToCompletion(
-    live,
+  await manager.resetShell("alpha", { reason: "test cached reset" })
+  const state = await runManaged(
+    manager,
+    "alpha",
     "after-reset-cache",
     `printf '%s|%s' "$PWD" "\${RESET_CACHE_VALUE-unset}"`
   )
@@ -402,9 +461,10 @@ test("invalid cached cwd falls back to a clean baseline instead of restart-loopi
     now: () => now,
   })
   t.after(() => manager.close())
-  const alpha = await manager.getOrCreate("alpha")
-  await runToCompletion(
-    alpha,
+  await runManaged(manager, "alpha", "initialize", ":")
+  await runManaged(
+    manager,
+    "alpha",
     "prepare-missing-cwd",
     `cd ${JSON.stringify(temporaryCwd)} && export MISSING_CWD_VALUE=kept`
   )
@@ -412,9 +472,10 @@ test("invalid cached cwd falls back to a clean baseline instead of restart-loopi
   await manager.cleanupIdle()
   await rm(temporaryCwd, { recursive: true, force: true })
 
-  const restored = await manager.getOrCreate("alpha")
-  const state = await runToCompletion(
-    restored,
+  await runManaged(manager, "alpha", "initialize", ":")
+  const state = await runManaged(
+    manager,
+    "alpha",
     "missing-cwd-fallback",
     `printf '%s|%s' "$PWD" "\${MISSING_CWD_VALUE-unset}"`
   )
@@ -435,13 +496,29 @@ test("keeps a live shell when recoverable-state capture fails during pressure ev
   })
   t.after(() => manager.close())
 
-  const alpha = await manager.getOrCreate("alpha")
+  await runManaged(manager, "alpha", "initialize", ":")
   await assert.rejects(
-    () => manager.getOrCreate("beta"),
+    () => runManaged(manager, "beta", "initialize", ":"),
     (error: unknown) =>
       error instanceof Error && error.message.includes("shell slots are unavailable")
   )
-  assert.equal(await manager.getOrCreate("alpha"), alpha)
-  assert.deepEqual(manager.listShellIds(), [DEFAULT_SHELL_ID, "alpha"])
-  assert.deepEqual(manager.listCachedShellIds(), [])
+
+  assert.deepEqual(
+    manager.listShells().map(({ shell_id }) => shell_id),
+    [DEFAULT_SHELL_ID, "alpha"]
+  )
 })
+
+function runManaged(
+  manager: ShellSessionManager,
+  shellId: string,
+  requestId: string,
+  command: string
+) {
+  return manager.runCommand(shellId, {
+    request_id: requestId,
+    command,
+    yield_time_ms: MCP_CONFIG.shell.defaultWaitMs,
+    max_output_tokens: MCP_CONFIG.shell.defaultOutputTokens,
+  })
+}

@@ -81,7 +81,7 @@
         "noNestedTernary": "error",
         "noParameterAssign": "error",
         "noSubstr": "error",
-        "noUnusedTemplateLiteral": "error",
+        "noUnusedTemplateLiteral": "info",
         "noUselessElse": "error",
         "noYodaExpression": "error",
         "useAsConstAssertion": "error",

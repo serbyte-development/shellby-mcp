@@ -1,11 +1,10 @@
-import type { McpServer } from "@modelcontextprotocol/server"
 import { z } from "zod"
-
 import { MCP_CONFIG } from "../../config.js"
+import type { ToolRegistrar } from "../../mcp/tool-registration-boundary.js"
 import { WebOpenError, type WebPageOpener } from "./web-open.js"
 
-export function registerWebTool(server: McpServer, webPageOpener: WebPageOpener): void {
-  server.registerTool(
+export function registerWebTool(registerTool: ToolRegistrar, webPageOpener: WebPageOpener): void {
+  registerTool(
     "fetch_url",
     {
       description:

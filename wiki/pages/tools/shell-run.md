@@ -7,6 +7,7 @@ paths:
   - src/tools/shell/session-manager.ts
   - src/tools/shell/parallel-session.ts
   - src/tools/shell/parallel-runner.ts
+  - src/tools/shell/output-capture.ts
   - src/tools/shell/rtk.ts
   - src/mcp/tool-output.ts
 ---

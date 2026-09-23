@@ -1,5 +1,5 @@
 import { resolve } from "node:path"
-import type { McpServer } from "@modelcontextprotocol/server"
+import type { ToolRegistrar } from "../../mcp/tool-registration-boundary.js"
 import { withApplyPatchToolHint } from "./apply-patch-guidance.js"
 import { ShellSessionError, type ShellSnapshot } from "./session.js"
 import type { ShellSessionManager } from "./session-manager.js"
@@ -19,10 +19,13 @@ import {
   shellRunOutputSchema,
 } from "./shell-contracts.js"
 
-export function registerShellExecutionTools(server: McpServer, shells: ShellSessionManager): void {
+export function registerShellExecutionTools(
+  registerTool: ToolRegistrar,
+  shells: ShellSessionManager
+): void {
   const workspaceDescription = JSON.stringify(shells.initialCwd)
 
-  server.registerTool(
+  registerTool(
     "shell_run",
     {
       description: `Run commands in a persistent zsh shell. Provide exactly one of command or commands. Shells cwd start in ${workspaceDescription}. Use concise slugs for _id arguments.`,
@@ -38,9 +41,10 @@ export function registerShellExecutionTools(server: McpServer, shells: ShellSess
     async (input, ctx) => {
       try {
         const { shell_id, ...commandInput } = input
-        const snapshot = await shells.withShell(shell_id, (shell) =>
-          shell.runCommand({ ...commandInput, signal: ctx.mcpReq.signal })
-        )
+        const snapshot = await shells.runCommand(shell_id, {
+          ...commandInput,
+          signal: ctx.mcpReq.signal,
+        })
         return snapshotResult(snapshot, shell_id)
       } catch (error) {
         return toolError(error)
@@ -48,7 +52,7 @@ export function registerShellExecutionTools(server: McpServer, shells: ShellSess
     }
   )
 
-  server.registerTool(
+  registerTool(
     "shell_poll",
     {
       description:
@@ -65,9 +69,10 @@ export function registerShellExecutionTools(server: McpServer, shells: ShellSess
     async (input, ctx) => {
       try {
         const { shell_id, ...pollInput } = input
-        const snapshot = await shells.withExistingShell(shell_id, (shell) =>
-          shell.pollCommand({ ...pollInput, signal: ctx.mcpReq.signal })
-        )
+        const snapshot = await shells.pollCommand(shell_id, {
+          ...pollInput,
+          signal: ctx.mcpReq.signal,
+        })
         return pollSnapshotResult(snapshot)
       } catch (error) {
         return toolError(error)
@@ -76,8 +81,11 @@ export function registerShellExecutionTools(server: McpServer, shells: ShellSess
   )
 }
 
-export function registerShellManagementTools(server: McpServer, shells: ShellSessionManager): void {
-  server.registerTool(
+export function registerShellManagementTools(
+  registerTool: ToolRegistrar,
+  shells: ShellSessionManager
+): void {
+  registerTool(
     "shell_reset",
     {
       description: "Reset a stuck shell.",
@@ -93,9 +101,7 @@ export function registerShellManagementTools(server: McpServer, shells: ShellSes
     async (input) => {
       try {
         const { shell_id, ...resetInput } = input
-        const result = await shells.withShell(shell_id, (shell) => shell.reset(resetInput), {
-          restoreCached: false,
-        })
+        const result = await shells.resetShell(shell_id, resetInput)
         return {
           structuredContent: result,
           content: [],
@@ -106,7 +112,7 @@ export function registerShellManagementTools(server: McpServer, shells: ShellSes
     }
   )
 
-  server.registerTool(
+  registerTool(
     "shell_list",
     {
       description: "List open persistent shells.",
@@ -136,7 +142,7 @@ export function registerShellManagementTools(server: McpServer, shells: ShellSes
     }
   )
 
-  server.registerTool(
+  registerTool(
     "shell_close",
     {
       description: `Close a named shell and discard its state. The ${DEFAULT_SHELL_ID} shell must be reset instead.`,

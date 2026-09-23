@@ -7,7 +7,7 @@
 - [Architecture Map](./pages/architecture-map.md) — Process composition, request flow, and state ownership across subsystem boundaries.
 - [Computer Use](./pages/computer-use.md) — Peekaboo ownership, snapshot coordinates, background delivery, and permission debugging.
 - [HTTP Transport](./pages/http-transport.md) — HTTP authorization, ngrok trust boundary, protocol compatibility, and connection lifetime.
-- [MCP Tool Registration Boundary](./pages/mcp-tool-registration-boundary.md) — registerTool wrapping, SDK validation, compact/native results, notices, and audit correlation.
+- [MCP Tool Registration Boundary](./pages/mcp-tool-registration-boundary.md) — Explicit tool registrar, SDK validation, compact/native results, notices, and audit correlation.
 - [MCP Tool Surface](./pages/mcp-tool-surface.md) — Add or enable tools; startup prompt discovery, initialization, and review feedback.
 - [Operations](./pages/operations/index.md) — Configuration, runtime recovery, focused checks, audit logging, and private state.
 - [Persistent Shell Runtime](./pages/persistent-shell-runtime.md) — Shell process protocol, arbitration, transcript cursors, hibernation, and cleanup ownership.

@@ -1,8 +1,8 @@
 import { join } from "node:path"
-import type { McpServer } from "@modelcontextprotocol/server"
 import { z } from "zod"
 import { createAgentLoadDeduper } from "../../agent/load-deduper.js"
 import { MCP_CONFIG } from "../../config.js"
+import type { ToolRegistrar } from "../../mcp/tool-registration-boundary.js"
 import {
   isValidSkillName,
   type LoadedSkill,
@@ -13,10 +13,10 @@ import {
 const SKILL_LOAD_COOLDOWN_MS = 5_000
 const loadSkillOnce = createAgentLoadDeduper<LoadedSkill>(SKILL_LOAD_COOLDOWN_MS)
 
-export function registerSkillTools(server: McpServer): void {
+export function registerSkillTools(registerTool: ToolRegistrar): void {
   const skills = new SkillCatalog(join(MCP_CONFIG.workspace, "skills"))
 
-  server.registerTool(
+  registerTool(
     "skill_list",
     {
       description: "List available reusable skills.",
@@ -49,7 +49,7 @@ export function registerSkillTools(server: McpServer): void {
     }
   )
 
-  server.registerTool(
+  registerTool(
     "skill_use",
     {
       description: "Load a skill's instructions, then follow them using the appropriate tools.",

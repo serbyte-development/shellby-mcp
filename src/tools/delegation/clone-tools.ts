@@ -1,14 +1,13 @@
-import type { McpServer } from "@modelcontextprotocol/server"
 import { z } from "zod"
-
 import { MCP_CONFIG } from "../../config.js"
+import type { ToolRegistrar } from "../../mcp/tool-registration-boundary.js"
 import {
   ChatGptDelegationError,
   type ChatGptDelegationService,
   chatGptDelegationActivitySchema,
   chatGptDelegationStatusSchema,
 } from "./contracts.js"
-import { pollDelegatedTurns } from "./turn-results.js"
+import { delegatedTurnsResult, pollDelegatedTurns } from "./turn-results.js"
 
 const cloneSelfResultSchema = z.object({
   clone_id: z.string(),
@@ -34,10 +33,10 @@ const cloneResultSchema = z.object({
 })
 
 export function registerCloneTools(
-  server: McpServer,
+  registerTool: ToolRegistrar,
   chatGptAgents: ChatGptDelegationService
 ): void {
-  server.registerTool(
+  registerTool(
     "clone_self",
     {
       description:
@@ -91,6 +90,7 @@ export function registerCloneTools(
         }
       } catch (error) {
         return {
+          isError: true,
           structuredContent: {
             clone_id,
             status: "failed" as const,
@@ -102,7 +102,7 @@ export function registerCloneTools(
     }
   )
 
-  server.registerTool(
+  registerTool(
     "clone_run",
     {
       description:
@@ -144,6 +144,7 @@ export function registerCloneTools(
         }
       } catch (error) {
         return {
+          isError: true,
           structuredContent: {
             clone_id,
             status: "failed" as const,
@@ -155,7 +156,7 @@ export function registerCloneTools(
     }
   )
 
-  server.registerTool(
+  registerTool(
     "clone_result",
     {
       description:
@@ -197,10 +198,7 @@ export function registerCloneTools(
         formatError: cloneErrorText,
       })
 
-      return {
-        structuredContent: { turns },
-        content: [],
-      }
+      return delegatedTurnsResult(turns)
     }
   )
 }

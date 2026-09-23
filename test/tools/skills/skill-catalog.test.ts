@@ -68,6 +68,42 @@ test("returns an empty catalog when the workspace has no skills directory", asyn
   assert.deepEqual(await catalog.list(), [])
 })
 
+test("parses YAML descriptions and keeps malformed metadata discoverable", async (t) => {
+  const workspace = await tempDir(t, "mcp-skills-yaml-")
+  const cases = [
+    {
+      name: "folded",
+      yaml: "description: >\n  Multi-line\n  description.",
+      description: "Multi-line description.",
+    },
+    {
+      name: "literal",
+      yaml: "description: |\n  First line.\n  Second line.",
+      description: "First line.\nSecond line.",
+    },
+    { name: "quoted", yaml: "description: 'It''s readable.'", description: "It's readable." },
+    { name: "comment", yaml: "description: Simple. # metadata", description: "Simple." },
+    { name: "numeric", yaml: "description: 42", description: undefined },
+    { name: "malformed", yaml: 'description: "unterminated', description: undefined },
+    { name: "sequence", yaml: "- description", description: undefined },
+  ]
+  for (const item of cases) {
+    const directory = join(workspace, item.name)
+    await mkdir(directory)
+    await writeFile(join(directory, "SKILL.md"), `---\n${item.yaml}\n---\n# Instructions\n`)
+  }
+  const catalog = new SkillCatalog(workspace)
+  const summaries = await catalog.list()
+  assert.equal(summaries.length, cases.length)
+  for (const item of cases) {
+    assert.equal(
+      summaries.find((summary) => summary.name === item.name)?.description,
+      item.description
+    )
+    assert.match((await catalog.read(item.name)).content, /# Instructions/u)
+  }
+})
+
 test("rejects unknown skill names", async (t) => {
   const workspace = await tempDir(t, "mcp-skills-errors-")
   const catalog = new SkillCatalog(join(workspace, "skills"))

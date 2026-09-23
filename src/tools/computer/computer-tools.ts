@@ -1,5 +1,6 @@
-import type { CallToolResult, McpServer } from "@modelcontextprotocol/server"
+import type { CallToolResult } from "@modelcontextprotocol/server"
 import { z } from "zod"
+import type { ToolRegistrar } from "../../mcp/tool-registration-boundary.js"
 
 import { asRecord, booleanValue, finiteNumber as numberValue } from "../../utils.js"
 import {
@@ -26,7 +27,10 @@ const targetFields = {
 }
 
 // biome-ignore lint/complexity/noExcessiveLinesPerFunction: Registration stays together so shared schemas and tool contracts remain locally auditable.
-export function registerComputerUseTools(server: McpServer, peekaboo: PeekabooClient): void {
+export function registerComputerUseTools(
+  registerTool: ToolRegistrar,
+  peekaboo: PeekabooClient
+): void {
   const listSchema = z.object({
     kind: z.enum(["apps", "windows", "screens", "permissions"]).default("apps"),
     app: appInput.optional().describe("App whose windows to list."),
@@ -34,11 +38,12 @@ export function registerComputerUseTools(server: McpServer, peekaboo: PeekabooCl
     include_background: z.boolean().optional(),
   })
 
-  server.registerTool(
+  registerTool(
     "computer_list",
     {
       description: "List apps, windows, screens, or permission status.",
       inputSchema: listSchema,
+      nativeContent: true,
       annotations: {
         readOnlyHint: true,
         destructiveHint: false,
@@ -88,12 +93,13 @@ export function registerComputerUseTools(server: McpServer, peekaboo: PeekabooCl
       }
     })
 
-  server.registerTool(
+  registerTool(
     "computer_observe",
     {
       description:
         "Capture a screenshot and snapshot ID for an app, window, screen, or the frontmost window. Observe again after the UI changes.",
       inputSchema: observeSchema,
+      nativeContent: true,
       annotations: {
         readOnlyHint: true,
         destructiveHint: false,
@@ -125,7 +131,7 @@ export function registerComputerUseTools(server: McpServer, peekaboo: PeekabooCl
     }
   )
 
-  server.registerTool(
+  registerTool(
     "computer_inspect",
     {
       description:
@@ -136,6 +142,7 @@ export function registerComputerUseTools(server: McpServer, peekaboo: PeekabooCl
         max_elements: z.number().int().min(1).max(500).default(100),
         max_children: z.number().int().min(1).max(100).default(25),
       }),
+      nativeContent: true,
       annotations: {
         readOnlyHint: true,
         destructiveHint: false,
@@ -214,11 +221,12 @@ export function registerComputerUseTools(server: McpServer, peekaboo: PeekabooCl
       }
     })
 
-  server.registerTool(
+  registerTool(
     "computer_click",
     {
       description: "Click an element, visible text, or coordinates from a snapshot.",
       inputSchema: clickSchema,
+      nativeContent: true,
       annotations: {
         readOnlyHint: false,
         destructiveHint: false,
@@ -308,11 +316,12 @@ export function registerComputerUseTools(server: McpServer, peekaboo: PeekabooCl
       }
     })
 
-  server.registerTool(
+  registerTool(
     "computer_type",
     {
       description: "Type text into an app, window, or snapshot.",
       inputSchema: typeSchema,
+      nativeContent: true,
       annotations: {
         readOnlyHint: false,
         destructiveHint: false,
@@ -352,11 +361,12 @@ export function registerComputerUseTools(server: McpServer, peekaboo: PeekabooCl
       }
     })
 
-  server.registerTool(
+  registerTool(
     "computer_press",
     {
       description: "Press keys sequentially. Use computer_hotkey for simultaneous shortcuts.",
       inputSchema: pressSchema,
+      nativeContent: true,
       annotations: {
         readOnlyHint: false,
         destructiveHint: false,
@@ -389,11 +399,12 @@ export function registerComputerUseTools(server: McpServer, peekaboo: PeekabooCl
       }
     })
 
-  server.registerTool(
+  registerTool(
     "computer_hotkey",
     {
       description: "Press a keyboard shortcut. Use computer_press for sequential keys.",
       inputSchema: hotkeySchema,
+      nativeContent: true,
       annotations: {
         readOnlyHint: false,
         destructiveHint: false,
@@ -486,12 +497,13 @@ export function registerComputerUseTools(server: McpServer, peekaboo: PeekabooCl
     }
   }
 
-  server.registerTool(
+  registerTool(
     "computer_scroll",
     {
       description:
         "Scroll an element or screenshot coordinate in the background, or set foreground=true to use the physical pointer.",
       inputSchema: scrollSchema,
+      nativeContent: true,
       annotations: {
         readOnlyHint: false,
         destructiveHint: false,
@@ -526,12 +538,13 @@ export function registerComputerUseTools(server: McpServer, peekaboo: PeekabooCl
     })
     .strict()
 
-  server.registerTool(
+  registerTool(
     "computer_drag",
     {
       description:
         "Drag between coordinates inside one exact observed window without moving the physical pointer.",
       inputSchema: dragSchema,
+      nativeContent: true,
       annotations: {
         readOnlyHint: false,
         destructiveHint: false,
@@ -597,11 +610,12 @@ export function registerComputerUseTools(server: McpServer, peekaboo: PeekabooCl
       }
     })
 
-  server.registerTool(
+  registerTool(
     "computer_app",
     {
       description: "Launch, switch to, quit, relaunch, hide, or unhide an app.",
       inputSchema: appSchema,
+      nativeContent: true,
       annotations: {
         readOnlyHint: false,
         destructiveHint: true,
@@ -687,11 +701,12 @@ export function registerComputerUseTools(server: McpServer, peekaboo: PeekabooCl
       }
     })
 
-  server.registerTool(
+  registerTool(
     "computer_window",
     {
       description: "Focus, close, minimize, restore, maximize, move, resize, or set window bounds.",
       inputSchema: windowSchema,
+      nativeContent: true,
       annotations: {
         readOnlyHint: false,
         destructiveHint: true,

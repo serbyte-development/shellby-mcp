@@ -8,6 +8,8 @@ export interface AssistantResponseObservation {
   dispose(): Promise<void>
 }
 
+const SSE_EVENT_BOUNDARY_RE = /\r?\n\r?\n/u
+
 /** Observe one submitted turn from raw CDP HTTP SSE or the turn WebSocket; first exact completion wins. */
 export async function observeAssistantResponse(
   page: Page,
@@ -151,8 +153,6 @@ export async function observeAssistantResponse(
     },
   }
 }
-
-const SSE_EVENT_BOUNDARY_RE = /\r?\n\r?\n/u
 
 function isConversationEndpoint(value?: string): boolean {
   if (!value) return false

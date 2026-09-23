@@ -44,8 +44,6 @@ const RATE_LIMIT_COOLDOWN_MS = 15 * 60_000
 const RATE_LIMIT_SELECTOR = '[data-testid="modal-conversation-history-rate-limit"]'
 const RATE_LIMIT_DISMISS_SETTLE_MS = 250
 const RATE_LIMIT_DISMISS_BUTTON_PATTERN = /got it|okay|ok|close/iu
-const PROJECT_PATH_PATTERN = /\/g\/g-p-[^/]+\/project\/?$/u
-const PROJECT_SUFFIX_PATTERN = /\/project\/?$/u
 const CLONE_INITIAL_SETTLE_MS = 5_000
 const RATE_LIMIT_ERROR_MESSAGE =
   "ChatGPT temporarily rate limited conversation access. New subagent turns are blocked during a 15-minute cooldown. Existing turns remain available through subagent_result. Do not retry automatically."
@@ -194,7 +192,7 @@ export function createChatGptDelegationService(): ChatGptDelegationService {
         onConversationId:
           agent.kind === "clone"
             ? undefined
-            : (conversationId) => bindConversation(parentAgent, agent, conversationId),
+            : (conversationId) => lifecycle.recordConversation(parentAgent, agent, conversationId),
         onActivity: (activity) => lifecycle.recordActivity(agent, turn, activity, Date.now()),
       })
 
@@ -252,7 +250,7 @@ export function createChatGptDelegationService(): ChatGptDelegationService {
     const signal = lifecycle.operationSignal(parentAgent, agent.agentId)
     throwIfAborted(signal)
     const page = agent.page && !agent.page.isClosed() ? agent.page : undefined
-    if (agent.turnCount > 0) captureConversationUrlFromPage(agent)
+    if (agent.turnCount > 0) lifecycle.recordConversation(parentAgent, agent)
     if (page && isExpectedAgentPage(page, agent)) return page
     const targetUrl = agentTargetUrl(agent)
     if (!targetUrl) {
@@ -269,8 +267,7 @@ export function createChatGptDelegationService(): ChatGptDelegationService {
       await assertAuthenticated(restoredPage)
       assertAgentPage(restoredPage, agent)
       await findComposer(restoredPage, signal)
-      agent.page = restoredPage
-      agent.lastUsedAt = Date.now()
+      lifecycle.recordPageReady(agent, restoredPage, Date.now())
       return restoredPage
     } catch (error) {
       if (created) await closePageIfOpen(restoredPage)
@@ -288,7 +285,7 @@ export function createChatGptDelegationService(): ChatGptDelegationService {
       const agent = lifecycle.agentForTurn(turn)
       if (!agent) return
       if (agent.kind !== "clone" && result.conversationId)
-        bindConversation(turn.parentAgent, agent, result.conversationId)
+        lifecycle.recordConversation(turn.parentAgent, agent, result.conversationId)
       completeTurn(turn, result.text)
     } catch (error) {
       if (lifecycle.isDisposed || turn.status !== "running" || turn.observation !== observation)
@@ -312,7 +309,7 @@ export function createChatGptDelegationService(): ChatGptDelegationService {
       return
     }
 
-    captureConversationUrlFromPage(agent)
+    lifecycle.recordConversation(turn.parentAgent, agent)
 
     let failure = originalError
     if (lifecycle.startRecovery(turn, agent, Date.now())) {
@@ -323,7 +320,6 @@ export function createChatGptDelegationService(): ChatGptDelegationService {
       }
     }
 
-    lifecycle.markUncertain(agent)
     failTurn(turn, failure)
   }
 
@@ -369,8 +365,7 @@ export function createChatGptDelegationService(): ChatGptDelegationService {
       assertAgentPage(page, agent)
       await findComposer(page)
 
-      agent.page = page
-      agent.lastUsedAt = Date.now()
+      lifecycle.recordPageReady(agent, page, Date.now())
       await closePageIfOpen(oldPage)
 
       const answer = findLatestAssistantAfterPrompt(
@@ -479,17 +474,6 @@ export function createChatGptDelegationService(): ChatGptDelegationService {
   }
 
   function completeTurn(turn: BrowserTurnState, response: string): void {
-    if (turn.status !== "running") return
-    const agent = lifecycle.agentForTurn(turn)
-    if (!agent) {
-      failTurn(
-        turn,
-        new ChatGptDelegationError("AGENT_TARGET_LOST", `Agent ${turn.agentId} no longer exists.`)
-      )
-      return
-    }
-    captureConversationUrlFromPage(agent)
-    lifecycle.persistAgent(turn.parentAgent, agent)
     disposeSettledObservation(lifecycle.completeTurn(turn, response, Date.now()))
   }
 
@@ -528,36 +512,6 @@ export function createChatGptDelegationService(): ChatGptDelegationService {
     return expectedConversationId
       ? currentConversationId === expectedConversationId
       : currentConversationId === undefined
-  }
-
-  function bindConversation(
-    parentAgent: AgentIdentity | undefined,
-    agent: BrowserAgentState,
-    conversationId: string
-  ): void {
-    if (!agent.memory) return
-    const pageUrl = agent.page && !agent.page.isClosed() ? agent.page.url() : undefined
-    if (pageUrl && extractConversationId(pageUrl) === conversationId)
-      agent.conversationUrl = pageUrl
-    else if (extractConversationId(agent.conversationUrl ?? "") !== conversationId) {
-      const url = new URL(CHATGPT_START_URL)
-      const encodedId = encodeURIComponent(conversationId)
-      if (PROJECT_PATH_PATTERN.test(url.pathname)) {
-        url.pathname = `${url.pathname.replace(PROJECT_SUFFIX_PATTERN, "")}/c/${encodedId}`
-        url.search = ""
-        url.hash = ""
-        agent.conversationUrl = url.toString()
-      } else {
-        agent.conversationUrl = `https://chatgpt.com/c/${encodedId}`
-      }
-    }
-    lifecycle.persistAgent(parentAgent, agent)
-  }
-
-  function captureConversationUrlFromPage(agent: BrowserAgentState): void {
-    if (!agent.memory || agent.conversationUrl || !agent.page || agent.page.isClosed()) return
-    const pageUrl = agent.page.url()
-    if (extractConversationId(pageUrl)) agent.conversationUrl = pageUrl
   }
 
   function assertNotRateLimited(): void {

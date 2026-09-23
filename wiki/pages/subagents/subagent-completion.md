@@ -32,8 +32,8 @@ No Send, resubmission, second live observer, or repeated reconciliation loop. Un
 
 ## Results and events
 
-Result polling waits only on local settlement; it never contacts ChatGPT. Turn results vanish on MCP restart even when saved conversation mappings survive.
+Result polling waits only on local settlement; it never contacts ChatGPT. Lifecycle retains the latest 100 settled results per caller for up to 24 hours, ordered by settlement. Completed and failed turns share that budget; running turns are excluded. Lookup, settlement, and idle cleanup prune results. Evicted/expired IDs return `UNKNOWN_TURN`. Settlement releases prompt text and observation references. Turn results also vanish on MCP restart even when saved conversation mappings survive.
 
 Successful settlement queues one `agent_finished` notice for the captured launching identity. Failed turns settle without that success notice. The first event drain per caller also emits `existing_agent` hints from saved mappings. Those hints identify reusable conversations; their `latest_turn_id` does not imply an old result was restored.
 
-[Registration Boundary](../mcp-tool-registration-boundary.md) appends/drains notices on eligible tool responses. Tests: [protocol/repeated-prompt cases](../../../test/tools/delegation/turn-protocol.test.ts), [restart hints](../../../test/tools/delegation/delegated-agent-limit.test.ts), [lifecycle](../../../test/tools/delegation/chatgpt-service.test.ts). Live compatibility requires [separate validation](../operations/build-and-test.md).
+[Registration Boundary](../mcp-tool-registration-boundary.md) appends/drains notices on eligible tool responses. Tests: [protocol/repeated-prompt cases](../../../test/tools/delegation/turn-protocol.test.ts), [restart hints](../../../test/tools/delegation/delegated-agent-limit.test.ts), [retention/settlement](../../../test/tools/delegation/lifecycle.test.ts), [service](../../../test/tools/delegation/chatgpt-service.test.ts). Live compatibility requires [separate validation](../operations/build-and-test.md).

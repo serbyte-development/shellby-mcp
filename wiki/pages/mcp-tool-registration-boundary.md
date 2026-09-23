@@ -1,5 +1,5 @@
 ---
-summary: "registerTool wrapping, SDK validation, compact/native results, notices, and audit correlation."
+summary: "Explicit tool registrar, SDK validation, compact/native results, notices, and audit correlation."
 paths:
   - src/mcp/server-factory.ts
   - src/mcp/tool-registration-boundary.ts
@@ -10,11 +10,11 @@ paths:
 
 # MCP Tool Registration Boundary
 
-## Installation contract
+## Registration contract
 
-[server-factory.ts](../../src/mcp/server-factory.ts) creates a fresh `McpServer`, installs [installToolRegistrationBoundary](../../src/mcp/tool-registration-boundary.ts), then registers every tool. The boundary replaces only that instance's `registerTool`; SDK prototype remains unchanged.
+[server-factory.ts](../../src/mcp/server-factory.ts) creates a fresh `McpServer` and obtains a typed `ToolRegistrar` from [createToolRegistrar](../../src/mcp/tool-registration-boundary.ts). Every capability receives that function and uses `registerTool(name, config, handler)`.
 
-Install exactly once, before any registrar. There is no repeated-install guard. Earlier registrations bypass Shellby policy, and `McpServer` types do not encode installation status. Registrars otherwise use normal SDK `registerTool(name, config, handler)` calls.
+The registrar owns Shellby dispatch policy and delegates registration to the unchanged SDK server. Capability modules need no server or installation-order knowledge. Register native image/resource tools with `nativeContent: true`; this local policy flag is removed before SDK registration and is independent of the tool name.
 
 ## Call flow
 
@@ -28,9 +28,9 @@ HTTP auth and audit records for calls rejected before dispatch stay outside this
 
 ## Representation owners
 
-[tool-schema-presentation.ts](../../src/mcp/tool-schema-presentation.ts) owns advertised schema projection, annotation pruning, native-content classification, and output-schema visibility. Zod/SDK runtime validation remains intact. [Tool Design](./tool-naming-and-schema-design.md) explains projection constraints.
+[tool-schema-presentation.ts](../../src/mcp/tool-schema-presentation.ts) owns advertised schema projection, annotation pruning, and output-schema visibility. The registrar selects native/structured output from registration metadata and server mode. Zod/SDK runtime validation remains intact. [Tool Design](./tool-naming-and-schema-design.md) explains projection constraints.
 
-With compact output, ordinary tools omit public output schemas and pass through [tool-output.ts](../../src/mcp/tool-output.ts). Structured mode retains native structured results and output schemas. `computer_*`, `image_view`, and `file_read` preserve native content in both modes. Explicit `structuredContent.error_code` metadata survives compact error projection.
+With compact output, ordinary tools omit public output schemas and pass through [tool-output.ts](../../src/mcp/tool-output.ts). Structured mode retains structured results and output schemas. Tools declaring `nativeContent: true` preserve native content in both modes. Explicit `structuredContent.error_code` metadata survives compact error projection.
 
 ## Notices and failures
 
