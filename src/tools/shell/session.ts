@@ -3,7 +3,6 @@ import { statSync } from "node:fs"
 import { isAbsolute, resolve } from "node:path"
 import process from "node:process"
 import { MCP_CONFIG } from "../../config.js"
-import { log } from "../../logging.js"
 import { positiveInteger } from "../../utils.js"
 import { createOutputCapture } from "./output-capture.js"
 import { DEFAULT_PARALLEL_COMMAND_TIMEOUT_MS } from "./parallel-runner.js"
@@ -322,11 +321,6 @@ export function createShellSession(options: ShellSessionOptions = {}): ShellSess
 
   function finishCommand(record: CommandRecord, result: ShellProcessCommandResult): void {
     if (record.status !== "running") return
-    log(result.exitCode === 0 ? "info" : "warn", "shell.command_finished", {
-      command_request_id: record.requestId,
-      outcome: result.status,
-      exit_code: result.exitCode,
-    })
     record.endCursor = transcript.end
     record.exitCode = result.exitCode
     record.cwd = result.cwd

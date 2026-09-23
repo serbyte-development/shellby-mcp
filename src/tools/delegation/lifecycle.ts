@@ -3,7 +3,6 @@ import type { Page } from "playwright-core"
 
 import type { AgentIdentity } from "../../agent/context.js"
 import { MCP_CONFIG } from "../../config.js"
-import { log } from "../../logging.js"
 import { extractConversationId } from "./chatgpt-browser.js"
 import {
   type ChatGptDelegationActivity,
@@ -292,11 +291,6 @@ export class DelegationLifecycle {
     agent.turnCount += 1
     turn.observation = observation
     scope.turns.set(turn.turnId, turn)
-    log("info", "delegation.submitted", {
-      agent: parentAgent?.agent,
-      delegated_agent: agent.agentId,
-      turn_id: turn.turnId,
-    })
     operation.turnId = turn.turnId
     operation.signal = undefined
     this.persistAgent(parentAgent, agent)
@@ -341,11 +335,6 @@ export class DelegationLifecycle {
       })
     } catch (error) {
       if (!(error instanceof DelegationStoreError)) {
-        log("error", "delegation.persistence_failed", {
-          err: error,
-          agent: parentAgent?.agent,
-          delegated_agent: agent.agentId,
-        })
         console.warn(`Unexpected subagent persistence write failure: ${unknownErrorMessage(error)}`)
       }
     }
@@ -354,11 +343,6 @@ export class DelegationLifecycle {
   startRecovery(turn: TurnState, agent: AgentState, now: number): boolean {
     if (turn.recoveryAttempted || !agent.conversationUrl) return false
     turn.recoveryAttempted = true
-    log("warn", "delegation.recovering", {
-      agent: turn.parentAgent?.agent,
-      delegated_agent: turn.agentId,
-      turn_id: turn.turnId,
-    })
     turn.lastActivityAt = now
     agent.status = "Working"
     return true
@@ -391,12 +375,6 @@ export class DelegationLifecycle {
     agent.status = "idle"
     turn.status = "completed"
     turn.response = response
-    log("info", "delegation.completed", {
-      agent: turn.parentAgent?.agent,
-      delegated_agent: turn.agentId,
-      turn_id: turn.turnId,
-      recovered: turn.recoveryAttempted,
-    })
     const observation = this.settleTurn(turn, now)
     scope.pendingEvents.push(`agent_finished agent_id=${turn.agentId} turn_id=${turn.turnId}`)
     return observation
@@ -409,12 +387,6 @@ export class DelegationLifecycle {
     turn.status = "failed"
     turn.errorCode = error instanceof ChatGptDelegationError ? error.code : "subagent_failed"
     turn.errorMessage = error instanceof Error ? error.message : String(error)
-    log("error", "delegation.failed", {
-      err: error,
-      agent: turn.parentAgent?.agent,
-      delegated_agent: turn.agentId,
-      turn_id: turn.turnId,
-    })
     return this.settleTurn(turn, Date.now())
   }
 

@@ -1,7 +1,7 @@
 import { z } from "zod"
 import { MCP_CONFIG } from "../../config.js"
-import { log } from "../../logging.js"
 import type { ToolRegistrar } from "../../mcp/tool-registration-boundary.js"
+import { recordToolError } from "../../server/audit/audit-request.js"
 import {
   ChatGptDelegationError,
   type ChatGptDelegationService,
@@ -90,7 +90,7 @@ export function registerCloneTools(
           content: [],
         }
       } catch (error) {
-        log("error", "delegation.clone_failed", { clone_id, err: error })
+        recordToolError(error)
         return {
           isError: true,
           structuredContent: {
@@ -145,7 +145,7 @@ export function registerCloneTools(
           content: [],
         }
       } catch (error) {
-        log("error", "delegation.clone_failed", { clone_id, err: error })
+        recordToolError(error)
         return {
           isError: true,
           structuredContent: {

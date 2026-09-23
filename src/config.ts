@@ -89,8 +89,6 @@ export const MCP_CONFIG = {
     /** Whether the local Shellby UI is served. */
     enabled: publicConfig.ui.enabled,
   },
-  /** Optional operational event logging. */
-  logging: publicConfig.logging,
   /** HTTP and document-fetching limits. */
   web: {
     /** Default text format returned by fetch_url. */

@@ -145,6 +145,7 @@ for (const structuredOutput of [false, true]) {
       agentObserver,
       auditRequest: {
         claimTool: () => ({
+          recordError: () => {},
           finish: (input) => {
             audits.push(input)
           },
@@ -249,6 +250,8 @@ for (const structuredOutput of [false, true]) {
       assert.equal(agent?.recent.filter((call) => call.status === "failed").length, 6)
       assert.equal(agent?.recent.filter((call) => call.status === "completed").length, 1)
       assert.ok(audits.every((audit) => audit?.toolResult && audit.modelResult))
+      assert.ok(audits[1]?.error instanceof ToolError)
+      assert.equal((audits[1].error.cause as Error).message, "private cause")
     })
   })
 }

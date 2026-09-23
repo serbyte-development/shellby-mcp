@@ -27,7 +27,7 @@ The same module compiles to CommonJS for PM2's ecosystem file while serving the 
 
 Shellby does not load repository `.env` files. ngrok credentials stay in native ngrok configuration; package-local binaries and managed Chrome profile location are derived by Shellby. Optional RTK is resolved from startup PATH and validated when enabled.
 
-`logging.enabled` defaults to `false`; [Runtime Logging](./runtime-logging.md) owns activation, event coverage, and file retention. Configuration is read at startup.
+Configuration is read at startup. [Audit Logging](./audit-logging.md) owns tool usage and failure diagnostics.
 
 ## Bootstrap and composition
 

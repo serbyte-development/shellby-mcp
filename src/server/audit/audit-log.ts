@@ -3,7 +3,12 @@ import { appendFileSync, chmodSync, existsSync } from "node:fs"
 import { getAgentIdentity } from "../../agent/context.js"
 import { getTimeStamp } from "../../time.js"
 import { countTokens } from "../../tokenizer.js"
-import { errorMessage, formatAuditEntry, summarizeToolResult } from "./audit-format.js"
+import {
+  errorMessage,
+  formatAuditEntry,
+  originalErrorMessage,
+  summarizeToolResult,
+} from "./audit-format.js"
 import { createAuditRequest, type McpAuditCall, type McpAuditRequest } from "./audit-request.js"
 
 export type { McpAuditRequest } from "./audit-request.js"
@@ -38,8 +43,12 @@ export class McpAuditLogger {
     const timestamp = getTimeStamp()
     const inputTokens = countTokens(JSON.stringify(argumentsValue ?? {}))
     let finished = false
+    const errors: string[] = []
 
     return {
+      recordError: (error) => {
+        if (!finished) errors.push(originalErrorMessage(error))
+      },
       finish: (input = {}) => {
         if (finished) return
         finished = true
@@ -51,9 +60,18 @@ export class McpAuditLogger {
         )
         const httpStatus = input.httpStatus ?? 200
         const state = input.state ?? "finished"
+        const output = toolResponse.structuredContent?.output
         const exitCode = toolResponse.structuredContent?.exit_code
         const shellFailed =
-          toolName === "shell_run" && typeof exitCode === "number" && exitCode !== 0
+          (toolName === "shell_run" || toolName === "shell_poll") &&
+          typeof exitCode === "number" &&
+          exitCode !== 0
+        let failureMessage = errors.length ? errors.join("; ") : toolResponse.failureMessage
+        if (!failureMessage && shellFailed)
+          failureMessage =
+            typeof output === "string" && output.trim()
+              ? output.trim()
+              : `Command exited with code ${exitCode}.`
 
         this.append(
           formatAuditEntry({
@@ -69,7 +87,7 @@ export class McpAuditLogger {
                 ? countTokens(toolResponse.modelOutput)
                 : undefined,
             toolFailed: toolResponse.failed || shellFailed,
-            failureMessage: toolResponse.failureMessage,
+            failureMessage,
             responseSummary: toolResponse,
             agentLabel,
           })

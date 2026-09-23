@@ -25,7 +25,7 @@ Follow the restart approval rule in [wiki/AGENTS.md](../../AGENTS.md). Configura
 
 Build must succeed before service mutation or audit deletion. Hard shutdown must succeed before clearing audit. Ordinary restart prepares Chrome and reconciles ngrok before MCP reload because MCP shutdown can kill the initiating CLI. PM2's surviving daemon completes the reload even if that tool call disconnects. Use a fresh call after recovery; its old shell record is gone. See [restart rationale](../../log.md).
 
-A failed `/healthz` check identifies failed observation, not root cause. Inspect instance identity/port, [runtime events](./runtime-logging.md) with `npm run logs:runtime`, and PM2 logs. [start tests](../../../test/start.test.ts) verify command ordering with fixtures; they do not prove every live recovery scenario.
+A failed `/healthz` check identifies failed observation, not root cause. Inspect instance identity/port and PM2 logs with `npm run logs`. Tool failures have diagnostics in [audit entries](./audit-logging.md). [start tests](../../../test/start.test.ts) verify command ordering with fixtures; they do not prove every live recovery scenario.
 
 ## macOS launch context
 
@@ -36,7 +36,5 @@ Startup does not install a LaunchAgent. Migrating older installations from defau
 ## Shutdown and persistence
 
 [src/index.ts](../../../src/index.ts) closes HTTP, then shared shell/Peekaboo/delegation/cursor-host services on signals. PM2's configured stop grace bounds that cleanup. Browser profile/auth binding persist; named shells, fetched pages, snapshots, initialization, steering, and detached turn results do not.
-
-Runtime logs survive restarts and flush after service cleanup. Rotation bounds retained history; see [Runtime Logging](./runtime-logging.md) for failure and buffering behavior.
 
 `auth:reset` clears the bound subject through its confirmation flow; it does not rotate a tunnel URL. `reset-agents` deletes delegated conversation mappings and SQLite sidecars, not upstream ChatGPT conversations. These are different recovery operations. [Delegation runtime](../subagents/browser-chatgpt-subagents.md) explains which agent state can restore.

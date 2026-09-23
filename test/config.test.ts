@@ -35,9 +35,6 @@ test("loads and validates Shellby TOML config", async (t) => {
       "[mcp]",
       'tool_output = "structured"',
       "",
-      "[logging]",
-      "enabled = true",
-      "",
       "[ui]",
       "enabled = true",
       "",
@@ -73,7 +70,6 @@ test("loads and validates Shellby TOML config", async (t) => {
       pooling_enabled: true,
     },
     mcp: { tool_output: "structured" },
-    logging: { enabled: true },
     ui: { enabled: true },
     tools: {
       review: true,
@@ -149,7 +145,6 @@ test("loads older partial configs with silent defaults and preserves valid overr
   const loaded = loadPublicConfig(path)
   assert.equal(loaded.workspace, "~/Work")
   assert.deepEqual(loaded.chatgpt, DEFAULT_PUBLIC_CONFIG.chatgpt)
-  assert.equal(loaded.logging.enabled, false)
   assert.deepEqual(loaded.tools, { ...DEFAULT_PUBLIC_CONFIG.tools, computer: false, clones: false })
   assert.equal(warning.mock.callCount(), 0)
   assert.equal(await readFile(path, "utf8"), source)

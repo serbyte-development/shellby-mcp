@@ -1,5 +1,4 @@
 import { resolve } from "node:path"
-import { log } from "../../logging.js"
 
 import { formatOutputBlock } from "../../mcp/tool-output.js"
 import {
@@ -238,12 +237,6 @@ export function createParallelSession(options: CreateParallelSessionOptions) {
     if (record.status === "reset" || run.status === "reset") return
 
     run.status = result.status
-    log(result.exitCode === 0 ? "info" : "warn", "shell.parallel_finished", {
-      command_request_id: record.requestId,
-      run: run.run,
-      outcome: result.status,
-      exit_code: result.exitCode,
-    })
     run.exitCode = result.exitCode
     run.droppedOutputBytes = result.droppedOutputBytes
     record.transcript.append(formatRunOutput(run, result.output))

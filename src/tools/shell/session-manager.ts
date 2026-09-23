@@ -1,5 +1,4 @@
 import { MCP_CONFIG } from "../../config.js"
-import { log, withLogContext } from "../../logging.js"
 import { nonNegativeInteger, positiveInteger } from "../../utils.js"
 import {
   createShellSession,
@@ -72,8 +71,7 @@ export function createShellSessionManager(
 
   const cleanupTimer = setInterval(
     () => {
-      void cleanupIdle().catch((error) => {
-        log("warn", "shell.cleanup_failed", { err: error })
+      void cleanupIdle().catch(() => {
         // Lifecycle cleanup is best effort and must not terminate the server.
       })
     },
@@ -197,13 +195,10 @@ export function createShellSessionManager(
     lastUsedAt.clear()
     leases.clear()
     cachedStates.clear()
-    const results = await Promise.allSettled([
+    await Promise.allSettled([
       ...(cleanup ? [cleanup] : []),
       ...shells.map((shell) => shell.close()),
     ])
-    for (const result of results) {
-      if (result.status === "rejected") log("warn", "shell.close_failed", { err: result.reason })
-    }
   }
 
   function releaseLease(shellId: string, shell: ShellSession): void {
@@ -287,8 +282,7 @@ export function createShellSessionManager(
     let state: ShellRecoverableState
     try {
       state = await shell.captureRecoverableState()
-    } catch (error) {
-      log("warn", "shell.hibernate_failed", { shell_id: shellId, err: error })
+    } catch {
       return false
     }
 
@@ -299,7 +293,6 @@ export function createShellSessionManager(
     lastUsedAt.delete(shellId)
     leases.delete(shellId)
     await shell.close()
-    log("info", "shell.hibernated", { shell_id: shellId })
     return true
   }
 
@@ -336,10 +329,7 @@ export function createShellSessionManager(
     get idleTimeoutMilliseconds() {
       return idleTimeoutMs
     },
-    runCommand: (shellId, input) =>
-      withLogContext({ shell_id: shellId, command_request_id: input.request_id }, () =>
-        withShell(shellId, (shell) => shell.runCommand(input))
-      ),
+    runCommand: (shellId, input) => withShell(shellId, (shell) => shell.runCommand(input)),
     pollCommand: (shellId, input) =>
       withExistingShell(shellId, (shell) => shell.pollCommand(input)),
     resetShell: (shellId, input) =>

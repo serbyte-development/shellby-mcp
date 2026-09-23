@@ -7,7 +7,7 @@ const logTimeFormatter = new Intl.DateTimeFormat("en-US", {
   hour12: true,
 })
 
-/** Shared Pacific timestamp for audit entries, reviews, and runtime logs. */
+/** Shared Pacific timestamp for audit entries and reviews. */
 export function getTimeStamp(): string {
   const parts = Object.fromEntries(
     logTimeFormatter.formatToParts(new Date()).map(({ type, value }) => [type, value])

@@ -1,4 +1,4 @@
-import { log } from "../../logging.js"
+import { recordToolError } from "../../server/audit/audit-request.js"
 import type { ChatGptDelegationPollResult, ChatGptDelegationService } from "./contracts.js"
 
 export interface DelegatedTurnResult {
@@ -36,6 +36,10 @@ export function pollDelegatedTurns(
     options.turnIds.map(async (turnId) => {
       try {
         const result = await options.service.poll(turnId, options.waitMs, options.signal)
+        if (result.status === "failed")
+          recordToolError(
+            `${result.errorCode ?? "subagent_failed"}: ${result.errorMessage ?? "Subagent turn failed."}`
+          )
         return {
           turn_id: turnId,
           status: result.status,
@@ -45,7 +49,7 @@ export function pollDelegatedTurns(
           error: result.status === "failed" ? options.formatFailure(result) : undefined,
         }
       } catch (error) {
-        log("error", "delegation.poll_failed", { turn_id: turnId, err: error })
+        recordToolError(error)
         return {
           turn_id: turnId,
           status: "failed" as const,

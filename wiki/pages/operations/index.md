@@ -8,6 +8,5 @@ summary: "Configuration, runtime recovery, focused checks, audit logging, and pr
 - [Audit Logging](./audit-logging.md) — Audit correlation, retained sensitive data, model I/O token counts, and failure markers.
 - [Build and Test](./build-and-test.md) — Focused check commands, test ownership, build boundaries, and live validation limits.
 - [Configuration and Startup](./configuration-and-startup.md) — Config ownership, create-only setup, enabled-service composition, and concurrent installations.
-- [Runtime Logging](./runtime-logging.md) — Operational event ownership, local rotation, correlation, and logging failure behavior.
 - [Runtime Recovery](./runtime-recovery.md) — Routine versus hard restart, PM2 launch-context failures, shutdown, and state reset boundaries.
 - [Secret Handling](./secret-handling.md) — Sensitive runtime files, permission boundaries, and what may enter committed context.

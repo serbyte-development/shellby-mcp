@@ -13,6 +13,7 @@ test("audits tool calls made through the HTTP MCP boundary", { timeout: 10_000 }
   const auditPath = join(root, "agent-commands.yaml")
   const chatGptDelegation: ChatGptDelegationService = {
     async ask({ agentId }) {
+      if (agentId === "failed-agent") throw new Error("Original submission error: composer missing")
       return `turn-${agentId}`
     },
     async cloneSelf() {
@@ -22,6 +23,12 @@ test("audits tool calls made through the HTTP MCP boundary", { timeout: 10_000 }
       throw new Error("unused")
     },
     async poll(_turnId) {
+      if (_turnId === "failed-turn")
+        return {
+          status: "failed",
+          errorCode: "CHATGPT_UI_CHANGED",
+          errorMessage: "Original polling error: reply element missing",
+        }
       return { status: "completed", response: "done" }
     },
     drainEvents() {
@@ -60,6 +67,20 @@ test("audits tool calls made through the HTTP MCP boundary", { timeout: 10_000 }
     name: "skill_list",
     arguments: {},
   })
+  const failedSubmit = await connected.client.callTool({
+    name: "subagent_run",
+    arguments: { agents: [{ agent_id: "failed-agent", prompt: "Failure probe" }] },
+  })
+  const failedPoll = await connected.client.callTool({
+    name: "subagent_result",
+    arguments: { turn_ids: ["failed-turn"], wait_ms: 0 },
+  })
+  assert.equal(failedSubmit.isError, true)
+  assert.equal(failedPoll.isError, true)
+  assert.doesNotMatch(
+    JSON.stringify([failedSubmit, failedPoll]),
+    /Original submission|Original polling/u
+  )
 
   const log = await readFile(auditPath, "utf8")
   assert.match(log, /shell_list/u)
@@ -70,4 +91,6 @@ test("audits tool calls made through the HTTP MCP boundary", { timeout: 10_000 }
   assert.match(log, /--- # skill_list /u)
   assert.match(log, /session: "agent-1"/u)
   assert.doesNotMatch(log, /child-session/u)
+  assert.match(log, /error: "Original submission error: composer missing"/u)
+  assert.match(log, /error: "CHATGPT_UI_CHANGED: Original polling error: reply element missing"/u)
 })

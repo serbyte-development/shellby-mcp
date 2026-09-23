@@ -22,7 +22,6 @@ paths:
 | Browser conversations and detached turns | [Delegation Runtime](./subagents/browser-chatgpt-subagents.md) → `src/tools/delegation/` |
 | Capability contracts | [Tools](./tools/index.md), [Computer Use](./computer-use.md), [Workspace Skills](./workspace-tooling.md) |
 | Audit retention and token accounting | [Audit Logging](./operations/audit-logging.md) → `src/server/audit/` |
-| Operational events, correlation, and rotation | [Runtime Logging](./operations/runtime-logging.md) → `src/logging.ts` |
 
 State lifetimes differ deliberately:
 

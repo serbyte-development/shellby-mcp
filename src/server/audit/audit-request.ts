@@ -1,7 +1,9 @@
+import { AsyncLocalStorage } from "node:async_hooks"
 import type { RequestId } from "@modelcontextprotocol/server"
 import { asRecord } from "../../utils.js"
 
 export interface McpAuditCall {
+  recordError(error: unknown): void
   finish(input?: {
     toolResult?: unknown
     modelResult?: unknown
@@ -9,6 +11,18 @@ export interface McpAuditCall {
     httpStatus?: number
     state?: "finished" | "closed"
   }): void
+}
+
+const currentCall = new AsyncLocalStorage<McpAuditCall | undefined>()
+
+/** Scope caught batch failures to the existing audit entry, including concurrent polls. */
+export function withAuditCall<T>(call: McpAuditCall | undefined, operation: () => T): T {
+  return currentCall.run(call, operation)
+}
+
+/** Retain a failure before a capability converts it to model-facing guidance. */
+export function recordToolError(error: unknown): void {
+  currentCall.getStore()?.recordError(error)
 }
 
 export interface McpAuditRequest {

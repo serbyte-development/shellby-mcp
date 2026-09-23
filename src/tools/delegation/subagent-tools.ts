@@ -1,7 +1,7 @@
 import { z } from "zod"
 import { MCP_CONFIG } from "../../config.js"
-import { log } from "../../logging.js"
 import type { ToolRegistrar } from "../../mcp/tool-registration-boundary.js"
+import { recordToolError } from "../../server/audit/audit-request.js"
 import {
   ChatGptDelegationError,
   type ChatGptDelegationService,
@@ -186,7 +186,7 @@ export function registerSubagentTools(
 }
 
 function runFailure(agentId: string, error: unknown): z.infer<typeof subagentRunResultSchema> {
-  log("error", "delegation.submit_failed", { agent_id: agentId, err: error })
+  recordToolError(error)
   return {
     agent_id: agentId,
     status: "failed",

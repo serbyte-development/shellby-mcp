@@ -4,7 +4,9 @@ import { join } from "node:path"
 import test, { type TestContext } from "node:test"
 
 import { getAgentIdentity, runWithAgent, setAgentTaskSlug } from "../../src/agent/context.js"
+import { ToolError } from "../../src/mcp/tool-error.js"
 import { McpAuditLogger } from "../../src/server/audit/audit-log.js"
+import { recordToolError, withAuditCall } from "../../src/server/audit/audit-request.js"
 import { countTokens } from "../../src/tokenizer.js"
 import { tempDir } from "../helpers/temp.js"
 
@@ -407,7 +409,7 @@ test("logs apply_patch bodies only when the tool fails", async (t) => {
 
   log = await readFile(file, "utf8")
   assert.match(log, /--- # ! apply_patch - 49ms - \d+ in \/ \d+ out - Aug 7 9:12 PM/u)
-  assert.match(log, /message: "Invalid patch hunk on line 4\\nUnexpected @@"/u)
+  assert.match(log, /error: "Invalid patch hunk on line 4\\nUnexpected @@"/u)
   assert.match(log, /patch: \|-\n {2}\*\*\* Begin Patch/u)
   assert.match(log, / {2}\+new/u)
 
@@ -424,7 +426,7 @@ test("logs apply_patch bodies only when the tool fails", async (t) => {
   })
 
   log = await readFile(file, "utf8")
-  assert.match(log, /message: "apply_patch_failed: apply_patch request was aborted\."/u)
+  assert.match(log, /error: "apply_patch_failed: apply_patch request was aborted\."/u)
 })
 
 test("logs shell tool errors with their MCP failure reason", async (t) => {
@@ -453,7 +455,7 @@ test("logs shell tool errors with their MCP failure reason", async (t) => {
   assert.match(log, /--- # ! shell_poll - .* - Aug 11 10:50 PM/u)
   assert.match(
     log,
-    /shell: "parallel\/missing"\ncursor: 0\nmessage: "unknown_request: No retained command for request_id missing\."/u
+    /shell: "parallel\/missing"\ncursor: 0\nerror: "unknown_request: No retained command for request_id missing\."/u
   )
 
   const [childNonzero] = claimAuditToolCalls(logger, {
@@ -490,6 +492,7 @@ test("logs shell tool errors with their MCP failure reason", async (t) => {
     )
   )
   assert.match(finalLog, /result: status="completed" exit_code=1 cwd="\/workspace"/u)
+  assert.match(finalLog, /error: "x{1000}… \[1000 chars omitted\]"/u)
 
   const [pollCompletedNonzero] = claimAuditToolCalls(logger, {
     method: "tools/call",
@@ -509,13 +512,95 @@ test("logs shell tool errors with their MCP failure reason", async (t) => {
   const completedPollLog = await readFile(file, "utf8")
   assert.match(
     completedPollLog,
-    /--- # shell_poll - 0ms - \d+ in \/ \d+ out - Aug 11 10:50 PM\nshell: "parallel\/child-nonzero"/u
-  )
-  assert.doesNotMatch(
-    completedPollLog,
     /--- # ! shell_poll - 0ms - \d+ in \/ \d+ out - Aug 11 10:50 PM\nshell: "parallel\/child-nonzero"/u
   )
   assert.match(completedPollLog, /result: status="completed" exit_code=1/u)
+  assert.match(completedPollLog, /error: "failed test output"/u)
+})
+
+test("records the original cause as one error line and retains model token accounting", async (t) => {
+  const file = await auditFile(t)
+  const logger = new McpAuditLogger(file, () => 0)
+  const [call] = claimAuditToolCalls(logger, {
+    method: "tools/call",
+    params: { name: "fetch_url", arguments: { url: "http://localhost:3000" } },
+  })
+  assert.ok(call)
+  const cause = Object.assign(new Error("connection refused\nport 3000"), { code: "ECONNREFUSED" })
+  const error = new ToolError("FETCH_FAILED", "Try again later.", {
+    cause: new Error("request failed", { cause }),
+  })
+  const toolResult = {
+    isError: true,
+    content: [{ type: "text", text: "FETCH_FAILED: Try again later." }],
+  }
+  call.finish({ error, toolResult, modelResult: toolResult })
+
+  const log = await readFile(file, "utf8")
+  assert.match(log, /error: "ECONNREFUSED: connection refused\\nport 3000"/u)
+  assert.equal(log.match(/^error:/gmu)?.length, 1)
+  assert.doesNotMatch(log, /Try again later|request failed|stack/u)
+  assert.match(log, new RegExp(` / ${countTokens(toolResult.content[0]!.text)} out - `))
+})
+
+test("keeps concurrent batch diagnostics on their own audit entries", async (t) => {
+  const file = await auditFile(t)
+  const logger = new McpAuditLogger(file, () => 0)
+  await Promise.all(
+    ["first", "second"].map(async (name) => {
+      const [call] = claimAuditToolCalls(logger, {
+        method: "tools/call",
+        params: { name, arguments: {} },
+      })
+      assert.ok(call)
+      await withAuditCall(call, async () => {
+        await Promise.resolve()
+        recordToolError(new Error(`${name} original failure`))
+        call.finish({
+          toolResult: { isError: true, content: [{ type: "text", text: "Try again later." }] },
+        })
+        recordToolError(new Error("late failure"))
+      })
+    })
+  )
+  const log = await readFile(file, "utf8")
+  const entries = log.split("--- # ").filter(Boolean)
+  for (const name of ["first", "second"]) {
+    const entry = entries.find((value) => value.startsWith(`! ${name} `))!
+    assert.ok(entry)
+    assert.match(entry, new RegExp(`error: "${name} original failure"`))
+    assert.equal(entry.match(/^error:/gmu)?.length, 1)
+  }
+  assert.doesNotMatch(log, /late failure|Try again later/u)
+})
+
+test("records failed returned results without retaining successful batch responses", async (t) => {
+  const file = await auditFile(t)
+  const logger = new McpAuditLogger(file, () => 0)
+  for (const [name, structuredContent] of [
+    [
+      "subagent_result",
+      {
+        turns: [
+          { status: "completed", response: "private successful response" },
+          { status: "failed", error: "Page closed" },
+          { status: "failed", error: "Browser disconnected" },
+        ],
+      },
+    ],
+    ["clone_self", { status: "failed", error: "Source conversation unavailable" }],
+  ] as const) {
+    const [call] = claimAuditToolCalls(logger, {
+      method: "tools/call",
+      params: { name, arguments: {} },
+    })
+    assert.ok(call)
+    call.finish({ toolResult: { isError: true, structuredContent, content: [] } })
+  }
+  const log = await readFile(file, "utf8")
+  assert.match(log, /error: "Page closed; Browser disconnected"/u)
+  assert.match(log, /error: "Source conversation unavailable"/u)
+  assert.doesNotMatch(log, /private successful response/u)
 })
 
 test("caps large ordinary tool arguments", async (t) => {
