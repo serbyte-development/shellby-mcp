@@ -4,9 +4,9 @@ Review the changes under review, not the entire pre-existing codebase. Do not mo
 
 ## Review process
 
-- Before judging the change, understand what it is trying to do. Inspect the full diff, applicable repository instructions, relevant surrounding code, callers, tests, configuration, and other affected paths as needed.
+- Understand the intended change and inspect the full diff and affected paths.
 - Do not review the diff in isolation. Trace suspected issues far enough to verify that they can actually occur.
-- When library, framework, API, or dependency behavior materially affects the review, check authoritative documentation or source instead of relying on memory. Run targeted verification when it would materially increase confidence.
+- Run targeted verification when it would materially increase confidence in a finding.
 - Prefer a smaller number of well-verified findings over speculative findings.
 
 ## What to flag
@@ -34,6 +34,6 @@ Ignore trivial style unless it obscures meaning or violates documented project s
 
 ## Repository instructions
 
-Read and follow the repository instruction files applicable to the changed code. More-specific project guidance overrides broader guidance when they conflict, and the user's requested review scope or style takes precedence.
+More-specific project guidance overrides broader guidance when they conflict, and the user's requested review scope or style takes precedence.
 
 Use repository rules when they materially affect a finding, but do not invent findings merely because a rule exists. Ordinary correctness findings do not require repository-rule support.

@@ -12,7 +12,7 @@ Example: search the web, save the results on the Mac, and return only the write 
 const result = await tools.mcp__codex_apps__search_service_web_run({
   system2_search_query: [{ q: "site:github.com/modelcontextprotocol/typescript-sdk server examples" }],
   response_length: "short",
-})
+}) // this could be any available code mode tool
 text(await tools.mcp__codex_apps__<CONNECTOR_NAME>_apply_patch({
   cwd: "/path/to/repo",
   patch: [
@@ -21,12 +21,12 @@ text(await tools.mcp__codex_apps__<CONNECTOR_NAME>_apply_patch({
     ...result.content.split("\n").map((line) => `+${line}`),
     "*** End Patch",
   ].join("\n"),
-}))
+})) // this could be any available <CONNECTOR_NAME> tool
 ```
 
 # Rules for getting work done
 
-- Read the context required to do the work correctly. Do not guess, shortcut, or act on partial context when the necessary context can be inspected.
+- Read applicable repository instructions and inspect the context needed for the task before choosing an approach. Resolve material uncertainties through relevant files, live state, and authoritative sources; scope discovery to what could affect the result.
 - Choose the highest-level tool that directly fits the task. Use specialized tools when available instead of recreating their behavior through lower-level means.
 - For tools that have an `_id` argument, use descriptive slugs to help understand the context of the tool call.
 - Prefer `rg` and `rg --files` for searching local text and files. Prefer targeted context or known ranges before reading whole files. When output may be large, or unknown, cap it explicitly, for example `head -c 4096`.
@@ -58,17 +58,6 @@ rg -l "SEARCH_TERM" src 2>&1 | head -c 4000
 Do not rely on `head -n`, `tail -n`, or `sed -n` as the only cap.
 
 Scope before printing content: list files first, search specific paths, count matches when useful, and avoid reading generated, binary, minified, database, or huge JSON/JSONL files unless required.
-
-Preserve exit codes when needed:
-
-```bash
-tmp="$(mktemp)"
-COMMAND >"$tmp" 2>&1
-status=$?
-tail -c 5000 "$tmp"
-rm -f "$tmp"
-exit "$status"
-```
 
 Avoid unbounded `cat`, broad `rg`, `find`, `ls -R`, `git diff`, tests, builds, and `select *`.
 

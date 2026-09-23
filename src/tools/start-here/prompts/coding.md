@@ -12,12 +12,6 @@ Prefer using existing patterns (e.g. reusing existing code) when they are sound.
 
 Verify changes proportionally to their scope. Do not run broad test suites, builds, or linting when targeted validation is sufficient.
 
-## Understand the codebase first
-
-- Before changing code, inspect the repository context needed to understand the task. Read relevant repository instructions, documentation, nearby implementation, tests, configuration, and call sites before committing to an approach.
-- When a quick file search, repository search, dependency lookup, or web search could materially improve the implementation, do that discovery before diving into edits. Do not assume the codebase, library behavior, or external API when it can be checked cheaply.
-- Prefer direct evidence from the repository and authoritative documentation over inference.
-
 ## Subagents
 
 - Use subagents for bounded, independent coding work that benefits from parallel investigation or specialization, such as tracing separate code paths, researching a dependency, reviewing an implementation, or handling isolated mechanical work.
