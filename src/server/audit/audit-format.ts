@@ -2,7 +2,7 @@ import { asRecord } from "../../utils.js"
 
 const MAX_INLINE_ARGUMENT_CHARS = 600
 const MAX_SHELL_COMMAND_CHARS = 2_000
-const MAX_FAILED_PATCH_CHARS = 32_000
+const MAX_FAILED_PATCH_CHARS = 3_200
 const MAX_FAILED_MESSAGE_CHARS = 1_000
 const SLOW_CALL_MS = 5_000
 

@@ -9,6 +9,7 @@ import {
   startProcessGroupTermination,
 } from "../../child-process-termination.js"
 import { MCP_CONFIG } from "../../config.js"
+import { log } from "../../logging.js"
 import { prepareShellCommand } from "./rtk.js"
 
 type StopReason = "reset" | "close"
@@ -292,7 +293,10 @@ export function createShellProcess(options: ShellProcessOptions): ShellProcess {
       )
     }
 
-    spawned.once("error", (error) => scheduleForcedFinalization(`spawn error: ${error.message}`))
+    spawned.once("error", (error) => {
+      log("error", "shell.process_failed", { err: error })
+      scheduleForcedFinalization(`spawn error: ${error.message}`)
+    })
     spawned.once("exit", (code, signal) => {
       scheduleForcedFinalization(signal ? `signal ${signal}` : `exit code ${code ?? "unknown"}`)
       if (!stopReasons.has(spawned)) signalProcessGroup(spawned, "SIGKILL")
@@ -529,13 +533,15 @@ export function createShellProcess(options: ShellProcessOptions): ShellProcess {
     }
 
     if (!reason) {
+      log("warn", "shell.process_exited", { description, generation })
       signalProcessGroup(finalizedChild, "SIGKILL")
       if (!closed) {
         queueMicrotask(() => {
           if (closed) return
-          void start().catch((error) =>
+          void start().catch((error) => {
+            log("error", "shell.restart_failed", { err: error, generation })
             options.onIdleOutput(`\n[mcp] Shell restart failed: ${errorMessage(error)}\n`)
-          )
+          })
         })
       }
     }

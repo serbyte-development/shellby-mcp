@@ -2,49 +2,52 @@
   "version": 1,
   "pages": {
     "pages/agent-context.md": {
-      "fingerprint": "sha256:5b9fe7ca648eb2ce05f4c1d2b863c4659871dc1e344b3d646709936f73a2b4f3"
+      "fingerprint": "sha256:906754bfd5b25ba34bb5c720aa94876561f80e2169c88b2e036a4a30e1ede78b"
     },
     "pages/architecture-map.md": {
-      "fingerprint": "sha256:26b03847fe7d4bcf39e573a7f9745133da3c4ce2af0bf4516cc0ac37ac635864"
+      "fingerprint": "sha256:0772b4ca1a56e47141fc7d99f9990380db0b805f957a0f8c0a94b5e0f97b5a42"
     },
     "pages/computer-use.md": {
-      "fingerprint": "sha256:b4ebad81c0e45fd463c3f37f5dae061c2ab0beca3bd22499a31d2627d6e31c8e"
+      "fingerprint": "sha256:29ea5a732bdf9446fc2553f012e5119ed914423b4c751725c67c23a68fd5004a"
     },
     "pages/http-transport.md": {
-      "fingerprint": "sha256:22c7393f46cfb1d668844c88461469441274111c0873371cf0f84bf6fd30c396"
+      "fingerprint": "sha256:7b21b26142f3be8dc8f0cc28f35ecb729aaba1e67ef5ee7a57ac4a94c272ebed"
     },
     "pages/mcp-tool-registration-boundary.md": {
-      "fingerprint": "sha256:1ba9fa4a03b81c911028f2a6f568e7d3f74728f85c263f2bf9dd7655cebe52f7"
+      "fingerprint": "sha256:d180621bc1fdb00cf1b89f1e831fd7c4518e448127d0b200ea82e0834e069322"
     },
     "pages/mcp-tool-surface.md": {
-      "fingerprint": "sha256:fa4f144ada847f760aa7b14530f198dff1483d5f5af104ee1641d7371793e795"
+      "fingerprint": "sha256:e993c6840e1950918a74322673d6bbcde5cd9edfaea03c57413d247afa667140"
     },
     "pages/operations/audit-logging.md": {
-      "fingerprint": "sha256:3fda11064fe977ad207b164380d7f6dd3085e707782e1bfb67cc6f98b5963aee"
+      "fingerprint": "sha256:48c4335843e962e83369a9391bb29d49f86d9b932e02cb423b9f6393c7ca498a"
     },
     "pages/operations/build-and-test.md": {
-      "fingerprint": "sha256:29fff6591594798772074483ab7790ea07c32d5c5ba4408729ec21a59ec10ff3"
+      "fingerprint": "sha256:36596f0317a783cbc9f13eb6f606577eb8e832fe4045f7b6c2fbe192a0a0c2be"
     },
     "pages/operations/configuration-and-startup.md": {
-      "fingerprint": "sha256:8974ef542f960a1eb988f0c7af85793d92569021c4d4b6ee0af8460ba707d9bb"
+      "fingerprint": "sha256:6fe45934c67327733f349ebde1e3b07b3d3932d3a1b120061276e4222d7e8ba6"
+    },
+    "pages/operations/runtime-logging.md": {
+      "fingerprint": "sha256:a1b82babcfd7f53b596c41273b2caca2809506ed9e676054b513d065f5dfcc04"
     },
     "pages/operations/runtime-recovery.md": {
-      "fingerprint": "sha256:c43887f66cb5b64dfbc1b8d1e558bdc9136679c90b5d794ffb668d79cd6a0063"
+      "fingerprint": "sha256:57b77b41ce77fb49bf13b2f8ba63d6c5134a624e7ecbf0e88c7001f60e2d7e81"
     },
     "pages/operations/secret-handling.md": {
-      "fingerprint": "sha256:680facce1c77930fec88b5038110a1b5b4deb7ccd3072384c8f0576670ee35b4"
+      "fingerprint": "sha256:dbb377b4c30b36d1edd03757fa989c9cca38cfb0ddc7db8e8bfc1f5d92d824de"
     },
     "pages/persistent-shell-runtime.md": {
-      "fingerprint": "sha256:9cef72c3634ab83d70358b01721538cf0b4eaf80953a8397303a3da97c4c4219"
+      "fingerprint": "sha256:34eb84015a14f54b3d7f49391b64f5ebe65d38895ef5c39eb334aef785689269"
     },
     "pages/subagents/browser-chatgpt-subagents.md": {
-      "fingerprint": "sha256:3063cfa07c997b96908b4fa003133e69441e3ffadd85dacd1ef8738aae388d40"
+      "fingerprint": "sha256:c1eec6c4537966a65b3eb839c47a1857c013d85994b3b1983e0f3b2121e0e827"
     },
     "pages/subagents/chatgpt-cdp-transport.md": {
-      "fingerprint": "sha256:2070ff677d094a246baedd3bb03fd7c86f929f3defe8b16606e4cde2737bd4f9"
+      "fingerprint": "sha256:04e89a1073696a51a5dab3f3cd500a4862ee8292c7e6e988dd68efd961816c00"
     },
     "pages/subagents/subagent-completion.md": {
-      "fingerprint": "sha256:5f32f1c02ae6451a0c44224025879c8e32b98de823c233c7416abefdf6732c12"
+      "fingerprint": "sha256:bba8e4f4eb0e54ea21073793a4ff84f1904b6aef54d813a9cb83d1a32ba7cb51"
     },
     "pages/tool-naming-and-schema-design.md": {
       "fingerprint": "sha256:ef4f9fda5c54a10b61b7dec46099e2d91ee93f7ccaeb61991258d8ffc04bb424"
@@ -53,22 +56,22 @@
       "fingerprint": "sha256:dd469a35d9f32a8da619e92752591ea3661a41bdf07e713d769f7f91e552e6df"
     },
     "pages/tools/clones.md": {
-      "fingerprint": "sha256:956a84ebdb168bedc64d7c9a6b34ba2aacbdc2f2710bfdc57daf51c324e34849"
+      "fingerprint": "sha256:56c905e0bc264f9d35fac135f56835a8ab2b48741b9b104e7fed371ab056da69"
     },
     "pages/tools/fetch-url.md": {
       "fingerprint": "sha256:17dc213fb6952776ae9e5ef35981548e75e3a592b6ed20fb5640717aaa733621"
     },
     "pages/tools/files-and-images.md": {
-      "fingerprint": "sha256:98c7ffbd311aeaa21329034f1d913c7887f2af8e98cb3d873b73c17e0a982c0a"
+      "fingerprint": "sha256:0b4c4e5e44104dc10a3d516b27f0d9d830b14d2b400848ccbfd8519dae48f2c0"
     },
     "pages/tools/shell-run.md": {
-      "fingerprint": "sha256:e2256546393e08999478a46edd3272645b34b138f09244f58aa3e8b01d864772"
+      "fingerprint": "sha256:1083407e5cecffc63333b91d28f7540f5394de9e98977778a08d6e58ff84b625"
     },
     "pages/tools/subagent.md": {
-      "fingerprint": "sha256:2d1d3a15add8bc0a1ca86e35826ee320578119ce31e49941a19345626ce878d9"
+      "fingerprint": "sha256:6c641fb18b30e90da9a961f8a26cbed9a6adc14ce0b4e2cbeb792f72f820eb9a"
     },
     "pages/workspace-tooling.md": {
-      "fingerprint": "sha256:3d85f5b25c5d9c63448a71b21b8a611d736923a97cccb2f56fbdca3d07a76334"
+      "fingerprint": "sha256:874b3cb4d949a9645758c5040629f9877b39279e9a5e9526990604094bb7c656"
     }
   }
 }

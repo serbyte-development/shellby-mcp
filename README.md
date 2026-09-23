@@ -156,6 +156,7 @@ See [Browser ChatGPT Subagents](wiki/pages/subagents/browser-chatgpt-subagents.m
 | `npm run restart -- --hard` | Rebuild and recreate Shellby's PM2 daemon from a healthy Terminal.app session. |
 | `npm run status`       | Show PM2 process state.                                                        |
 | `npm run logs`         | Follow PM2 logs.                                                               |
+| `npm run logs:runtime` | Follow structured request, tool, background-task, and error events.             |
 | `npm run pm2 -- <args>` | Run a PM2 command against Shellby's dedicated daemon.                          |
 | `npm run print-url`    | Print the active public `/mcp` URL.                                            |
 | `npm run stop`         | Stop the managed Shellby MCP and ngrok processes.                              |
@@ -223,6 +224,8 @@ computer = false
 `chatgpt.max_delegated_agents` sets the maximum number of delegated agent IDs per main-agent session, shared by subagents and clones. It defaults to `3`; invalid values warn and fall back to `3`. Set a positive integer to override it. Saved agents and in-flight creations count toward the limit; existing IDs remain reusable even if the limit is lowered. The per-call batch limit remains three. Older configs can omit this field. To override it, add it under `[chatgpt]`, then restart Shellby after changing its value.
 
 `mcp.tool_output` controls the representation used for ordinary tool results. `compact` is optimized for model context and omits public output schemas; `structured` preserves each tool's structured result and output schema for MCP clients that use them. Computer Use and `image_view` keep their native MCP content in either mode. Changing this setting requires a Shellby restart.
+
+Runtime logging defaults to off. Set `enabled = true` under `[logging]` in `.shellby/config.toml` and restart Shellby to enable rotating operational logs. Use `npm run logs:runtime` to follow them. The separate `agent-commands.yaml` tool-usage record remains enabled.
 
 `shell.rtk` defaults to `false`, so RTK is not required to install or run Shellby. To enable transparent RTK command rewriting, install RTK Token Killer with `brew install rtk`, set `shell.rtk = true`, and restart Shellby. Shellby resolves that executable from startup `PATH`, then uses the resolved absolute path for supported rewrites regardless of the shell command's cwd. Unsupported rewrites and RTK failures fall back to the original command. Shellby keeps the caller's original command for request identity, auditing, and command previews, and disables RTK's separate failure tee, telemetry, and persistent history for Shellby-launched commands while still loading normal RTK filtering/exclusion configuration.
 

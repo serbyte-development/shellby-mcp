@@ -9,6 +9,8 @@ paths:
 
 # Audit Logging
 
+[Runtime Logging](./runtime-logging.md) owns operational diagnostics, background failures, and request timing. This page owns the human tool-usage record.
+
 [audit-log.ts](../../../src/server/audit/audit-log.ts) appends completed tool calls and timestamped `tools/list` lines to gitignored `agent-commands.yaml`, with owner-only file permissions. Writes are best effort and must not change dispatch behavior. Other protocol requests are ignored.
 
 [audit-request.ts](../../../src/server/audit/audit-request.ts) creates calls at HTTP entry; dispatch claims each by request ID/tool name. HTTP completion settles unclaimed calls using transport state. Remote authorization failures happen before audit creation. [Registration Boundary](../mcp-tool-registration-boundary.md) supplies original handler result and final model projection directly; audit does not buffer HTTP output.

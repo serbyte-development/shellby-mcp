@@ -40,6 +40,7 @@ const publicConfigSchema = z.object({
   }),
   mcp: z.object({ tool_output: z.enum(["compact", "structured"]).default("compact") }),
   ui: z.object({ enabled: z.boolean().default(false) }),
+  logging: z.object({ enabled: z.boolean().default(false) }),
   tools: z.object({
     review: z.boolean().default(true),
     shell: z.boolean().default(true),

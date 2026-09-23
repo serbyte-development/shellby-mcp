@@ -1,4 +1,5 @@
 import { AsyncLocalStorage } from "node:async_hooks"
+import { randomUUID } from "node:crypto"
 import { createServer, type Server as HttpServer } from "node:http"
 import { createMcpExpressApp } from "@modelcontextprotocol/express"
 import { toNodeHandler } from "@modelcontextprotocol/node"
@@ -9,6 +10,7 @@ import { createDashboardRouter } from "../agent/dashboard-routes.js"
 import type { AgentObserver } from "../agent/observer.js"
 import { ShellbyAuthError, type ShellbyAuthStore } from "../auth/store.js"
 import { MCP_CONFIG } from "../config.js"
+import { log, withLogContext } from "../logging.js"
 import type { McpServerFactory } from "../mcp/server-factory.js"
 import { asRecord } from "../utils.js"
 import type { McpAuditLogger, McpAuditRequest } from "./audit/audit-log.js"
@@ -106,7 +108,23 @@ export async function startMcpHttpServer(
     await handleMcpRequest(req, res)
   })
 
-  const httpServer = createServer(app)
+  const httpServer = createServer((req, res) => {
+    if (req.url?.split("?")[0] !== "/mcp") return app(req, res)
+    const requestId = randomUUID()
+    withLogContext({ request_id: requestId }, () => {
+      const started = performance.now()
+      log("info", "http.started", { method: req.method })
+      res.once("close", () => {
+        log(res.writableFinished && res.statusCode < 400 ? "info" : "warn", "http.finished", {
+          request_id: requestId,
+          http_status: res.statusCode,
+          outcome: res.writableFinished ? "finished" : "disconnected",
+          duration_ms: Math.round(performance.now() - started),
+        })
+      })
+      app(req, res)
+    })
+  })
   let boundPort: number
   try {
     await listen(httpServer, port, host)
@@ -130,7 +148,14 @@ export async function startMcpHttpServer(
     close: async () => {
       if (closed) return
       closed = true
-      await Promise.allSettled([mcpHandler.close(), closeHttpServerIfListening(httpServer)])
+      const results = await Promise.allSettled([
+        mcpHandler.close(),
+        closeHttpServerIfListening(httpServer),
+      ])
+      for (const result of results) {
+        if (result.status === "rejected")
+          log("error", "http.cleanup_failed", { err: result.reason })
+      }
     },
   }
 }
@@ -155,10 +180,12 @@ function requestSessionId(req: Request): string | undefined {
 }
 
 function reportMcpError(error: Error): void {
+  log("error", "mcp.transport_failed", { err: error })
   console.error("MCP handler error:", error)
 }
 
 function remoteAuthError(res: Response, error: unknown): void {
+  log("warn", "auth.rejected", { err: error })
   if (error instanceof ShellbyAuthError) {
     if (error.code === "subject_missing" || error.code === "subject_mismatch") {
       jsonRpcError(res, 403, -32002, "Remote MCP access denied.")

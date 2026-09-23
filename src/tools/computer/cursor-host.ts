@@ -2,6 +2,7 @@
 import { type ChildProcess, spawn } from "node:child_process"
 import { existsSync } from "node:fs"
 import process from "node:process"
+import { log } from "../../logging.js"
 
 export interface CursorHostOptions {
   executable: string
@@ -51,11 +52,13 @@ export class CursorHostManager {
     this.child = child
 
     child.once("error", (error) => {
+      if (!this.stopping) log("error", "cursor.failed", { err: error })
       if (!this.stopping) console.warn(`Cursor host failed: ${error.message}`)
     })
-    child.once("exit", () => {
+    child.once("exit", (code, signal) => {
       if (this.child === child) this.child = undefined
       if (this.stopping) return
+      log("warn", "cursor.restarting", { exit_code: code, signal })
       this.restartTimer = setTimeout(() => {
         this.restartTimer = undefined
         if (!this.stopping) this.spawn()

@@ -27,6 +27,8 @@ The same module compiles to CommonJS for PM2's ecosystem file while serving the 
 
 Shellby does not load repository `.env` files. ngrok credentials stay in native ngrok configuration; package-local binaries and managed Chrome profile location are derived by Shellby. Optional RTK is resolved from startup PATH and validated when enabled.
 
+`logging.enabled` defaults to `false`; [Runtime Logging](./runtime-logging.md) owns activation, event coverage, and file retention. Configuration is read at startup.
+
 ## Bootstrap and composition
 
 `npm run setup -- --config-only` creates the config only if missing. Full [setup.ts](../../../scripts/setup.ts) loads it before prerequisite checks, creates workspace/state directories, builds backend, and checks browser/computer integrations only when enabled. Existing TOML, workspace instructions, and copied starter skills remain untouched. See [Workspace Tooling](../workspace-tooling.md).

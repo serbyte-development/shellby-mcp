@@ -2,6 +2,7 @@ import type { Browser, BrowserContext, Page } from "playwright-core"
 
 import { type AgentIdentity, getAgentIdentity } from "../../agent/context.js"
 import { MCP_CONFIG } from "../../config.js"
+import { log } from "../../logging.js"
 import {
   assertAuthenticated,
   createBackgroundPage,
@@ -301,6 +302,12 @@ export function createChatGptDelegationService(): ChatGptDelegationService {
     if (turn.status !== "running") return
 
     const oldObservation = lifecycle.detachObservation(turn)
+    log("warn", "delegation.observation_failed", {
+      err: originalError,
+      agent: turn.parentAgent?.agent,
+      delegated_agent: turn.agentId,
+      turn_id: turn.turnId,
+    })
     await oldObservation?.dispose().catch(() => undefined)
 
     const agent = lifecycle.agentForTurn(turn)

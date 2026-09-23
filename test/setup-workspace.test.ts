@@ -56,6 +56,7 @@ test("setup creates all defaults and preserves existing partial configs", async 
   })
   assert.deepEqual(scaffold.mcp, { tool_output: "compact" })
   assert.deepEqual(scaffold.ui, { enabled: false })
+  assert.deepEqual(scaffold.logging, { enabled: false })
   assert.equal(scaffold.tools.file_read, true)
   assert.equal(scaffold.tools.file_write, true)
   assert.equal(scaffold.tools.computer, true)

@@ -4,6 +4,7 @@ import { dirname } from "node:path"
 import { DatabaseSync } from "node:sqlite"
 
 import type { AgentIdentity } from "../../agent/context.js"
+import { log } from "../../logging.js"
 import { asRecord } from "../../utils.js"
 
 interface PersistedDelegatedAgent {
@@ -55,6 +56,7 @@ export function createDelegationStore(path: string): DelegationStore {
       { cause: error }
     )
     console.warn(failure.message)
+    log("error", "delegation.persistence_failed", { err: failure, operation })
     return failure
   }
 
@@ -177,6 +179,7 @@ export function createDelegationStore(path: string): DelegationStore {
           db.close()
         } catch (error) {
           console.warn(`Could not close subagent persistence at ${path}: ${String(error)}`)
+          log("warn", "delegation.persistence_close_failed", { err: error })
         }
       },
     }

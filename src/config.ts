@@ -89,18 +89,20 @@ export const MCP_CONFIG = {
     /** Whether the local Shellby UI is served. */
     enabled: publicConfig.ui.enabled,
   },
+  /** Optional operational event logging. */
+  logging: publicConfig.logging,
   /** HTTP and document-fetching limits. */
   web: {
     /** Default text format returned by fetch_url. */
     defaultFormat: "markdown" as const,
     /** Default model-output token budget for one fetch_url response. */
-    defaultOutputTokens: 8000,
+    defaultOutputTokens: 8_000,
     /** Maximum model-output token budget a fetch_url caller may request. */
-    maxOutputTokens: 32000,
+    maxOutputTokens: 32_000,
     /** Maximum extracted document bytes retained for cursor continuation. */
-    documentByteLimit: 2 * 1024 * 1024,
+    documentByteLimit: 2 * 1_024 * 1_024,
     /** Maximum downloaded resource size accepted before extraction. */
-    resourceByteLimit: 16 * 1024 * 1024,
+    resourceByteLimit: 16 * 1_024 * 1_024,
     /** Time a cached fetched document remains available for cursor reads. */
     documentTtlMs: 10 * 60 * 1_000,
     /** Maximum number of fetched documents retained in the cache. */
@@ -115,9 +117,9 @@ export const MCP_CONFIG = {
     /** RTK executable resolved from PATH when available. */
     rtkExecutable,
     /** Rolling shell-wide character retention available to shell_poll cursors. */
-    transcriptChars: 1024 * 1024,
+    transcriptChars: 1_024 * 1_024,
     /** Maximum stdout/stderr bytes retained for one command before excess is dropped. */
-    commandTranscriptBytes: 256 * 1024,
+    commandTranscriptBytes: 256 * 1_024,
     /** Default model-output token budget for one shell_run or shell_poll response. */
     defaultOutputTokens: 2_000,
     /** Maximum model-output token budget a shell caller may request per response. */
@@ -139,9 +141,9 @@ export const MCP_CONFIG = {
     /** Maximum number of simultaneously retained shell sessions. */
     maxShells: 8,
     /** Idle time before a named shell is hibernated or evicted. */
-    idleTimeoutMs: 5 * 60 * 1000,
+    idleTimeoutMs: 5 * 60 * 1_000,
     /** Time cached shell state remains restorable after hibernation. */
-    cacheTimeoutMs: 24 * 60 * 60 * 1000,
+    cacheTimeoutMs: 24 * 60 * 60 * 1_000,
   },
   /** Feature flags controlling which MCP tool groups are registered. */
   tools: {
