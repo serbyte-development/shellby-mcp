@@ -78,7 +78,11 @@ export async function saveReview(
   await mkdir(dirname(filePath), { recursive: true })
   const identity = getAgentIdentity()
   const record = {
-    created_at: new Date().toISOString(),
+    // created_at in Pacific Time (America/Los_Angeles)
+    created_at: new Date().toLocaleString("en-US", {
+      timeZone: "America/Los_Angeles",
+      hour12: false,
+    }),
     ...(identity ? { agent: identity.agent } : {}),
     ...(identity?.taskSlug ? { task_id: identity.taskSlug } : {}),
     rating: input.rating.toFixed(1),
