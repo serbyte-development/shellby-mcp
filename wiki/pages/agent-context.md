@@ -5,6 +5,7 @@ paths:
   - src/agent/observer.ts
   - src/agent/dashboard-routes.ts
   - src/agent/tool-call-presentation.ts
+  - src/mcp/tool-registration-boundary.ts
   - src/server/http-server.ts
 ---
 
@@ -16,7 +17,7 @@ paths:
 
 ## Dashboard ownership
 
-When enabled, one [observer](../../src/agent/observer.ts) tracks concurrent calls, bounded recent history, and queued instructions. [tool-call-presentation.ts](../../src/agent/tool-call-presentation.ts) owns displayed summaries. Call completion means the callback returned; a returned tool error need not appear as observer `failed`.
+When enabled, one [observer](../../src/agent/observer.ts) tracks concurrent calls, bounded recent history, and queued instructions. [tool-call-presentation.ts](../../src/agent/tool-call-presentation.ts) owns displayed summaries. The [registrar](./mcp-tool-registration-boundary.md) marks returned `isError` results, thrown exceptions, and initialization rejections as `failed`. SDK validation outside dispatch remains outside observation.
 
 [dashboard-routes.ts](../../src/agent/dashboard-routes.ts) owns snapshot/SSE, steering queue/cancellation, and static `/ui`/`/ui/editor` serving. Steering targets observed `agent-N` identities and drains in submission order on a later tool response. It cannot interrupt upstream generation or a pending tool. State disappears on restart. Frontend contracts and presentation belong to the [UI wiki](../../ui/wiki/AGENTS.md).
 

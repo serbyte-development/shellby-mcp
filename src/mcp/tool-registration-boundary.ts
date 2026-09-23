@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto"
 import type {
+  CallToolResult,
   McpServer,
   ServerContext,
   StandardSchemaWithJSON,
@@ -13,7 +14,8 @@ import type { McpAuditRequest } from "../server/audit/audit-log.js"
 import type { ReviewPromptTracker } from "../tools/review/review-tool.js"
 import { shellRunFileEditNotices } from "../tools/shell/apply-patch-guidance.js"
 import { START_HERE_TOOL_NAME } from "../tools/start-here/start-here.js"
-import { isRecord } from "../utils.js"
+import { asRecord, isRecord } from "../utils.js"
+import { ToolError } from "./tool-error.js"
 import { appendToolEvents, compactToolResult } from "./tool-output.js"
 import { prepareToolRegistration } from "./tool-schema-presentation.js"
 
@@ -65,43 +67,47 @@ export function createToolRegistrar(
       async () => {
         const started = performance.now()
         log("info", "tool.started")
-        const input = isRecord(inputValue) ? inputValue : {}
+        const input = asRecord(inputValue) ?? {}
         const auditCall = options.auditRequest?.claimTool(context.mcpReq.id, name)
         let observedCallId: string | undefined
+        let result: unknown
+        let projected: unknown
+        let failure: unknown
+        const agent = getAgentIdentity()
 
         try {
-          const agent = getAgentIdentity()
+          observedCallId = options.agentObserver?.startTool(agent, name, input)
           if (agent && name !== START_HERE_TOOL_NAME && !agent.taskSlug) {
-            log("warn", "tool.rejected", { reason: "initialization_required" })
-            const result = startupRequiredResult()
-            auditCall?.finish({ toolResult: result, modelResult: result })
-            return result
+            throw new ToolError(
+              "INITIALIZATION_REQUIRED",
+              "Shellby has not been initialized for this conversation. Call `start_here` first, and follow the instructions."
+            )
           }
 
-          observedCallId = options.agentObserver?.startTool(agent, name, input)
-          const result = await (tool.acceptsInput
+          result = await (tool.acceptsInput
             ? tool.callback(inputValue, context)
             : tool.callback(context))
-          options.agentObserver?.finishTool(agent, observedCallId)
-
-          const projected =
+          projected =
             !tool.nativeContent && !structuredOutput ? compactToolResult(name, result) : result
-          const events = collectToolEvents(name, input, agent, options)
-          const finalResult = appendToolEvents(projected, events)
-          auditCall?.finish({ toolResult: result, modelResult: finalResult })
-          logToolCompletion(result, started)
-          return finalResult
         } catch (error) {
-          log("error", "tool.failed", {
-            err: error,
-            duration_ms: Math.round(performance.now() - started),
-          })
-          const agent = getAgentIdentity()
-          options.agentObserver?.failTool(agent, observedCallId)
-          const result = toolError(error instanceof Error ? error.message : String(error))
-          auditCall?.finish({ error, modelResult: result })
-          return result
+          failure = error
+          result = formatToolError(error, structuredOutput)
+          projected = result
         }
+
+        const finalResult = appendToolEvents(
+          projected,
+          collectToolEvents(name, input, agent, options)
+        )
+        const failed = isRecord(result) && result.isError === true
+        if (failed) {
+          options.agentObserver?.failTool(agent, observedCallId)
+        } else {
+          options.agentObserver?.finishTool(agent, observedCallId)
+        }
+        auditCall?.finish({ toolResult: result, modelResult: finalResult })
+        logToolCompletion(projected, failed, started, failure)
+        return finalResult
       }
     )
   }
@@ -124,12 +130,29 @@ export function createToolRegistrar(
   return registerTool
 }
 
-function logToolCompletion(result: unknown, started: number): void {
-  const failed = isRecord(result) && result.isError === true
+/** Render failures directly; native-content policy applies only to returned tool results. */
+function formatToolError(error: unknown, structuredOutput: boolean): CallToolResult {
+  const code = error instanceof ToolError ? error.code : "internal_error"
+  const message = error instanceof Error ? error.message : String(error)
+  return {
+    isError: true,
+    ...(structuredOutput ? { structuredContent: { error_code: code } } : {}),
+    content: [{ type: "text", text: `${code}: ${message}` }],
+  }
+}
+
+function logToolCompletion(
+  result: unknown,
+  failed: boolean,
+  started: number,
+  error: unknown
+): void {
   const content = isRecord(result) && Array.isArray(result.content) ? result.content : []
   const firstText = content.find((item) => isRecord(item) && item.type === "text")
-  log(failed ? "warn" : "info", "tool.finished", {
+  const failureLevel = error === undefined ? "warn" : "error"
+  log(failed ? failureLevel : "info", failed ? "tool.failed" : "tool.finished", {
     outcome: failed ? "error" : "completed",
+    err: error,
     duration_ms: Math.round(performance.now() - started),
     error_message:
       failed && isRecord(firstText) && typeof firstText.text === "string"
@@ -150,23 +173,4 @@ function collectToolEvents(
     ...(options.agentObserver?.drainInstructions(agent) ?? []),
     ...(options.reviewPromptTracker?.() ?? []),
   ]
-}
-
-function toolError(text: string) {
-  return {
-    isError: true,
-    content: [{ type: "text" as const, text }],
-  }
-}
-
-function startupRequiredResult() {
-  return {
-    isError: true,
-    content: [
-      {
-        type: "text" as const,
-        text: "Shellby has not been initialized for this conversation. Call `start_here` first, and follow the instructions.",
-      },
-    ],
-  }
 }

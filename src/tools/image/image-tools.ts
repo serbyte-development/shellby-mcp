@@ -1,6 +1,7 @@
 import { readFile } from "node:fs/promises"
 import { basename } from "node:path"
 import { z } from "zod"
+import { ToolError } from "../../mcp/tool-error.js"
 import type { ToolRegistrar } from "../../mcp/tool-registration-boundary.js"
 import { resolveWorkspacePath } from "../../utils.js"
 import { encodeImageForMcp, formatBytes, ImageEncodingError } from "./image-encoding.js"
@@ -44,14 +45,12 @@ export function registerImageTools(registerTool: ToolRegistrar): void {
           ],
         }
       } catch (error) {
-        const text =
-          error instanceof ImageEncodingError
-            ? `${error.code}: ${error.message}`
-            : `IMAGE_VIEW_FAILED: ${error instanceof Error ? error.message : String(error)}`
-        return {
-          isError: true,
-          content: [{ type: "text" as const, text }],
-        }
+        // biome-ignore lint/style/useErrorCause: ToolError forwards ErrorOptions from its third argument.
+        throw new ToolError(
+          error instanceof ImageEncodingError ? error.code : "IMAGE_VIEW_FAILED",
+          error instanceof Error ? error.message : String(error),
+          { cause: error }
+        )
       }
     }
   )

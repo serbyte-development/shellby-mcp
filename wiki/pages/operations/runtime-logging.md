@@ -14,6 +14,9 @@ paths:
   - src/tools/delegation/lifecycle.ts
   - src/tools/delegation/chatgpt-service.ts
   - src/tools/delegation/store.ts
+  - src/tools/delegation/clone-tools.ts
+  - src/tools/delegation/subagent-tools.ts
+  - src/tools/delegation/turn-results.ts
   - src/tools/computer/cursor-host.ts
   - scripts/runtime-logs.ts
 ---
@@ -30,9 +33,9 @@ Run `npm run logs:runtime` to follow the current file under configured `stateDir
 
 [time.ts](../../../src/time.ts) owns the shared Pacific timestamp format for runtime `time`, review `created_at`, and audit headings: `Sep 23 12:05 PM`. It formats `America/Los_Angeles` directly, including daylight-saving changes, independently of the host timezone. New records use this format; existing records remain unchanged.
 
-HTTP logs request start and transport completion/disconnect, including requests rejected by parsing or authentication. Shared tool registrar logs execution start, returned failures, duration, and original thrown errors. Caller initialization rejection has its own event. Request and tool-call IDs correlate concurrent activity; agent/task labels derive from existing context.
+HTTP logs request start and transport completion/disconnect, including requests rejected by parsing or authentication. The [shared tool registrar](../mcp-tool-registration-boundary.md) logs execution start and one completion: `tool.finished` for success or `tool.failed` for returned errors, thrown exceptions, and initialization rejection. Completion includes outcome, duration, and the original exception when available. Request and tool-call IDs correlate concurrent activity; agent/task labels derive from existing context.
 
-Shell owners log command and parallel-run completion, exit status, hibernation, and cleanup failures. Delegation lifecycle logs submitted, recovering, completed, and failed turns with explicit parent/agent/turn identity. Persistence and native cursor process owners report their failures. Startup and shutdown report service outcomes.
+Shell owners log command and parallel-run completion, exit status, hibernation, and cleanup failures. Delegation lifecycle logs submitted, recovering, completed, and failed turns with explicit parent/agent/turn identity. Delegation adapters also log caught submission/poll exceptions before constructing failure records, preserving diagnostic causes alongside partial results. These item events are separate from the registrar's tool completion. Persistence and native cursor process owners report their failures. Startup and shutdown report service outcomes.
 
 Tool completion describes execution inside the registrar. SDK input/output validation can reject a call outside that boundary; HTTP 200 alone establishes transport completion. This implementation does not intercept protocol response bodies.
 

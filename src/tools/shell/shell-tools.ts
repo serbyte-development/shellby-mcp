@@ -1,4 +1,5 @@
 import { resolve } from "node:path"
+import { ToolError } from "../../mcp/tool-error.js"
 import type { ToolRegistrar } from "../../mcp/tool-registration-boundary.js"
 import { withApplyPatchToolHint } from "./apply-patch-guidance.js"
 import { ShellSessionError, type ShellSnapshot } from "./session.js"
@@ -47,7 +48,7 @@ export function registerShellExecutionTools(
         })
         return snapshotResult(snapshot, shell_id)
       } catch (error) {
-        return toolError(error)
+        throw shellToolError(error)
       }
     }
   )
@@ -75,7 +76,7 @@ export function registerShellExecutionTools(
         })
         return pollSnapshotResult(snapshot)
       } catch (error) {
-        return toolError(error)
+        throw shellToolError(error)
       }
     }
   )
@@ -107,7 +108,7 @@ export function registerShellManagementTools(
           content: [],
         }
       } catch (error) {
-        return toolError(error)
+        throw shellToolError(error)
       }
     }
   )
@@ -125,19 +126,14 @@ export function registerShellManagementTools(
       },
     },
     async () => {
-      try {
-        const result = {
+      return {
+        structuredContent: {
           shells: shells.listShells(),
           count: shells.shellCount,
           limit: shells.maximumShells,
           idle_timeout_ms: shells.idleTimeoutMilliseconds,
-        }
-        return {
-          structuredContent: result,
-          content: [],
-        }
-      } catch (error) {
-        return toolError(error)
+        },
+        content: [],
       }
     }
   )
@@ -164,7 +160,7 @@ export function registerShellManagementTools(
           content: [],
         }
       } catch (error) {
-        return toolError(error)
+        throw shellToolError(error)
       }
     }
   )
@@ -180,15 +176,10 @@ function snapshotResult(snapshot: ShellSnapshot, shellId: string) {
 
 function pollSnapshotResult(snapshot: ShellSnapshot) {
   if (snapshot.cursor_expired) {
-    return {
-      isError: true,
-      content: [
-        {
-          type: "text" as const,
-          text: "cursor_expired: Output before the requested cursor is no longer retained. Rerun the command if complete output is required.",
-        },
-      ],
-    }
+    throw new ToolError(
+      "cursor_expired",
+      "Output before the requested cursor is no longer retained. Rerun the command if complete output is required."
+    )
   }
 
   const structuredContent: ShellPollOutput = {
@@ -243,13 +234,8 @@ function compactShellSnapshot(snapshot: ShellSnapshot, shellId: string): ShellRu
   return compact
 }
 
-function toolError(error: unknown) {
-  const text =
-    error instanceof ShellSessionError
-      ? `${error.code}: ${error.message}`
-      : `internal_error: ${error instanceof Error ? error.message : String(error)}`
-  return {
-    isError: true,
-    content: [{ type: "text" as const, text }],
-  }
+function shellToolError(error: unknown): unknown {
+  return error instanceof ShellSessionError
+    ? new ToolError(error.code, error.message, { cause: error })
+    : error
 }

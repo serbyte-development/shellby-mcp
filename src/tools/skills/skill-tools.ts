@@ -2,6 +2,7 @@ import { join } from "node:path"
 import { z } from "zod"
 import { createAgentLoadDeduper } from "../../agent/load-deduper.js"
 import { MCP_CONFIG } from "../../config.js"
+import { ToolError } from "../../mcp/tool-error.js"
 import type { ToolRegistrar } from "../../mcp/tool-registration-boundary.js"
 import {
   isValidSkillName,
@@ -44,7 +45,7 @@ export function registerSkillTools(registerTool: ToolRegistrar): void {
           content: [],
         }
       } catch (error) {
-        return skillToolError(error)
+        throw skillToolError(error)
       }
     }
   )
@@ -86,19 +87,16 @@ export function registerSkillTools(registerTool: ToolRegistrar): void {
           content: [],
         }
       } catch (error) {
-        return skillToolError(error)
+        throw skillToolError(error)
       }
     }
   )
 }
 
-function skillToolError(error: unknown) {
-  const text =
-    error instanceof SkillCatalogError
-      ? `${error.code}: ${error.message}`
-      : `skill_failed: ${error instanceof Error ? error.message : String(error)}`
-  return {
-    isError: true,
-    content: [{ type: "text" as const, text }],
-  }
+function skillToolError(error: unknown): ToolError {
+  return new ToolError(
+    error instanceof SkillCatalogError ? error.code : "skill_failed",
+    error instanceof Error ? error.message : String(error),
+    { cause: error }
+  )
 }

@@ -1,5 +1,6 @@
 import { z } from "zod"
 import { MCP_CONFIG } from "../../config.js"
+import { ToolError } from "../../mcp/tool-error.js"
 import type { ToolRegistrar } from "../../mcp/tool-registration-boundary.js"
 import { WebOpenError, type WebPageOpener } from "./web-open.js"
 
@@ -92,20 +93,16 @@ export function registerWebTool(registerTool: ToolRegistrar, webPageOpener: WebP
           content: [],
         }
       } catch (error) {
-        return webErrorResult(error)
+        const code = error instanceof WebOpenError ? error.code : "open_failed"
+        const errorCode =
+          code === "invalid_url" || code === "invalid_cursor"
+            ? "INVALID_ARGUMENT"
+            : code.toUpperCase()
+        // biome-ignore lint/style/useErrorCause: ToolError forwards ErrorOptions from its third argument.
+        throw new ToolError(errorCode, error instanceof Error ? error.message : String(error), {
+          cause: error,
+        })
       }
     }
   )
-}
-
-function webErrorResult(error: unknown) {
-  const code = error instanceof WebOpenError ? error.code : "open_failed"
-  const errorCode =
-    code === "invalid_url" || code === "invalid_cursor" ? "INVALID_ARGUMENT" : code.toUpperCase()
-  const message = error instanceof Error ? error.message : String(error)
-  return {
-    isError: true,
-    structuredContent: { error_code: errorCode },
-    content: [{ type: "text" as const, text: `${code}: ${message}` }],
-  }
 }

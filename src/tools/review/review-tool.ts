@@ -3,6 +3,7 @@ import { dirname, join, resolve } from "node:path"
 import { fileURLToPath } from "node:url"
 import { z } from "zod"
 import { type AgentIdentity, getAgentIdentity } from "../../agent/context.js"
+import { ToolError } from "../../mcp/tool-error.js"
 import type { ToolRegistrar } from "../../mcp/tool-registration-boundary.js"
 import { getTimeStamp } from "../../time.js"
 
@@ -58,15 +59,12 @@ export function registerReviewTool(registerTool: ToolRegistrar): void {
           content: [{ type: "text" as const, text: "Review saved to .shellby/reviews.jsonl." }],
         }
       } catch (error) {
-        return {
-          isError: true,
-          content: [
-            {
-              type: "text" as const,
-              text: `review_failed: ${error instanceof Error ? error.message : String(error)}`,
-            },
-          ],
-        }
+        // biome-ignore lint/style/useErrorCause: ToolError forwards ErrorOptions from its third argument.
+        throw new ToolError(
+          "review_failed",
+          error instanceof Error ? error.message : String(error),
+          { cause: error }
+        )
       }
     }
   )

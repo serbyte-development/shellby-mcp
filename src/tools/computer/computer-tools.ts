@@ -1,5 +1,6 @@
 import type { CallToolResult } from "@modelcontextprotocol/server"
 import { z } from "zod"
+import { ToolError } from "../../mcp/tool-error.js"
 import type { ToolRegistrar } from "../../mcp/tool-registration-boundary.js"
 
 import { asRecord, booleanValue, finiteNumber as numberValue } from "../../utils.js"
@@ -126,7 +127,7 @@ export function registerComputerUseTools(
         )
         return observationResult(observation)
       } catch (error) {
-        return peekabooToolError(error)
+        throw peekabooToolError(error)
       }
     }
   )
@@ -163,7 +164,7 @@ export function registerComputerUseTools(
         )
         return inspectionResult(result)
       } catch (error) {
-        return peekabooToolError(error)
+        throw peekabooToolError(error)
       }
     }
   )
@@ -264,7 +265,7 @@ export function registerComputerUseTools(
             args.push("--global")
           }
         } catch (error) {
-          return peekabooToolError(error)
+          throw peekabooToolError(error)
         }
       }
       if (input.button === "right") args.push("--right")
@@ -285,7 +286,7 @@ export function registerComputerUseTools(
           )
           return commandResult(result, "Click completed.")
         } catch (error) {
-          return peekabooToolError(error)
+          throw peekabooToolError(error)
         }
       }
       return callPeekaboo(peekaboo, args, ctx.mcpReq.signal, "Click completed.")
@@ -493,7 +494,7 @@ export function registerComputerUseTools(
       const result = await peekaboo.runWithFreshLocalWindowSnapshot(target, args, signal)
       return commandResult(result, "Scroll completed.")
     } catch (error) {
-      return peekabooToolError(error)
+      throw peekabooToolError(error)
     }
   }
 
@@ -560,7 +561,7 @@ export function registerComputerUseTools(
           "Background dragging requires an exact window observation."
         )
       } catch (error) {
-        return peekabooToolError(error)
+        throw peekabooToolError(error)
       }
 
       try {
@@ -583,7 +584,7 @@ export function registerComputerUseTools(
         )
         return commandResult(result, "Drag completed.")
       } catch (error) {
-        return peekabooToolError(error)
+        throw peekabooToolError(error)
       }
     }
   )
@@ -796,7 +797,7 @@ async function callPeekaboo(
   try {
     return commandResult(await peekaboo.run(args, signal), fallbackSummary)
   } catch (error) {
-    return peekabooToolError(error)
+    throw peekabooToolError(error)
   }
 }
 
@@ -878,27 +879,15 @@ function inspectionResult(result: PeekabooResult): CallToolResult {
   }
 }
 
-function peekabooToolError(error: unknown): CallToolResult {
+function peekabooToolError(error: unknown): unknown {
   if (error instanceof PeekabooError) {
-    return {
-      content: [
-        {
-          type: "text",
-          text: `${error.code}: ${error.message}${error.details ? ` (${error.details})` : ""}`,
-        },
-      ],
-      isError: true,
-    }
+    return new ToolError(
+      error.code,
+      `${error.message}${error.details ? ` (${error.details})` : ""}`,
+      { cause: error }
+    )
   }
-  return {
-    content: [
-      {
-        type: "text",
-        text: error instanceof Error ? error.message : String(error),
-      },
-    ],
-    isError: true,
-  }
+  return error
 }
 
 function asStructuredContent(value: unknown): Record<string, unknown> | null {

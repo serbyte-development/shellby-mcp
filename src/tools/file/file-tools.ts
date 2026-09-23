@@ -2,6 +2,7 @@ import { readFile, writeFile } from "node:fs/promises"
 import { basename } from "node:path"
 import { pathToFileURL } from "node:url"
 import { z } from "zod"
+import { ToolError } from "../../mcp/tool-error.js"
 import type { ToolRegistrar } from "../../mcp/tool-registration-boundary.js"
 import { resolveWorkspacePath } from "../../utils.js"
 
@@ -48,7 +49,12 @@ export function registerFileReadTool(registerTool: ToolRegistrar): void {
           ],
         }
       } catch (error) {
-        return toolError("FILE_READ_FAILED", error)
+        // biome-ignore lint/style/useErrorCause: ToolError forwards ErrorOptions from its third argument.
+        throw new ToolError(
+          "FILE_READ_FAILED",
+          error instanceof Error ? error.message : String(error),
+          { cause: error }
+        )
       }
     }
   )
@@ -92,20 +98,13 @@ export function registerFileWriteTool(registerTool: ToolRegistrar): void {
           ],
         }
       } catch (error) {
-        return toolError("FILE_WRITE_FAILED", error)
+        // biome-ignore lint/style/useErrorCause: ToolError forwards ErrorOptions from its third argument.
+        throw new ToolError(
+          "FILE_WRITE_FAILED",
+          error instanceof Error ? error.message : String(error),
+          { cause: error }
+        )
       }
     }
   )
-}
-
-function toolError(code: string, error: unknown) {
-  return {
-    isError: true,
-    content: [
-      {
-        type: "text" as const,
-        text: `${code}: ${error instanceof Error ? error.message : String(error)}`,
-      },
-    ],
-  }
 }

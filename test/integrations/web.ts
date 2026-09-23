@@ -33,13 +33,18 @@ for (const toolOutput of ["compact", "structured"] as const) {
     for (const [path, errorCode] of [
       ["/refused", "CONNECTION_REFUSED"],
       ["/broken", "OPEN_FAILED"],
-    ]) {
+    ] as const) {
       const result = await connected.client.callTool({
         name: "fetch_url",
         arguments: { url: `https://example.com${path}` },
       })
       assert.equal(result.isError, true)
-      assert.deepEqual(result.structuredContent, { error_code: errorCode })
+      assert.deepEqual(
+        result.structuredContent,
+        toolOutput === "structured" ? { error_code: errorCode } : undefined
+      )
+      assert.ok(toolText(result).startsWith(`${errorCode}: `))
+      assert.equal(toolText(result).split(`${errorCode}: `).length, 2)
     }
 
     const invalidCursor = await connected.client.callTool({
@@ -47,8 +52,11 @@ for (const toolOutput of ["compact", "structured"] as const) {
       arguments: { url: "https://example.com/", cursor: "invalid" },
     })
     assert.equal(invalidCursor.isError, true)
-    assert.deepEqual(invalidCursor.structuredContent, { error_code: "INVALID_ARGUMENT" })
-    assert.match(toolText(invalidCursor), /invalid_cursor/u)
+    assert.deepEqual(
+      invalidCursor.structuredContent,
+      toolOutput === "structured" ? { error_code: "INVALID_ARGUMENT" } : undefined
+    )
+    assert.match(toolText(invalidCursor), /^INVALID_ARGUMENT: /u)
 
     const invalidUrl = await connected.client.callTool({
       name: "fetch_url",
@@ -93,8 +101,8 @@ liveWebTest(
       arguments: { url: `http://127.0.0.1:${address.port}/` },
     })
     assert.equal(result.isError, true)
-    assert.deepEqual(result.structuredContent, { error_code: "CONNECTION_REFUSED" })
-    assert.match(toolText(result), /connection_refused:.*ERR_CONNECTION_REFUSED/u)
+    assert.equal(result.structuredContent, undefined)
+    assert.match(toolText(result), /CONNECTION_REFUSED:.*ERR_CONNECTION_REFUSED/u)
   }
 )
 

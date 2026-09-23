@@ -10,6 +10,7 @@ import {
   type ProcessGroupTermination,
   startProcessGroupTermination,
 } from "../../child-process-termination.js"
+import { ToolError } from "../../mcp/tool-error.js"
 import type { ToolRegistrar } from "../../mcp/tool-registration-boundary.js"
 import { tokenPrefix } from "../../tokenizer.js"
 import { summarizePatchExecution } from "./patch-summary.js"
@@ -82,15 +83,12 @@ export function registerApplyPatchTool(registerTool: ToolRegistrar): void {
           content: [],
         }
       } catch (error) {
-        return {
-          isError: true,
-          content: [
-            {
-              type: "text" as const,
-              text: `apply_patch_failed: ${error instanceof Error ? error.message : String(error)}`,
-            },
-          ],
-        }
+        // biome-ignore lint/style/useErrorCause: ToolError forwards ErrorOptions from its third argument.
+        throw new ToolError(
+          "apply_patch_failed",
+          error instanceof Error ? error.message : String(error),
+          { cause: error }
+        )
       }
     }
   )

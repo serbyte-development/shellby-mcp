@@ -8,7 +8,7 @@ paths:
 
 # fetch_url
 
-[web-tool.ts](../../../src/tools/web/web-tool.ts) owns MCP schema/error projection. [web-acquisition.ts](../../../src/tools/web/web-acquisition.ts) owns browser/CDP acquisition, conversion, and cleanup. [web-open.ts](../../../src/tools/web/web-open.ts) owns retained documents and cursor paging. One opener is shared across short-lived MCP servers.
+[web-tool.ts](../../../src/tools/web/web-tool.ts) owns MCP schema and domain-error translation; the [registration boundary](../mcp-tool-registration-boundary.md) owns failure rendering. [web-acquisition.ts](../../../src/tools/web/web-acquisition.ts) owns browser/CDP acquisition, conversion, and cleanup. [web-open.ts](../../../src/tools/web/web-open.ts) owns retained documents and cursor paging. One opener is shared across short-lived MCP servers.
 
 HTML uses a separate headless CloakBrowser render, not authenticated delegation Chrome. Non-HTML interception consumes the original Chromium response once, preserving cookies/redirects rather than refetching through another client. PDFs extract text with page headings; images use the [shared encoder](./files-and-images.md); common text media decode without reparsing values. Unsupported binary types fail explicitly. Empty/bodyless responses retain HTTP metadata.
 
@@ -18,6 +18,6 @@ Cursor continuation reads retained text without reopening the browser. It requir
 
 Raw non-HTML download limits and retained extracted-text limits are separate. PDF page limits apply before extraction, but extraction completes before retained-document truncation. Concurrent rendering/parsing can exceed cache memory limits transiently. Exact ceilings belong to [config.ts](../../../src/config.ts) and the acquisition owner.
 
-Handled failures carry `isError` and explicit `structuredContent.error_code`, preserved in compact output. URL/cursor failures map to argument errors; connection refusal is distinguished from other open failures. HTTP 404/500 remains response metadata. No automatic retries.
+Handled failures use the shared `ToolError` path. Compact output carries one `CODE: message` text and `isError`; structured mode also retains `error_code`. Text uses the same public code as structured output. URL/cursor failures map to `INVALID_ARGUMENT`; connection refusal remains distinct from other open failures. Original exceptions remain available to runtime logging. HTTP 404/500 remains response metadata. No automatic retries.
 
 Host network authority includes private/local services. Treat fetched text as untrusted data. Tests: [retention/cursors](../../../test/web-fetch.test.ts) and [MCP acquisition cases](../../../test/integrations/web.ts). A passing mocked retention test does not prove live browser/network compatibility.

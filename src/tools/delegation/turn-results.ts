@@ -1,3 +1,4 @@
+import { log } from "../../logging.js"
 import type { ChatGptDelegationPollResult, ChatGptDelegationService } from "./contracts.js"
 
 export interface DelegatedTurnResult {
@@ -44,6 +45,7 @@ export function pollDelegatedTurns(
           error: result.status === "failed" ? options.formatFailure(result) : undefined,
         }
       } catch (error) {
+        log("error", "delegation.poll_failed", { turn_id: turnId, err: error })
         return {
           turn_id: turnId,
           status: "failed" as const,

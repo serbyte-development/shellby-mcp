@@ -9,6 +9,7 @@ import { runWithAgent, setAgentTaskSlug } from "../src/agent/context.js"
 import { log, startRuntimeLogging, withLogContext } from "../src/logging.js"
 import { createToolRegistrar } from "../src/mcp/tool-registration-boundary.js"
 import { startMcpHttpServer } from "../src/server/http-server.js"
+import { registerFileReadTool } from "../src/tools/file/file-tools.js"
 
 test("runtime log preserves concurrent identity, original errors, and flushes on close", async (t) => {
   t.mock.timers.enable({ apis: ["Date"], now: new Date("2026-09-23T19:05:00Z") })
@@ -151,6 +152,62 @@ test("an unavailable logging directory preserves application operations", async 
     assert.doesNotThrow(() => log("info", "fallback.probe"))
     await logging.close()
   } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
+test("tool adapters retain original causes and emit one failure completion", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "shellby-adapter-log-"))
+  const logging = await startRuntimeLogging(directory)
+  const server = await startMcpHttpServer(
+    {
+      createMcpServer: () => {
+        const mcp = new McpServer({ name: "adapter-log-probe", version: "1.0.0" })
+        registerFileReadTool(createToolRegistrar(mcp, { structuredOutput: false }))
+        return mcp
+      },
+    },
+    { port: 0 }
+  )
+  try {
+    const response = await fetch(server.url, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        accept: "application/json, text/event-stream",
+        "mcp-protocol-version": "2025-11-25",
+      },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: 7,
+        method: "tools/call",
+        params: { name: "file_read", arguments: { path: join(directory, "missing.txt") } },
+      }),
+    })
+    const body = await response.text()
+    assert.match(body, /FILE_READ_FAILED: /u)
+    assert.doesNotMatch(body, /structuredContent|stack|cause/u)
+    await server.close()
+    await logging.close()
+    const records = (await readFile(logging.path, "utf8"))
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line))
+    const completions = records.filter(
+      (record) => record.msg === "tool.failed" || record.msg === "tool.finished"
+    )
+    assert.equal(completions.length, 1)
+    const failure = completions[0]
+    assert.equal(failure.msg, "tool.failed")
+    assert.equal(failure.outcome, "error")
+    assert.equal(failure.err.type, "ToolError")
+    assert.equal(failure.err.code, "FILE_READ_FAILED")
+    assert.equal(failure.err.cause.code, "ENOENT")
+    assert.match(failure.err.cause.stack, /ENOENT/u)
+    assert.equal(new Set(records.map((record) => record.request_id)).size, 1)
+  } finally {
+    await server.close()
+    await logging.close()
     await rm(directory, { recursive: true, force: true })
   }
 })
