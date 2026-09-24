@@ -47,7 +47,6 @@ interface ParallelBatchSnapshot extends Record<string, unknown> {
   next_cursor: number
   output_truncated: boolean
   cursor_expired: boolean
-  output_dropped: boolean
   dropped_output_bytes: number
   commands: Array<{
     run: number
@@ -55,7 +54,6 @@ interface ParallelBatchSnapshot extends Record<string, unknown> {
     path: string
     status: ParallelCommandStatus
     exit_code: number | null
-    output_dropped?: true
     dropped_output_bytes?: number
   }>
 }
@@ -275,7 +273,6 @@ export function createParallelSession(options: CreateParallelSessionOptions) {
       next_cursor: read.nextCursor,
       output_truncated: read.hasMore,
       cursor_expired: read.cursorExpired,
-      output_dropped: droppedOutputBytes > 0,
       dropped_output_bytes: droppedOutputBytes,
       commands: record.runs.map((run) => ({
         run: run.run,
@@ -283,9 +280,7 @@ export function createParallelSession(options: CreateParallelSessionOptions) {
         path: run.path,
         status: run.status,
         exit_code: run.exitCode,
-        ...(run.droppedOutputBytes > 0
-          ? { output_dropped: true as const, dropped_output_bytes: run.droppedOutputBytes }
-          : {}),
+        ...(run.droppedOutputBytes > 0 ? { dropped_output_bytes: run.droppedOutputBytes } : {}),
       })),
     }
   }

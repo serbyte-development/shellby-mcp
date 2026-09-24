@@ -34,7 +34,6 @@ export interface ShellSnapshot extends Record<string, unknown> {
   next_cursor: number
   output_truncated: boolean
   cursor_expired: boolean
-  output_dropped: boolean
   dropped_output_bytes: number
   commands?: ParallelCommandSnapshot[]
 }
@@ -45,7 +44,6 @@ interface ParallelCommandSnapshot extends Record<string, unknown> {
   path: string
   status: ParallelCommandStatus
   exit_code: number | null
-  output_dropped?: true
   dropped_output_bytes?: number
 }
 
@@ -371,7 +369,6 @@ export function createShellSession(options: ShellSessionOptions = {}): ShellSess
       next_cursor: read.nextCursor,
       output_truncated: read.hasMore,
       cursor_expired: read.cursorExpired,
-      output_dropped: record.outputCapture.droppedBytes > 0,
       dropped_output_bytes: record.outputCapture.droppedBytes,
     }
   }

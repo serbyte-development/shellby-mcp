@@ -474,12 +474,10 @@ test("drops output beyond the per-command transcript ceiling", { timeout: 10_000
 
   const result = await runToCompletion(shell, "command-transcript-cap", "printf '🙂éAB'")
   assert.equal(result.output, "🙂éA")
-  assert.equal(result.snapshot.output_dropped, true)
   assert.equal(result.snapshot.dropped_output_bytes, 1)
 
   const after = await runToCompletion(shell, "after-command-transcript-cap", "printf healthy")
   assert.equal(after.output, "healthy")
-  assert.equal(after.snapshot.output_dropped, false)
   assert.equal(after.snapshot.dropped_output_bytes, 0)
 })
 
@@ -498,7 +496,6 @@ test("keeps surrogate pairs intact while scanning for a delayed marker", {
   )
 
   assert.equal(result.output, "🙂")
-  assert.equal(result.snapshot.output_dropped, true)
   assert.equal(result.snapshot.dropped_output_bytes, 45)
 })
 

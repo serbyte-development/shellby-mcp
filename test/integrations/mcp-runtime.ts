@@ -1,12 +1,29 @@
 import assert from "node:assert/strict"
 import test from "node:test"
 
+import {
+  renderInputSchema,
+  renderOutputSchema,
+  validateToolsList,
+} from "json-schema-to-openai-typescript"
+
 import { createAgentObserver } from "../../src/agent/observer.js"
 import { MCP_CONFIG } from "../../src/config.js"
 import { createMcpServerFactory } from "../../src/mcp/server-factory.js"
 import { startMcpHttpServer as startMcpHttpServerRaw } from "../../src/server/http-server.js"
 import { REVIEW_PROMPT_TOOL_CALLS } from "../../src/tools/review/review-tool.js"
 import { connectClient, startMcpHttpServer, toolText } from "./helpers.js"
+
+const DEGRADED_OPENAI_TYPE = /(?<!["'])\b(?:any|unknown)\b(?!["'])/u
+
+function assertNoDegradedOpenAiType(toolName: string, schemaKind: string, rendered: string) {
+  const typeOnly = rendered.replace(/\/\/.*$/gmu, "")
+  assert.doesNotMatch(
+    typeOnly,
+    DEGRADED_OPENAI_TYPE,
+    `${toolName} ${schemaKind} schema degraded when rendered for OpenAI:\n${rendered}`
+  )
+}
 
 test("publishes the assembled MCP tool surface", { timeout: 10_000 }, async (t) => {
   const running = await startMcpHttpServer()
@@ -120,6 +137,39 @@ test("publishes the assembled MCP tool surface", { timeout: 10_000 }, async (t) 
   assert.equal("modifiers" in dragProperties, false)
   assert.equal(dragProperties.from?.anyOf, undefined)
   assert.equal(dragProperties.to?.anyOf, undefined)
+})
+
+test("publishes schemas without OpenAI any or unknown types", { timeout: 20_000 }, async () => {
+  for (const toolOutput of ["compact", "structured"] as const) {
+    const running = await startMcpHttpServer({ profile: { toolOutput } })
+
+    try {
+      const connected = await connectClient(running.url, `${toolOutput}-schema-validation-client`)
+
+      try {
+        const tools = await connected.client.listTools()
+        const validation = validateToolsList(tools)
+        const issues = validation.tools.flatMap((tool) =>
+          tool.issues.map(
+            (issue) =>
+              `${tool.name} ${issue.path}: ${issue.code} (${issue.severity}) ${issue.message}`
+          )
+        )
+        assert.deepEqual(issues, [], `${toolOutput} schemas failed OpenAI compatibility validation`)
+
+        for (const tool of tools.tools) {
+          assertNoDegradedOpenAiType(tool.name, "input", renderInputSchema(tool.inputSchema))
+          if (tool.outputSchema) {
+            assertNoDegradedOpenAiType(tool.name, "output", renderOutputSchema(tool.outputSchema))
+          }
+        }
+      } finally {
+        await connected.client.close()
+      }
+    } finally {
+      await running.close()
+    }
+  }
 })
 
 test("bound MCP factories snapshot identity, tool groups, and output mode", {

@@ -27,16 +27,6 @@ import type { WebPageOpener } from "../tools/web/web-open.js"
 import { registerWebTool } from "../tools/web/web-tool.js"
 import { createToolRegistrar } from "./tool-registration-boundary.js"
 
-export interface CreateMcpServerOptions {
-  shellManager?: ShellSessionManager
-  chatGptDelegation?: ChatGptDelegationService
-  peekaboo?: PeekabooClient
-  webPageOpener?: WebPageOpener
-  reviewPromptTracker?: ReviewPromptTracker
-  auditRequest?: McpAuditRequest
-  agentObserver?: AgentObserver
-}
-
 export interface McpCapabilityServices {
   shellManager?: ShellSessionManager
   chatGptDelegation?: ChatGptDelegationService
@@ -60,6 +50,11 @@ export interface McpServerRequestContext {
   auditRequest?: McpAuditRequest
   agentObserver?: AgentObserver
 }
+
+type CreateMcpServerOptions = McpCapabilityServices &
+  McpServerRequestContext & {
+    reviewPromptTracker?: ReviewPromptTracker
+  }
 
 export type McpServerFactory = (context?: McpServerRequestContext) => McpServer
 
