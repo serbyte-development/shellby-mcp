@@ -155,8 +155,6 @@ export const MCP_CONFIG = {
     fileRead: publicConfig.tools.file_read,
     /** Enables writing ChatGPT file inputs to the local filesystem. */
     fileWrite: publicConfig.tools.file_write,
-    /** Enables self-cloning agent tools. */
-    clones: publicConfig.tools.clones,
     /** Enables delegated ChatGPT subagent tools. */
     subagents: publicConfig.tools.subagents,
     /** Enables HTTP and document fetching tools. */

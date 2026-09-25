@@ -20,7 +20,6 @@ export class DelegationDiagnostics {
   private submittedMessageId?: string
 
   constructor(
-    private readonly operation: "subagent_run" | "clone_self" | "clone_run",
     private readonly agentId: string,
     private readonly parentAgent: AgentIdentity | undefined
   ) {}
@@ -106,7 +105,7 @@ export class DelegationDiagnostics {
         `[delegation] ${JSON.stringify({
           event: "delegation.failure",
           at: new Date().toISOString(),
-          operation: this.operation,
+          operation: "subagent_run",
           agent_id: this.agentId,
           caller: this.parentAgent
             ? [this.parentAgent.agent, this.parentAgent.taskSlug].filter(Boolean).join("/")

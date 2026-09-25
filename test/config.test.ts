@@ -44,7 +44,6 @@ test("loads and validates Shellby TOML config", async (t) => {
       "apply_patch = true",
       "file_read = false",
       "file_write = true",
-      "clones = true",
       "computer = false",
       "subagents = false",
       "web = true",
@@ -77,7 +76,6 @@ test("loads and validates Shellby TOML config", async (t) => {
       apply_patch: true,
       file_read: false,
       file_write: true,
-      clones: true,
       computer: false,
       subagents: false,
       web: true,
@@ -118,7 +116,6 @@ test("ignores TOML comments and defaults omitted chatgpt.project_url", async (t)
       "apply_patch = true",
       "file_read = true",
       "file_write = false",
-      "clones = true",
       "computer = false",
       "subagents = false",
       "web = true",
@@ -140,12 +137,16 @@ test("loads older partial configs with silent defaults and preserves valid overr
   const warning = t.mock.method(console, "warn", () => undefined)
   assert.throws(() => loadPublicConfig(path), /Run `npm run setup` first/u)
 
-  const source = 'workspace = "~/Work"\n[tools]\ncomputer = false\nclones = false\n'
+  const source = 'workspace = "~/Work"\n[tools]\ncomputer = false\nsubagents = false\n'
   await writeFile(path, source)
   const loaded = loadPublicConfig(path)
   assert.equal(loaded.workspace, "~/Work")
   assert.deepEqual(loaded.chatgpt, DEFAULT_PUBLIC_CONFIG.chatgpt)
-  assert.deepEqual(loaded.tools, { ...DEFAULT_PUBLIC_CONFIG.tools, computer: false, clones: false })
+  assert.deepEqual(loaded.tools, {
+    ...DEFAULT_PUBLIC_CONFIG.tools,
+    computer: false,
+    subagents: false,
+  })
   assert.equal(warning.mock.callCount(), 0)
   assert.equal(await readFile(path, "utf8"), source)
 
@@ -171,7 +172,7 @@ test("warns for invalid or unknown settings without discarding valid siblings", 
     'tool_output = "verbose"',
     "[tools]",
     "computer = false",
-    "clones = false",
+    "subagents = false",
     "comptuer = true",
   ].join("\n")
   await writeFile(path, source)
@@ -184,7 +185,7 @@ test("warns for invalid or unknown settings without discarding valid siblings", 
   })
   assert.equal(config.mcp.tool_output, "compact")
   assert.equal(config.tools.computer, false)
-  assert.equal(config.tools.clones, false)
+  assert.equal(config.tools.subagents, false)
   assert.equal("comptuer" in config.tools, false)
   assert.equal("obsolete" in config, false)
   const messages = warning.mock.calls.map((call) => call.arguments.join(" ")).join("\n")

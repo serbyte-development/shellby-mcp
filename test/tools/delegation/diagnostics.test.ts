@@ -7,7 +7,7 @@ import { DelegationDiagnostics } from "../../../src/tools/delegation/diagnostics
 test("failure diagnostics correlate the operation, browser error, and page state without request secrets", async (t) => {
   const warn = t.mock.method(console, "warn", () => {})
   const page = pageFixture()
-  const diagnostics = new DelegationDiagnostics("subagent_run", "worker", {
+  const diagnostics = new DelegationDiagnostics("worker", {
     sessionId: "private-session-id",
     agent: "agent-1",
     taskSlug: "investigation",
@@ -66,7 +66,7 @@ test("failure diagnostics correlate the operation, browser error, and page state
 test("diagnostics bound a noisy browser's retained events", async (t) => {
   const warn = t.mock.method(console, "warn", () => {})
   const page = pageFixture()
-  const diagnostics = new DelegationDiagnostics("subagent_run", "worker", undefined)
+  const diagnostics = new DelegationDiagnostics("worker", undefined)
   diagnostics.watch(page)
   for (let index = 0; index < 100; index++) {
     page.emit("console", { type: () => "error", text: () => `${index}: ${"x".repeat(5_000)}` })
@@ -85,7 +85,7 @@ test("a stuck page snapshot cannot indefinitely delay reporting or cleanup", asy
   t.mock.timers.enable({ apis: ["setTimeout"] })
   const page = pageFixture()
   t.mock.method(page, "evaluate", () => new Promise(() => {}))
-  const diagnostics = new DelegationDiagnostics("subagent_run", "worker", undefined)
+  const diagnostics = new DelegationDiagnostics("worker", undefined)
   diagnostics.watch(page)
   const reporting = diagnostics.failure(new Error("Startup failed"))
   t.mock.timers.tick(1_000)
@@ -98,7 +98,7 @@ test("a stuck page snapshot cannot indefinitely delay reporting or cleanup", asy
 test("successful operations stay quiet and release browser listeners", (t) => {
   const warn = t.mock.method(console, "warn", () => {})
   const page = pageFixture()
-  const diagnostics = new DelegationDiagnostics("subagent_run", "worker", undefined)
+  const diagnostics = new DelegationDiagnostics("worker", undefined)
   diagnostics.watch(page)
   diagnostics.stage("submit-prompt")
   diagnostics.submitted("worker_turn_1", "user-message-1")
@@ -109,7 +109,7 @@ test("successful operations stay quiet and release browser listeners", (t) => {
 
 function pageFixture(): Page & EventEmitter {
   return Object.assign(new EventEmitter(), {
-    url: () => "https://chatgpt.com/?temporary-chat=true",
+    url: () => "https://chatgpt.com/c/saved-conversation",
     isClosed: () => false,
     evaluate: async () => ({
       ready_state: "complete",

@@ -93,8 +93,7 @@ function submit(
 ) {
   lifecycle.reserveOperation(parentAgent, agentId, {})
   const agent =
-    lifecycle.getAgent(parentAgent, agentId) ??
-    lifecycle.createSubagentAgent(parentAgent, agentId, false, now)
+    lifecycle.getAgent(parentAgent, agentId) ?? lifecycle.createAgent(parentAgent, agentId, now)
   lifecycle.registerAgent(parentAgent, agent)
   const turn = lifecycle.createTurn(parentAgent, agent, now)
   lifecycle.recordSubmittedMessage(turn, `${agentId}-message`)

@@ -128,7 +128,7 @@ See [Computer Use](wiki/pages/computer-use.md) for runtime details.
 </details>
 
 > [!WARNING]
-> Browser-backed ChatGPT agent features (`clones` and `subagents`) automate ChatGPT Web and may conflict with [OpenAI's Terms of Use](https://openai.com/policies/terms-of-use/). Disable them with `tools.clones = false` and `tools.subagents = false` in `.shellby/config.toml`. Use these features at your own risk.
+> Browser-backed ChatGPT subagents automate ChatGPT Web and may conflict with [OpenAI's Terms of Use](https://openai.com/policies/terms-of-use/). Disable them with `tools.subagents = false` in `.shellby/config.toml`. Use these features at your own risk.
 
 <details>
 <summary><strong>Browser-backed ChatGPT subagents</strong></summary>
@@ -139,7 +139,7 @@ Run the dedicated browser setup when Chrome was unavailable during initial setup
 npm run setup:chatgpt
 ```
 
-This creates a dedicated Chrome profile under `<state_dir>/chatgpt-chrome` and attaches over CDP at `127.0.0.1:9222`. `state_dir` defaults to `~/.shellby`. Sign into ChatGPT once in that profile. Future `npm start` runs launch it automatically while clone or subagent tools are enabled.
+This creates a dedicated Chrome profile under `<state_dir>/chatgpt-chrome` and attaches over CDP at `127.0.0.1:9222`. `state_dir` defaults to `~/.shellby`. Sign into ChatGPT once in that profile. Future `npm start` runs launch it automatically while subagent tools are enabled.
 
 Conversation URL and turn count are persisted for reused `agent_id` values. Use `npm run reset-agents` to forget those local mappings.
 
@@ -212,7 +212,6 @@ tool_output = "compact"
 review = true
 shell = true
 apply_patch = true
-clones = false
 subagents = false
 web = true
 skills = true
@@ -220,7 +219,7 @@ image = true
 computer = false
 ```
 
-`chatgpt.max_delegated_agents` sets the maximum number of delegated agent IDs per main-agent session, shared by subagents and clones. It defaults to `3`; invalid values warn and fall back to `3`. Set a positive integer to override it. Saved agents and in-flight creations count toward the limit; existing IDs remain reusable even if the limit is lowered. The per-call batch limit remains three. Older configs can omit this field. To override it, add it under `[chatgpt]`, then restart Shellby after changing its value.
+`chatgpt.max_delegated_agents` sets the maximum number of subagent IDs per main-agent session. It defaults to `3`; invalid values warn and fall back to `3`. Set a positive integer to override it. Saved agents and in-flight creations count toward the limit; existing IDs remain reusable even if the limit is lowered. The per-call batch limit remains three. Older configs can omit this field. To override it, add it under `[chatgpt]`, then restart Shellby after changing its value.
 
 `mcp.tool_output` controls the representation used for ordinary tool results. `compact` is optimized for model context and omits public output schemas; `structured` preserves each tool's structured result and output schema for MCP clients that use them. Computer Use and `image_view` keep their native MCP content in either mode. Changing this setting requires a Shellby restart.
 

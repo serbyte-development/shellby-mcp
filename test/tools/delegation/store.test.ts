@@ -19,30 +19,25 @@ test("persists subagent conversation state across store reopen", () => {
     first.set(mainA, "reviewer", {
       conversationUrl: "https://chatgpt.com/c/example-a",
       turnCount: 4,
-      kind: "subagent",
     })
-    first.set(mainA, "clone-a", {
-      conversationUrl: "https://chatgpt.com/c/clone-a",
+    first.set(mainA, "analyst", {
+      conversationUrl: "https://chatgpt.com/c/analyst",
       turnCount: 1,
-      kind: "clone",
     })
     first.set(mainB, "reviewer", {
       conversationUrl: "https://chatgpt.com/c/example-b",
       turnCount: 2,
-      kind: "subagent",
     })
     assert.deepEqual(first.list(mainA), [
       {
-        agentId: "clone-a",
-        conversationUrl: "https://chatgpt.com/c/clone-a",
+        agentId: "analyst",
+        conversationUrl: "https://chatgpt.com/c/analyst",
         turnCount: 1,
-        kind: "clone",
       },
       {
         agentId: "reviewer",
         conversationUrl: "https://chatgpt.com/c/example-a",
         turnCount: 4,
-        kind: "subagent",
       },
     ])
     first.close()
@@ -52,12 +47,10 @@ test("persists subagent conversation state across store reopen", () => {
     assert.deepEqual(second.get(mainA, "reviewer"), {
       conversationUrl: "https://chatgpt.com/c/example-a",
       turnCount: 4,
-      kind: "subagent",
     })
     assert.deepEqual(second.get(mainB, "reviewer"), {
       conversationUrl: "https://chatgpt.com/c/example-b",
       turnCount: 2,
-      kind: "subagent",
     })
     assert.deepEqual(
       second.list(mainB).map((agent) => agent.agentId),
@@ -69,6 +62,39 @@ test("persists subagent conversation state across store reopen", () => {
   }
 })
 
+test("reads and updates saved conversations from existing databases", () => {
+  const directory = mkdtempSync(join(tmpdir(), "shellby-existing-agent-store-"))
+  const path = join(directory, "subagents.sqlite")
+  const db = new DatabaseSync(path)
+  db.exec(`
+    CREATE TABLE agents (
+      parent_session_id TEXT NOT NULL,
+      agent_id TEXT NOT NULL,
+      conversation_url TEXT NOT NULL,
+      turn_count INTEGER NOT NULL,
+      kind TEXT NOT NULL DEFAULT 'subagent',
+      PRIMARY KEY (parent_session_id, agent_id)
+    );
+    INSERT INTO agents VALUES ('', 'worker', 'https://chatgpt.com/c/saved', 2, 'subagent');
+  `)
+  db.close()
+  const store = createDelegationStore(path)
+  try {
+    assert.deepEqual(store.get(undefined, "worker"), {
+      conversationUrl: "https://chatgpt.com/c/saved",
+      turnCount: 2,
+    })
+    store.set(undefined, "worker", { conversationUrl: "https://chatgpt.com/c/saved", turnCount: 3 })
+    store.set(undefined, "new-worker", { conversationUrl: "https://chatgpt.com/c/new" })
+    assert.equal(store.get(undefined, "worker")?.turnCount, 3)
+    assert.equal(store.get(undefined, "new-worker")?.turnCount, 0)
+    assert.equal(store.list(undefined).length, 2)
+  } finally {
+    store.close()
+    rmSync(directory, { recursive: true, force: true })
+  }
+})
+
 test("conversation mappings remain available without usable turn counters", () => {
   const directory = mkdtempSync(join(tmpdir(), "shellby-conversation-identity-"))
   const path = join(directory, "subagents.sqlite")
@@ -76,7 +102,6 @@ test("conversation mappings remain available without usable turn counters", () =
   try {
     store.set(undefined, "worker", {
       conversationUrl: "https://chatgpt.com/c/saved",
-      kind: "subagent",
     })
     assert.equal(store.get(undefined, "worker")?.turnCount, 0)
     const db = new DatabaseSync(path)
@@ -162,7 +187,6 @@ test("marks the store unavailable after a write failure", (t) => {
         store.set(undefined, "reviewer", {
           conversationUrl: "https://chatgpt.com/c/reviewer",
           turnCount: 1,
-          kind: "subagent",
         }),
       (error: unknown) => error instanceof DelegationStoreError && error.operation === "write"
     )

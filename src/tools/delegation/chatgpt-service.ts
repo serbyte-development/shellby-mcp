@@ -16,8 +16,6 @@ import {
   waitForPromise,
 } from "./chatgpt-browser.js"
 import {
-  type ChatGptCloneRunRequest,
-  type ChatGptCloneSelfRequest,
   type ChatGptDelegationCallContext,
   ChatGptDelegationError,
   type ChatGptDelegationPollResult,
@@ -67,7 +65,7 @@ export function createChatGptDelegationService(): ChatGptDelegationService {
     callContext: ChatGptDelegationCallContext
   ): Promise<string> {
     const parentAgent = getAgentIdentity()
-    const diagnostics = new DelegationDiagnostics("subagent_run", request.agentId, parentAgent)
+    const diagnostics = new DelegationDiagnostics(request.agentId, parentAgent)
     let operation: ActiveAgentOperation | undefined
     let agent: BrowserAgentState | undefined
     let operationTransferred = false
@@ -77,13 +75,7 @@ export function createChatGptDelegationService(): ChatGptDelegationService {
       operation = await beginAgentOperation(parentAgent, request.agentId, callContext, diagnostics)
       agent = lifecycle.getAgent(parentAgent, request.agentId)
       if (!agent) {
-        agent = lifecycle.createSubagentAgent(
-          parentAgent,
-          request.agentId,
-          // Forks are saved conversations regardless of the requested memory preference.
-          request.conversationId !== undefined || request.memory,
-          Date.now()
-        )
+        agent = lifecycle.createAgent(parentAgent, request.agentId, Date.now())
         newConversation = !agent.conversationUrl
         await ensureAgentPage(parentAgent, agent, diagnostics, request.conversationId)
         lifecycle.registerAgent(parentAgent, agent)
@@ -102,90 +94,6 @@ export function createChatGptDelegationService(): ChatGptDelegationService {
       diagnostics.dispose()
       if (!operationTransferred && operation)
         lifecycle.releaseOperation(parentAgent, request.agentId, operation)
-    }
-  }
-
-  async function cloneSelf(
-    request: ChatGptCloneSelfRequest,
-    callContext: ChatGptDelegationCallContext
-  ): Promise<string> {
-    const { signal } = callContext
-    const parentAgent = getAgentIdentity()
-    const diagnostics = new DelegationDiagnostics("clone_self", request.cloneId, parentAgent)
-    let operation: ActiveAgentOperation | undefined
-    let branchPage: Page | undefined
-    let agent: BrowserAgentState | undefined
-    let operationTransferred = false
-
-    try {
-      operation = await beginAgentOperation(parentAgent, request.cloneId, callContext, diagnostics)
-      const conversationId = extractConversationId(request.sourceConversationUrl)
-      if (!isChatGptUrl(request.sourceConversationUrl) || !conversationId) {
-        throw new ChatGptDelegationError(
-          "AGENT_TARGET_LOST",
-          "clone_self requires a chatgpt.com conversation URL."
-        )
-      }
-      lifecycle.assertCloneAvailable(parentAgent, request.cloneId)
-
-      branchPage = await startConversation(
-        browser,
-        context,
-        { kind: "new", memory: true, conversationId },
-        diagnostics,
-        signal
-      )
-      agent = lifecycle.createCloneAgent(request.cloneId, branchPage, Date.now())
-      lifecycle.registerAgent(parentAgent, agent)
-
-      const turnId = await submitAgentTurn(parentAgent, agent, request.prompt, diagnostics)
-      operationTransferred = true
-      return turnId
-    } catch (error) {
-      await diagnostics.failure(error)
-      if (agent) lifecycle.removeAgent(parentAgent, agent)
-      await closePageIfOpen(branchPage)
-      throw error
-    } finally {
-      diagnostics.dispose()
-      if (!operationTransferred && operation)
-        lifecycle.releaseOperation(parentAgent, request.cloneId, operation)
-    }
-  }
-
-  async function cloneRun(
-    request: ChatGptCloneRunRequest,
-    callContext: ChatGptDelegationCallContext
-  ): Promise<string> {
-    const parentAgent = getAgentIdentity()
-    const diagnostics = new DelegationDiagnostics("clone_run", request.cloneId, parentAgent)
-    let operation: ActiveAgentOperation | undefined
-    let agent: BrowserAgentState | undefined
-    let operationTransferred = false
-
-    try {
-      operation = await beginAgentOperation(parentAgent, request.cloneId, callContext, diagnostics)
-      agent = lifecycle.getAgent(parentAgent, request.cloneId)
-      if (!agent) {
-        agent = lifecycle.createRestoredCloneAgent(parentAgent, request.cloneId, Date.now())
-        await ensureAgentPage(parentAgent, agent, diagnostics)
-        lifecycle.registerAgent(parentAgent, agent)
-      } else if (agent.kind !== "clone") {
-        throw new ChatGptDelegationError("AGENT_TARGET_LOST", `${request.cloneId} is not a clone.`)
-      }
-
-      const turnId = await submitAgentTurn(parentAgent, agent, request.prompt, diagnostics)
-      operationTransferred = true
-      return turnId
-    } catch (error) {
-      await diagnostics.failure(error)
-      if (!operationTransferred && agent)
-        await closePageIfOpen(lifecycle.resetUnsubmittedAgent(parentAgent, agent))
-      throw error
-    } finally {
-      diagnostics.dispose()
-      if (!operationTransferred && operation)
-        lifecycle.releaseOperation(parentAgent, request.cloneId, operation)
     }
   }
 
@@ -292,7 +200,7 @@ export function createChatGptDelegationService(): ChatGptDelegationService {
       context,
       agent.conversationUrl
         ? { kind: "resume", url: agent.conversationUrl }
-        : { kind: "new", memory: agent.memory, conversationId },
+        : { kind: "new", conversationId },
       diagnostics,
       signal
     )
@@ -583,8 +491,6 @@ export function createChatGptDelegationService(): ChatGptDelegationService {
 
   return {
     ask: askSubagent,
-    cloneSelf,
-    cloneRun,
     poll: pollSubagent,
     drainEvents: drainPendingEvents,
     dispose: disposeSubagents,

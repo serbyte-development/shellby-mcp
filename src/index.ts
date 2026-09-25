@@ -19,10 +19,7 @@ const auditLogger = new McpAuditLogger(auditLogPath)
 const agentObserver = MCP_CONFIG.ui.enabled ? createAgentObserver() : undefined
 const authStore = new ShellbyAuthStore(join(MCP_CONFIG.stateDir, "auth.json"))
 await authStore.ensureState()
-const chatGptDelegation =
-  MCP_CONFIG.tools.clones || MCP_CONFIG.tools.subagents
-    ? createChatGptDelegationService()
-    : undefined
+const chatGptDelegation = MCP_CONFIG.tools.subagents ? createChatGptDelegationService() : undefined
 const peekaboo = MCP_CONFIG.tools.computer ? new PeekabooClient({ localOnly: true }) : undefined
 const webPageOpener = MCP_CONFIG.tools.web ? new WebPageOpener() : undefined
 const cursorHost = MCP_CONFIG.tools.computer

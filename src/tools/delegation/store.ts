@@ -10,7 +10,6 @@ interface PersistedDelegatedAgent {
   conversationUrl: string
   /** Optional local numbering; the conversation URL alone is sufficient to resume. */
   turnCount?: number
-  kind: "subagent" | "clone"
 }
 
 interface PersistedDelegatedAgentEntry extends PersistedDelegatedAgent {
@@ -92,23 +91,21 @@ export function createDelegationStore(path: string): DelegationStore {
         agent_id TEXT NOT NULL,
         conversation_url TEXT NOT NULL,
         turn_count INTEGER NOT NULL DEFAULT 0,
-        kind TEXT NOT NULL DEFAULT 'subagent',
         PRIMARY KEY (parent_session_id, agent_id)
       )
     `)
     const get = db.prepare(
-      /*sql*/ `SELECT conversation_url, turn_count, kind FROM agents WHERE parent_session_id = ? AND agent_id = ?`
+      /*sql*/ `SELECT conversation_url, turn_count FROM agents WHERE parent_session_id = ? AND agent_id = ?`
     )
     const list = db.prepare(
-      /*sql*/ `SELECT agent_id, conversation_url, turn_count, kind FROM agents WHERE parent_session_id = ? ORDER BY agent_id`
+      /*sql*/ `SELECT agent_id, conversation_url, turn_count FROM agents WHERE parent_session_id = ? ORDER BY agent_id`
     )
     const set = db.prepare(/*sql*/ `
-      INSERT INTO agents (parent_session_id, agent_id, conversation_url, turn_count, kind)
-      VALUES (?, ?, ?, ?, ?)
+      INSERT INTO agents (parent_session_id, agent_id, conversation_url, turn_count)
+      VALUES (?, ?, ?, ?)
       ON CONFLICT(parent_session_id, agent_id) DO UPDATE SET
         conversation_url = excluded.conversation_url,
-        turn_count = excluded.turn_count,
-        kind = excluded.kind
+        turn_count = excluded.turn_count
     `)
 
     return {
@@ -153,8 +150,7 @@ export function createDelegationStore(path: string): DelegationStore {
             parentAgent?.sessionId ?? "",
             agentId,
             value.conversationUrl,
-            value.turnCount ?? 0,
-            value.kind
+            value.turnCount ?? 0
           )
         } catch (error) {
           throw markFailed("write", error)
@@ -186,6 +182,5 @@ function readAgent(row: Record<string, unknown>): PersistedDelegatedAgent {
       row.turn_count >= 0
         ? row.turn_count
         : undefined,
-    kind: row.kind === "clone" ? "clone" : "subagent",
   }
 }

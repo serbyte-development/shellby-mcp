@@ -25,13 +25,10 @@ type BrowserAgentStatus = "idle" | "uncertain" | ChatGptDelegationActivity
 
 interface AgentState {
   agentId: string
-  kind: "subagent" | "clone"
-  memory: boolean
   status: BrowserAgentStatus
   page?: Page
   conversationUrl?: string
   lastCompletedAt?: number
-  idleExpired?: boolean
   lastUsedAt: number
   /** Local submission numbering only; neither conversation restoration nor recovery relies on it. */
   turnCount: number
@@ -137,17 +134,14 @@ export class DelegationLifecycle {
     return this.scopes.get(parentAgent)?.agents.get(agentId)
   }
 
-  createSubagentAgent(
+  createAgent(
     parentAgent: AgentIdentity | undefined,
     agentId: string,
-    memory: boolean,
     now: number
   ): BrowserAgentState {
-    const persisted = memory ? this.readPersistedAgent(parentAgent, agentId) : undefined
+    const persisted = this.readPersistedAgent(parentAgent, agentId)
     return {
       agentId,
-      kind: persisted?.kind ?? "subagent",
-      memory,
       status: "idle",
       lastUsedAt: now,
       turnCount: persisted?.turnCount ?? 0,
@@ -155,44 +149,11 @@ export class DelegationLifecycle {
     }
   }
 
-  createRestoredCloneAgent(
-    parentAgent: AgentIdentity | undefined,
-    agentId: string,
-    now: number
-  ): BrowserAgentState {
-    const persisted = this.readPersistedAgent(parentAgent, agentId)
-    if (persisted?.kind !== "clone") {
-      throw new ChatGptDelegationError("AGENT_TARGET_LOST", `Unknown agent: ${agentId}`)
-    }
-    return {
-      agentId,
-      kind: "clone",
-      memory: true,
-      status: "idle",
-      lastUsedAt: now,
-      turnCount: persisted.turnCount ?? 0,
-      conversationUrl: persisted.conversationUrl,
-    }
-  }
-
-  createCloneAgent(agentId: string, page: Page, now: number): BrowserAgentState {
-    return {
-      agentId,
-      kind: "clone",
-      memory: true,
-      status: "idle",
-      page,
-      conversationUrl: extractConversationId(page.url()) ? page.url() : undefined,
-      lastUsedAt: now,
-      turnCount: 0,
-    }
-  }
-
   registerAgent(parentAgent: AgentIdentity | undefined, agent: AgentState): void {
     this.getScope(parentAgent).agents.set(agent.agentId, agent)
   }
 
-  removeAgent(parentAgent: AgentIdentity | undefined, agent: AgentState): void {
+  private removeAgent(parentAgent: AgentIdentity | undefined, agent: AgentState): void {
     const scope = this.scopes.get(parentAgent)
     if (scope?.agents.get(agent.agentId) === agent) scope.agents.delete(agent.agentId)
   }
@@ -201,7 +162,7 @@ export class DelegationLifecycle {
   recordPageReady(agent: AgentState, page: Page, now: number): void {
     agent.page = page
     agent.lastUsedAt = now
-    if (agent.memory && extractConversationId(page.url())) agent.conversationUrl = page.url()
+    if (extractConversationId(page.url())) agent.conversationUrl = page.url()
   }
 
   /** Bind the observed conversation and persist its identity without invalidating submitted work. */
@@ -210,7 +171,6 @@ export class DelegationLifecycle {
     agent: AgentState,
     conversationId?: string
   ): void {
-    if (!agent.memory) return
     const pageUrl = agent.page && !agent.page.isClosed() ? agent.page.url() : undefined
     if (conversationId) {
       if (pageUrl && extractConversationId(pageUrl) === conversationId) {
@@ -246,13 +206,6 @@ export class DelegationLifecycle {
     const page = agent.page
     agent.page = undefined
     return page
-  }
-
-  assertCloneAvailable(parentAgent: AgentIdentity | undefined, cloneId: string): void {
-    const scope = this.getScope(parentAgent)
-    if (scope.agents.has(cloneId) || this.readPersistedAgent(parentAgent, cloneId)) {
-      throw new ChatGptDelegationError("AGENT_BUSY", `Clone ${cloneId} already exists.`)
-    }
   }
 
   createTurn(
@@ -345,12 +298,11 @@ export class DelegationLifecycle {
   }
 
   private persistAgent(parentAgent: AgentIdentity | undefined, agent: AgentState): void {
-    if (!agent.memory || !agent.conversationUrl) return
+    if (!agent.conversationUrl) return
     try {
       this.store.set(parentAgent, agent.agentId, {
         conversationUrl: agent.conversationUrl,
         turnCount: agent.turnCount,
-        kind: agent.kind,
       })
     } catch (error) {
       if (!(error instanceof DelegationStoreError)) {
@@ -442,7 +394,6 @@ export class DelegationLifecycle {
   commitIdlePageClosed(agent: AgentState, page: Page): void {
     if (agent.page !== page) return
     agent.page = undefined
-    if (!agent.memory) agent.idleExpired = true
   }
 
   dispose(): {
@@ -481,12 +432,6 @@ export class DelegationLifecycle {
     agentId: string,
     agent: AgentState | undefined
   ): void {
-    if (agent?.idleExpired) {
-      throw new ChatGptDelegationError(
-        "TEMP_AGENT_EXPIRED",
-        `Temporary agent ${agentId} was closed after 30 minutes of inactivity. Its conversation cannot be resumed.`
-      )
-    }
     if (scope.activeOperations.has(agentId)) {
       throw new ChatGptDelegationError("AGENT_BUSY", `Agent ${agentId} already has an active turn.`)
     }
@@ -510,7 +455,7 @@ export class DelegationLifecycle {
     const activeTurn = activeOperation?.turnId ? scope.turns.get(activeOperation.turnId) : undefined
     if (activeTurn?.status === "running") {
       const idleMs = now - activeTurn.lastActivityAt
-      if (agent.memory && !activeTurn.recoveryAttempted && idleMs >= STALE_TURN_RECOVERY_MS) {
+      if (!activeTurn.recoveryAttempted && idleMs >= STALE_TURN_RECOVERY_MS) {
         return {
           kind: "recover",
           turn: activeTurn,

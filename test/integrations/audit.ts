@@ -16,12 +16,6 @@ test("audits tool calls made through the HTTP MCP boundary", { timeout: 10_000 }
       if (agentId === "failed-agent") throw new Error("Original submission error: composer missing")
       return `turn-${agentId}`
     },
-    async cloneSelf() {
-      throw new Error("unused")
-    },
-    async cloneRun() {
-      throw new Error("unused")
-    },
     async poll(_turnId) {
       if (_turnId === "failed-turn")
         return {

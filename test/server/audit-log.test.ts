@@ -577,29 +577,26 @@ test("keeps concurrent batch diagnostics on their own audit entries", async (t) 
 test("records failed returned results without retaining successful batch responses", async (t) => {
   const file = await auditFile(t)
   const logger = new McpAuditLogger(file, () => 0)
-  for (const [name, structuredContent] of [
-    [
-      "subagent_result",
-      {
+  const [call] = claimAuditToolCalls(logger, {
+    method: "tools/call",
+    params: { name: "subagent_result", arguments: {} },
+  })
+  assert.ok(call)
+  call.finish({
+    toolResult: {
+      isError: true,
+      structuredContent: {
         turns: [
           { status: "completed", response: "private successful response" },
           { status: "failed", error: "Page closed" },
           { status: "failed", error: "Browser disconnected" },
         ],
       },
-    ],
-    ["clone_self", { status: "failed", error: "Source conversation unavailable" }],
-  ] as const) {
-    const [call] = claimAuditToolCalls(logger, {
-      method: "tools/call",
-      params: { name, arguments: {} },
-    })
-    assert.ok(call)
-    call.finish({ toolResult: { isError: true, structuredContent, content: [] } })
-  }
+      content: [],
+    },
+  })
   const log = await readFile(file, "utf8")
   assert.match(log, /error: "Page closed; Browser disconnected"/u)
-  assert.match(log, /error: "Source conversation unavailable"/u)
   assert.doesNotMatch(log, /private successful response/u)
 })
 

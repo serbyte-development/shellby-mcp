@@ -14,20 +14,8 @@ export type ChatGptDelegationActivity = z.infer<typeof chatGptDelegationActivity
 export interface ChatGptSubagentRequest {
   prompt: string
   agentId: string
-  memory: boolean
   /** Source to fork only when creating a new agent; existing conversations take precedence. */
   conversationId?: string
-}
-
-export interface ChatGptCloneSelfRequest {
-  sourceConversationUrl: string
-  cloneId: string
-  prompt: string
-}
-
-export interface ChatGptCloneRunRequest {
-  cloneId: string
-  prompt: string
 }
 
 export interface ChatGptDelegationCallContext {
@@ -53,7 +41,6 @@ export type ChatGptDelegationErrorCode =
   | "SUBAGENT_RATE_LIMITED"
   | "AGENT_TARGET_LOST"
   | "AGENT_IDLE_EXPIRED"
-  | "TEMP_AGENT_EXPIRED"
   | "SUBAGENT_PERSISTENCE_UNAVAILABLE"
   | "REQUEST_ABORTED"
   | "CHATGPT_UI_CHANGED"
@@ -71,11 +58,6 @@ export class ChatGptDelegationError extends Error {
 
 export interface ChatGptDelegationService {
   ask(request: ChatGptSubagentRequest, context: ChatGptDelegationCallContext): Promise<string>
-  cloneSelf(
-    request: ChatGptCloneSelfRequest,
-    context: ChatGptDelegationCallContext
-  ): Promise<string>
-  cloneRun(request: ChatGptCloneRunRequest, context: ChatGptDelegationCallContext): Promise<string>
   poll(turnId: string, waitMs: number, signal?: AbortSignal): Promise<ChatGptDelegationPollResult>
   drainEvents(): string[]
   dispose(): Promise<void>

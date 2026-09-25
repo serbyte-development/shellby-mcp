@@ -48,7 +48,7 @@ interface PollDiagnostic {
   model_text_excerpt?: string
 }
 
-test("live MCP temporary subagent preserves a serialized prompt and context across two turns", {
+test("live MCP subagent preserves a serialized prompt and context across two turns", {
   skip: !LIVE_TEST_ENABLED,
   timeout: LIVE_TIMEOUT_MS,
 }, async (t) => {
@@ -81,7 +81,6 @@ test("live MCP temporary subagent preserves a serialized prompt and context acro
           applyPatch: false,
           fileRead: false,
           fileWrite: false,
-          clones: false,
           subagents: true,
           web: false,
           skills: false,
@@ -104,7 +103,7 @@ test("live MCP temporary subagent preserves a serialized prompt and context acro
     const firstRun = await client.callTool({
       name: "subagent_run",
       arguments: {
-        agents: [{ agent_id: LIVE_AGENT_ID, prompt: firstPrompt, memory: false }],
+        agents: [{ agent_id: LIVE_AGENT_ID, prompt: firstPrompt }],
       },
     })
     const firstRunTurn = getRunTurn(toolText(firstRun.content))
@@ -136,7 +135,7 @@ test("live MCP temporary subagent preserves a serialized prompt and context acro
     const secondRun = await client.callTool({
       name: "subagent_run",
       arguments: {
-        agents: [{ agent_id: LIVE_AGENT_ID, prompt: secondPrompt, memory: false }],
+        agents: [{ agent_id: LIVE_AGENT_ID, prompt: secondPrompt }],
       },
     })
     const secondRunTurn = getRunTurn(toolText(secondRun.content))

@@ -249,10 +249,7 @@ function isReadingTool(tool: string): boolean {
 function isDelegating(state: AgentRoomState): boolean {
   const tool = state.currentTool
   return Boolean(
-    tool &&
-      (tool.startsWith("subagent_") || tool.startsWith("clone_")) &&
-      state.station === "agents" &&
-      state.mode === "working"
+    tool?.startsWith("subagent_") && state.station === "agents" && state.mode === "working"
   )
 }
 

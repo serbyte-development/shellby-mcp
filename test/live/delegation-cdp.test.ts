@@ -11,6 +11,7 @@ import test from "node:test"
 import { setTimeout as delay } from "node:timers/promises"
 import { type Browser, chromium } from "playwright-core"
 
+import { MCP_CONFIG } from "../../src/config.js"
 import {
   createBackgroundPage,
   enterPrompt,
@@ -27,6 +28,11 @@ test("delegation contracts over a real Chrome CDP connection", {
   skip: process.env.RUN_CDP_TESTS !== "1",
   timeout: 90_000,
 }, async (t) => {
+  const previousProjectUrl = MCP_CONFIG.chatGpt.projectUrl
+  MCP_CONFIG.chatGpt.projectUrl = "https://chatgpt.com/g/g-p-cdp-fixture/project"
+  t.after(() => {
+    MCP_CONFIG.chatGpt.projectUrl = previousProjectUrl
+  })
   const profile = await mkdtemp(join(tmpdir(), "shellby-cdp-test-"))
   const child = spawn(
     process.env.CHROME_PATH ?? "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
@@ -92,7 +98,7 @@ test("delegation contracts over a real Chrome CDP connection", {
   )
   for (const mode of ["fresh", "resume", "popup", "noopener", "same-page"] as const) {
     await t.test(`startConversation handles ${mode}`, async () => {
-      const diagnostics = new DelegationDiagnostics("subagent_run", `cdp-${mode}`, undefined)
+      const diagnostics = new DelegationDiagnostics(`cdp-${mode}`, undefined)
       const pagesBefore = context.pages().length
       try {
         const page = await startConversation(
@@ -100,13 +106,15 @@ test("delegation contracts over a real Chrome CDP connection", {
           context,
           mode === "resume"
             ? { kind: "resume", url: "https://chatgpt.com/c/saved-conversation" }
-            : { kind: "new", memory: false, ...(mode === "fresh" ? {} : { conversationId: mode }) },
+            : { kind: "new", ...(mode === "fresh" ? {} : { conversationId: mode }) },
           diagnostics,
           AbortSignal.timeout(10_000)
         )
         assert.equal(context.pages().length, pagesBefore + 1, "Startup owns only its returned page")
         const expectedPath =
-          mode === "fresh" ? "/" : `/c/${mode === "resume" ? "saved-conversation" : `fork-${mode}`}`
+          mode === "fresh"
+            ? "/g/g-p-cdp-fixture/project"
+            : `/c/${mode === "resume" ? "saved-conversation" : `fork-${mode}`}`
         assert.equal(new URL(page.url()).pathname, expectedPath)
         const composer = await findComposer(page)
         await enterPrompt(page, composer, "Exact prompt: café 中文 🐚")

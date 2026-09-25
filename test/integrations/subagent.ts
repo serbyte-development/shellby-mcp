@@ -23,8 +23,6 @@ for (const toolOutput of ["compact", "structured"] as const) {
         submittedRequests.push(request)
         return submit(request.agentId)
       },
-      cloneSelf: ({ cloneId }) => submit(cloneId),
-      cloneRun: ({ cloneId }) => submit(cloneId),
       async poll(turnId) {
         switch (turnId) {
           case "completed":
@@ -60,71 +58,57 @@ for (const toolOutput of ["compact", "structured"] as const) {
       { turnIds: ["failed"], failed: true },
       { turnIds: ["unexpected"], failed: true },
     ]
-    for (const toolName of ["subagent_result", "clone_result"]) {
-      for (const { turnIds, failed } of cases) {
-        const result = await connected.client.callTool({
-          name: toolName,
-          arguments: { turn_ids: turnIds, wait_ms: 0 },
-        })
-        assert.equal(result.isError === true, failed, turnIds.join(","))
-        if (toolOutput === "structured") {
-          const { turns } = result.structuredContent as {
-            turns: Array<{
-              turn_id: string
-              status: string
-              response?: string
-              error?: string
-            }>
-          }
-          assert.deepEqual(
-            turns.map((turn) => turn.turn_id),
-            turnIds
-          )
-          assert.equal(
-            turns.some((turn) => turn.status === "failed"),
-            failed
-          )
-          if (turnIds.includes("completed"))
-            assert.equal(
-              turns.find((turn) => turn.turn_id === "completed")?.response,
-              "preserved response"
-            )
-          if (turnIds.includes("missing"))
-            assert.match(
-              turns.find((turn) => turn.turn_id === "missing")?.error ?? "",
-              /UNKNOWN_TURN/u
-            )
-        } else {
-          assert.equal(result.structuredContent, undefined)
-          if (turnIds.includes("completed")) assert.match(toolText(result), /preserved response/u)
-          if (turnIds.includes("missing")) assert.match(toolText(result), /UNKNOWN_TURN/u)
+    for (const { turnIds, failed } of cases) {
+      const result = await connected.client.callTool({
+        name: "subagent_result",
+        arguments: { turn_ids: turnIds, wait_ms: 0 },
+      })
+      assert.equal(result.isError === true, failed, turnIds.join(","))
+      if (toolOutput === "structured") {
+        const { turns } = result.structuredContent as {
+          turns: Array<{
+            turn_id: string
+            status: string
+            response?: string
+            error?: string
+          }>
         }
-        if (toolName === "subagent_result")
-          assert.doesNotMatch(JSON.stringify(result), /private backend details/u)
+        assert.deepEqual(
+          turns.map((turn) => turn.turn_id),
+          turnIds
+        )
+        assert.equal(
+          turns.some((turn) => turn.status === "failed"),
+          failed
+        )
+        if (turnIds.includes("completed"))
+          assert.equal(
+            turns.find((turn) => turn.turn_id === "completed")?.response,
+            "preserved response"
+          )
+        if (turnIds.includes("missing"))
+          assert.match(
+            turns.find((turn) => turn.turn_id === "missing")?.error ?? "",
+            /UNKNOWN_TURN/u
+          )
+      } else {
+        assert.equal(result.structuredContent, undefined)
+        if (turnIds.includes("completed")) assert.match(toolText(result), /preserved response/u)
+        if (turnIds.includes("missing")) assert.match(toolText(result), /UNKNOWN_TURN/u)
       }
+      assert.doesNotMatch(JSON.stringify(result), /private backend details/u)
     }
 
     for (const agentId of ["ready", "failed"]) {
-      const submissions = [
-        { name: "subagent_run", arguments: { agents: [{ agent_id: agentId, prompt: "Task" }] } },
-        {
-          name: "clone_self",
-          arguments: {
-            clone_id: agentId,
-            conversation_url: "https://chatgpt.com/c/source",
-            prompt: "Task",
-          },
-        },
-        { name: "clone_run", arguments: { clone_id: agentId, prompt: "Task" } },
-      ]
-      for (const request of submissions) {
-        const result = await connected.client.callTool(request)
-        assert.equal(result.isError === true, agentId === "failed", request.name)
-        assert.match(
-          JSON.stringify(result),
-          agentId === "failed" ? /AGENT_TARGET_LOST/u : /ready_turn_1/u
-        )
-      }
+      const result = await connected.client.callTool({
+        name: "subagent_run",
+        arguments: { agents: [{ agent_id: agentId, prompt: "Task" }] },
+      })
+      assert.equal(result.isError === true, agentId === "failed")
+      assert.match(
+        JSON.stringify(result),
+        agentId === "failed" ? /AGENT_TARGET_LOST/u : /ready_turn_1/u
+      )
     }
 
     const mixed = await connected.client.callTool({
@@ -150,7 +134,6 @@ for (const toolOutput of ["compact", "structured"] as const) {
       agentId: "fork",
       conversationId: "source",
       prompt: "Continue this",
-      memory: true,
     })
   })
 }
@@ -161,12 +144,6 @@ test("delivers a completed subagent event on the next MCP response exactly once"
   const events = new Map<string, string[]>()
   const chatGptDelegation: ChatGptDelegationService = {
     async ask() {
-      throw new Error("unused")
-    },
-    async cloneSelf() {
-      throw new Error("unused")
-    },
-    async cloneRun() {
       throw new Error("unused")
     },
     async poll() {
@@ -252,12 +229,6 @@ test("runs staggered subagents and retrieves turns across MCP client sessions", 
       const turnId = `turn-${agentId}-${history.length}`
       completed.set(turnId, `${agentId}:${history.length}:${prompt}`)
       return turnId
-    },
-    async cloneSelf() {
-      throw new Error("unused")
-    },
-    async cloneRun() {
-      throw new Error("unused")
     },
     async poll(turnId) {
       activePolls += 1

@@ -44,7 +44,7 @@ if (hardRestart) {
   runAllowFailure(process.execPath, ["--import", "tsx", pm2Script, "delete", "shellby-cursor-host"])
 }
 if (restarting) await rm(join(repoRoot, "agent-commands.yaml"), { force: true })
-if (MCP_CONFIG.tools.clones || MCP_CONFIG.tools.subagents) {
+if (MCP_CONFIG.tools.subagents) {
   run(process.execPath, [
     "--import",
     "tsx",

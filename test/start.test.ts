@@ -29,7 +29,7 @@ async function runStartup(
   await copyFile(new URL("../scripts/pm2.ts", import.meta.url), join(root, "scripts", "pm2.ts"))
   await writeFile(
     join(root, "src", "config.ts"),
-    `export const MCP_CONFIG = ${JSON.stringify({ host: "127.0.0.1", port: 3334, instanceId: "fixture", stateDir: join(root, "state"), workspace: root, ngrok: { enabled: options.ngrokEnabled ?? true }, shell: { rtk: false }, tools: { clones: false, subagents: options.agentsEnabled ?? false } })}`
+    `export const MCP_CONFIG = ${JSON.stringify({ host: "127.0.0.1", port: 3334, instanceId: "fixture", stateDir: join(root, "state"), workspace: root, ngrok: { enabled: options.ngrokEnabled ?? true }, shell: { rtk: false }, tools: { subagents: options.agentsEnabled ?? false } })}`
   )
   await writeFile(
     join(root, "scripts", "preflight.ts"),

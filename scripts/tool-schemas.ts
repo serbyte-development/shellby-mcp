@@ -17,10 +17,7 @@ const shells = MCP_CONFIG.tools.shell
     })
   : undefined
 const peekaboo = MCP_CONFIG.tools.computer ? new PeekabooClient({ localOnly: true }) : undefined
-const chatGptDelegation =
-  MCP_CONFIG.tools.clones || MCP_CONFIG.tools.subagents
-    ? createChatGptDelegationService()
-    : undefined
+const chatGptDelegation = MCP_CONFIG.tools.subagents ? createChatGptDelegationService() : undefined
 const webPageOpener = MCP_CONFIG.tools.web ? new WebPageOpener() : undefined
 const running = await startMcpHttpServer(
   {

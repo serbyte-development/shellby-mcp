@@ -14,72 +14,50 @@ import { createChatGptDelegationService } from "../../../src/tools/delegation/ch
 import { ChatGptDelegationError } from "../../../src/tools/delegation/contracts.js"
 import { createDelegationStore } from "../../../src/tools/delegation/store.js"
 
-for (const memory of [false, true]) {
-  test(`idle cleanup ${memory ? "allows saved agents to resume" : "reports temporary agents as expired and retains their results"}`, async (t) => {
-    const directory = mkdtempSync(join(tmpdir(), "shellby-agent-lifecycle-"))
-    const previousStateDir = MCP_CONFIG.stateDir
-    MCP_CONFIG.stateDir = directory
-    t.mock.timers.enable({ apis: ["Date", "setInterval"], now: 1_000_000 })
-    const fixture = browserFixture()
-    const connect = t.mock.method(chromium, "connectOverCDP", async () => fixture.browser)
-    const service = createChatGptDelegationService()
-    t.after(async () => {
-      await service.dispose()
-      MCP_CONFIG.stateDir = previousStateDir
-      rmSync(directory, { recursive: true, force: true })
-    })
-
-    const request = { agentId: "researcher", prompt: "Review this", memory }
-    const turnId = await service.ask(request, {})
-    const completed = await service.poll(turnId, 0)
-    assert.equal(completed.status, "completed")
-    assert.equal(completed.response, "Reviewed")
-
-    t.mock.timers.tick(29 * 60_000)
-    await setImmediate()
-    assert.equal(fixture.pages[0]?.isClosed(), false)
-    t.mock.timers.tick(60_000)
-    await setImmediate()
-    assert.equal(fixture.pages[0]?.isClosed(), true)
-    assert.deepEqual(await service.poll(turnId, 0), completed)
-
-    if (memory) {
-      const nextTurnId = await service.ask({ ...request, prompt: "Follow up" }, {})
-      assert.equal((await service.poll(nextTurnId, 0)).status, "completed")
-      assert.equal(fixture.pages.length, 2)
-      const branchPage = fixture.pages[1]
-      assert.ok(branchPage)
-      assert.match(branchPage.url(), /\/c\/lifecycle-conversation$/u)
-    } else {
-      // Expiration stays specific even without Chrome, or if the caller changes memory.
-      await fixture.browser.close()
-      for (const requestedMemory of [false, true]) {
-        await assert.rejects(
-          service.ask({ ...request, prompt: "Follow up", memory: requestedMemory }, {}),
-          {
-            code: "TEMP_AGENT_EXPIRED",
-            message:
-              "Temporary agent researcher was closed after 30 minutes of inactivity. Its conversation cannot be resumed.",
-          }
-        )
-      }
-      assert.equal(connect.mock.callCount(), 1)
-      assert.equal(fixture.pages.length, 1)
-      assert.equal(fixture.submissions, 1)
-      assert.deepEqual(await service.poll(turnId, 0), completed)
-    }
-
-    // An externally closed temporary page still gets the existing page-loss error.
-    const other = { agentId: "closed-externally", prompt: "Review this", memory: false }
-    await service.ask(other, {})
-    await fixture.pages.at(-1)?.close()
-    await assert.rejects(
-      service.ask(other, {}),
-      (error: unknown) =>
-        error instanceof ChatGptDelegationError && error.code === "AGENT_TARGET_LOST"
-    )
+test("saved agents start at the configured URL and resume after idle or external tab closure", async (t) => {
+  const directory = mkdtempSync(join(tmpdir(), "shellby-agent-lifecycle-"))
+  const previousStateDir = MCP_CONFIG.stateDir
+  const previousProjectUrl = MCP_CONFIG.chatGpt.projectUrl
+  MCP_CONFIG.stateDir = directory
+  MCP_CONFIG.chatGpt.projectUrl = "https://chatgpt.com/g/g-p-fixture/project"
+  t.mock.timers.enable({ apis: ["Date", "setInterval"], now: 1_000_000 })
+  const fixture = browserFixture()
+  t.mock.method(chromium, "connectOverCDP", async () => fixture.browser)
+  const service = createChatGptDelegationService()
+  t.after(async () => {
+    await service.dispose()
+    MCP_CONFIG.stateDir = previousStateDir
+    MCP_CONFIG.chatGpt.projectUrl = previousProjectUrl
+    rmSync(directory, { recursive: true, force: true })
   })
-}
+
+  const request = { agentId: "researcher", prompt: "Review this" }
+  const turnId = await service.ask(request, {})
+  const completed = await service.poll(turnId, 0)
+  assert.equal(completed.status, "completed")
+  assert.equal(completed.response, "Reviewed")
+  assert.equal(fixture.navigations[0], MCP_CONFIG.chatGpt.projectUrl)
+
+  t.mock.timers.tick(29 * 60_000)
+  await setImmediate()
+  assert.equal(fixture.pages[0]?.isClosed(), false)
+  t.mock.timers.tick(60_000)
+  await setImmediate()
+  assert.equal(fixture.pages[0]?.isClosed(), true)
+  assert.deepEqual(await service.poll(turnId, 0), completed)
+
+  const nextTurnId = await service.ask({ ...request, prompt: "Follow up" }, {})
+  assert.equal((await service.poll(nextTurnId, 0)).status, "completed")
+  assert.equal(fixture.pages.length, 2)
+  assert.equal(extractConversationId(fixture.pages[1]!.url()), "lifecycle-conversation")
+
+  await fixture.pages[1]!.close()
+  const thirdTurnId = await service.ask({ ...request, prompt: "Continue after tab closure" }, {})
+  assert.equal((await service.poll(thirdTurnId, 0)).status, "completed")
+  assert.equal(fixture.pages.length, 3)
+  assert.equal(extractConversationId(fixture.pages[2]!.url()), "lifecycle-conversation")
+  assert.deepEqual(fixture.prompts.slice(1), ["Follow up", "Continue after tab closure"])
+})
 
 test("persistence initialization failure blocks delegation before browser connection", async (t) => {
   const directory = mkdtempSync(join(tmpdir(), "shellby-agent-persistence-init-"))
@@ -97,7 +75,7 @@ test("persistence initialization failure blocks delegation before browser connec
   })
 
   await assert.rejects(
-    service.ask({ agentId: "researcher", prompt: "Review this", memory: true }, {}),
+    service.ask({ agentId: "researcher", prompt: "Review this" }, {}),
     (error: unknown) =>
       error instanceof ChatGptDelegationError &&
       error.code === "SUBAGENT_PERSISTENCE_UNAVAILABLE" &&
@@ -139,24 +117,21 @@ test("post-submit persistence failure keeps the turn valid and blocks later subm
   `)
   breaker.close()
 
-  const turnId = await service.ask(
-    { agentId: "researcher", prompt: "Review this", memory: true },
-    {}
-  )
+  const turnId = await service.ask({ agentId: "researcher", prompt: "Review this" }, {})
   assert.match(turnId, /^researcher_turn_1_/u)
   assert.equal((await service.poll(turnId, 0)).status, "completed")
   assert.equal(fixture.submissions, 1)
   assert.equal(warn.mock.callCount(), 1)
 
   await assert.rejects(
-    service.ask({ agentId: "researcher", prompt: "Follow up", memory: true }, {}),
+    service.ask({ agentId: "researcher", prompt: "Follow up" }, {}),
     (error: unknown) =>
       error instanceof ChatGptDelegationError && error.code === "SUBAGENT_PERSISTENCE_UNAVAILABLE"
   )
   assert.equal(fixture.submissions, 1)
 })
 
-test("failed idle page close does not expire a temporary agent", async (t) => {
+test("failed idle page close preserves the saved agent", async (t) => {
   const directory = mkdtempSync(join(tmpdir(), "shellby-agent-idle-close-failure-"))
   const previousStateDir = MCP_CONFIG.stateDir
   MCP_CONFIG.stateDir = directory
@@ -170,7 +145,7 @@ test("failed idle page close does not expire a temporary agent", async (t) => {
     rmSync(directory, { recursive: true, force: true })
   })
 
-  const request = { agentId: "temporary", prompt: "Review this", memory: false }
+  const request = { agentId: "researcher", prompt: "Review this" }
   const turnId = await service.ask(request, {})
   assert.equal((await service.poll(turnId, 0)).status, "completed")
 
@@ -200,10 +175,7 @@ for (const inlinePostData of [true, false]) {
         rmSync(directory, { recursive: true, force: true })
       })
 
-      const turnId = await service.ask(
-        { agentId: "researcher", prompt: "Review this", memory: false },
-        {}
-      )
+      const turnId = await service.ask({ agentId: "researcher", prompt: "Review this" }, {})
       assert.match(turnId, /^researcher_turn_1_/u)
       assert.equal(fixture.submissions, 1)
       assert.equal((await service.poll(turnId, 1_000)).response, "Reviewed")
@@ -225,7 +197,7 @@ test("submission failure disposes the unused observer without an unhandled rejec
   })
 
   await assert.rejects(
-    service.ask({ agentId: "researcher", prompt: "Review this", memory: false }, {}),
+    service.ask({ agentId: "researcher", prompt: "Review this" }, {}),
     /Send unavailable/u
   )
   await setImmediate()
@@ -246,7 +218,7 @@ test("a prompt serialized as Markdown still completes the submitted turn", async
   })
 
   const turnId = await service.ask(
-    { agentId: "researcher", prompt: "Open https://example.com/ with `web.run`.", memory: false },
+    { agentId: "researcher", prompt: "Open https://example.com/ with `web.run`." },
     {}
   )
   const result = await service.poll(turnId, 0)
@@ -272,10 +244,7 @@ test("a failed first submission closes its unused page and releases agent capaci
   })
 
   for (const agentId of ["first", "second"]) {
-    await assert.rejects(
-      service.ask({ agentId, prompt: "Review this", memory: false }, {}),
-      /Send unavailable/u
-    )
+    await assert.rejects(service.ask({ agentId, prompt: "Review this" }, {}), /Send unavailable/u)
   }
   assert.equal(fixture.pages.length, 2)
   assert.ok(fixture.pages.every((page) => page.isClosed()))
@@ -283,7 +252,7 @@ test("a failed first submission closes its unused page and releases agent capaci
 })
 
 for (const branchInSamePage of [false, true]) {
-  test(`forks override memory: false, persist, and continue (${branchInSamePage ? "same page" : "popup"})`, async (t) => {
+  test(`forked subagents persist and continue (${branchInSamePage ? "same page" : "popup"})`, async (t) => {
     const directory = mkdtempSync(join(tmpdir(), "shellby-forked-subagent-"))
     const previousStateDir = MCP_CONFIG.stateDir
     MCP_CONFIG.stateDir = directory
@@ -299,17 +268,13 @@ for (const branchInSamePage of [false, true]) {
     const request = {
       agentId: "reviewer",
       prompt: "Review this",
-      memory: false,
       conversationId: "source",
     }
     const first = await service.ask(request, {})
     assert.match(first, /^reviewer_turn_1_/u)
     assert.equal((await service.poll(first, 0)).response, "Reviewed")
     await fixture.pages.at(-1)?.close()
-    const second = await service.ask(
-      { agentId: request.agentId, memory: false, prompt: "Follow up" },
-      {}
-    )
+    const second = await service.ask({ agentId: request.agentId, prompt: "Follow up" }, {})
     assert.match(second, /^reviewer_turn_2_/u)
     assert.equal((await service.poll(second, 0)).response, "Reviewed")
     assert.equal(fixture.branches, 1)
@@ -326,32 +291,6 @@ for (const branchInSamePage of [false, true]) {
   })
 }
 
-test("legacy clone tools share startup and preserve their branch on subsequent turns", async (t) => {
-  const directory = mkdtempSync(join(tmpdir(), "shellby-clone-start-"))
-  const previousStateDir = MCP_CONFIG.stateDir
-  MCP_CONFIG.stateDir = directory
-  const fixture = browserFixture()
-  t.mock.method(chromium, "connectOverCDP", async () => fixture.browser)
-  const service = createChatGptDelegationService()
-  t.after(async () => {
-    await service.dispose()
-    MCP_CONFIG.stateDir = previousStateDir
-    rmSync(directory, { recursive: true, force: true })
-  })
-  const first = await service.cloneSelf(
-    { cloneId: "reviewer", sourceConversationUrl: "https://chatgpt.com/c/source", prompt: "First" },
-    {}
-  )
-  assert.match(first, /^reviewer_turn_1_/u)
-  assert.equal((await service.poll(first, 0)).response, "Reviewed")
-  await fixture.pages.at(-1)?.close()
-  const second = await service.cloneRun({ cloneId: "reviewer", prompt: "Second" }, {})
-  assert.equal((await service.poll(second, 0)).response, "Reviewed")
-  assert.equal(fixture.branches, 1)
-  assert.deepEqual(fixture.prompts, ["First", "Second"])
-  assert.equal(fixture.pages.at(-1)?.url(), "https://chatgpt.com/c/branch-1")
-})
-
 test("saved conversations resume after losing counters and results without reforking or reusing polling IDs", async (t) => {
   const directory = mkdtempSync(join(tmpdir(), "shellby-conversation-continuity-"))
   const previousStateDir = MCP_CONFIG.stateDir
@@ -366,7 +305,7 @@ test("saved conversations resume after losing counters and results without refor
     MCP_CONFIG.stateDir = previousStateDir
     rmSync(directory, { recursive: true, force: true })
   })
-  const request = { agentId: "reviewer", prompt: "First", memory: true }
+  const request = { agentId: "reviewer", prompt: "First" }
   const first = await firstService.ask(request, {})
   assert.equal((await firstService.poll(first, 0)).status, "completed")
   await firstService.dispose()
@@ -400,7 +339,7 @@ test("forks with a client-side URL acquire their saved identity from the submitt
     MCP_CONFIG.stateDir = previousStateDir
     rmSync(directory, { recursive: true, force: true })
   })
-  const request = { agentId: "reviewer", prompt: "First", memory: true, conversationId: "source" }
+  const request = { agentId: "reviewer", prompt: "First", conversationId: "source" }
   const first = await service.ask(request, {})
   assert.equal((await service.poll(first, 0)).status, "completed")
   const second = await service.ask({ ...request, prompt: "Second" }, {})
@@ -432,7 +371,7 @@ for (const failure of ["branch", "submission"] as const) {
     })
     for (const agentId of ["first", "second"]) {
       await assert.rejects(
-        service.ask({ agentId, prompt: "Task", memory: true, conversationId: "source" }, {}),
+        service.ask({ agentId, prompt: "Task", conversationId: "source" }, {}),
         /forced failure/u
       )
     }
@@ -459,10 +398,7 @@ test("invalid conversation IDs fail before opening or submitting a conversation"
     rmSync(directory, { recursive: true, force: true })
   })
   await assert.rejects(
-    service.ask(
-      { agentId: "reviewer", prompt: "Task", memory: true, conversationId: "../source" },
-      {}
-    ),
+    service.ask({ agentId: "reviewer", prompt: "Task", conversationId: "../source" }, {}),
     {
       code: "INVALID_ARGUMENT",
     }
@@ -489,6 +425,7 @@ function browserFixture(
   readonly submissions: number
   readonly branches: number
   prompts: string[]
+  navigations: string[]
 } {
   const pages: Page[] = []
   const sessions = new Map<
@@ -499,6 +436,7 @@ function browserFixture(
   let submissions = 0
   let branches = 0
   const prompts: string[] = []
+  const navigations: string[] = []
   let remainingPageCloseFailures = options.pageCloseFailures ?? 0
   const context = {
     pages: () => pages.filter((page) => !page.isClosed()),
@@ -540,6 +478,7 @@ function browserFixture(
           },
           url: () => url,
           goto: async (value: string) => {
+            navigations.push(value)
             url = value
           },
           context: () => context as unknown as BrowserContext,
@@ -668,5 +607,6 @@ function browserFixture(
       return branches
     },
     prompts,
+    navigations,
   }
 }

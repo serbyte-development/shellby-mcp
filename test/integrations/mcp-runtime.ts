@@ -69,9 +69,6 @@ test("publishes the assembled MCP tool surface", { timeout: 10_000 }, async (t) 
       "computer_drag",
       "computer_app",
       "computer_window",
-      "clone_self",
-      "clone_run",
-      "clone_result",
       "submit_review",
     ]
   )
@@ -88,6 +85,18 @@ test("publishes the assembled MCP tool surface", { timeout: 10_000 }, async (t) 
   assert.ok(shellList && skillUse)
   assert.deepEqual(Object.keys(shellList.inputSchema.properties ?? {}), [])
   assert.deepEqual(Object.keys(skillUse.inputSchema.properties ?? {}), ["name"])
+
+  const subagentRun = tools.tools.find((tool) => tool.name === "subagent_run")
+  assert.ok(subagentRun)
+  const agentsInput = subagentRun.inputSchema.properties?.agents as {
+    items: { properties: Record<string, unknown>; required: string[] }
+  }
+  assert.deepEqual(Object.keys(agentsInput.items.properties), [
+    "agent_id",
+    "prompt",
+    "conversation_id",
+  ])
+  assert.deepEqual(agentsInput.items.required, ["agent_id", "prompt"])
 
   const shellRun = tools.tools.find((tool) => tool.name === "shell_run")
   const shellPoll = tools.tools.find((tool) => tool.name === "shell_poll")
@@ -194,7 +203,6 @@ test("bound MCP factories snapshot identity, tool groups, and output mode", {
         applyPatch: false,
         fileRead: false,
         fileWrite: false,
-        clones: false,
         subagents: false,
         web: false,
         skills: true,
@@ -213,7 +221,6 @@ test("bound MCP factories snapshot identity, tool groups, and output mode", {
     applyPatch: true,
     fileRead: true,
     fileWrite: true,
-    clones: true,
     subagents: true,
     web: true,
     skills: false,
@@ -280,7 +287,6 @@ test("publishes only start_here when every optional tool group is disabled", {
         applyPatch: false,
         fileRead: false,
         fileWrite: false,
-        clones: false,
         subagents: false,
         web: false,
         skills: false,

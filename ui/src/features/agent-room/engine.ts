@@ -273,7 +273,7 @@ function stationForTool(tool: string): AgentStation {
   if (tool === "apply_patch") return "patch"
   if (tool === "fetch_url" || tool.startsWith("web_")) return "web"
   if (tool === "image_view" || tool.startsWith("image_")) return "image"
-  if (tool.startsWith("subagent_") || tool.startsWith("clone_")) return "agents"
+  if (tool.startsWith("subagent_")) return "agents"
   return "terminal"
 }
 
@@ -281,7 +281,7 @@ function bubbleForTool(tool: string): string {
   if (tool === "apply_patch") return "Applying patch..."
   if (tool === "fetch_url" || tool.startsWith("web_")) return "Browsing..."
   if (tool === "image_view" || tool.startsWith("image_")) return "Viewing image..."
-  if (tool.startsWith("subagent_") || tool.startsWith("clone_")) return "Delegating..."
+  if (tool.startsWith("subagent_")) return "Delegating..."
   if (tool === "shell_poll") return "Waiting on shell..."
   if (tool.startsWith("shell_")) return "Running command..."
   return tool.replaceAll("_", " ")

@@ -15,20 +15,17 @@ import { ChatGptDelegationError } from "./contracts.js"
 import { delay } from "./delay.js"
 import type { DelegationDiagnostics } from "./diagnostics.js"
 
-const TEMPORARY_CHAT_URL = "https://chatgpt.com/?temporary-chat=true"
 const FORK_INITIAL_SETTLE_MS = 5_000
 const CONVERSATION_ID_PATTERN = /^[\w-]+$/u
 
-type ConversationStart =
-  | { kind: "new"; memory: boolean; conversationId?: string }
-  | { kind: "resume"; url: string }
+type ConversationStart = { kind: "new"; conversationId?: string } | { kind: "resume"; url: string }
 
 /**
  * Open a ready conversation without submitting a prompt. A new conversation may
  * inherit a supplied source; a resume always opens the saved conversation itself.
  * The caller owns the returned page. Failed startup closes pages it created and
- * records diagnostics before cleanup. Memory selects the mode only for fresh chats;
- * forks always create saved conversations.
+ * records diagnostics before cleanup. All conversations are saved; fresh chats
+ * start at the configured ChatGPT URL.
  */
 export async function startConversation(
   browser: Browser | undefined,
@@ -104,8 +101,7 @@ function conversationStartUrl(start: ConversationStart): string {
     return start.url
   }
   const sourceId = start.conversationId
-  if (sourceId === undefined)
-    return start.memory ? MCP_CONFIG.chatGpt.projectUrl : TEMPORARY_CHAT_URL
+  if (sourceId === undefined) return MCP_CONFIG.chatGpt.projectUrl
   if (!CONVERSATION_ID_PATTERN.test(sourceId) || sourceId.length > 128) {
     throw new ChatGptDelegationError(
       "INVALID_ARGUMENT",

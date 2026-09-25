@@ -32,12 +32,6 @@ const subagentInputSchema = z.object({
     .refine((value) => value.trim().length > 0, "prompt cannot be only whitespace.")
     .transform((value) => value.trim())
     .describe("Task or follow-up instruction. Include enough context for the subagent to act."),
-  memory: z
-    .boolean()
-    .default(true)
-    .describe(
-      "Allow a new agent to access memory outside its conversation. Turn history is always preserved."
-    ),
   conversation_id: z.string().trim().min(1).max(128).optional().describe("Use when given."),
 })
 
@@ -119,7 +113,6 @@ export function registerSubagentTools(
             {
               agentId: agent.agent_id,
               prompt: agent.prompt,
-              memory: agent.memory,
               conversationId: agent.conversation_id,
             },
             { signal: ctx.mcpReq.signal }

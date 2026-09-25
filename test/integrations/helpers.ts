@@ -33,7 +33,6 @@ const TEST_TOOLS = {
   applyPatch: true,
   fileRead: true,
   fileWrite: true,
-  clones: true,
   subagents: true,
   web: true,
   skills: true,
@@ -50,10 +49,9 @@ export async function startMcpHttpServer(options: TestMcpServerOptions = {}) {
   const peekaboo = tools.computer
     ? (services.peekaboo ?? new PeekabooClient({ localOnly: true }))
     : undefined
-  const chatGptDelegation =
-    tools.clones || tools.subagents
-      ? (services.chatGptDelegation ?? createUnavailableDelegationService())
-      : undefined
+  const chatGptDelegation = tools.subagents
+    ? (services.chatGptDelegation ?? createUnavailableDelegationService())
+    : undefined
   const capabilityServices = {
     shellManager,
     peekaboo,
@@ -102,8 +100,6 @@ function createUnavailableDelegationService(): NonNullable<
   }
   return {
     ask: unavailable,
-    cloneSelf: unavailable,
-    cloneRun: unavailable,
     poll: unavailable,
     drainEvents: () => [],
     dispose: async () => {},
