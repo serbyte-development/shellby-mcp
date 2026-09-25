@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto"
 import { join } from "node:path"
 import type { Page } from "playwright-core"
 
@@ -32,6 +33,7 @@ interface AgentState {
   lastCompletedAt?: number
   idleExpired?: boolean
   lastUsedAt: number
+  /** Local submission numbering only; neither conversation restoration nor recovery relies on it. */
   turnCount: number
 }
 
@@ -168,7 +170,7 @@ export class DelegationLifecycle {
       memory: true,
       status: "idle",
       lastUsedAt: now,
-      turnCount: persisted.turnCount,
+      turnCount: persisted.turnCount ?? 0,
       conversationUrl: persisted.conversationUrl,
     }
   }
@@ -180,6 +182,7 @@ export class DelegationLifecycle {
       memory: true,
       status: "idle",
       page,
+      conversationUrl: extractConversationId(page.url()) ? page.url() : undefined,
       lastUsedAt: now,
       turnCount: 0,
     }
@@ -198,6 +201,7 @@ export class DelegationLifecycle {
   recordPageReady(agent: AgentState, page: Page, now: number): void {
     agent.page = page
     agent.lastUsedAt = now
+    if (agent.memory && extractConversationId(page.url())) agent.conversationUrl = page.url()
   }
 
   /** Bind the observed conversation and persist its identity without invalidating submitted work. */
@@ -232,11 +236,12 @@ export class DelegationLifecycle {
   /** Roll back an unsent attempt; return an unused new page for the service to close. */
   resetUnsubmittedAgent(
     parentAgent: AgentIdentity | undefined,
-    agent: AgentState
+    agent: AgentState,
+    newConversation = false
   ): Page | undefined {
     agent.status = "idle"
-    if (agent.kind !== "subagent" || agent.turnCount > 0 || agent.conversationUrl) return undefined
-    // A never-submitted agent has no conversation to retain and must not consume capacity.
+    if (!newConversation) return undefined
+    // An unsent new conversation must not consume agent capacity.
     this.removeAgent(parentAgent, agent)
     const page = agent.page
     agent.page = undefined
@@ -257,7 +262,8 @@ export class DelegationLifecycle {
   ): BrowserTurnState {
     const settlement = createTurnSettlement()
     return {
-      turnId: `${agent.agentId}_turn_${agent.turnCount + 1}`,
+      // The ordinal is local bookkeeping. Lost counters must never alias an old polling ID.
+      turnId: `${agent.agentId}_turn_${agent.turnCount + 1}_${randomUUID()}`,
       agentId: agent.agentId,
       parentAgent,
       status: "running",
@@ -306,7 +312,7 @@ export class DelegationLifecycle {
     scope.turns.set(turn.turnId, turn)
     operation.turnId = turn.turnId
     operation.signal = undefined
-    this.persistAgent(parentAgent, agent)
+    this.recordConversation(parentAgent, agent)
   }
 
   requireTurn(parentAgent: AgentIdentity | undefined, turnId: string): BrowserTurnState {
@@ -409,12 +415,9 @@ export class DelegationLifecycle {
       this.eventHydrationAttempted.add(parentAgent)
       try {
         scope.pendingEvents.push(
-          ...this.listPersistedAgents(parentAgent)
-            .filter((agent) => agent.turnCount > 0)
-            .map(
-              (agent) =>
-                `existing_agent agent_id=${agent.agentId} latest_turn_id=${agent.agentId}_turn_${agent.turnCount}`
-            )
+          ...this.listPersistedAgents(parentAgent).map(
+            (agent) => `existing_agent agent_id=${agent.agentId}`
+          )
         )
       } catch (error) {
         if (!(error instanceof ChatGptDelegationError)) throw error
@@ -548,19 +551,12 @@ export class DelegationLifecycle {
     const agents = new Map<string, string | undefined>()
 
     for (const persisted of this.listPersistedAgents(parentAgent)) {
-      agents.set(
-        persisted.agentId,
-        persisted.turnCount > 0 ? `${persisted.agentId}_turn_${persisted.turnCount}` : undefined
-      )
+      agents.set(persisted.agentId, undefined)
     }
     for (const agent of scope.agents.values()) {
-      const activeTurnId = scope.activeOperations.get(agent.agentId)?.turnId
-      agents.set(
-        agent.agentId,
-        activeTurnId ??
-          (agent.turnCount > 0 ? `${agent.agentId}_turn_${agent.turnCount}` : undefined)
-      )
+      agents.set(agent.agentId, undefined)
     }
+    for (const turn of scope.turns.values()) agents.set(turn.agentId, turn.turnId)
     for (const [agentId, operation] of scope.activeOperations) {
       if (!agents.has(agentId)) agents.set(agentId, operation.turnId)
     }
@@ -569,8 +565,8 @@ export class DelegationLifecycle {
 
     const existing = [...agents.entries()]
       .sort(([left], [right]) => left.localeCompare(right))
-      .map(
-        ([existingAgentId, turnId]) => `${existingAgentId} (latest_turn_id=${turnId ?? "pending"})`
+      .map(([existingAgentId, turnId]) =>
+        turnId ? `${existingAgentId} (latest_turn_id=${turnId})` : existingAgentId
       )
       .join(", ")
     throw new ChatGptDelegationError(

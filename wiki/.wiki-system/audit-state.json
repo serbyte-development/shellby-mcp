@@ -43,6 +43,9 @@
     "pages/subagents/chatgpt-cdp-transport.md": {
       "fingerprint": "sha256:b5f3e3c8508f5eb56f9460b2a8622a04bd89488979d13179920013fb8ac5438c"
     },
+    "pages/subagents/known-bugs-and-testing.md": {
+      "fingerprint": "sha256:e4fa9296f8bde3c097e46b82413836c4c289179fd823711f210338f78d4b6f54"
+    },
     "pages/subagents/subagent-completion.md": {
       "fingerprint": "sha256:5f80c1557cd15f84a467c6ebaaf768c08751e1bd6b3ad2db40bad4848288c3ad"
     },

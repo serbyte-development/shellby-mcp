@@ -1,3 +1,4 @@
+import { StringDecoder } from "node:string_decoder"
 import type { CDPSession, Page } from "playwright-core"
 
 import type { ChatGptDelegationActivity } from "./contracts.js"
@@ -19,6 +20,12 @@ export interface AssistantResponseObservation {
 
 const SSE_EVENT_BOUNDARY_RE = /\r?\n\r?\n/u
 
+interface HttpStream {
+  decoder: StringDecoder
+  buffer: string
+  ready?: Promise<void>
+}
+
 /**
  * Install on an idle managed page before Send. The first new user-message POST
  * supplies the identity for HTTP, WebSocket, and history recovery. Never resends.
@@ -35,7 +42,7 @@ export async function observeAssistantResponse(
   let webSocketTracker: ChatGptTurnTracker | undefined
   let httpTracker: ChatGptTurnTracker | undefined
   const requests = new Map<string, Promise<boolean>>()
-  const buffers = new Map<string, string>()
+  const streams = new Map<string, HttpStream>()
   let cdp: CDPSession | undefined
   let settled = false
   let resolveResponse!: (response: ChatGptTurnCompletion) => void
@@ -61,9 +68,12 @@ export async function observeAssistantResponse(
     void cleanup()
   }
 
-  const feedHttp = (requestId: string, text: string): void => {
-    if (settled || !text) return
-    let buffer = (buffers.get(requestId) ?? "") + text
+  const feedHttp = (requestId: string, data: string): void => {
+    const stream = streams.get(requestId)
+    if (settled || !stream || !data) return
+    // CDP chunks are bytes and can split a UTF-8 code point, including between
+    // streamResourceContent's buffered prefix and subsequent dataReceived events.
+    let buffer = stream.buffer + stream.decoder.write(Buffer.from(data, "base64"))
     let match = SSE_EVENT_BOUNDARY_RE.exec(buffer)
     // biome-ignore lint/suspicious/noUnnecessaryConditions: Biome incorrectly treats RegExp.exec() result as always truthy.
     while (match) {
@@ -74,11 +84,16 @@ export async function observeAssistantResponse(
       if (settled) return
       match = SSE_EVENT_BOUNDARY_RE.exec(buffer)
     }
-    buffers.set(requestId, buffer)
+    stream.buffer = buffer
   }
 
-  const frameHandler = (event: { response?: { payloadData?: string } }): void => {
-    const payload = event.response?.payloadData
+  const frameHandler = (event: { response?: { opcode: number; payloadData?: string } }): void => {
+    const frame = event.response
+    if (!frame || (frame.opcode !== 1 && frame.opcode !== 2)) return
+    const payload =
+      frame.opcode === 2
+        ? Buffer.from(frame.payloadData ?? "", "base64").toString("utf8")
+        : frame.payloadData
     if (!payload || settled) return
     // CDP may omit inline POST data. Wait for its retrieval before consuming frames.
     void Promise.all(requests.values())
@@ -112,7 +127,7 @@ export async function observeAssistantResponse(
       !isConversationEndpoint(event.request.url)
     )
       return
-    buffers.set(event.requestId, "")
+    streams.set(event.requestId, { decoder: new StringDecoder("utf8"), buffer: "" })
     requests.set(
       event.requestId,
       event.request.postData
@@ -125,7 +140,11 @@ export async function observeAssistantResponse(
   }
 
   const responseHandler = (event: { requestId: string }): void => {
-    void requests
+    const stream = streams.get(event.requestId)
+    if (!stream) return
+    // Preserve wire order even if data events arrive before the command promise
+    // resolves. Its buffered prefix always precedes the live chunks.
+    stream.ready = requests
       .get(event.requestId)
       ?.then(async (matches) => {
         if (!matches || settled || !cdp) return
@@ -133,8 +152,7 @@ export async function observeAssistantResponse(
           requestId: event.requestId,
         })
         const bufferedData = typeof result.bufferedData === "string" ? result.bufferedData : ""
-        if (bufferedData)
-          feedHttp(event.requestId, Buffer.from(bufferedData, "base64").toString("utf8"))
+        feedHttp(event.requestId, bufferedData)
       })
       .catch(() => undefined)
   }
@@ -144,8 +162,9 @@ export async function observeAssistantResponse(
     if (!data) return
     void requests
       .get(event.requestId)
-      ?.then((matches) => {
-        if (matches) feedHttp(event.requestId, Buffer.from(data, "base64").toString("utf8"))
+      ?.then(async (matches) => {
+        await streams.get(event.requestId)?.ready
+        if (matches) feedHttp(event.requestId, data)
       })
       .catch(() => undefined)
   }

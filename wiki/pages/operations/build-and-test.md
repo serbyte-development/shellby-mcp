@@ -42,4 +42,6 @@ Tests use temporary directories, local listeners, and real child shells. Some ad
 
 `test:live:subagent` opts into an authenticated two-turn ChatGPT canary, skipped by default and in CI. An isolated MCP test server exercises temporary-chat submission, composer Markdown serialization, result polling, and context reuse. It creates a real conversation and ignored diagnostic artifacts; use a dedicated available browser without competing delegation. Private transport investigation: [CDP diagnostics](../subagents/chatgpt-cdp-transport.md).
 
+The planned reusable live suite and conversation rate-limit constraint are recorded in [Known Bugs and Testing](../subagents/known-bugs-and-testing.md).
+
 Fixtures do not establish current private ChatGPT compatibility, real PM2/ngrok recovery, TCC behavior, cursor-host relaunch, or complete browser restoration across production restart. UI build and live browser canary are outside CI. Report these limits when claiming validation.

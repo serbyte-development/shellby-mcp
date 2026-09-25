@@ -39,10 +39,7 @@ for (const limit of [1, 3, 5]) {
     const service = createChatGptDelegationService()
     const controller = new AbortController()
     controller.abort()
-    const existing = Array.from(
-      { length: limit },
-      (_, index) => `agent-${index + 1} (latest_turn_id=agent-${index + 1}_turn_${index + 1})`
-    ).join(", ")
+    const existing = Array.from({ length: limit }, (_, index) => `agent-${index + 1}`).join(", ")
     const expectedMessage = `This main agent already has the maximum ${limit} delegated agents. Reuse one of these agent IDs: ${existing}.`
 
     try {
@@ -141,10 +138,7 @@ test("drains persisted delegated agents once after service restart", async (t) =
   try {
     assert.deepEqual(
       runWithAgent(sessionId, () => service.drainEvents()),
-      [
-        "existing_agent agent_id=reviewer latest_turn_id=reviewer_turn_1",
-        "existing_agent agent_id=tester latest_turn_id=tester_turn_3",
-      ]
+      ["existing_agent agent_id=reviewer", "existing_agent agent_id=tester"]
     )
     assert.deepEqual(
       runWithAgent(sessionId, () => service.drainEvents()),

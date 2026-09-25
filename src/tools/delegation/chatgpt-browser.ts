@@ -70,7 +70,6 @@ export async function findComposer(page: Page, signal?: AbortSignal): Promise<Lo
 export async function forkLatestConversationTurn(page: Page, signal?: AbortSignal): Promise<Page> {
   throwIfAborted(signal)
   const sourceUrl = page.url()
-  const context = page.context()
   const latestForkableTurn = page.locator(LATEST_FORKABLE_TURN_SELECTOR).last()
   await waitForVisibleLocator(
     latestForkableTurn,
@@ -109,27 +108,39 @@ export async function forkLatestConversationTurn(page: Page, signal?: AbortSigna
     signal,
     '"Branch in new Chat" menu item'
   )
-  const knownPages = new Set(context.pages())
-  await branchInNewChat.click()
-
-  const deadline = Date.now() + CHATGPT_OPERATION_TIMEOUT_MS
-  while (Date.now() < deadline) {
-    throwIfAborted(signal)
-    const createdPage = context
-      .pages()
-      .find((candidate) => !knownPages.has(candidate) && !candidate.isClosed())
-    const branchPage = createdPage ?? (page.url() !== sourceUrl ? page : undefined)
-    if (branchPage && isChatGptUrl(branchPage.url())) {
-      await findComposerBefore(branchPage, deadline, signal)
-      return branchPage
-    }
-    await delay(200, signal)
+  let popup: Page | undefined
+  const onPopup = (created: Page) => {
+    popup = created
   }
-
-  throw new ChatGptDelegationError(
-    "CHATGPT_UI_CHANGED",
-    `ChatGPT did not open a new branch within ${CHATGPT_OPERATION_TIMEOUT_MS} ms.`
-  )
+  // Other callers can create pages concurrently. Only this source's popup is our branch.
+  page.on("popup", onPopup)
+  try {
+    await branchInNewChat.click({ noWaitAfter: true })
+    const deadline = Date.now() + CHATGPT_OPERATION_TIMEOUT_MS
+    while (Date.now() < deadline) {
+      throwIfAborted(signal)
+      const branchPage = popup ?? (page.url() !== sourceUrl ? page : undefined)
+      if (
+        branchPage &&
+        isChatGptUrl(branchPage.url()) &&
+        branchPage.url() !== sourceUrl &&
+        CHATGPT_CONVERSATION_ID_RE.test(new URL(branchPage.url()).pathname)
+      ) {
+        await findComposerBefore(branchPage, deadline, signal)
+        return branchPage
+      }
+      await delay(200, signal)
+    }
+    throw new ChatGptDelegationError(
+      "CHATGPT_UI_CHANGED",
+      `ChatGPT did not open a new branch within ${CHATGPT_OPERATION_TIMEOUT_MS} ms.`
+    )
+  } catch (error) {
+    await popup?.close().catch(() => undefined)
+    throw error
+  } finally {
+    page.off("popup", onPopup)
+  }
 }
 
 export async function assertAuthenticated(page: Page): Promise<void> {

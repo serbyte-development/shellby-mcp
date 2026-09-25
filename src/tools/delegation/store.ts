@@ -8,7 +8,8 @@ import { asRecord } from "../../utils.js"
 
 interface PersistedDelegatedAgent {
   conversationUrl: string
-  turnCount: number
+  /** Optional local numbering; the conversation URL alone is sufficient to resume. */
+  turnCount?: number
   kind: "subagent" | "clone"
 }
 
@@ -90,7 +91,7 @@ export function createDelegationStore(path: string): DelegationStore {
         parent_session_id TEXT NOT NULL,
         agent_id TEXT NOT NULL,
         conversation_url TEXT NOT NULL,
-        turn_count INTEGER NOT NULL,
+        turn_count INTEGER NOT NULL DEFAULT 0,
         kind TEXT NOT NULL DEFAULT 'subagent',
         PRIMARY KEY (parent_session_id, agent_id)
       )
@@ -122,14 +123,7 @@ export function createDelegationStore(path: string): DelegationStore {
         try {
           const row = asRecord(get.get(parentAgent?.sessionId ?? "", agentId))
           if (!row) return
-          if (typeof row.conversation_url !== "string" || typeof row.turn_count !== "number") {
-            throw new Error("Stored subagent row has an invalid shape.")
-          }
-          return {
-            conversationUrl: row.conversation_url,
-            turnCount: row.turn_count,
-            kind: row.kind === "clone" ? "clone" : "subagent",
-          }
+          return readAgent(row)
         } catch (error) {
           throw markFailed("read", error)
         }
@@ -141,17 +135,11 @@ export function createDelegationStore(path: string): DelegationStore {
           return rows.map((rawRow) => {
             const row = asRecord(rawRow)
             if (!row) throw new Error("Stored subagent row is not an object.")
-            if (
-              typeof row.agent_id !== "string" ||
-              typeof row.conversation_url !== "string" ||
-              typeof row.turn_count !== "number"
-            )
+            if (typeof row.agent_id !== "string")
               throw new Error("Stored subagent row has an invalid shape.")
             return {
               agentId: row.agent_id,
-              conversationUrl: row.conversation_url,
-              turnCount: row.turn_count,
-              kind: row.kind === "clone" ? "clone" : "subagent",
+              ...readAgent(row),
             } satisfies PersistedDelegatedAgentEntry
           })
         } catch (error) {
@@ -165,7 +153,7 @@ export function createDelegationStore(path: string): DelegationStore {
             parentAgent?.sessionId ?? "",
             agentId,
             value.conversationUrl,
-            value.turnCount,
+            value.turnCount ?? 0,
             value.kind
           )
         } catch (error) {
@@ -182,5 +170,22 @@ export function createDelegationStore(path: string): DelegationStore {
     }
   } catch (error) {
     return unavailableStore(error)
+  }
+}
+
+/** Conversation identity is required; damaged or absent local numbering is expendable. */
+function readAgent(row: Record<string, unknown>): PersistedDelegatedAgent {
+  if (typeof row.conversation_url !== "string" || !row.conversation_url) {
+    throw new Error("Stored subagent row has no conversation URL.")
+  }
+  return {
+    conversationUrl: row.conversation_url,
+    turnCount:
+      typeof row.turn_count === "number" &&
+      Number.isSafeInteger(row.turn_count) &&
+      row.turn_count >= 0
+        ? row.turn_count
+        : undefined,
+    kind: row.kind === "clone" ? "clone" : "subagent",
   }
 }

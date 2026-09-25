@@ -41,8 +41,7 @@ test("history recovery rejects an older identical prompt before the current turn
     { role: "assistant" as const, text: "old answer" },
   ]
 
-  assert.equal(findLatestAssistantAfterMessage(staleHistory, "current-user", 2), undefined)
-  assert.equal(findLatestAssistantAfterMessage(staleHistory, "current-user", 1), undefined)
+  assert.equal(findLatestAssistantAfterMessage(staleHistory, "current-user"), undefined)
   assert.deepEqual(
     findLatestAssistantAfterMessage(
       [
@@ -50,8 +49,7 @@ test("history recovery rejects an older identical prompt before the current turn
         { id: "current-user", role: "user", text: "repeat" },
         { role: "assistant", text: "new answer" },
       ],
-      "current-user",
-      2
+      "current-user"
     ),
     {
       role: "assistant",
@@ -68,13 +66,58 @@ test("history recovery uses message identity after composer serialization", () =
         id: "answer",
         author: { role: "assistant" },
         content: { parts: ["done"] },
+        status: "finished_successfully",
         end_turn: true,
         recipient: "all",
       },
     ],
   })
-  assert.equal(findLatestAssistantAfterMessage(messages, "submitted", 1)?.text, "done")
-  assert.equal(findLatestAssistantAfterMessage(messages, undefined, 1), undefined)
+  assert.equal(findLatestAssistantAfterMessage(messages, "submitted")?.text, "done")
+  assert.equal(findLatestAssistantAfterMessage(messages, undefined), undefined)
+})
+
+test("history recovery ignores inherited turns and never borrows an answer from a later user turn", () => {
+  const inherited = Array.from({ length: 10 }, (_, index) => [
+    { id: `inherited-${index}`, role: "user" as const, text: "old prompt" },
+    { role: "assistant" as const, text: "old answer" },
+  ]).flat()
+  const submitted = { id: "submitted", role: "user" as const, text: "new prompt" }
+  const answer = { role: "assistant" as const, text: "new answer" }
+  const later = [
+    { id: "later", role: "user" as const, text: "another prompt" },
+    { role: "assistant" as const, text: "another answer" },
+  ]
+  assert.deepEqual(
+    findLatestAssistantAfterMessage([...inherited, submitted, answer, ...later], "submitted"),
+    answer
+  )
+  assert.equal(
+    findLatestAssistantAfterMessage([...inherited, submitted, ...later], "submitted"),
+    undefined
+  )
+})
+
+test("history recovery preserves image-only user boundaries and excludes incomplete assistant messages", () => {
+  const messages = extractConversationMessages({
+    messages: [
+      { id: "submitted", author: { role: "user" }, content: { parts: ["prompt"] } },
+      {
+        author: { role: "assistant" },
+        content: { parts: ["partial"] },
+        status: "in_progress",
+        end_turn: true,
+      },
+      { id: "image", author: { role: "user" }, content: { parts: [{ image: "attachment" }] } },
+      {
+        author: { role: "assistant" },
+        content: { parts: ["answer to the image"] },
+        status: "finished_successfully",
+        end_turn: true,
+      },
+    ],
+  })
+  assert.equal(findLatestAssistantAfterMessage(messages, "submitted"), undefined)
+  assert.equal(findLatestAssistantAfterMessage(messages, "image")?.text, "answer to the image")
 })
 
 test("outgoing request identity ignores malformed requests and non-submission actions", () => {

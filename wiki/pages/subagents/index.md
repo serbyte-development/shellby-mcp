@@ -1,5 +1,5 @@
 ---
-summary: "Browser delegation internals: ownership, completion/recovery, and private transport diagnostics."
+summary: "Browser delegation ownership, completion/recovery, transport diagnostics, and live testing."
 ---
 # Subagents
 
@@ -7,4 +7,5 @@ summary: "Browser delegation internals: ownership, completion/recovery, and priv
 
 - [Browser ChatGPT Subagents](./browser-chatgpt-subagents.md) — Delegation ownership, capacity, persistence, page restoration, and at-most-once submission.
 - [ChatGPT CDP Transport](./chatgpt-cdp-transport.md) — Private HTTP/WebSocket acquisition and diagnostic probes for ChatGPT transport drift.
+- [Known Bugs and Testing](./known-bugs-and-testing.md) — Live testing gaps and the plan to maximize coverage with a small reusable set of conversations.
 - [Subagent Completion](./subagent-completion.md) — Completion authority, bounded history recovery, uncertain agents, and restart/event semantics.

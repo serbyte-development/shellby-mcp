@@ -69,6 +69,32 @@ test("persists subagent conversation state across store reopen", () => {
   }
 })
 
+test("conversation mappings remain available without usable turn counters", () => {
+  const directory = mkdtempSync(join(tmpdir(), "shellby-conversation-identity-"))
+  const path = join(directory, "subagents.sqlite")
+  const store = createDelegationStore(path)
+  try {
+    store.set(undefined, "worker", {
+      conversationUrl: "https://chatgpt.com/c/saved",
+      kind: "subagent",
+    })
+    assert.equal(store.get(undefined, "worker")?.turnCount, 0)
+    const db = new DatabaseSync(path)
+    for (const count of ["missing", -1, 0.5]) {
+      db.prepare("UPDATE agents SET turn_count = ?").run(count)
+      const agent = store.get(undefined, "worker")
+      assert.equal(agent?.conversationUrl, "https://chatgpt.com/c/saved")
+      assert.equal(agent?.turnCount, undefined)
+      assert.equal(store.list(undefined)[0]?.conversationUrl, agent?.conversationUrl)
+      assert.equal(store.status, "available")
+    }
+    db.close()
+  } finally {
+    store.close()
+    rmSync(directory, { recursive: true, force: true })
+  }
+})
+
 test("represents store initialization failure explicitly and logs it", (t) => {
   const directory = mkdtempSync(join(tmpdir(), "shellby-subagents-init-failure-"))
   const blockedDirectory = join(directory, "not-a-directory")

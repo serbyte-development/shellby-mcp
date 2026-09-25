@@ -12,7 +12,7 @@
 - [Operations](./pages/operations/index.md) — Configuration, runtime recovery, focused checks, audit logging, and private state.
 - [Persistent Shell Runtime](./pages/persistent-shell-runtime.md) — Shell process protocol, arbitration, transcript cursors, hibernation, and cleanup ownership.
 - [Project](./pages/project/index.md) — Open risks, deferred experiments, and prior evaluation research.
-- [Subagents](./pages/subagents/index.md) — Browser delegation internals: ownership, completion/recovery, and private transport diagnostics.
+- [Subagents](./pages/subagents/index.md) — Browser delegation ownership, completion/recovery, transport diagnostics, and live testing.
 - [Tool Naming and Schema Design](./pages/tool-naming-and-schema-design.md) — Tool metadata design and observed ChatGPT schema-projection pitfalls.
 - [Tools](./pages/tools/index.md) — Capability contracts: shell, patching, file/image transfer, fetching, subagents, and clones.
 - [Workspace Tooling](./pages/workspace-tooling.md) — Workspace path ownership, skill discovery, dynamic loading, and setup-copy boundaries.

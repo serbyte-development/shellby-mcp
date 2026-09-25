@@ -5,6 +5,7 @@ import { type AgentIdentity, getAgentIdentity } from "../../src/agent/context.js
 import {
   ChatGptDelegationError,
   type ChatGptDelegationService,
+  type ChatGptSubagentRequest,
 } from "../../src/tools/delegation/contracts.js"
 import { connectClient, startMcpHttpServer, toolText } from "./helpers.js"
 
@@ -12,12 +13,16 @@ for (const toolOutput of ["compact", "structured"] as const) {
   test(`delegation tools report submission and batch failures in ${toolOutput} output`, {
     timeout: 15_000,
   }, async (t) => {
+    const submittedRequests: ChatGptSubagentRequest[] = []
     const submit = async (agentId: string): Promise<string> => {
       if (agentId === "failed") throw new ChatGptDelegationError("AGENT_TARGET_LOST", "lost")
       return `${agentId}_turn_1`
     }
     const chatGptDelegation: ChatGptDelegationService = {
-      ask: ({ agentId }) => submit(agentId),
+      ask: (request) => {
+        submittedRequests.push(request)
+        return submit(request.agentId)
+      },
       cloneSelf: ({ cloneId }) => submit(cloneId),
       cloneRun: ({ cloneId }) => submit(cloneId),
       async poll(turnId) {
@@ -134,6 +139,19 @@ for (const toolOutput of ["compact", "structured"] as const) {
     assert.equal(mixed.isError, true)
     assert.match(JSON.stringify(mixed), /ready_turn_1/u)
     assert.match(JSON.stringify(mixed), /AGENT_TARGET_LOST/u)
+    const fork = await connected.client.callTool({
+      name: "subagent_run",
+      arguments: {
+        agents: [{ agent_id: "fork", conversation_id: "source", prompt: "Continue this" }],
+      },
+    })
+    assert.notEqual(fork.isError, true)
+    assert.deepEqual(submittedRequests.at(-1), {
+      agentId: "fork",
+      conversationId: "source",
+      prompt: "Continue this",
+      memory: true,
+    })
   })
 }
 

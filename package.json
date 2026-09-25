@@ -36,6 +36,7 @@
     "status": "node --import tsx scripts/pm2.ts status",
     "stop": "node --import tsx scripts/pm2.ts stop ecosystem.config.cjs",
     "test": "tsx --test",
+    "test:cdp": "RUN_CDP_TESTS=1 tsx --test test/live/delegation-cdp.test.ts",
     "test:live:subagent": "RUN_LIVE_SUBAGENT_TESTS=1 tsx --test test/live/subagent-live.test.ts",
     "tunnel": "node --import tsx scripts/pm2.ts startOrReload ecosystem.config.cjs --only shellby-ngrok --update-env",
     "typecheck": "tsc -p tsconfig.json --noEmit",

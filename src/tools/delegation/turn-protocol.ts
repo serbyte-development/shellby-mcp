@@ -286,30 +286,24 @@ export interface ConversationMessage {
   text: string
 }
 
+/** Find this submission's final answer on the active branch, stopping at the next user turn. */
 export function findLatestAssistantAfterMessage(
   messages: readonly ConversationMessage[],
-  submittedMessageId: string | undefined,
-  expectedUserTurnCount: number
+  submittedMessageId: string | undefined
 ): ConversationMessage | undefined {
   if (!submittedMessageId) return undefined
-  const userTurnCount = messages.filter((message) => message.role === "user").length
-  if (userTurnCount !== expectedUserTurnCount) return undefined
-
-  let promptIndex = -1
-  for (let index = messages.length - 1; index >= 0; index -= 1) {
-    const message = messages[index]
-    if (message?.role === "user" && message.id === submittedMessageId) {
-      promptIndex = index
-      break
-    }
-  }
+  const promptIndex = messages.findIndex(
+    (message) => message.role === "user" && message.id === submittedMessageId
+  )
   if (promptIndex < 0) return undefined
 
-  for (let index = messages.length - 1; index > promptIndex; index -= 1) {
+  let answer: ConversationMessage | undefined
+  for (let index = promptIndex + 1; index < messages.length; index += 1) {
     const message = messages[index]
-    if (message?.role === "assistant" && message.text) return message
+    if (message?.role === "user") break
+    if (message?.role === "assistant" && message.text) answer = message
   }
-  return undefined
+  return answer
 }
 
 /** Normalize conversation history for the one-shot recovery check and frozen fixtures. */
@@ -343,9 +337,11 @@ function messageFromRaw(value: unknown): ConversationMessage | undefined {
   const author = asRecord(message?.author)
   const role = stringValue(author?.role)
   const text = extractMessageText(asRecord(message?.content))
-  if (!text || (role !== "user" && role !== "assistant")) return undefined
+  // Even an image-only user message establishes a turn boundary during recovery.
+  if (role !== "user" && role !== "assistant") return undefined
   if (role === "assistant") {
-    if (message?.end_turn !== true) return undefined
+    if (!text || message?.status !== "finished_successfully" || message.end_turn !== true)
+      return undefined
     const recipient = message.recipient
     if (recipient && recipient !== "all") return undefined
   }

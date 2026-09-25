@@ -17,19 +17,22 @@ test("retains the latest 100 settled turns per caller in completion order and pr
   lifecycle.completeTurn(other, "other caller", now)
   const slow = submit(lifecycle, "slow", now)
   const active = submit(lifecycle, "active", now)
+  assert.throws(() => lifecycle.reserveOperation(undefined, "active", {}), { code: "AGENT_BUSY" })
+  const turnIds: string[] = []
 
   for (let index = 1; index <= 100; index++) {
     const turn = submit(lifecycle, "worker", now)
+    turnIds.push(turn.turnId)
     lifecycle.completeTurn(turn, `response ${index}`, now + index)
   }
   lifecycle.completeTurn(slow, "finished later", now + 101)
   const latest = submit(lifecycle, "worker", now + 102)
   lifecycle.completeTurn(latest, "latest response", now + 102)
 
-  for (const turnId of ["worker_turn_1", "worker_turn_2"]) {
+  for (const turnId of turnIds.slice(0, 2)) {
     assert.throws(() => lifecycle.requireTurn(undefined, turnId), { code: "UNKNOWN_TURN" })
   }
-  assert.equal(lifecycle.requireTurn(undefined, "worker_turn_3").response, "response 3")
+  assert.equal(lifecycle.requireTurn(undefined, turnIds[2]!).response, "response 3")
   assert.equal(lifecycle.requireTurn(undefined, slow.turnId).response, "finished later")
   assert.equal(lifecycle.requireTurn(undefined, active.turnId).status, "running")
   assert.equal(lifecycle.requireTurn(otherCaller, other.turnId).response, "other caller")
@@ -57,6 +60,7 @@ test("completed and failed turns expire after 24 hours without changing active w
   assert.equal(failedAgent.status, "uncertain")
   assert.equal(failed.submittedMessageId, undefined)
   assert.equal(failed.observation, undefined)
+  assert.throws(() => lifecycle.reserveOperation(undefined, "failed", {}), { code: "AGENT_BUSY" })
 
   t.mock.timers.tick(24 * 60 * 60_000 - 1)
   assert.equal(lifecycle.requireTurn(undefined, completed.turnId).response, "done")

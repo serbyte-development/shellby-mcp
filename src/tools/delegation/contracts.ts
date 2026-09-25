@@ -15,6 +15,8 @@ export interface ChatGptSubagentRequest {
   prompt: string
   agentId: string
   memory: boolean
+  /** Source to fork only when creating a new agent; existing conversations take precedence. */
+  conversationId?: string
 }
 
 export interface ChatGptCloneSelfRequest {
@@ -42,6 +44,7 @@ export interface ChatGptDelegationPollResult {
 }
 
 export type ChatGptDelegationErrorCode =
+  | "INVALID_ARGUMENT"
   | "BROWSER_UNAVAILABLE"
   | "CHATGPT_NOT_AUTHENTICATED"
   | "UNKNOWN_TURN"

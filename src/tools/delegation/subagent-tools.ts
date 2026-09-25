@@ -38,6 +38,7 @@ const subagentInputSchema = z.object({
     .describe(
       "Allow a new agent to access memory outside its conversation. Turn history is always preserved."
     ),
+  conversation_id: z.string().trim().min(1).max(128).optional().describe("Use when given."),
 })
 
 const subagentRunResultSchema = z.object({
@@ -119,6 +120,7 @@ export function registerSubagentTools(
               agentId: agent.agent_id,
               prompt: agent.prompt,
               memory: agent.memory,
+              conversationId: agent.conversation_id,
             },
             { signal: ctx.mcpReq.signal }
           )

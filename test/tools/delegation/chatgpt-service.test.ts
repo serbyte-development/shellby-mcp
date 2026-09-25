@@ -9,8 +9,10 @@ import { setImmediate } from "node:timers/promises"
 import { type Browser, type BrowserContext, chromium, type Page } from "playwright-core"
 
 import { MCP_CONFIG } from "../../../src/config.js"
+import { extractConversationId } from "../../../src/tools/delegation/chatgpt-browser.js"
 import { createChatGptDelegationService } from "../../../src/tools/delegation/chatgpt-service.js"
 import { ChatGptDelegationError } from "../../../src/tools/delegation/contracts.js"
+import { createDelegationStore } from "../../../src/tools/delegation/store.js"
 
 for (const memory of [false, true]) {
   test(`idle cleanup ${memory ? "allows saved agents to resume" : "reports temporary agents as expired and retains their results"}`, async (t) => {
@@ -141,7 +143,7 @@ test("post-submit persistence failure keeps the turn valid and blocks later subm
     { agentId: "researcher", prompt: "Review this", memory: true },
     {}
   )
-  assert.equal(turnId, "researcher_turn_1")
+  assert.match(turnId, /^researcher_turn_1_/u)
   assert.equal((await service.poll(turnId, 0)).status, "completed")
   assert.equal(fixture.submissions, 1)
   assert.equal(warn.mock.callCount(), 1)
@@ -202,7 +204,7 @@ for (const inlinePostData of [true, false]) {
         { agentId: "researcher", prompt: "Review this", memory: false },
         {}
       )
-      assert.equal(turnId, "researcher_turn_1")
+      assert.match(turnId, /^researcher_turn_1_/u)
       assert.equal(fixture.submissions, 1)
       assert.equal((await service.poll(turnId, 1_000)).response, "Reviewed")
     })
@@ -280,6 +282,195 @@ test("a failed first submission closes its unused page and releases agent capaci
   assert.equal(fixture.submissions, 0)
 })
 
+for (const branchInSamePage of [false, true]) {
+  test(`forks override memory: false, persist, and continue (${branchInSamePage ? "same page" : "popup"})`, async (t) => {
+    const directory = mkdtempSync(join(tmpdir(), "shellby-forked-subagent-"))
+    const previousStateDir = MCP_CONFIG.stateDir
+    MCP_CONFIG.stateDir = directory
+    const fixture = browserFixture({ branchInSamePage })
+    t.mock.method(chromium, "connectOverCDP", async () => fixture.browser)
+    const service = createChatGptDelegationService()
+    t.after(async () => {
+      await service.dispose()
+      MCP_CONFIG.stateDir = previousStateDir
+      rmSync(directory, { recursive: true, force: true })
+    })
+
+    const request = {
+      agentId: "reviewer",
+      prompt: "Review this",
+      memory: false,
+      conversationId: "source",
+    }
+    const first = await service.ask(request, {})
+    assert.match(first, /^reviewer_turn_1_/u)
+    assert.equal((await service.poll(first, 0)).response, "Reviewed")
+    await fixture.pages.at(-1)?.close()
+    const second = await service.ask(
+      { agentId: request.agentId, memory: false, prompt: "Follow up" },
+      {}
+    )
+    assert.match(second, /^reviewer_turn_2_/u)
+    assert.equal((await service.poll(second, 0)).response, "Reviewed")
+    assert.equal(fixture.branches, 1)
+    assert.equal(fixture.submissions, 2)
+    assert.match(fixture.prompts[0]!, /Oververbosity: 1/u)
+    assert.equal(fixture.prompts[1], "Follow up")
+    assert.equal(fixture.pages.filter((page) => !page.isClosed()).length, 1)
+    const store = createDelegationStore(join(directory, "subagents.sqlite"))
+    assert.equal(
+      store.get(undefined, "reviewer")?.conversationUrl,
+      "https://chatgpt.com/c/branch-1"
+    )
+    store.close()
+  })
+}
+
+test("legacy clone tools share startup and preserve their branch on subsequent turns", async (t) => {
+  const directory = mkdtempSync(join(tmpdir(), "shellby-clone-start-"))
+  const previousStateDir = MCP_CONFIG.stateDir
+  MCP_CONFIG.stateDir = directory
+  const fixture = browserFixture()
+  t.mock.method(chromium, "connectOverCDP", async () => fixture.browser)
+  const service = createChatGptDelegationService()
+  t.after(async () => {
+    await service.dispose()
+    MCP_CONFIG.stateDir = previousStateDir
+    rmSync(directory, { recursive: true, force: true })
+  })
+  const first = await service.cloneSelf(
+    { cloneId: "reviewer", sourceConversationUrl: "https://chatgpt.com/c/source", prompt: "First" },
+    {}
+  )
+  assert.match(first, /^reviewer_turn_1_/u)
+  assert.equal((await service.poll(first, 0)).response, "Reviewed")
+  await fixture.pages.at(-1)?.close()
+  const second = await service.cloneRun({ cloneId: "reviewer", prompt: "Second" }, {})
+  assert.equal((await service.poll(second, 0)).response, "Reviewed")
+  assert.equal(fixture.branches, 1)
+  assert.deepEqual(fixture.prompts, ["First", "Second"])
+  assert.equal(fixture.pages.at(-1)?.url(), "https://chatgpt.com/c/branch-1")
+})
+
+test("saved conversations resume after losing counters and results without reforking or reusing polling IDs", async (t) => {
+  const directory = mkdtempSync(join(tmpdir(), "shellby-conversation-continuity-"))
+  const previousStateDir = MCP_CONFIG.stateDir
+  MCP_CONFIG.stateDir = directory
+  const fixtures = [browserFixture(), browserFixture()]
+  let connection = 0
+  t.mock.method(chromium, "connectOverCDP", async () => fixtures[connection++]!.browser)
+  const firstService = createChatGptDelegationService()
+  let restored: ReturnType<typeof createChatGptDelegationService> | undefined
+  t.after(async () => {
+    await (restored ?? firstService).dispose()
+    MCP_CONFIG.stateDir = previousStateDir
+    rmSync(directory, { recursive: true, force: true })
+  })
+  const request = { agentId: "reviewer", prompt: "First", memory: true }
+  const first = await firstService.ask(request, {})
+  assert.equal((await firstService.poll(first, 0)).status, "completed")
+  await firstService.dispose()
+  const db = new DatabaseSync(join(directory, "subagents.sqlite"))
+  db.exec("UPDATE agents SET turn_count = 'lost'")
+  db.close()
+  restored = createChatGptDelegationService()
+  assert.deepEqual(restored.drainEvents(), ["existing_agent agent_id=reviewer"])
+  const next = await restored.ask(
+    { ...request, prompt: "Continue", conversationId: "ignored-source" },
+    {}
+  )
+  assert.match(next, /^reviewer_turn_1_/u)
+  assert.notEqual(next, first)
+  assert.equal((await restored.poll(next, 0)).status, "completed")
+  await assert.rejects(restored.poll(first, 0), { code: "UNKNOWN_TURN" })
+  assert.equal(fixtures[1]!.branches, 0)
+  assert.equal(extractConversationId(fixtures[1]!.pages[0]!.url()), "lifecycle-conversation")
+  assert.deepEqual(fixtures[1]!.prompts, ["Continue"])
+})
+
+test("forks with a client-side URL acquire their saved identity from the submitted turn", async (t) => {
+  const directory = mkdtempSync(join(tmpdir(), "shellby-fork-client-url-"))
+  const previousStateDir = MCP_CONFIG.stateDir
+  MCP_CONFIG.stateDir = directory
+  const fixture = browserFixture({ branchConversationId: "web:pending-branch" })
+  t.mock.method(chromium, "connectOverCDP", async () => fixture.browser)
+  const service = createChatGptDelegationService()
+  t.after(async () => {
+    await service.dispose()
+    MCP_CONFIG.stateDir = previousStateDir
+    rmSync(directory, { recursive: true, force: true })
+  })
+  const request = { agentId: "reviewer", prompt: "First", memory: true, conversationId: "source" }
+  const first = await service.ask(request, {})
+  assert.equal((await service.poll(first, 0)).status, "completed")
+  const second = await service.ask({ ...request, prompt: "Second" }, {})
+  assert.equal((await service.poll(second, 0)).status, "completed")
+  assert.equal(fixture.branches, 1)
+  assert.equal(extractConversationId(fixture.pages.at(-1)!.url()), "lifecycle-conversation")
+  assert.equal(fixture.prompts[1], "Second")
+})
+
+for (const failure of ["branch", "submission"] as const) {
+  test(`failed fork ${failure} closes its pages and releases capacity`, async (t) => {
+    const directory = mkdtempSync(join(tmpdir(), "shellby-fork-cleanup-"))
+    const previousStateDir = MCP_CONFIG.stateDir
+    const previousLimit = MCP_CONFIG.chatGpt.maxDelegatedAgents
+    MCP_CONFIG.stateDir = directory
+    MCP_CONFIG.chatGpt.maxDelegatedAgents = 1
+    t.mock.method(console, "warn", () => {})
+    const error = new Error("forced failure")
+    const fixture = browserFixture(
+      failure === "branch" ? { branchError: error } : { submissionError: error }
+    )
+    t.mock.method(chromium, "connectOverCDP", async () => fixture.browser)
+    const service = createChatGptDelegationService()
+    t.after(async () => {
+      await service.dispose()
+      MCP_CONFIG.stateDir = previousStateDir
+      MCP_CONFIG.chatGpt.maxDelegatedAgents = previousLimit
+      rmSync(directory, { recursive: true, force: true })
+    })
+    for (const agentId of ["first", "second"]) {
+      await assert.rejects(
+        service.ask({ agentId, prompt: "Task", memory: true, conversationId: "source" }, {}),
+        /forced failure/u
+      )
+    }
+    assert.equal(fixture.branches, 2)
+    assert.equal(fixture.submissions, 0)
+    assert.ok(fixture.pages.every((page) => page.isClosed()))
+    const store = createDelegationStore(join(directory, "subagents.sqlite"))
+    assert.deepEqual(store.list(undefined), [])
+    store.close()
+  })
+}
+
+test("invalid conversation IDs fail before opening or submitting a conversation", async (t) => {
+  const directory = mkdtempSync(join(tmpdir(), "shellby-fork-options-"))
+  const previousStateDir = MCP_CONFIG.stateDir
+  MCP_CONFIG.stateDir = directory
+  t.mock.method(console, "warn", () => {})
+  const fixture = browserFixture()
+  t.mock.method(chromium, "connectOverCDP", async () => fixture.browser)
+  const service = createChatGptDelegationService()
+  t.after(async () => {
+    await service.dispose()
+    MCP_CONFIG.stateDir = previousStateDir
+    rmSync(directory, { recursive: true, force: true })
+  })
+  await assert.rejects(
+    service.ask(
+      { agentId: "reviewer", prompt: "Task", memory: true, conversationId: "../source" },
+      {}
+    ),
+    {
+      code: "INVALID_ARGUMENT",
+    }
+  )
+  assert.equal(fixture.pages.length, 0)
+  assert.equal(fixture.submissions, 0)
+})
+
 function browserFixture(
   options: {
     pageCloseFailures?: number
@@ -288,11 +479,16 @@ function browserFixture(
     submissionError?: Error
     serializePrompt?: boolean
     inlinePostData?: boolean
+    branchInSamePage?: boolean
+    branchError?: Error
+    branchConversationId?: string
   } = {}
 ): {
   browser: Browser
   pages: Page[]
   readonly submissions: number
+  readonly branches: number
+  prompts: string[]
 } {
   const pages: Page[] = []
   const sessions = new Map<
@@ -301,6 +497,8 @@ function browserFixture(
   >()
   let connected = true
   let submissions = 0
+  let branches = 0
+  const prompts: string[] = []
   let remainingPageCloseFailures = options.pageCloseFailures ?? 0
   const context = {
     pages: () => pages.filter((page) => !page.isClosed()),
@@ -350,11 +548,42 @@ function browserFixture(
               prompt = value
             },
           },
+          getByRole: (_role: string, input: { name: string }) => {
+            const item = {
+              last: () => item,
+              count: async () => 1,
+              isVisible: async () => true,
+              focus: async () => {},
+              press: async () => {},
+              click: async () => {
+                if (input.name !== "Branch in new Chat") return
+                branches += 1
+                const branchUrl = `https://chatgpt.com/c/${options.branchConversationId ?? `branch-${branches}`}`
+                if (options.branchInSamePage) url = branchUrl
+                else {
+                  const browserSession = await browser.newBrowserCDPSession()
+                  await browserSession.send("Target.createTarget", { url: "about:blank" })
+                  const branch = pages.at(-1)!
+                  await branch.goto(branchUrl)
+                  ;(page as unknown as EventEmitter).emit("popup", branch)
+                }
+                if (options.branchError) throw options.branchError
+              },
+            }
+            return item
+          },
           locator: (selector: string) => {
             const visible =
-              selector === "#prompt-textarea" || selector === 'button[data-testid="send-button"]'
+              selector === "#prompt-textarea" ||
+              selector === 'button[data-testid="send-button"]' ||
+              selector.startsWith("section[") ||
+              selector === 'button[aria-label="More actions"]'
             const locator = {
               first: () => locator,
+              last: () => locator,
+              locator: (nested: string) => page.locator(nested),
+              scrollIntoViewIfNeeded: async () => {},
+              hover: async () => {},
               count: async () => Number(visible),
               isVisible: async () => visible,
               isEnabled: async () => true,
@@ -363,6 +592,7 @@ function browserFixture(
                 if (selector !== 'button[data-testid="send-button"]') return
                 if (options.submissionError) throw options.submissionError
                 submissions += 1
+                prompts.push(prompt)
                 const userMessage = {
                   id: `submitted-user-${submissions}`,
                   author: { role: "user" },
@@ -392,7 +622,10 @@ function browserFixture(
                       },
                     },
                   },
-                  { type: "message_stream_complete", conversation_id: "lifecycle-conversation" },
+                  {
+                    type: "message_stream_complete",
+                    conversation_id: extractConversationId(url) ?? "lifecycle-conversation",
+                  },
                 ]
                   .map((item) => `data: ${JSON.stringify(item)}\n\n`)
                   .join("")
@@ -431,5 +664,9 @@ function browserFixture(
     get submissions() {
       return submissions
     },
+    get branches() {
+      return branches
+    },
+    prompts,
   }
 }
