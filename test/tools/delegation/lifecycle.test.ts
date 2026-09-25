@@ -33,8 +33,8 @@ test("retains the latest 100 settled turns per caller in completion order and pr
   assert.equal(lifecycle.requireTurn(undefined, slow.turnId).response, "finished later")
   assert.equal(lifecycle.requireTurn(undefined, active.turnId).status, "running")
   assert.equal(lifecycle.requireTurn(otherCaller, other.turnId).response, "other caller")
-  assert.equal(latest.prompt, "")
-  assert.equal(active.prompt, "Task")
+  assert.equal(latest.submittedMessageId, undefined)
+  assert.equal(active.submittedMessageId, "active-message")
 })
 
 test("completed and failed turns expire after 24 hours without changing active work or settled status", async (t) => {
@@ -55,7 +55,7 @@ test("completed and failed turns expire after 24 hours without changing active w
   lifecycle.recordActivity(failedAgent, failed, "Working", now + 1)
   assert.equal(completedAgent.status, "idle")
   assert.equal(failedAgent.status, "uncertain")
-  assert.equal(failed.prompt, "")
+  assert.equal(failed.submittedMessageId, undefined)
   assert.equal(failed.observation, undefined)
 
   t.mock.timers.tick(24 * 60 * 60_000 - 1)
@@ -92,13 +92,15 @@ function submit(
     lifecycle.getAgent(parentAgent, agentId) ??
     lifecycle.createSubagentAgent(parentAgent, agentId, false, now)
   lifecycle.registerAgent(parentAgent, agent)
-  const turn = lifecycle.createTurn(parentAgent, agent, "Task", now)
+  const turn = lifecycle.createTurn(parentAgent, agent, now)
+  lifecycle.recordSubmittedMessage(turn, `${agentId}-message`)
   lifecycle.recordSubmittedTurn(
     parentAgent,
     agent,
     turn,
     {
       response: new Promise(() => {}),
+      submit: async (action) => action(),
       dispose: async () => {},
     },
     now

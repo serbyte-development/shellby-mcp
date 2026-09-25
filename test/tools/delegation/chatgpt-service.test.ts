@@ -175,7 +175,86 @@ test("failed idle page close does not expire a temporary agent", async (t) => {
   assert.equal(fixture.submissions, 2)
 })
 
-function browserFixture(options: { pageCloseFailures?: number } = {}): {
+for (const inlinePostData of [true, false]) {
+  for (const afterSendError of [false, true]) {
+    test(`submission preserves the tracked turn with ${inlinePostData ? "inline" : "delayed"} request data when ${afterSendError ? "the browser action fails after sending" : "navigation stalls after Send"}`, async (t) => {
+      const directory = mkdtempSync(join(tmpdir(), "shellby-agent-submit-navigation-"))
+      const previousStateDir = MCP_CONFIG.stateDir
+      MCP_CONFIG.stateDir = directory
+      const fixture = browserFixture({ navigationStalls: true, afterSendError, inlinePostData })
+      t.mock.method(chromium, "connectOverCDP", async () => fixture.browser)
+      const service = createChatGptDelegationService()
+      t.after(async () => {
+        await service.dispose()
+        MCP_CONFIG.stateDir = previousStateDir
+        rmSync(directory, { recursive: true, force: true })
+      })
+
+      const turnId = await service.ask(
+        { agentId: "researcher", prompt: "Review this", memory: false },
+        {}
+      )
+      assert.equal(turnId, "researcher_turn_1")
+      assert.equal(fixture.submissions, 1)
+      assert.equal((await service.poll(turnId, 1_000)).response, "Reviewed")
+    })
+  }
+}
+
+test("submission failure disposes the unused observer without an unhandled rejection", async (t) => {
+  const directory = mkdtempSync(join(tmpdir(), "shellby-agent-submit-failure-"))
+  const previousStateDir = MCP_CONFIG.stateDir
+  MCP_CONFIG.stateDir = directory
+  const fixture = browserFixture({ submissionError: new Error("Send unavailable") })
+  t.mock.method(chromium, "connectOverCDP", async () => fixture.browser)
+  const service = createChatGptDelegationService()
+  t.after(async () => {
+    await service.dispose()
+    MCP_CONFIG.stateDir = previousStateDir
+    rmSync(directory, { recursive: true, force: true })
+  })
+
+  await assert.rejects(
+    service.ask({ agentId: "researcher", prompt: "Review this", memory: false }, {}),
+    /Send unavailable/u
+  )
+  await setImmediate()
+  assert.equal(fixture.submissions, 0)
+})
+
+test("a prompt serialized as Markdown still completes the submitted turn", async (t) => {
+  const directory = mkdtempSync(join(tmpdir(), "shellby-agent-serialized-prompt-"))
+  const previousStateDir = MCP_CONFIG.stateDir
+  MCP_CONFIG.stateDir = directory
+  const fixture = browserFixture({ serializePrompt: true })
+  t.mock.method(chromium, "connectOverCDP", async () => fixture.browser)
+  const service = createChatGptDelegationService()
+  t.after(async () => {
+    await service.dispose()
+    MCP_CONFIG.stateDir = previousStateDir
+    rmSync(directory, { recursive: true, force: true })
+  })
+
+  const turnId = await service.ask(
+    { agentId: "researcher", prompt: "Open https://example.com/ with `web.run`.", memory: false },
+    {}
+  )
+  const result = await service.poll(turnId, 0)
+  assert.equal(result.status, "completed")
+  assert.equal(result.response, "Reviewed")
+  assert.equal(fixture.submissions, 1)
+})
+
+function browserFixture(
+  options: {
+    pageCloseFailures?: number
+    navigationStalls?: boolean
+    afterSendError?: boolean
+    submissionError?: Error
+    serializePrompt?: boolean
+    inlinePostData?: boolean
+  } = {}
+): {
   browser: Browser
   pages: Page[]
   readonly submissions: number
@@ -206,8 +285,15 @@ function browserFixture(options: { pageCloseFailures?: number } = {}): {
         let closed = false
         let url = "about:blank"
         let prompt = ""
+        let requestPostData = ""
         const cdp = Object.assign(new EventEmitter(), {
-          send: async () => ({ targetInfo: { targetId } }),
+          send: async (method: string) => {
+            if (method === "Network.getRequestPostData") {
+              await setImmediate()
+              return { postData: requestPostData }
+            }
+            return { targetInfo: { targetId } }
+          },
           detach: async () => {},
         })
         const page = Object.assign(new EventEmitter(), {
@@ -238,11 +324,29 @@ function browserFixture(options: { pageCloseFailures?: number } = {}): {
               isVisible: async () => visible,
               isEnabled: async () => true,
               press: async () => {},
-              click: async () => {
+              click: async (clickOptions?: { noWaitAfter?: boolean }) => {
                 if (selector !== 'button[data-testid="send-button"]') return
+                if (options.submissionError) throw options.submissionError
                 submissions += 1
+                const userMessage = {
+                  id: `submitted-user-${submissions}`,
+                  author: { role: "user" },
+                  content: {
+                    parts: [
+                      options.serializePrompt
+                        ? prompt
+                            .replaceAll(
+                              "https://example.com/",
+                              "[https://example.com/](https://example.com/)"
+                            )
+                            .replaceAll("`", "\\`")
+                            .replaceAll("---", "\\---")
+                        : prompt,
+                    ],
+                  },
+                }
                 const body = [
-                  { v: { message: { author: { role: "user" }, content: { parts: [prompt] } } } },
+                  { v: { message: userMessage } },
                   {
                     v: {
                       message: {
@@ -257,17 +361,24 @@ function browserFixture(options: { pageCloseFailures?: number } = {}): {
                 ]
                   .map((item) => `data: ${JSON.stringify(item)}\n\n`)
                   .join("")
+                requestPostData = JSON.stringify({ action: "next", messages: [userMessage] })
                 cdp.emit("Network.requestWillBeSent", {
                   requestId: "turn",
                   request: {
                     method: "POST",
                     url: "https://chatgpt.com/backend-api/f/conversation",
+                    ...(options.inlinePostData === false ? {} : { postData: requestPostData }),
                   },
                 })
                 cdp.emit("Network.dataReceived", {
                   requestId: "turn",
                   data: Buffer.from(body).toString("base64"),
                 })
+                if (
+                  options.afterSendError ||
+                  (options.navigationStalls && !clickOptions?.noWaitAfter)
+                )
+                  throw new Error("Navigation timed out after Send")
               },
             }
             return locator

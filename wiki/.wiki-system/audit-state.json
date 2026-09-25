@@ -23,7 +23,7 @@
       "fingerprint": "sha256:2f47c9a11bed5d686844a6635dff6fc2223d2b767cc1217bcf1c8d550096e28d"
     },
     "pages/operations/build-and-test.md": {
-      "fingerprint": "sha256:a7b1fb7d08bff28a3a5dc78f77dfb7c2ba42c80124aeceab43b75b32c9afba4e"
+      "fingerprint": "sha256:60f19f9e72d5f26f886c8d3cd5c1ebd7291dc587fba33d72c91039ff4f76ed7b"
     },
     "pages/operations/configuration-and-startup.md": {
       "fingerprint": "sha256:3d132b4d35aaa001d9d4a69efa51b322fe641bc2bc347ef576816abf8bdc23b2"
@@ -38,13 +38,13 @@
       "fingerprint": "sha256:6f5dfe505d2f69949c458f1153ce7373eec8bfddb23d49d137c1c65386ecb925"
     },
     "pages/subagents/browser-chatgpt-subagents.md": {
-      "fingerprint": "sha256:31d0b8996f7f35da04a618595a120eff89722ddcfca48c96fa107398c8acb261"
+      "fingerprint": "sha256:3892f7ba79bf48c9c0f20c7f353e3d78888e4ae833297fbabeeb34e8d9acd615"
     },
     "pages/subagents/chatgpt-cdp-transport.md": {
-      "fingerprint": "sha256:04e89a1073696a51a5dab3f3cd500a4862ee8292c7e6e988dd68efd961816c00"
+      "fingerprint": "sha256:1c679ebc540228c5b88a9b228dc75bb12a61fa159f4f46b223fa6537d4a3bb3e"
     },
     "pages/subagents/subagent-completion.md": {
-      "fingerprint": "sha256:e7fd35acd2683d05dacb10f290b17f14a6b266411227a4774bcbf08d2dbae69a"
+      "fingerprint": "sha256:b81cbe58964dd69266609051dddb1ba51c02a3dc395cd8cee8f19bce29cbdc50"
     },
     "pages/tool-naming-and-schema-design.md": {
       "fingerprint": "sha256:076176a0984d6c7260d15a32f70052f239cae1e8304b9ae16f88952409ae54a6"
@@ -53,7 +53,7 @@
       "fingerprint": "sha256:17645918fe50734d43026e41cea5f06a4895c7614d1419fa771269e6d2635c2d"
     },
     "pages/tools/clones.md": {
-      "fingerprint": "sha256:6158e10c285c5e96db668f7ab23caee7b2c0181317f7b63d3b78b19340a0383c"
+      "fingerprint": "sha256:f2eeaad1c53f05f029e1719075b224b4f7f4bea282a4aaebeac2789092e200d0"
     },
     "pages/tools/fetch-url.md": {
       "fingerprint": "sha256:186c9c0740a7ba1cdd4d04925342d2ed368dc27e0f9a21e9b163fb98028a1e11"
@@ -65,7 +65,7 @@
       "fingerprint": "sha256:d254890e7976855b2d8426f0602671f8f56e9a2b797b72788e7df8b497deb6da"
     },
     "pages/tools/subagent.md": {
-      "fingerprint": "sha256:2f61417d2da6262c66a3aa040e915ff52f7c8a4b195803886ce3623f27ab9538"
+      "fingerprint": "sha256:dca5c36de5ce0eb04dcba9acd0faed76dbe4d927b3e91ae3fc019eab27130e1c"
     },
     "pages/workspace-tooling.md": {
       "fingerprint": "sha256:fbec8923ff509def4f7824afc4e1e790ce3ecd08701860440d0c27e22a20116f"

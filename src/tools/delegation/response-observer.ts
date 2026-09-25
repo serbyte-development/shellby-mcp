@@ -1,31 +1,40 @@
 import type { CDPSession, Page } from "playwright-core"
 
 import type { ChatGptDelegationActivity } from "./contracts.js"
-import { type ChatGptTurnCompletion, ChatGptTurnTracker } from "./turn-protocol.js"
+import {
+  type ChatGptTurnCompletion,
+  ChatGptTurnTracker,
+  submittedUserMessageId,
+} from "./turn-protocol.js"
 
 export interface AssistantResponseObservation {
   response: Promise<ChatGptTurnCompletion>
+  /**
+   * Invoke Send once. On action failure, finish reading metadata for requests
+   * already observed and preserve a known submission; otherwise rethrow.
+   */
+  submit(action: () => Promise<void>): Promise<void>
   dispose(): Promise<void>
 }
 
 const SSE_EVENT_BOUNDARY_RE = /\r?\n\r?\n/u
 
-/** Observe one submitted turn from raw CDP HTTP SSE or the turn WebSocket; first exact completion wins. */
+/**
+ * Install on an idle managed page before Send. The first new user-message POST
+ * supplies the identity for HTTP, WebSocket, and history recovery. Never resends.
+ */
 export async function observeAssistantResponse(
   page: Page,
   input: {
-    prompt: string
+    onSubmitted?: (messageId: string) => void
     onActivity?: (activity?: ChatGptDelegationActivity) => void
     onConversationId?: (conversationId: string) => void
   }
 ): Promise<AssistantResponseObservation> {
-  const webSocketTracker = new ChatGptTurnTracker(
-    input.prompt,
-    input.onActivity,
-    input.onConversationId
-  )
-  const httpTracker = new ChatGptTurnTracker(input.prompt, input.onActivity, input.onConversationId)
-  const requestIds = new Set<string>()
+  let messageId: string | undefined
+  let webSocketTracker: ChatGptTurnTracker | undefined
+  let httpTracker: ChatGptTurnTracker | undefined
+  const requests = new Map<string, Promise<boolean>>()
   const buffers = new Map<string, string>()
   let cdp: CDPSession | undefined
   let settled = false
@@ -35,6 +44,9 @@ export async function observeAssistantResponse(
     resolveResponse = resolve
     rejectResponse = reject
   })
+  // Submission can fail before the service starts awaiting this promise. Keep
+  // disposal/page-close rejection handled while preserving it for response consumers.
+  void response.catch(() => undefined)
 
   const cleanup = async (): Promise<void> => {
     page.off("close", pageCloseHandler)
@@ -58,7 +70,7 @@ export async function observeAssistantResponse(
       const end = match.index + match[0].length
       const block = buffer.slice(0, end)
       buffer = buffer.slice(end)
-      finish(httpTracker.ingestSse(block))
+      finish(httpTracker?.ingestSse(block))
       if (settled) return
       match = SSE_EVENT_BOUNDARY_RE.exec(buffer)
     }
@@ -68,28 +80,58 @@ export async function observeAssistantResponse(
   const frameHandler = (event: { response?: { payloadData?: string } }): void => {
     const payload = event.response?.payloadData
     if (!payload || settled) return
-    try {
-      finish(webSocketTracker.ingestFrame(payload))
-    } catch {
-      // Ignore unrelated or malformed private-protocol frames.
+    // CDP may omit inline POST data. Wait for its retrieval before consuming frames.
+    void Promise.all(requests.values())
+      .then(() => {
+        if (!settled) finish(webSocketTracker?.ingestFrame(payload))
+      })
+      .catch(() => undefined)
+  }
+
+  const bindRequest = (postData: string): boolean => {
+    if (settled) return false
+    const submittedId = submittedUserMessageId(postData)
+    if (!submittedId || (messageId && submittedId !== messageId)) return false
+    if (!messageId) {
+      messageId = submittedId
+      httpTracker = new ChatGptTurnTracker(messageId, input.onActivity, input.onConversationId)
+      webSocketTracker = new ChatGptTurnTracker(messageId, input.onActivity, input.onConversationId)
+      input.onSubmitted?.(messageId)
     }
+    return true
   }
 
   const requestHandler = (event: {
     requestId: string
-    request?: { url?: string; method?: string }
+    request?: { url?: string; method?: string; postData?: string }
   }): void => {
-    if (settled || event.request?.method !== "POST" || !isConversationEndpoint(event.request.url))
+    if (
+      settled ||
+      !cdp ||
+      event.request?.method !== "POST" ||
+      !isConversationEndpoint(event.request.url)
+    )
       return
-    requestIds.add(event.requestId)
     buffers.set(event.requestId, "")
+    requests.set(
+      event.requestId,
+      event.request.postData
+        ? Promise.resolve(bindRequest(event.request.postData))
+        : cdp
+            .send("Network.getRequestPostData", { requestId: event.requestId })
+            .then((result) => bindRequest(result.postData))
+            .catch(() => false)
+    )
   }
 
   const responseHandler = (event: { requestId: string }): void => {
-    if (settled || !requestIds.has(event.requestId) || !cdp) return
-    void cdp
-      .send("Network.streamResourceContent", { requestId: event.requestId })
-      .then((result) => {
+    void requests
+      .get(event.requestId)
+      ?.then(async (matches) => {
+        if (!matches || settled || !cdp) return
+        const result = await cdp.send("Network.streamResourceContent", {
+          requestId: event.requestId,
+        })
         const bufferedData = typeof result.bufferedData === "string" ? result.bufferedData : ""
         if (bufferedData)
           feedHttp(event.requestId, Buffer.from(bufferedData, "base64").toString("utf8"))
@@ -98,24 +140,27 @@ export async function observeAssistantResponse(
   }
 
   const dataHandler = (event: { requestId: string; data?: string }): void => {
-    if (settled || !requestIds.has(event.requestId) || !event.data) return
-    feedHttp(event.requestId, Buffer.from(event.data, "base64").toString("utf8"))
+    const data = event.data
+    if (!data) return
+    void requests
+      .get(event.requestId)
+      ?.then((matches) => {
+        if (matches) feedHttp(event.requestId, Buffer.from(data, "base64").toString("utf8"))
+      })
+      .catch(() => undefined)
   }
 
   const loadingFinishedHandler = (event: { requestId: string }): void => {
-    if (settled || !requestIds.has(event.requestId) || !cdp) return
-    void cdp
-      .send("Network.getResponseBody", { requestId: event.requestId })
-      .then((result) => {
+    void requests
+      .get(event.requestId)
+      ?.then(async (matches) => {
+        if (!matches || settled || !cdp || !messageId) return
+        const result = await cdp.send("Network.getResponseBody", { requestId: event.requestId })
         if (settled || typeof result.body !== "string") return
         const body = result.base64Encoded
           ? Buffer.from(result.body, "base64").toString("utf8")
           : result.body
-        const fallback = new ChatGptTurnTracker(
-          input.prompt,
-          input.onActivity,
-          input.onConversationId
-        )
+        const fallback = new ChatGptTurnTracker(messageId, input.onActivity, input.onConversationId)
         finish(fallback.ingestSse(body))
       })
       .catch(() => undefined)
@@ -144,6 +189,14 @@ export async function observeAssistantResponse(
 
   return {
     response,
+    async submit(action) {
+      try {
+        await action()
+      } catch (error) {
+        await Promise.all(requests.values())
+        if (!messageId) throw error
+      }
+    },
     async dispose() {
       if (!settled) {
         settled = true

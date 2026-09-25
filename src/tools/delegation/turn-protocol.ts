@@ -10,6 +10,7 @@ export interface ChatGptTurnCompletion {
 }
 
 interface NormalizedMessage {
+  id?: string
   role?: string
   status?: string
   endTurn?: boolean | null
@@ -17,7 +18,7 @@ interface NormalizedMessage {
   text: string
 }
 
-/** Reconstruct exactly one submitted ChatGPT turn from either HTTP SSE or a turn WebSocket topic. */
+/** Reconstruct the turn for an outgoing user-message ID, independent of composer text serialization. */
 export class ChatGptTurnTracker {
   private sourceId?: string
   private sourceTurnId?: string
@@ -28,7 +29,7 @@ export class ChatGptTurnTracker {
   private complete = false
 
   constructor(
-    private readonly prompt: string,
+    private readonly submittedMessageId: string,
     private readonly onActivity?: (activity?: ChatGptDelegationActivity) => void,
     private readonly onConversationId?: (conversationId: string) => void
   ) {}
@@ -83,11 +84,11 @@ export class ChatGptTurnTracker {
 
       const value = asRecord(record.v)
       const message = value ? normalizeMessage(value) : undefined
-      this.bindPromptMessage(message, sourceId, turnId)
+      this.bindUserMessage(message, sourceId, turnId)
 
       const inputMessage = asRecord(record.input_message)
       const input = inputMessage ? normalizeMessage({ message: inputMessage }) : undefined
-      this.bindPromptMessage(input, sourceId, turnId)
+      this.bindUserMessage(input, sourceId, turnId)
 
       if (this.sourceId !== sourceId) continue
       this.captureConversationId(record)
@@ -108,12 +109,12 @@ export class ChatGptTurnTracker {
     return this.result()
   }
 
-  private bindPromptMessage(
+  private bindUserMessage(
     message: NormalizedMessage | undefined,
     sourceId: string,
     turnId?: string
   ): void {
-    if (message?.role === "user" && promptsMatch(message.text, this.prompt)) {
+    if (message?.role === "user" && message.id === this.submittedMessageId) {
       this.bind(sourceId, turnId)
     }
   }
@@ -188,20 +189,13 @@ export class ChatGptTurnTracker {
   }
 }
 
-function promptsMatch(observed: string, submitted: string): boolean {
-  return normalizePrompt(observed) === normalizePrompt(submitted)
-}
-
-function normalizePrompt(text: string): string {
-  return text.normalize("NFKC").replace(/\s+/gu, " ").trim()
-}
-
 function normalizeMessage(record: Record<string, unknown>): NormalizedMessage | undefined {
   const message = asRecord(record.message)
   if (!message) return undefined
   const author = asRecord(message.author)
   if (!author) return undefined
   return {
+    id: stringValue(message.id),
     role: stringValue(author.role),
     status: stringValue(message.status),
     endTurn: nullableBoolean(message.end_turn),
@@ -275,23 +269,36 @@ function stringValue(value: unknown): string | undefined {
   return typeof value === "string" ? value : undefined
 }
 
+/** Identify the newly submitted user message in a conversation POST; ignore other actions. */
+export function submittedUserMessageId(postData: string): string | undefined {
+  const request = asRecord(tryParseJson(postData))
+  if (request?.action !== "next" || !Array.isArray(request.messages)) return undefined
+  for (let index = request.messages.length - 1; index >= 0; index -= 1) {
+    const message = asRecord(request.messages[index])
+    if (asRecord(message?.author)?.role === "user") return stringValue(message?.id)
+  }
+  return undefined
+}
+
 export interface ConversationMessage {
+  id?: string
   role: "user" | "assistant"
   text: string
 }
 
-export function findLatestAssistantAfterPrompt(
+export function findLatestAssistantAfterMessage(
   messages: readonly ConversationMessage[],
-  prompt: string,
+  submittedMessageId: string | undefined,
   expectedUserTurnCount: number
 ): ConversationMessage | undefined {
+  if (!submittedMessageId) return undefined
   const userTurnCount = messages.filter((message) => message.role === "user").length
   if (userTurnCount !== expectedUserTurnCount) return undefined
 
   let promptIndex = -1
   for (let index = messages.length - 1; index >= 0; index -= 1) {
     const message = messages[index]
-    if (message?.role === "user" && message.text.trim() === prompt.trim()) {
+    if (message?.role === "user" && message.id === submittedMessageId) {
       promptIndex = index
       break
     }
@@ -342,5 +349,5 @@ function messageFromRaw(value: unknown): ConversationMessage | undefined {
     const recipient = message.recipient
     if (recipient && recipient !== "all") return undefined
   }
-  return { role, text }
+  return { id: stringValue(message?.id), role, text }
 }

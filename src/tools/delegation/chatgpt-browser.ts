@@ -200,6 +200,7 @@ export async function submitComposer(
   composer: Locator,
   signal?: AbortSignal
 ): Promise<void> {
+  await dismissBlockingChatGptOverlay(page, signal)
   const selectors = [
     'button[data-testid="send-button"]',
     'button[aria-label="Send prompt"]',
@@ -215,13 +216,16 @@ export async function submitComposer(
         (await button.isVisible().catch(() => false)) &&
         (await button.isEnabled().catch(() => false))
       ) {
-        await retryAfterDismissingBlockingOverlay(page, () => button.click(), signal)
+        // Send can start generation before navigation settles. Completion belongs to the
+        // response observer; a navigation timeout must not discard an already-sent turn.
+        // Do not retry Send after an error: the request may already be in flight.
+        await button.click({ noWaitAfter: true })
         return
       }
     }
     await delay(50, signal)
   }
-  await retryAfterDismissingBlockingOverlay(page, () => composer.press("Enter"), signal)
+  await composer.press("Enter", { noWaitAfter: true })
 }
 
 export async function dismissBlockingChatGptOverlay(

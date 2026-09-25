@@ -34,7 +34,7 @@ import {
   DelegationLifecycle,
 } from "./lifecycle.js"
 import { type AssistantResponseObservation, observeAssistantResponse } from "./response-observer.js"
-import { extractConversationMessages, findLatestAssistantAfterPrompt } from "./turn-protocol.js"
+import { extractConversationMessages, findLatestAssistantAfterMessage } from "./turn-protocol.js"
 
 const CLEANUP_INTERVAL_MS = 60_000
 const CONNECT_TIMEOUT_MS = 3_000
@@ -185,10 +185,10 @@ export function createChatGptDelegationService(): ChatGptDelegationService {
         if (remaining > 0) await delay(remaining, signal)
       }
       const page = await ensureAgentPage(parentAgent, agent)
-      const turn = lifecycle.createTurn(parentAgent, agent, submittedPrompt, Date.now())
+      const turn = lifecycle.createTurn(parentAgent, agent, Date.now())
 
       observation = await observeAssistantResponse(page, {
-        prompt: submittedPrompt,
+        onSubmitted: (messageId) => lifecycle.recordSubmittedMessage(turn, messageId),
         onConversationId:
           agent.kind === "clone"
             ? undefined
@@ -205,7 +205,7 @@ export function createChatGptDelegationService(): ChatGptDelegationService {
       assertAgentPage(page, agent)
       await delay(SUBMISSION_GRACE_MS, signal)
       await detectRateLimit()
-      await submitComposer(page, composer, signal)
+      await observation.submit(() => submitComposer(page, composer, signal))
 
       lifecycle.recordSubmittedTurn(parentAgent, agent, turn, observation, Date.now())
       observation = undefined
@@ -347,9 +347,9 @@ export function createChatGptDelegationService(): ChatGptDelegationService {
           return response.ok ? response.json() : undefined
         }, conversationId)
         .catch(() => undefined)
-      const answer = findLatestAssistantAfterPrompt(
+      const answer = findLatestAssistantAfterMessage(
         extractConversationMessages(payload),
-        turn.prompt,
+        turn.submittedMessageId,
         agent.turnCount
       )
       if (answer) {
@@ -368,9 +368,9 @@ export function createChatGptDelegationService(): ChatGptDelegationService {
       lifecycle.recordPageReady(agent, page, Date.now())
       await closePageIfOpen(oldPage)
 
-      const answer = findLatestAssistantAfterPrompt(
+      const answer = findLatestAssistantAfterMessage(
         extractConversationMessages(payload),
-        turn.prompt,
+        turn.submittedMessageId,
         agent.turnCount
       )
       if (!answer) return false

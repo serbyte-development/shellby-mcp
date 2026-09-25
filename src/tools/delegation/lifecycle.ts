@@ -45,7 +45,8 @@ interface TurnState {
   response?: string
   errorCode?: string
   errorMessage?: string
-  prompt: string
+  /** ChatGPT's outgoing user-message ID, shared by streaming and history recovery. */
+  submittedMessageId?: string
   settledAt?: number
   observation?: AssistantResponseObservation
   settled: Promise<void>
@@ -242,7 +243,6 @@ export class DelegationLifecycle {
   createTurn(
     parentAgent: AgentIdentity | undefined,
     agent: AgentState,
-    prompt: string,
     now: number
   ): BrowserTurnState {
     const settlement = createTurnSettlement()
@@ -253,10 +253,13 @@ export class DelegationLifecycle {
       status: "running",
       recoveryAttempted: false,
       lastActivityAt: now,
-      prompt,
       settled: settlement.promise,
       settle: settlement.resolve,
     }
+  }
+
+  recordSubmittedMessage(turn: TurnState, messageId: string): void {
+    if (turn.status === "running") turn.submittedMessageId = messageId
   }
 
   recordActivity(
@@ -572,7 +575,7 @@ export class DelegationLifecycle {
     if (scope?.activeOperations.get(turn.agentId)?.turnId === turn.turnId) {
       scope.activeOperations.delete(turn.agentId)
     }
-    turn.prompt = ""
+    turn.submittedMessageId = undefined
     turn.settledAt = now
     turn.settle()
     if (scope) {

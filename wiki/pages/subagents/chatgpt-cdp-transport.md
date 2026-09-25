@@ -13,6 +13,8 @@ Private transport compatibility is empirical. Historical captures establish obse
 
 [response-observer.ts](../../../src/tools/delegation/response-observer.ts) watches POST `/backend-api/f/conversation` through `Network.streamResourceContent`/`Network.dataReceived`, with a `Network.getResponseBody` fallback at loading completion. `Network.webSocketFrameReceived` feeds `conversation-turn-*` envelopes into the same parser implementation. Streams preserve structured Markdown and assistant patches; normal completion needs no DOM scraping or `stream_status` polling.
 
+The outgoing `action: next` request supplies the user-message ID for correlation. If CDP omits inline POST data, `Network.getRequestPostData` retrieves it; incoming events wait for that identity. [Observer tests](../../../test/tools/delegation/response-observer.test.ts) cover HTTP, WebSocket, and response-body fallback with inline and delayed request data.
+
 Historical long-thinking traffic included `safety_review_update` and SSE comment pings without assistant text. Keep transport liveness separate from coarse activity labels. Earlier probes also associated extra history/reload traffic with conversation-history rate limits; bounded recovery is deliberate. ChatGPT's frontend may still issue its own requests.
 
 ## Investigating drift

@@ -32,7 +32,7 @@ Service consumes live read-only agent/turn views. Lifecycle operations own page 
 
 A new saved agent opens the configured project URL; later turns use its stable conversation URL. Restore a missing page or navigate a mismatched page before submission. Temporary chats can continue only while their page survives. Clones follow their branched URL.
 
-Install the CDP observer before entering/submitting the prompt. Preserve interaction/inter-turn delays, pre-submit grace, and rate-limit checks; click Send at most once for a requested turn. Successful submission detaches generation from the originating request and returns a local turn ID.
+Install the CDP observer before entering/submitting the prompt. Preserve interaction/inter-turn delays, pre-submit grace, and rate-limit checks; dismiss overlays before Send and never retry that action after an error. Send does not wait for navigation: ChatGPT can start generation while navigation remains pending. Invoke Send through the observation's `submit` operation: it resolves pending outgoing-request metadata after an action error and preserves a known submission. The service need not inspect partially populated turn state to decide whether Send succeeded. Submission detaches generation from the originating request and returns a local turn ID. [Completion](./subagent-completion.md) owns message correlation.
 
 First ordinary subagent prompt appends brevity and no-subagent instructions, also restricting `computer_*` when enabled. Later turns and clones omit this injection. Browser/account/UI details stay behind the service; public error projection belongs to the adapters.
 

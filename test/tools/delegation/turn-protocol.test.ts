@@ -3,7 +3,9 @@ import test from "node:test"
 
 import {
   ChatGptTurnTracker,
-  findLatestAssistantAfterPrompt,
+  extractConversationMessages,
+  findLatestAssistantAfterMessage,
+  submittedUserMessageId,
 } from "../../../src/tools/delegation/turn-protocol.js"
 
 function turnFrame(topicId: string, encodedItem: string): string {
@@ -23,30 +25,32 @@ function message(
   role: "user" | "assistant",
   text: string,
   options: {
+    id?: string
     conversationId?: string
     recipient?: string
     status?: string
     endTurn?: boolean | null
   } = {}
 ): string {
-  return `event: delta\ndata: ${JSON.stringify({ conversation_id: options.conversationId, v: { message: { id: `${role}-1`, author: { role }, content: { content_type: "text", parts: [text] }, status: options.status ?? "finished_successfully", end_turn: options.endTurn ?? null, metadata: {}, recipient: options.recipient ?? "all" } } })}\n\n`
+  return `event: delta\ndata: ${JSON.stringify({ conversation_id: options.conversationId, v: { message: { id: options.id ?? `${role}-1`, author: { role }, content: { content_type: "text", parts: [text] }, status: options.status ?? "finished_successfully", end_turn: options.endTurn ?? null, metadata: {}, recipient: options.recipient ?? "all" } } })}\n\n`
 }
 
 test("history recovery rejects an older identical prompt before the current turn appears", () => {
   const staleHistory = [
-    { role: "user" as const, text: "repeat" },
+    { id: "old-user", role: "user" as const, text: "repeat" },
     { role: "assistant" as const, text: "old answer" },
   ]
 
-  assert.equal(findLatestAssistantAfterPrompt(staleHistory, "repeat", 2), undefined)
+  assert.equal(findLatestAssistantAfterMessage(staleHistory, "current-user", 2), undefined)
+  assert.equal(findLatestAssistantAfterMessage(staleHistory, "current-user", 1), undefined)
   assert.deepEqual(
-    findLatestAssistantAfterPrompt(
+    findLatestAssistantAfterMessage(
       [
         ...staleHistory,
-        { role: "user", text: "repeat" },
+        { id: "current-user", role: "user", text: "repeat" },
         { role: "assistant", text: "new answer" },
       ],
-      "repeat",
+      "current-user",
       2
     ),
     {
@@ -56,11 +60,46 @@ test("history recovery rejects an older identical prompt before the current turn
   )
 })
 
-test("CDP tracker binds only the submitted prompt and reconstructs exact final Markdown", () => {
+test("history recovery uses message identity after composer serialization", () => {
+  const messages = extractConversationMessages({
+    messages: [
+      { id: "submitted", author: { role: "user" }, content: { parts: ["Use \\`web.run\\`."] } },
+      {
+        id: "answer",
+        author: { role: "assistant" },
+        content: { parts: ["done"] },
+        end_turn: true,
+        recipient: "all",
+      },
+    ],
+  })
+  assert.equal(findLatestAssistantAfterMessage(messages, "submitted", 1)?.text, "done")
+  assert.equal(findLatestAssistantAfterMessage(messages, undefined, 1), undefined)
+})
+
+test("outgoing request identity ignores malformed requests and non-submission actions", () => {
+  const user = { id: "submitted", author: { role: "user" } }
+  const assistant = { id: "assistant", author: { role: "assistant" } }
+  assert.equal(submittedUserMessageId("not JSON"), undefined)
+  assert.equal(
+    submittedUserMessageId(JSON.stringify({ action: "continue", messages: [user] })),
+    undefined
+  )
+  assert.equal(
+    submittedUserMessageId(JSON.stringify({ action: "next", messages: [assistant] })),
+    undefined
+  )
+  assert.equal(
+    submittedUserMessageId(JSON.stringify({ action: "next", messages: [assistant, user] })),
+    "submitted"
+  )
+})
+
+test("CDP tracker binds only the submitted user-message ID and reconstructs exact final Markdown", () => {
   const activities: string[] = []
   const conversationIds: string[] = []
   const tracker = new ChatGptTurnTracker(
-    "review",
+    "user-1",
     (activity) => {
       if (activity) activities.push(activity)
     },
@@ -71,7 +110,7 @@ test("CDP tracker binds only the submitted prompt and reconstructs exact final M
   tracker.ingestFrame(
     turnFrame(
       "conversation-turn-other",
-      message("user", "other", { conversationId: "wrong-conversation" })
+      message("user", "review", { id: "other-user", conversationId: "wrong-conversation" })
     )
   )
   tracker.ingestFrame(
@@ -122,7 +161,7 @@ test("CDP tracker binds only the submitted prompt and reconstructs exact final M
 })
 
 test("HTTP SSE tracker reconstructs the same final assistant response", () => {
-  const tracker = new ChatGptTurnTracker("review")
+  const tracker = new ChatGptTurnTracker("user-1")
   const sse = [
     message("user", "review"),
     message("assistant", "", { status: "in_progress", endTurn: null }),
@@ -139,7 +178,7 @@ test("HTTP SSE tracker reconstructs the same final assistant response", () => {
 
 test("HTTP SSE tracker counts bound heartbeats and safety review updates as activity without changing the status label", () => {
   const activities: Array<string | undefined> = []
-  const tracker = new ChatGptTurnTracker("review", (activity) => activities.push(activity))
+  const tracker = new ChatGptTurnTracker("user-1", (activity) => activities.push(activity))
 
   tracker.ingestSse(": ping - before-bind\r\n\r\n")
   assert.deepEqual(activities, [])
@@ -168,7 +207,7 @@ test("HTTP SSE tracker counts bound heartbeats and safety review updates as acti
 
 test("CDP tracker counts bound turn stream traffic as activity even when it has no status label", () => {
   const activities: Array<string | undefined> = []
-  const tracker = new ChatGptTurnTracker("review", (activity) => activities.push(activity))
+  const tracker = new ChatGptTurnTracker("user-1", (activity) => activities.push(activity))
   const topic = "conversation-turn-turn-progress"
 
   tracker.ingestFrame(turnFrame(topic, message("user", "review")))
@@ -179,12 +218,15 @@ test("CDP tracker counts bound turn stream traffic as activity even when it has 
   assert.equal(activities.at(-1), undefined)
 })
 
-test("CDP tracker tolerates ChatGPT prompt whitespace normalization", () => {
-  const tracker = new ChatGptTurnTracker("Optimize familiarity. \n\nGive your preferred syntax.")
+test("CDP tracker accepts composer serialization through the submitted user-message ID", () => {
+  const tracker = new ChatGptTurnTracker("user-1")
   const topic = "conversation-turn-turn-normalized"
 
   tracker.ingestFrame(
-    turnFrame(topic, message("user", "Optimize familiarity.\u00a0\n Give your preferred syntax."))
+    turnFrame(
+      topic,
+      message("user", "Open [https://example.com/](https://example.com/) with \\`web.run\\`.")
+    )
   )
   tracker.ingestFrame(turnFrame(topic, message("assistant", "done", { endTurn: true })))
   const result = tracker.ingestFrame(
@@ -202,7 +244,7 @@ test("CDP tracker tolerates ChatGPT prompt whitespace normalization", () => {
 })
 
 test("CDP tracker does not complete a tool-call assistant message", () => {
-  const tracker = new ChatGptTurnTracker("review")
+  const tracker = new ChatGptTurnTracker("user-1")
   const topic = "conversation-turn-turn-2"
   tracker.ingestFrame(turnFrame(topic, message("user", "review")))
   tracker.ingestFrame(

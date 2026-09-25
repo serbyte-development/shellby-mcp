@@ -48,7 +48,7 @@ interface PollDiagnostic {
   model_text_excerpt?: string
 }
 
-test("live MCP subagent_run/subagent_result preserves response and context across two turns", {
+test("live MCP temporary subagent preserves a serialized prompt and context across two turns", {
   skip: !LIVE_TEST_ENABLED,
   timeout: LIVE_TIMEOUT_MS,
 }, async (t) => {
@@ -56,6 +56,7 @@ test("live MCP subagent_run/subagent_result preserves response and context acros
   const firstPrompt = [
     "This is a live subagent lifecycle test. Do not use tools.",
     `Remember this exact context key for the next turn: ${contextKey}`,
+    "Literal formatting to preserve: https://example.com/, `web.run`, and ---.",
     "Reply briefly and include the context key in your response.",
   ].join("\n")
   const artifact: Record<string, unknown> = {
@@ -98,12 +99,12 @@ test("live MCP subagent_run/subagent_result preserves response and context acros
     t.after(() => client.close().catch(() => undefined))
     await client.connect(new StreamableHTTPClientTransport(new URL(running.url)))
 
-    t.diagnostic("Production MCP server started")
+    t.diagnostic("Isolated MCP test server started")
 
     const firstRun = await client.callTool({
       name: "subagent_run",
       arguments: {
-        agents: [{ agent_id: LIVE_AGENT_ID, prompt: firstPrompt }],
+        agents: [{ agent_id: LIVE_AGENT_ID, prompt: firstPrompt, memory: false }],
       },
     })
     const firstRunTurn = getRunTurn(toolText(firstRun.content))
@@ -135,7 +136,7 @@ test("live MCP subagent_run/subagent_result preserves response and context acros
     const secondRun = await client.callTool({
       name: "subagent_run",
       arguments: {
-        agents: [{ agent_id: LIVE_AGENT_ID, prompt: secondPrompt }],
+        agents: [{ agent_id: LIVE_AGENT_ID, prompt: secondPrompt, memory: false }],
       },
     })
     const secondRunTurn = getRunTurn(toolText(secondRun.content))
