@@ -251,8 +251,21 @@ test("a failed first submission closes its unused page and releases agent capaci
   assert.equal(fixture.submissions, 0)
 })
 
-for (const branchInSamePage of [false, true]) {
-  test(`forked subagents persist and continue (${branchInSamePage ? "same page" : "popup"})`, async (t) => {
+for (const { startSource, forkSourceId, branchInSamePage } of [
+  { startSource: "source", forkSourceId: "source", branchInSamePage: false },
+  {
+    startSource: " https://chatgpt.com/c/6ab6e22c-141c-83e8-9e6e-8e78547125c8?view=chat#latest ",
+    forkSourceId: "6ab6e22c-141c-83e8-9e6e-8e78547125c8",
+    branchInSamePage: true,
+  },
+  {
+    startSource:
+      "https://chatgpt.com/g/g-p-6a613ed242f48191b85fa547297fb073-github-contributing/c/6a84e234-9570-83e8-a563-ed656cfa2ec3",
+    forkSourceId: "6a84e234-9570-83e8-a563-ed656cfa2ec3",
+    branchInSamePage: false,
+  },
+]) {
+  test(`forked subagents persist and continue from ${startSource.trim()}`, async (t) => {
     const directory = mkdtempSync(join(tmpdir(), "shellby-forked-subagent-"))
     const previousStateDir = MCP_CONFIG.stateDir
     MCP_CONFIG.stateDir = directory
@@ -268,9 +281,10 @@ for (const branchInSamePage of [false, true]) {
     const request = {
       agentId: "reviewer",
       prompt: "Review this",
-      conversationId: "source",
+      startSource,
     }
     const first = await service.ask(request, {})
+    assert.equal(fixture.navigations[0], `https://chatgpt.com/c/${forkSourceId}`)
     assert.match(first, /^reviewer_turn_1_/u)
     assert.equal((await service.poll(first, 0)).response, "Reviewed")
     await fixture.pages.at(-1)?.close()
@@ -315,7 +329,7 @@ test("saved conversations resume after losing counters and results without refor
   restored = createChatGptDelegationService()
   assert.deepEqual(restored.drainEvents(), ["existing_agent agent_id=reviewer"])
   const next = await restored.ask(
-    { ...request, prompt: "Continue", conversationId: "ignored-source" },
+    { ...request, prompt: "Continue", startSource: "https://chatgpt.com/c/ignored-source" },
     {}
   )
   assert.match(next, /^reviewer_turn_1_/u)
@@ -345,7 +359,7 @@ for (const branchConversationId of [
       MCP_CONFIG.stateDir = previousStateDir
       rmSync(directory, { recursive: true, force: true })
     })
-    const request = { agentId: "reviewer", prompt: "First", conversationId: "source" }
+    const request = { agentId: "reviewer", prompt: "First", startSource: "source" }
     const first = await service.ask(request, {})
     assert.equal((await service.poll(first, 0)).status, "completed")
     const second = await service.ask({ ...request, prompt: "Second" }, {})
@@ -384,7 +398,7 @@ for (const failure of ["branch", "submission"] as const) {
     })
     for (const agentId of ["first", "second"]) {
       await assert.rejects(
-        service.ask({ agentId, prompt: "Task", conversationId: "source" }, {}),
+        service.ask({ agentId, prompt: "Task", startSource: "source" }, {}),
         /forced failure/u
       )
     }
@@ -397,7 +411,7 @@ for (const failure of ["branch", "submission"] as const) {
   })
 }
 
-test("invalid conversation IDs fail before opening or submitting a conversation", async (t) => {
+test("invalid start sources fail before opening or submitting a conversation", async (t) => {
   const directory = mkdtempSync(join(tmpdir(), "shellby-fork-options-"))
   const previousStateDir = MCP_CONFIG.stateDir
   MCP_CONFIG.stateDir = directory
@@ -410,12 +424,27 @@ test("invalid conversation IDs fail before opening or submitting a conversation"
     MCP_CONFIG.stateDir = previousStateDir
     rmSync(directory, { recursive: true, force: true })
   })
-  await assert.rejects(
-    service.ask({ agentId: "reviewer", prompt: "Task", conversationId: "../source" }, {}),
-    {
-      code: "INVALID_ARGUMENT",
-    }
-  )
+  for (const startSource of [
+    " ",
+    "../source",
+    "a".repeat(129),
+    "https://chatgpt.com/g/g-p-project/project",
+    "https://example.com/c/source",
+    "https://chatgpt.com.example.com/c/source",
+    "http://chatgpt.com/c/source",
+    "https://chatgpt.com/c/",
+    "https://chatgpt.com/c/%2Fsource",
+    "https://chatgpt.com/c/%ZZ",
+    "https://chatgpt.com/c/WEB:pending",
+    "https://chatgpt.com/c/local-chatgpt%3Apending",
+    "web:pending",
+  ]) {
+    await assert.rejects(
+      service.ask({ agentId: "reviewer", prompt: "Task", startSource }, {}),
+      { code: "INVALID_ARGUMENT" },
+      startSource
+    )
+  }
   assert.equal(fixture.pages.length, 0)
   assert.equal(fixture.submissions, 0)
 })

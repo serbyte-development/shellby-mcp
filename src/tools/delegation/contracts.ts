@@ -14,8 +14,8 @@ export type ChatGptDelegationActivity = z.infer<typeof chatGptDelegationActivity
 export interface ChatGptSubagentRequest {
   prompt: string
   agentId: string
-  /** Source to fork only when creating a new agent; existing conversations take precedence. */
-  conversationId?: string
+  /** Conversation ID or ChatGPT URL to fork for a new agent; saved conversations take precedence. */
+  startSource?: string
 }
 
 export interface ChatGptDelegationCallContext {

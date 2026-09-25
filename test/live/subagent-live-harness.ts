@@ -48,7 +48,7 @@ interface Submission {
 /**
  * Own the real-browser test's MCP server, disposable local state, evidence and cleanup.
  * Reuse requires a saved/explicit conversation ID; only `fresh` permits new-chat startup.
- * A fork needs a separate agent and an explicit conversationId on run; saved targets take precedence.
+ * A fork needs a separate agent and an explicit startSource on run; saved targets take precedence.
  * No resubmission, production-server restart or production database writes occur here.
  * Save identity as soon as observed, including failed runs; restart discards only local state.
  */
@@ -180,7 +180,7 @@ export async function openLiveSubagentHarness(t: TestContext, deadline: number) 
     assertSavedConversation,
     async run(
       prompt: string,
-      options: { agent?: LiveAgent; conversationId?: string } = {}
+      options: { agent?: LiveAgent; startSource?: string } = {}
     ): Promise<RunTurn> {
       const agent = agents[options.agent ?? "source"]
       const result = await call("subagent_run", {
@@ -188,7 +188,7 @@ export async function openLiveSubagentHarness(t: TestContext, deadline: number) 
           {
             agent_id: agent.id,
             prompt: `Test run ${runId}. Test agent ${agent.id}.\n${prompt}`,
-            ...(options.conversationId ? { conversation_id: options.conversationId } : {}),
+            ...(options.startSource ? { start_from: options.startSource } : {}),
           },
         ],
       })

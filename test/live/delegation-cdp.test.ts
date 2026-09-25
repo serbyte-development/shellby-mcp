@@ -109,13 +109,19 @@ test("delegation contracts over a real Chrome CDP connection", {
     await t.test(`startConversation handles ${mode}`, async () => {
       const diagnostics = new DelegationDiagnostics(`cdp-${mode}`, undefined)
       const pagesBefore = context.pages().length
+      const startSource =
+        mode === "popup"
+          ? "https://chatgpt.com/c/popup"
+          : mode === "same-page"
+            ? "https://chatgpt.com/g/g-p-fixture/c/same-page"
+            : mode
       try {
         const page = await startConversation(
           connected,
           context,
           mode === "resume"
             ? { kind: "resume", url: "https://chatgpt.com/c/saved-conversation" }
-            : { kind: "new", ...(mode === "fresh" ? {} : { conversationId: mode }) },
+            : { kind: "new", ...(mode === "fresh" ? {} : { startSource }) },
           diagnostics,
           AbortSignal.timeout(10_000)
         )

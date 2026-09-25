@@ -77,7 +77,7 @@ export function createChatGptDelegationService(): ChatGptDelegationService {
       if (!agent) {
         agent = lifecycle.createAgent(parentAgent, request.agentId, Date.now())
         newConversation = !agent.conversationUrl
-        await ensureAgentPage(parentAgent, agent, diagnostics, request.conversationId)
+        await ensureAgentPage(parentAgent, agent, diagnostics, request.startSource)
         lifecycle.registerAgent(parentAgent, agent)
       }
       let submittedPrompt = request.prompt
@@ -180,7 +180,7 @@ export function createChatGptDelegationService(): ChatGptDelegationService {
     parentAgent: AgentIdentity | undefined,
     agent: BrowserAgentState,
     diagnostics: DelegationDiagnostics,
-    conversationId?: string
+    startSource?: string
   ): Promise<Page> {
     const signal = lifecycle.operationSignal(parentAgent, agent.agentId)
     throwIfAborted(signal)
@@ -200,7 +200,7 @@ export function createChatGptDelegationService(): ChatGptDelegationService {
       context,
       agent.conversationUrl
         ? { kind: "resume", url: agent.conversationUrl }
-        : { kind: "new", conversationId },
+        : { kind: "new", startSource },
       diagnostics,
       signal
     )

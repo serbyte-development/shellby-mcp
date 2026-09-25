@@ -16,11 +16,12 @@ import type { DelegationDiagnostics } from "./diagnostics.js"
 
 const CONVERSATION_ID_PATTERN = /^[\w-]+$/u
 
-type ConversationStart = { kind: "new"; conversationId?: string } | { kind: "resume"; url: string }
+type ConversationStart = { kind: "new"; startSource?: string } | { kind: "resume"; url: string }
 
 /**
  * Open a ready conversation without submitting a prompt. A new conversation may
- * inherit a supplied source; a resume always opens the saved conversation itself.
+ * inherit a source given as a conversation ID or ChatGPT conversation URL; a resume
+ * always opens the saved conversation itself. Invalid sources fail before a tab opens.
  * The caller owns the returned page. Failed startup closes pages it created and
  * records diagnostics before cleanup. All conversations are saved; fresh chats
  * start at the configured ChatGPT URL. A fork may still have a client-side draft
@@ -36,8 +37,7 @@ export async function startConversation(
   throwIfAborted(signal)
   if (!browser || !context)
     throw new ChatGptDelegationError("BROWSER_UNAVAILABLE", "ChatGPT browser is not connected.")
-  const sourceId = start.kind === "new" ? start.conversationId : undefined
-  const url = conversationStartUrl(start)
+  const { url, forkSourceId } = resolveConversationStart(start)
 
   const ownedPages = new Set<Page>()
   try {
@@ -45,13 +45,13 @@ export async function startConversation(
     let page = await createBackgroundPage(browser, context)
     ownedPages.add(page)
     diagnostics.watch(page)
-    diagnostics.stage(sourceId ? "navigate-source" : "navigate")
+    diagnostics.stage(forkSourceId ? "navigate-source" : "navigate")
     await navigateChatGptPage(page, url, signal)
     diagnostics.stage("authenticate")
     await assertAuthenticated(page)
 
-    if (sourceId) {
-      if (extractConversationId(page.url()) !== sourceId) {
+    if (forkSourceId) {
+      if (extractConversationId(page.url()) !== forkSourceId) {
         throw new ChatGptDelegationError(
           "AGENT_TARGET_LOST",
           "The source conversation did not open."
@@ -70,7 +70,7 @@ export async function startConversation(
 
     const conversationId = extractConversationId(page.url())
     const expectedId = start.kind === "resume" ? extractConversationId(start.url) : undefined
-    const matches = sourceId ? conversationId !== sourceId : conversationId === expectedId
+    const matches = forkSourceId ? conversationId !== forkSourceId : conversationId === expectedId
     if (!isChatGptUrl(page.url()) || !matches) {
       throw new ChatGptDelegationError(
         "AGENT_TARGET_LOST",
@@ -88,7 +88,10 @@ export async function startConversation(
 }
 
 /** Resolve creation options before browser work; saved identity always refers to the target itself. */
-function conversationStartUrl(start: ConversationStart): string {
+function resolveConversationStart(start: ConversationStart): {
+  url: string
+  forkSourceId?: string
+} {
   if (start.kind === "resume") {
     if (!isChatGptUrl(start.url) || !extractConversationId(start.url)) {
       throw new ChatGptDelegationError(
@@ -96,15 +99,27 @@ function conversationStartUrl(start: ConversationStart): string {
         "The saved conversation URL is invalid."
       )
     }
-    return start.url
+    return { url: start.url }
   }
-  const sourceId = start.conversationId
-  if (sourceId === undefined) return MCP_CONFIG.chatGpt.projectUrl
-  if (!CONVERSATION_ID_PATTERN.test(sourceId) || sourceId.length > 128) {
+  if (start.startSource === undefined) return { url: MCP_CONFIG.chatGpt.projectUrl }
+  const startSource = start.startSource.trim()
+  let forkSourceId: string | undefined = startSource
+  if (!CONVERSATION_ID_PATTERN.test(startSource)) {
+    try {
+      const sourceUrl = new URL(startSource)
+      forkSourceId =
+        sourceUrl.origin === "https://chatgpt.com"
+          ? extractConversationId(sourceUrl.href)
+          : undefined
+    } catch {
+      forkSourceId = undefined
+    }
+  }
+  if (!forkSourceId || !CONVERSATION_ID_PATTERN.test(forkSourceId) || forkSourceId.length > 128) {
     throw new ChatGptDelegationError(
       "INVALID_ARGUMENT",
-      "conversation_id must be a conversation ID."
+      "start_from must be a saved ChatGPT conversation URL or conversation ID."
     )
   }
-  return `https://chatgpt.com/c/${sourceId}`
+  return { url: `https://chatgpt.com/c/${forkSourceId}`, forkSourceId }
 }

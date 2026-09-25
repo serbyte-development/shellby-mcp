@@ -30,7 +30,7 @@ const subagentInputSchema = z.object({
     .refine((value) => value.trim().length > 0, "prompt cannot be only whitespace.")
     .transform((value) => value.trim())
     .describe("Instruction prompt or follow-up turn prompt."),
-  conversation_id: z.string().trim().min(1).max(128).optional().describe("Use when given."),
+  start_from: z.string().trim().optional().describe("URL to use when given"),
 })
 
 const subagentRunResultSchema = z.object({
@@ -111,7 +111,7 @@ export function registerSubagentTools(
             {
               agentId: agent.agent_id,
               prompt: agent.prompt,
-              conversationId: agent.conversation_id,
+              startSource: agent.start_from,
             },
             { signal: ctx.mcpReq.signal }
           )

@@ -91,12 +91,12 @@ test("publishes the assembled MCP tool surface", { timeout: 10_000 }, async (t) 
   const agentsInput = subagentRun.inputSchema.properties?.agents as {
     items: { properties: Record<string, unknown>; required: string[] }
   }
-  assert.deepEqual(Object.keys(agentsInput.items.properties), [
-    "agent_id",
-    "prompt",
-    "conversation_id",
-  ])
+  assert.deepEqual(Object.keys(agentsInput.items.properties), ["agent_id", "prompt", "start_from"])
   assert.deepEqual(agentsInput.items.required, ["agent_id", "prompt"])
+  assert.equal(
+    (agentsInput.items.properties.start_from as { description: string }).description,
+    "URL to use when given"
+  )
 
   const shellRun = tools.tools.find((tool) => tool.name === "shell_run")
   const shellPoll = tools.tools.find((tool) => tool.name === "shell_poll")

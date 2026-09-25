@@ -163,11 +163,11 @@ test("live MCP subagent lifecycle with optional real conversation fork", {
     const branchKey = `FORK_ONLY_${randomUUID().replaceAll("-", "")}`
     const forkTurns = new Map<string, string>()
 
-    await live.stage("fork from the latest source turn through subagent_run conversation_id")
+    await live.stage("fork from the latest source turn through subagent_run start_from")
     const first = await forkTurn(
       `Remember this branch-only key: ${branchKey}`,
       "FORK_STARTED_OK",
-      sourceId
+      sourcePage.url()
     )
     const forkId = await live.assertSavedConversation("fork")
     assert.notEqual(forkId, sourceId, "Forking must persist a distinct conversation ID")
@@ -175,7 +175,7 @@ test("live MCP subagent lifecycle with optional real conversation fork", {
     assert.equal(live.page(), sourcePage, "Forking must leave the existing source tab alone")
     const forkPage = live.page("fork")
 
-    await live.stage("follow up in the fork without conversation_id")
+    await live.stage("follow up in the fork without start_from")
     await forkTurn("", "FORK_FOLLOWUP_OK")
     assert.equal(live.page("fork"), forkPage)
     assert.equal((await live.poll(first.turn_id!, 0)).response, forkTurns.get(first.turn_id!))
@@ -202,7 +202,7 @@ test("live MCP subagent lifecycle with optional real conversation fork", {
     assert.equal(await live.assertSavedConversation(), sourceId)
     await live.assertForkIsolated()
 
-    async function forkTurn(instruction: string, marker: string, conversationId?: string) {
+    async function forkTurn(instruction: string, marker: string, startSource?: string) {
       const turn = await live.run(
         [
           instruction,
@@ -211,7 +211,7 @@ test("live MCP subagent lifecycle with optional real conversation fork", {
         ]
           .filter(Boolean)
           .join("\n"),
-        { agent: "fork", conversationId }
+        { agent: "fork", startSource }
       )
       assert.equal(turn.status, "running", turn.error)
       assert.ok(turn.turn_id)
