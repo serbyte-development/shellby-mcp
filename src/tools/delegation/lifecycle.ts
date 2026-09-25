@@ -229,8 +229,18 @@ export class DelegationLifecycle {
     this.persistAgent(parentAgent, agent)
   }
 
-  resetUnsubmittedAgent(agent: AgentState): void {
+  /** Roll back an unsent attempt; return an unused new page for the service to close. */
+  resetUnsubmittedAgent(
+    parentAgent: AgentIdentity | undefined,
+    agent: AgentState
+  ): Page | undefined {
     agent.status = "idle"
+    if (agent.kind !== "subagent" || agent.turnCount > 0 || agent.conversationUrl) return undefined
+    // A never-submitted agent has no conversation to retain and must not consume capacity.
+    this.removeAgent(parentAgent, agent)
+    const page = agent.page
+    agent.page = undefined
+    return page
   }
 
   assertCloneAvailable(parentAgent: AgentIdentity | undefined, cloneId: string): void {

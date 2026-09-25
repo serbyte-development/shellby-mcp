@@ -16,7 +16,11 @@ Audit headings and review timestamps use [time.ts](../../../src/time.ts): Pacifi
 
 [audit-request.ts](../../../src/server/audit/audit-request.ts) creates calls at HTTP entry; dispatch claims each by request ID/tool name. HTTP completion settles unclaimed calls using transport state. Remote authorization failures happen before audit creation. [Registration Boundary](../mcp-tool-registration-boundary.md) supplies original handler result and final model projection directly; audit does not buffer HTTP output.
 
-Failed entries carry one bounded `error:` line. Thrown exceptions use their underlying cause code/message; delegation catches record original failures before formatting recovery guidance. Async call scope keeps concurrent diagnostics separate, and finished entries ignore late diagnostics. Returned failures retain their error/output details. Nonzero shell exits retain available output, with an exit-code fallback when output is empty. Stack traces and separate runtime event files are omitted.
+Failed entries carry one bounded `error:` line. Thrown exceptions use their underlying cause code/message; delegation catches record original failures before formatting recovery guidance. Async call scope keeps concurrent diagnostics separate, and finished entries ignore late diagnostics. Returned failures retain their error/output details. Nonzero shell exits retain available output, with an exit-code fallback when output is empty. Audit entries omit stack traces and do not create separate runtime event files.
+
+`formatFailureMessages` in [audit-format.ts](../../../src/server/audit/audit-format.ts) groups identical recorded or returned failure messages within one tool call, preserving first-seen order. Repeated messages appear once with an `xN` prefix; single messages have no prefix. Group full messages before truncation so distinct diagnostics remain distinct and occurrence counts stay visible. This formatting affects the audit summary; per-agent tool results and model-output token accounting retain all entries.
+
+Delegation startup/submission failures additionally emit `[delegation]` JSON to stderr, retained by PM2's error log. Those bounded browser diagnostics are owned by [Browser ChatGPT Subagents](../subagents/browser-chatgpt-subagents.md#failure-diagnostics); they are independent of the compact audit entry.
 
 ## Retention and accounting
 

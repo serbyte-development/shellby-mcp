@@ -6,6 +6,7 @@ import { countTokens } from "../../tokenizer.js"
 import {
   errorMessage,
   formatAuditEntry,
+  formatFailureMessages,
   originalErrorMessage,
   summarizeToolResult,
 } from "./audit-format.js"
@@ -66,7 +67,9 @@ export class McpAuditLogger {
           (toolName === "shell_run" || toolName === "shell_poll") &&
           typeof exitCode === "number" &&
           exitCode !== 0
-        let failureMessage = errors.length ? errors.join("; ") : toolResponse.failureMessage
+        let failureMessage = errors.length
+          ? formatFailureMessages(errors)
+          : toolResponse.failureMessage
         if (!failureMessage && shellFailed)
           failureMessage =
             typeof output === "string" && output.trim()

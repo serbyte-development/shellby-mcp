@@ -102,7 +102,15 @@ test("persistence initialization failure blocks delegation before browser connec
       /No new prompt was submitted/u.test(error.message)
   )
   assert.equal(connect.mock.callCount(), 0)
-  assert.equal(warn.mock.callCount(), 1)
+  const failures = warn.mock.calls
+    .map((call) => String(call.arguments[0]))
+    .filter((message) => message.startsWith("[delegation] "))
+  assert.equal(failures.length, 1)
+  const diagnostic = JSON.parse(failures[0]!.slice("[delegation] ".length))
+  assert.equal(diagnostic.phase, "admission")
+  assert.equal(diagnostic.error.code, "SUBAGENT_PERSISTENCE_UNAVAILABLE")
+  assert.equal(diagnostic.submission_observed, false)
+  assert.deepEqual(diagnostic.pages, [])
 })
 
 test("post-submit persistence failure keeps the turn valid and blocks later submission", async (t) => {
@@ -243,6 +251,33 @@ test("a prompt serialized as Markdown still completes the submitted turn", async
   assert.equal(result.status, "completed")
   assert.equal(result.response, "Reviewed")
   assert.equal(fixture.submissions, 1)
+})
+
+test("a failed first submission closes its unused page and releases agent capacity", async (t) => {
+  const directory = mkdtempSync(join(tmpdir(), "shellby-agent-unused-slot-"))
+  const previousStateDir = MCP_CONFIG.stateDir
+  const previousLimit = MCP_CONFIG.chatGpt.maxDelegatedAgents
+  MCP_CONFIG.stateDir = directory
+  MCP_CONFIG.chatGpt.maxDelegatedAgents = 1
+  const fixture = browserFixture({ submissionError: new Error("Send unavailable") })
+  t.mock.method(chromium, "connectOverCDP", async () => fixture.browser)
+  const service = createChatGptDelegationService()
+  t.after(async () => {
+    await service.dispose()
+    MCP_CONFIG.stateDir = previousStateDir
+    MCP_CONFIG.chatGpt.maxDelegatedAgents = previousLimit
+    rmSync(directory, { recursive: true, force: true })
+  })
+
+  for (const agentId of ["first", "second"]) {
+    await assert.rejects(
+      service.ask({ agentId, prompt: "Review this", memory: false }, {}),
+      /Send unavailable/u
+    )
+  }
+  assert.equal(fixture.pages.length, 2)
+  assert.ok(fixture.pages.every((page) => page.isClosed()))
+  assert.equal(fixture.submissions, 0)
 })
 
 function browserFixture(

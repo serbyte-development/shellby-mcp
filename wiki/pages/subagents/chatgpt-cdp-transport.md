@@ -5,6 +5,7 @@ paths:
   - src/tools/delegation/turn-protocol.ts
   - scripts/chatgpt/cdp-probe.mjs
   - scripts/chatgpt/summarize-cdp-probe.mjs
+  - src/tools/delegation/diagnostics.ts
 ---
 
 # ChatGPT CDP Transport
@@ -31,6 +32,6 @@ Stop with Ctrl-C. Default traces go under ignored `test/live/artifacts/`. Summar
 npm run probe:chatgpt-cdp:summary -- test/live/artifacts/<trace>.jsonl
 ```
 
-[summarize-cdp-probe.mjs](../../../scripts/chatgpt/summarize-cdp-probe.mjs) reports event counts, candidate traffic gaps, and captured DOM streaming states. Determine whether Chrome stopped receiving data or Shellby ignored arriving data before changing the parser.
+[summarize-cdp-probe.mjs](../../../scripts/chatgpt/summarize-cdp-probe.mjs) reports event counts, candidate traffic gaps, DOM state changes per page, and recent HTTP/network/JavaScript failures. Composer and Try again visibility come from the shared [page health snapshot](../../../src/tools/delegation/diagnostics.ts), also used by runtime [failure diagnostics](./browser-chatgpt-subagents.md#failure-diagnostics). Determine whether Chrome stopped receiving data or Shellby ignored arriving data before changing the parser. For startup failures, correlate browser console errors with page state and network responses rather than inferring the cause from a blank screen.
 
-Header/query redaction does not sanitize conversation bodies. Keep traces private; ingest only deliberately sanitized evidence. Historical example: [2026-08-20 probe](../../raw/chatgpt-cdp-transport-probe-2026-08-20.md). Validation: [protocol tests](../../../test/tools/delegation/turn-protocol.test.ts) and the separately enabled [live canary](../operations/build-and-test.md).
+New trace files have owner-only permissions. Header/query redaction does not sanitize conversation bodies. Keep traces private; ingest only deliberately sanitized evidence. Historical example: [2026-08-20 probe](../../raw/chatgpt-cdp-transport-probe-2026-08-20.md). Validation: [protocol tests](../../../test/tools/delegation/turn-protocol.test.ts) and the separately enabled [live canary](../operations/build-and-test.md).

@@ -71,7 +71,8 @@ export function summarizeToolResult(
       const turn = asRecord(value)
       return turn?.status === "failed" && typeof turn.error === "string" ? [turn.error] : []
     })
-    if (failures.length) return { ...summary, failed: true, failureMessage: failures.join("; ") }
+    if (failures.length)
+      return { ...summary, failed: true, failureMessage: formatFailureMessages(failures) }
   }
 
   const content = toolRecord.content
@@ -84,6 +85,17 @@ export function summarizeToolResult(
     if (message) return { ...summary, failed: true, failureMessage: message }
   }
   return { ...summary, failed: true }
+}
+
+/** Group exact messages in first-seen order; count duplicates before the audit entry is truncated. */
+export function formatFailureMessages(messages: readonly string[]): string {
+  const counts = new Map<string, number>()
+  for (const message of messages) {
+    counts.set(message, (counts.get(message) ?? 0) + 1)
+  }
+  return [...counts]
+    .map(([message, count]) => (count > 1 ? `x${count} ${message}` : message))
+    .join("; ")
 }
 
 // Keep the underlying diagnostic before the tool's public message simplifies it.

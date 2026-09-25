@@ -603,6 +603,83 @@ test("records failed returned results without retaining successful batch respons
   assert.doesNotMatch(log, /private successful response/u)
 })
 
+for (const source of ["recorded", "returned"] as const) {
+  test(`groups identical ${source} failures per audit call while preserving distinct messages and model output`, async (t) => {
+    const file = await auditFile(t)
+    const logger = new McpAuditLogger(file, () => 0)
+    const first = "AGENT_LIMIT_REACHED: Already at 5 agents."
+    const different = "AGENT_LIMIT_REACHED: Already at 3 agents."
+    const batches = [
+      [first, different, first],
+      [first, first, first],
+      Array(5).fill(first),
+      [first],
+    ]
+    const expected = [
+      `error: "x2 ${first}; ${different}"`,
+      `error: "x3 ${first}"`,
+      `error: "x5 ${first}"`,
+      `error: "${first}"`,
+    ]
+
+    for (const messages of batches) {
+      const [call] = claimAuditToolCalls(logger, {
+        method: "tools/call",
+        params: { name: "subagent_run", arguments: {} },
+      })
+      assert.ok(call)
+      if (source === "recorded") {
+        for (const message of messages) call.recordError(new Error(message))
+      }
+      const turns = messages.map((error, index) => ({
+        agent_id: `agent-${index}`,
+        status: "failed",
+        error,
+      }))
+      const toolResult = { isError: true, structuredContent: { turns }, content: [] }
+      const modelText = JSON.stringify(turns)
+      call.finish({ toolResult, modelResult: { content: [{ type: "text", text: modelText }] } })
+
+      assert.equal(JSON.stringify(turns), modelText)
+      const entries = (await readFile(file, "utf8")).split("--- # ").filter(Boolean)
+      assert.ok(entries.at(-1)?.includes(` / ${countTokens(modelText)} out - `))
+    }
+
+    const log = await readFile(file, "utf8")
+    assert.deepEqual(
+      log.split("\n").filter((line) => line.startsWith("error: ")),
+      expected
+    )
+  })
+
+  test(`groups ${source} failures before truncation and keeps the count visible`, async (t) => {
+    const file = await auditFile(t)
+    const logger = new McpAuditLogger(file, () => 0)
+    const [call] = claimAuditToolCalls(logger, {
+      method: "tools/call",
+      params: { name: "subagent_run", arguments: {} },
+    })
+    assert.ok(call)
+    const prefix = `AGENT_LIMIT_REACHED: ${"a".repeat(1_100)}`
+    const messages = [`${prefix} first`, `${prefix} second`, `${prefix} first`]
+    if (source === "recorded") {
+      for (const message of messages) call.recordError(new Error(message))
+    }
+    call.finish({
+      toolResult: {
+        isError: true,
+        structuredContent: { turns: messages.map((error) => ({ status: "failed", error })) },
+        content: [],
+      },
+    })
+
+    const log = await readFile(file, "utf8")
+    assert.match(log, /error: "x2 AGENT_LIMIT_REACHED:/u)
+    assert.match(log, /chars omitted/u)
+    assert.ok(log.length < 1_500)
+  })
+}
+
 test("caps large ordinary tool arguments", async (t) => {
   const file = await auditFile(t)
 

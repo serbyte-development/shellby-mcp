@@ -4,6 +4,7 @@ paths:
   - src/tools/delegation/chatgpt-service.ts
   - src/tools/delegation/lifecycle.ts
   - src/tools/delegation/chatgpt-browser.ts
+  - src/tools/delegation/diagnostics.ts
   - src/tools/delegation/store.ts
   - src/config.ts
   - src/public-config.cts
@@ -18,11 +19,14 @@ Public adapters: [subagent contract](../tools/subagent.md), [clones](../tools/cl
 | [chatgpt-service.ts](../../../src/tools/delegation/chatgpt-service.ts) | Attach to Chrome; orchestrate pages, submission, observation, pacing, recovery |
 | [lifecycle.ts](../../../src/tools/delegation/lifecycle.ts) | Agent/turn mutations, conversation identity, admission/locks, settlement/events, result retention, persistence, idle decisions |
 | [chatgpt-browser.ts](../../../src/tools/delegation/chatgpt-browser.ts) | Background page creation, composer interaction, branching, navigation/history capture |
+| [diagnostics.ts](../../../src/tools/delegation/diagnostics.ts) | Bounded startup/submission failure evidence and shared DOM health snapshot |
 | [store.ts](../../../src/tools/delegation/store.ts) | SQLite mappings and explicit available/unavailable state |
 
 ## State and admission
 
 Each canonical `AgentIdentity` owns agent IDs, active-operation locks, turn records, and pending notices; headerless callers share an unscoped bucket. Subagents/clones share that namespace and the public `chatgpt.max_delegated_agents` cap. Admission counts saved IDs, live IDs, and in-flight creations; it is not a process-wide concurrency semaphore. Existing IDs remain reusable after the cap is reached or lowered. Reserve before browser work.
+
+A failed first submission releases a new subagent's unused ID and closes its page when no conversation or submitted turn exists. Established conversations and completed results survive an unsent follow-up failure. Otherwise repeated startup failures would exhaust capacity with `latest_turn_id=pending` entries.
 
 Service consumes live read-only agent/turn views. Lifecycle operations own page association, conversation URL reconciliation/persistence, activity, and settlement. Service still owns browser effects and disposal of observations returned by settlement. Late activity cannot change a settled turn or its agent status.
 
@@ -34,7 +38,15 @@ A new saved agent opens the configured project URL; later turns use its stable c
 
 Install the CDP observer before entering/submitting the prompt. Preserve interaction/inter-turn delays, pre-submit grace, and rate-limit checks; dismiss overlays before Send and never retry that action after an error. Send does not wait for navigation: ChatGPT can start generation while navigation remains pending. Invoke Send through the observation's `submit` operation: it resolves pending outgoing-request metadata after an action error and preserves a known submission. The service need not inspect partially populated turn state to decide whether Send succeeded. Submission detaches generation from the originating request and returns a local turn ID. [Completion](./subagent-completion.md) owns message correlation.
 
+Composer visibility does not establish that ChatGPT's client has finished initializing. The service's `INTERACTION_DELAY_MS` pauses before and after prompt entry. This is pacing, not a guarantee against frontend rendering failures.
+
 First ordinary subagent prompt appends brevity and no-subagent instructions, also restricting `computer_*` when enabled. Later turns and clones omit this injection. Browser/account/UI details stay behind the service; public error projection belongs to the adapters.
+
+## Failure diagnostics
+
+Each start/resume operation records its phase and watches attached pages until submission returns. On failure, emit one `[delegation]` JSON line to stderr before page cleanup, so the configured PM2 error log retains the operation/agent/caller, elapsed time, observed submission identity, bounded error details, recent browser errors, and page health. Console errors matter: ChatGPT can catch a rendering exception and show only a Try again button without a page crash or failed HTTP request.
+
+Diagnostics omit request/response bodies, headers, drafts, and conversation text; URL queries/fragments and common credential fields are redacted. Snapshot reads have a deadline, retained events are bounded, and listeners are removed on success or failure. These diagnostics cover admission, startup, and submission, not the detached generation lifetime. For deeper transport investigation, use the private [CDP probe](./chatgpt-cdp-transport.md#investigating-drift). Tests: [diagnostics](../../../test/tools/delegation/diagnostics.test.ts).
 
 ## Idle cleanup
 

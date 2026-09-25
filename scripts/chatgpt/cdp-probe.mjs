@@ -5,6 +5,7 @@ import { dirname, resolve } from "node:path"
 import process from "node:process"
 import { chromium } from "playwright-core"
 import { MCP_CONFIG } from "../../src/config.ts"
+import { readChatGptPageState } from "../../src/tools/delegation/diagnostics.ts"
 
 const args = parseArgs(process.argv.slice(2))
 const startedAt = Date.now()
@@ -12,7 +13,7 @@ const defaultName = `chatgpt-cdp-${new Date().toISOString().replaceAll(":", "-")
 const outputPath = resolve(args.out ?? `test/live/artifacts/${defaultName}`)
 
 await mkdir(dirname(outputPath), { recursive: true })
-const output = createWriteStream(outputPath, { flags: "wx" })
+const output = createWriteStream(outputPath, { flags: "wx", mode: 0o600 })
 let sequence = 0
 let pageSequence = 0
 let stopping = false
@@ -338,6 +339,7 @@ function domProbeSource(bindingName) {
       const toolish = [...document.querySelectorAll('[data-message-author-role="tool"], [data-testid*="tool" i], [data-testid*="search" i]')];
       const latestAssistantText = (assistant.at(-1)?.textContent ?? "").trim();
       const state = {
+        ...(${readChatGptPageState.toString()})(),
         href: location.href,
         visibility_state: document.visibilityState,
         title: document.title,

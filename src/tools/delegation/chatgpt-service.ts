@@ -27,6 +27,7 @@ import {
   type ChatGptSubagentRequest,
 } from "./contracts.js"
 import { delay } from "./delay.js"
+import { DelegationDiagnostics } from "./diagnostics.js"
 import {
   type ActiveAgentOperation,
   type BrowserAgentState,
@@ -39,7 +40,8 @@ import { extractConversationMessages, findLatestAssistantAfterMessage } from "./
 const CLEANUP_INTERVAL_MS = 60_000
 const CONNECT_TIMEOUT_MS = 3_000
 const MIN_INTER_TURN_DELAY_MS = 1_500
-const INTERACTION_DELAY_MS = 300
+// A visible composer does not establish that ChatGPT's client is ready for interaction.
+const INTERACTION_DELAY_MS = 2_000
 const RATE_LIMIT_COOLDOWN_MS = 15 * 60_000
 const RATE_LIMIT_SELECTOR = '[data-testid="modal-conversation-history-rate-limit"]'
 const RATE_LIMIT_DISMISS_SETTLE_MS = 250
@@ -69,11 +71,13 @@ export function createChatGptDelegationService(): ChatGptDelegationService {
     callContext: ChatGptDelegationCallContext
   ): Promise<string> {
     const parentAgent = getAgentIdentity()
-    const operation = await beginAgentOperation(parentAgent, request.agentId, callContext)
+    const diagnostics = new DelegationDiagnostics("subagent_run", request.agentId, parentAgent)
+    let operation: ActiveAgentOperation | undefined
     let agent: BrowserAgentState | undefined
     let operationTransferred = false
 
     try {
+      operation = await beginAgentOperation(parentAgent, request.agentId, callContext, diagnostics)
       agent = lifecycle.getAgent(parentAgent, request.agentId)
       if (!agent) {
         agent = lifecycle.createSubagentAgent(
@@ -82,19 +86,23 @@ export function createChatGptDelegationService(): ChatGptDelegationService {
           request.memory,
           Date.now()
         )
-        await ensureAgentPage(parentAgent, agent)
+        await ensureAgentPage(parentAgent, agent, diagnostics)
         lifecycle.registerAgent(parentAgent, agent)
       }
       let submittedPrompt = request.prompt
       if (agent.turnCount === 0) submittedPrompt = `${request.prompt}\n\n---\n\n${INJECTED_PROMPT}`
-      const turnId = await submitAgentTurn(parentAgent, agent, submittedPrompt)
+      const turnId = await submitAgentTurn(parentAgent, agent, submittedPrompt, diagnostics)
       operationTransferred = true
       return turnId
     } catch (error) {
-      if (!operationTransferred && agent) lifecycle.resetUnsubmittedAgent(agent)
+      await diagnostics.failure(error)
+      if (!operationTransferred && agent)
+        await closePageIfOpen(lifecycle.resetUnsubmittedAgent(parentAgent, agent))
       throw error
     } finally {
-      if (!operationTransferred) lifecycle.releaseOperation(parentAgent, request.agentId, operation)
+      diagnostics.dispose()
+      if (!operationTransferred && operation)
+        lifecycle.releaseOperation(parentAgent, request.agentId, operation)
     }
   }
 
@@ -104,13 +112,15 @@ export function createChatGptDelegationService(): ChatGptDelegationService {
   ): Promise<string> {
     const { signal } = callContext
     const parentAgent = getAgentIdentity()
-    const operation = await beginAgentOperation(parentAgent, request.cloneId, callContext)
+    const diagnostics = new DelegationDiagnostics("clone_self", request.cloneId, parentAgent)
+    let operation: ActiveAgentOperation | undefined
     let sourcePage: Page | undefined
     let branchPage: Page | undefined
     let agent: BrowserAgentState | undefined
     let operationTransferred = false
 
     try {
+      operation = await beginAgentOperation(parentAgent, request.cloneId, callContext, diagnostics)
       if (!isChatGptUrl(request.sourceConversationUrl)) {
         throw new ChatGptDelegationError(
           "AGENT_TARGET_LOST",
@@ -119,26 +129,35 @@ export function createChatGptDelegationService(): ChatGptDelegationService {
       }
       lifecycle.assertCloneAvailable(parentAgent, request.cloneId)
 
+      diagnostics.stage("create-page")
       sourcePage = await createManagedPage()
+      diagnostics.watch(sourcePage)
+      diagnostics.stage("navigate-source")
       await navigateChatGptPage(sourcePage, request.sourceConversationUrl, signal)
+      diagnostics.stage("authenticate")
       await assertAuthenticated(sourcePage)
+      diagnostics.stage("branch-conversation")
       branchPage = await forkLatestConversationTurn(sourcePage, signal)
+      diagnostics.watch(branchPage)
       if (branchPage !== sourcePage) await closePageIfOpen(sourcePage)
       sourcePage = undefined
       agent = lifecycle.createCloneAgent(request.cloneId, branchPage, Date.now())
       lifecycle.registerAgent(parentAgent, agent)
 
       await delay(CLONE_INITIAL_SETTLE_MS, signal)
-      const turnId = await submitAgentTurn(parentAgent, agent, request.prompt)
+      const turnId = await submitAgentTurn(parentAgent, agent, request.prompt, diagnostics)
       operationTransferred = true
       return turnId
     } catch (error) {
+      await diagnostics.failure(error)
       if (agent) lifecycle.removeAgent(parentAgent, agent)
       await closePageIfOpen(branchPage)
       await closePageIfOpen(sourcePage)
       throw error
     } finally {
-      if (!operationTransferred) lifecycle.releaseOperation(parentAgent, request.cloneId, operation)
+      diagnostics.dispose()
+      if (!operationTransferred && operation)
+        lifecycle.releaseOperation(parentAgent, request.cloneId, operation)
     }
   }
 
@@ -147,48 +166,60 @@ export function createChatGptDelegationService(): ChatGptDelegationService {
     callContext: ChatGptDelegationCallContext
   ): Promise<string> {
     const parentAgent = getAgentIdentity()
-    const operation = await beginAgentOperation(parentAgent, request.cloneId, callContext)
+    const diagnostics = new DelegationDiagnostics("clone_run", request.cloneId, parentAgent)
+    let operation: ActiveAgentOperation | undefined
     let agent: BrowserAgentState | undefined
     let operationTransferred = false
 
     try {
+      operation = await beginAgentOperation(parentAgent, request.cloneId, callContext, diagnostics)
       agent = lifecycle.getAgent(parentAgent, request.cloneId)
       if (!agent) {
         agent = lifecycle.createRestoredCloneAgent(parentAgent, request.cloneId, Date.now())
-        await ensureAgentPage(parentAgent, agent)
+        await ensureAgentPage(parentAgent, agent, diagnostics)
         lifecycle.registerAgent(parentAgent, agent)
       } else if (agent.kind !== "clone") {
         throw new ChatGptDelegationError("AGENT_TARGET_LOST", `${request.cloneId} is not a clone.`)
       }
 
-      const turnId = await submitAgentTurn(parentAgent, agent, request.prompt)
+      const turnId = await submitAgentTurn(parentAgent, agent, request.prompt, diagnostics)
       operationTransferred = true
       return turnId
     } catch (error) {
-      if (!operationTransferred && agent) lifecycle.resetUnsubmittedAgent(agent)
+      await diagnostics.failure(error)
+      if (!operationTransferred && agent)
+        await closePageIfOpen(lifecycle.resetUnsubmittedAgent(parentAgent, agent))
       throw error
     } finally {
-      if (!operationTransferred) lifecycle.releaseOperation(parentAgent, request.cloneId, operation)
+      diagnostics.dispose()
+      if (!operationTransferred && operation)
+        lifecycle.releaseOperation(parentAgent, request.cloneId, operation)
     }
   }
 
   async function submitAgentTurn(
     parentAgent: AgentIdentity | undefined,
     agent: BrowserAgentState,
-    submittedPrompt: string
+    submittedPrompt: string,
+    diagnostics: DelegationDiagnostics
   ): Promise<string> {
     const signal = lifecycle.requireOperationSignal(parentAgent, agent.agentId)
     let observation: AssistantResponseObservation | undefined
     try {
+      diagnostics.stage("inter-turn-delay")
       if (agent.lastCompletedAt !== undefined) {
         const remaining = agent.lastCompletedAt + MIN_INTER_TURN_DELAY_MS - Date.now()
         if (remaining > 0) await delay(remaining, signal)
       }
-      const page = await ensureAgentPage(parentAgent, agent)
+      const page = await ensureAgentPage(parentAgent, agent, diagnostics)
       const turn = lifecycle.createTurn(parentAgent, agent, Date.now())
 
+      diagnostics.stage("install-response-observer")
       observation = await observeAssistantResponse(page, {
-        onSubmitted: (messageId) => lifecycle.recordSubmittedMessage(turn, messageId),
+        onSubmitted: (messageId) => {
+          lifecycle.recordSubmittedMessage(turn, messageId)
+          diagnostics.submitted(turn.turnId, messageId)
+        },
         onConversationId:
           agent.kind === "clone"
             ? undefined
@@ -197,14 +228,18 @@ export function createChatGptDelegationService(): ChatGptDelegationService {
       })
 
       await dismissBlockingChatGptOverlay(page, signal)
+      diagnostics.stage("find-composer")
       const composer = await findComposer(page, signal)
       await delay(INTERACTION_DELAY_MS, signal)
       assertAgentPage(page, agent)
+      diagnostics.stage("enter-prompt")
       await enterPrompt(page, composer, submittedPrompt, signal)
+      diagnostics.stage("pre-submit-check")
       await delay(INTERACTION_DELAY_MS, signal)
       assertAgentPage(page, agent)
       await delay(SUBMISSION_GRACE_MS, signal)
       await detectRateLimit()
+      diagnostics.stage("submit-prompt")
       await observation.submit(() => submitComposer(page, composer, signal))
 
       lifecycle.recordSubmittedTurn(parentAgent, agent, turn, observation, Date.now())
@@ -245,11 +280,13 @@ export function createChatGptDelegationService(): ChatGptDelegationService {
 
   async function ensureAgentPage(
     parentAgent: AgentIdentity | undefined,
-    agent: BrowserAgentState
+    agent: BrowserAgentState,
+    diagnostics: DelegationDiagnostics
   ): Promise<Page> {
     const signal = lifecycle.operationSignal(parentAgent, agent.agentId)
     throwIfAborted(signal)
     const page = agent.page && !agent.page.isClosed() ? agent.page : undefined
+    if (page) diagnostics.watch(page)
     if (agent.turnCount > 0) lifecycle.recordConversation(parentAgent, agent)
     if (page && isExpectedAgentPage(page, agent)) return page
     const targetUrl = agentTargetUrl(agent)
@@ -261,15 +298,21 @@ export function createChatGptDelegationService(): ChatGptDelegationService {
     }
 
     const created = !page
+    diagnostics.stage("create-page")
     const restoredPage = page ?? (await createManagedPage())
+    diagnostics.watch(restoredPage)
     try {
+      diagnostics.stage("navigate")
       await navigateChatGptPage(restoredPage, targetUrl, signal)
+      diagnostics.stage("authenticate")
       await assertAuthenticated(restoredPage)
       assertAgentPage(restoredPage, agent)
+      diagnostics.stage("find-composer")
       await findComposer(restoredPage, signal)
       lifecycle.recordPageReady(agent, restoredPage, Date.now())
       return restoredPage
     } catch (error) {
+      await diagnostics.failure(error)
       if (created) await closePageIfOpen(restoredPage)
       throw error
     }
@@ -402,7 +445,8 @@ export function createChatGptDelegationService(): ChatGptDelegationService {
   async function beginAgentOperation(
     parentAgent: AgentIdentity | undefined,
     agentId: string,
-    callContext: ChatGptDelegationCallContext
+    callContext: ChatGptDelegationCallContext,
+    diagnostics: DelegationDiagnostics
   ): Promise<ActiveAgentOperation> {
     assertNotRateLimited()
     const operation = lifecycle.reserveOperation(parentAgent, agentId, callContext)
@@ -410,7 +454,9 @@ export function createChatGptDelegationService(): ChatGptDelegationService {
     try {
       const { signal } = callContext
       throwIfAborted(signal)
+      diagnostics.stage("connect-browser")
       await ensureBrowserConnection(signal)
+      diagnostics.stage("rate-limit-check")
       if (await clearExpiredRateLimit(signal)) return operation
       await detectRateLimit()
       return operation

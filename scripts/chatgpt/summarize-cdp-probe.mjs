@@ -16,6 +16,7 @@ const domStates = []
 let first
 let last
 let rows = 0
+const failures = []
 
 const lines = createInterface({
   input: createReadStream(path, "utf8"),
@@ -34,6 +35,14 @@ for await (const line of lines) {
   last = row
   counts.set(row.type, (counts.get(row.type) ?? 0) + 1)
   if (row.type === "dom.state") domStates.push(row)
+  if (
+    row.type === "Network.loadingFailed" ||
+    (row.type === "Network.responseReceived" && row.status >= 400) ||
+    row.type === "Runtime.exceptionThrown" ||
+    (row.type === "Runtime.consoleAPICalled" && row.console_type === "error")
+  ) {
+    failures.push(row)
+  }
   if (isCandidateLivenessSignal(row)) candidateSignals.push(row)
 }
 
@@ -69,7 +78,26 @@ for (const row of collapseDomStates(domStates)) {
     ? payload.streaming_status_text.join(" | ")
     : ""
   console.log(
-    `+${String(row.elapsed_ms).padStart(7)} ms  visible_status=${payload.visible_streaming_status_count ?? "?"} stop=${payload.stop_button_visible ?? "?"} turns=${payload.turn_count ?? "?"} assistants=${payload.assistant_message_count ?? "?"}${text ? `  ${JSON.stringify(text.slice(0, 220))}` : ""}`
+    `+${String(row.elapsed_ms).padStart(7)} ms ${row.page_id} composer=${payload.composer_visible ?? "?"} try_again=${payload.try_again_visible ?? "?"} visible_status=${payload.visible_streaming_status_count ?? "?"} stop=${payload.stop_button_visible ?? "?"} turns=${payload.turn_count ?? "?"} assistants=${payload.assistant_message_count ?? "?"}${text ? `  ${JSON.stringify(text.slice(0, 220))}` : ""}`
+  )
+}
+
+console.log(`\nBrowser failures (${failures.length}; latest 30):`)
+for (const row of failures.slice(-30)) {
+  const detail =
+    row.type === "Runtime.consoleAPICalled"
+      ? row.args?.map((arg) => arg.value ?? arg.description ?? "").join(" ")
+      : (row.exception_details?.exception?.description ??
+        row.exception_details?.text ??
+        row.error_text ??
+        row.status)
+  console.log(
+    JSON.stringify({
+      elapsed_ms: row.elapsed_ms,
+      page: row.page_id,
+      type: row.type,
+      detail: String(detail ?? "").slice(0, 1_000),
+    })
   )
 }
 
@@ -109,18 +137,20 @@ function describe(row) {
 
 function collapseDomStates(states) {
   const result = []
-  let previous
+  const previousByPage = new Map()
   for (const row of states) {
     const payload = row.payload && typeof row.payload === "object" ? row.payload : {}
     const signature = JSON.stringify({
+      composer: payload.composer_visible,
+      tryAgain: payload.try_again_visible,
       text: payload.streaming_status_text,
       visible: payload.visible_streaming_status_count,
       stop: payload.stop_button_visible,
       turns: payload.turn_count,
       assistants: payload.assistant_message_count,
     })
-    if (signature === previous) continue
-    previous = signature
+    if (signature === previousByPage.get(row.page_id)) continue
+    previousByPage.set(row.page_id, signature)
     result.push(row)
   }
   return result
