@@ -24,14 +24,12 @@ const subagentInputSchema = z.object({
     .max(64)
     .refine((value) => value.trim().length > 0, "agent_id cannot be only whitespace.")
     .transform((value) => value.trim())
-    .describe(
-      "Stable subagent conversation ID. Reuse to continue it; use a new ID for independent work."
-    ),
+    .describe("Unique subagent agent ID. Reuse to continue it; use a new ID for independent work."),
   prompt: z
     .string()
     .refine((value) => value.trim().length > 0, "prompt cannot be only whitespace.")
     .transform((value) => value.trim())
-    .describe("Task or follow-up instruction. Include enough context for the subagent to act."),
+    .describe("Instruction prompt or follow-up turn prompt."),
   conversation_id: z.string().trim().min(1).max(128).optional().describe("Use when given."),
 })
 
@@ -78,7 +76,7 @@ export function registerSubagentTools(
           .max(3)
           .refine(
             (agents) => new Set(agents.map((agent) => agent.agent_id)).size === agents.length,
-            "agent_id values must be unique within a batch."
+            "agent_id values must be unique."
           ),
       }),
       outputSchema: z.object({

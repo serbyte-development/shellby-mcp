@@ -69,7 +69,7 @@ export async function findComposer(page: Page, signal?: AbortSignal): Promise<Lo
 
 export async function forkLatestConversationTurn(page: Page, signal?: AbortSignal): Promise<Page> {
   throwIfAborted(signal)
-  const sourceUrl = page.url()
+  const sourceId = extractConversationId(page.url())
   const latestForkableTurn = page.locator(LATEST_FORKABLE_TURN_SELECTOR).last()
   await waitForVisibleLocator(
     latestForkableTurn,
@@ -96,18 +96,19 @@ export async function forkLatestConversationTurn(page: Page, signal?: AbortSigna
     signal,
     '"Open new branch" menu item'
   )
-  await openNewBranch.focus()
-  await openNewBranch.press("ArrowRight")
-
   const branchInNewChat = page
     .getByRole("menuitem", { name: "Branch in new Chat", exact: true })
     .last()
-  await waitForVisibleLocator(
-    branchInNewChat,
-    CHATGPT_OPERATION_TIMEOUT_MS,
-    signal,
-    '"Branch in new Chat" menu item'
-  )
+  const menuDeadline = Date.now() + CHATGPT_OPERATION_TIMEOUT_MS
+  // Lazy menu items move the trigger after opening. Re-hover its current position
+  // until the submenu is ready; this does not activate the branch action.
+  while (!(await branchInNewChat.isVisible())) {
+    throwIfAborted(signal)
+    if (Date.now() >= menuDeadline)
+      throw new ChatGptDelegationError("CHATGPT_UI_CHANGED", 'Could not open "Branch in new Chat".')
+    await openNewBranch.hover()
+    await delay(200, signal)
+  }
   let popup: Page | undefined
   const onPopup = (created: Page) => {
     popup = created
@@ -115,16 +116,19 @@ export async function forkLatestConversationTurn(page: Page, signal?: AbortSigna
   // Other callers can create pages concurrently. Only this source's popup is our branch.
   page.on("popup", onPopup)
   try {
-    await branchInNewChat.click({ noWaitAfter: true })
+    // Keep the pointer on the parent trigger: crossing the submenu gap can close
+    // it before a mouse click lands. Enter activates the focused branch action.
+    await branchInNewChat.press("Enter", { noWaitAfter: true })
     const deadline = Date.now() + CHATGPT_OPERATION_TIMEOUT_MS
     while (Date.now() < deadline) {
       throwIfAborted(signal)
-      const branchPage = popup ?? (page.url() !== sourceUrl ? page : undefined)
+      const branchPage = popup ?? page
       if (
-        branchPage &&
         isChatGptUrl(branchPage.url()) &&
-        branchPage.url() !== sourceUrl &&
-        CHATGPT_CONVERSATION_ID_RE.test(new URL(branchPage.url()).pathname)
+        CHATGPT_CONVERSATION_ID_RE.test(new URL(branchPage.url()).pathname) &&
+        // ChatGPT can redirect the source into its project URL while opening the
+        // branch. Only a different conversation (including a client-side draft) is new.
+        extractConversationId(branchPage.url()) !== sourceId
       ) {
         await findComposerBefore(branchPage, deadline, signal)
         return branchPage
@@ -161,6 +165,7 @@ export async function assertAuthenticated(page: Page): Promise<void> {
 
 const CHATGPT_LOGIN_ROUTE_RE = /\/auth\/(login|signin)/iu
 const CHATGPT_CONVERSATION_ID_RE = /(?:^|\/)c\/([^/?#]+)/u
+const CHATGPT_DRAFT_ID_RE = /^(?:web|local-chatgpt):/iu
 
 export async function navigateAndCaptureConversationPayload(
   page: Page,
@@ -356,13 +361,14 @@ function isConversationPayloadUrl(value: string, conversationId: string): boolea
   }
 }
 
+/** Extract durable identity; local-chatgpt: and WEB: routes are client-side drafts. */
 export function extractConversationId(value: string): string | undefined {
   try {
     const match = new URL(value).pathname.match(CHATGPT_CONVERSATION_ID_RE)
     const rawConversationId = match?.[1]
     if (!rawConversationId) return undefined
     const conversationId = decodeURIComponent(rawConversationId)
-    return conversationId.toLowerCase().startsWith("web:") ? undefined : conversationId
+    return CHATGPT_DRAFT_ID_RE.test(conversationId) ? undefined : conversationId
   } catch {
     return undefined
   }

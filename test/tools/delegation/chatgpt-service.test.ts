@@ -327,27 +327,40 @@ test("saved conversations resume after losing counters and results without refor
   assert.deepEqual(fixtures[1]!.prompts, ["Continue"])
 })
 
-test("forks with a client-side URL acquire their saved identity from the submitted turn", async (t) => {
-  const directory = mkdtempSync(join(tmpdir(), "shellby-fork-client-url-"))
-  const previousStateDir = MCP_CONFIG.stateDir
-  MCP_CONFIG.stateDir = directory
-  const fixture = browserFixture({ branchConversationId: "web:pending-branch" })
-  t.mock.method(chromium, "connectOverCDP", async () => fixture.browser)
-  const service = createChatGptDelegationService()
-  t.after(async () => {
-    await service.dispose()
-    MCP_CONFIG.stateDir = previousStateDir
-    rmSync(directory, { recursive: true, force: true })
+for (const branchConversationId of [
+  "web:pending-branch",
+  "WEB%3Apending-branch",
+  "local-chatgpt%3Apending-branch",
+]) {
+  test(`forks with a ${branchConversationId} URL acquire saved identity from the submitted turn`, async (t) => {
+    assert.equal(extractConversationId(`https://chatgpt.com/c/${branchConversationId}`), undefined)
+    const directory = mkdtempSync(join(tmpdir(), "shellby-fork-client-url-"))
+    const previousStateDir = MCP_CONFIG.stateDir
+    MCP_CONFIG.stateDir = directory
+    const fixture = browserFixture({ branchConversationId })
+    t.mock.method(chromium, "connectOverCDP", async () => fixture.browser)
+    const service = createChatGptDelegationService()
+    t.after(async () => {
+      await service.dispose()
+      MCP_CONFIG.stateDir = previousStateDir
+      rmSync(directory, { recursive: true, force: true })
+    })
+    const request = { agentId: "reviewer", prompt: "First", conversationId: "source" }
+    const first = await service.ask(request, {})
+    assert.equal((await service.poll(first, 0)).status, "completed")
+    const second = await service.ask({ ...request, prompt: "Second" }, {})
+    assert.equal((await service.poll(second, 0)).status, "completed")
+    assert.equal(fixture.branches, 1)
+    assert.equal(extractConversationId(fixture.pages.at(-1)!.url()), "lifecycle-conversation")
+    assert.equal(fixture.prompts[1], "Second")
+    const store = createDelegationStore(join(directory, "subagents.sqlite"))
+    assert.equal(
+      extractConversationId(store.get(undefined, "reviewer")!.conversationUrl),
+      "lifecycle-conversation"
+    )
+    store.close()
   })
-  const request = { agentId: "reviewer", prompt: "First", conversationId: "source" }
-  const first = await service.ask(request, {})
-  assert.equal((await service.poll(first, 0)).status, "completed")
-  const second = await service.ask({ ...request, prompt: "Second" }, {})
-  assert.equal((await service.poll(second, 0)).status, "completed")
-  assert.equal(fixture.branches, 1)
-  assert.equal(extractConversationId(fixture.pages.at(-1)!.url()), "lifecycle-conversation")
-  assert.equal(fixture.prompts[1], "Second")
-})
+}
 
 for (const failure of ["branch", "submission"] as const) {
   test(`failed fork ${failure} closes its pages and releases capacity`, async (t) => {
@@ -492,8 +505,10 @@ function browserFixture(
               last: () => item,
               count: async () => 1,
               isVisible: async () => true,
-              focus: async () => {},
-              press: async () => {},
+              hover: async () => {},
+              press: async (key: string) => {
+                if (key === "Enter") await item.click()
+              },
               click: async () => {
                 if (input.name !== "Branch in new Chat") return
                 branches += 1

@@ -9,6 +9,31 @@ import { MCP_CONFIG } from "../../../src/config.js"
 import { ChatGptDelegationError } from "../../../src/tools/delegation/contracts.js"
 import { DelegationLifecycle } from "../../../src/tools/delegation/lifecycle.js"
 
+test("an idle history check preserves the live turn and leaves failure recovery available", (t) => {
+  t.mock.timers.enable({ apis: ["Date"], now: 1_000_000 })
+  const lifecycle = createLifecycle(t)
+  const now = Date.now()
+  const turn = submit(lifecycle, "worker", now)
+  const agent = lifecycle.getAgent(undefined, "worker")!
+  lifecycle.recordConversation(undefined, agent, "saved-conversation")
+  const observation = turn.observation
+
+  t.mock.timers.tick(3 * 60_000 - 1)
+  assert.deepEqual(lifecycle.idleCleanupActions(Date.now()), [])
+  t.mock.timers.tick(1)
+  assert.deepEqual(lifecycle.idleCleanupActions(Date.now()), [{ kind: "check-history", turn }])
+  t.mock.timers.tick(60_000)
+  assert.deepEqual(lifecycle.idleCleanupActions(Date.now()), [])
+  assert.equal(turn.lastActivityAt, now, "A history check is not observed upstream activity")
+  assert.equal(turn.status, "running")
+  assert.equal(turn.observation, observation)
+  assert.equal(turn.submittedMessageId, "worker-message")
+  assert.throws(() => lifecycle.reserveOperation(undefined, "worker", {}), { code: "AGENT_BUSY" })
+
+  assert.equal(lifecycle.startRecovery(turn, agent, Date.now()), true)
+  assert.equal(lifecycle.startRecovery(turn, agent, Date.now()), false)
+})
+
 test("retains the latest 100 settled turns per caller in completion order and preserves running turns", (t) => {
   const lifecycle = createLifecycle(t)
   const now = Date.now()

@@ -5,6 +5,7 @@ paths:
   - src/tools/delegation/turn-protocol.ts
   - scripts/chatgpt/cdp-probe.mjs
   - scripts/chatgpt/summarize-cdp-probe.mjs
+  - test/live/scripts/startup-probe.ts
   - src/tools/delegation/diagnostics.ts
 ---
 
@@ -33,5 +34,7 @@ npm run probe:chatgpt-cdp:summary -- test/live/artifacts/<trace>.jsonl
 ```
 
 [summarize-cdp-probe.mjs](../../../scripts/chatgpt/summarize-cdp-probe.mjs) reports event counts, candidate traffic gaps, DOM state changes per page, and recent HTTP/network/JavaScript failures. Composer and Try again visibility come from the shared [page health snapshot](../../../src/tools/delegation/diagnostics.ts), also used by runtime [failure diagnostics](./browser-chatgpt-subagents.md#failure-diagnostics). Determine whether Chrome stopped receiving data or Shellby ignored arriving data before changing the parser. For startup failures, correlate browser console errors with page state and network responses rather than inferring the cause from a blank screen.
+
+To reproduce startup without sending a prompt, run `npm run probe:chatgpt-startup` for three sequential tabs or `npm run probe:chatgpt-startup -- parallel` for three concurrent tabs. The typed [startup probe](../../../test/live/scripts/startup-probe.ts) closes its temporary tabs and writes only the latest private report under `test/live/artifacts/`.
 
 New trace files have owner-only permissions. Header/query redaction does not sanitize conversation bodies. Keep traces private; ingest only deliberately sanitized evidence. Historical example: [2026-08-20 probe](../../raw/chatgpt-cdp-transport-probe-2026-08-20.md). Validation: [protocol tests](../../../test/tools/delegation/turn-protocol.test.ts) and the separately enabled [live canary](../operations/build-and-test.md).

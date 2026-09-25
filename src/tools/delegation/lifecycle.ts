@@ -15,7 +15,7 @@ import type { AssistantResponseObservation } from "./response-observer.js"
 import { createDelegationStore, DelegationStoreError } from "./store.js"
 
 const AGENT_IDLE_TTL_MS = 30 * 60_000
-const STALE_TURN_RECOVERY_MS = 3 * 60_000
+const IDLE_HISTORY_CHECK_MS = 3 * 60_000
 const TURN_RESULT_TTL_MS = 24 * 60 * 60_000
 const MAX_RETAINED_TURNS = 100
 const PROJECT_PATH_PATTERN = /\/g\/g-p-[^/]+\/project\/?$/u
@@ -39,6 +39,8 @@ interface TurnState {
   agentId: string
   parentAgent?: AgentIdentity
   status: "running" | "completed" | "failed"
+  /** A quiet turn gets one non-destructive history check, independently of failure recovery. */
+  idleHistoryChecked: boolean
   recoveryAttempted: boolean
   lastActivityAt: number
   response?: string
@@ -68,6 +70,10 @@ interface DelegationScope {
 }
 
 export type IdleCleanupAction =
+  | {
+      kind: "check-history"
+      turn: BrowserTurnState
+    }
   | {
       kind: "recover"
       turn: BrowserTurnState
@@ -220,6 +226,7 @@ export class DelegationLifecycle {
       agentId: agent.agentId,
       parentAgent,
       status: "running",
+      idleHistoryChecked: false,
       recoveryAttempted: false,
       lastActivityAt: now,
       settled: settlement.promise,
@@ -379,6 +386,7 @@ export class DelegationLifecycle {
     return scope.pendingEvents.splice(0)
   }
 
+  /** Claim each idle history check once per turn; overlapping cleanup passes cannot repeat it. */
   idleCleanupActions(now: number): IdleCleanupAction[] {
     const actions: IdleCleanupAction[] = []
     for (const scope of this.scopes.values()) {
@@ -455,16 +463,6 @@ export class DelegationLifecycle {
     const activeTurn = activeOperation?.turnId ? scope.turns.get(activeOperation.turnId) : undefined
     if (activeTurn?.status === "running") {
       const idleMs = now - activeTurn.lastActivityAt
-      if (!activeTurn.recoveryAttempted && idleMs >= STALE_TURN_RECOVERY_MS) {
-        return {
-          kind: "recover",
-          turn: activeTurn,
-          error: new ChatGptDelegationError(
-            "AGENT_IDLE_EXPIRED",
-            "Agent turn had no observable progress for 3 minutes."
-          ),
-        }
-      }
       if (idleMs >= AGENT_IDLE_TTL_MS) {
         return {
           kind: "recover",
@@ -474,6 +472,15 @@ export class DelegationLifecycle {
             "Agent turn expired after 30 minutes without observable progress."
           ),
         }
+      }
+      if (
+        !activeTurn.idleHistoryChecked &&
+        !activeTurn.recoveryAttempted &&
+        idleMs >= IDLE_HISTORY_CHECK_MS
+      ) {
+        // Reading history is not upstream activity and must not reset the clock.
+        activeTurn.idleHistoryChecked = true
+        return { kind: "check-history", turn: activeTurn }
       }
       return
     }

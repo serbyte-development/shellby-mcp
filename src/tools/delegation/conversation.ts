@@ -12,10 +12,8 @@ import {
   throwIfAborted,
 } from "./chatgpt-browser.js"
 import { ChatGptDelegationError } from "./contracts.js"
-import { delay } from "./delay.js"
 import type { DelegationDiagnostics } from "./diagnostics.js"
 
-const FORK_INITIAL_SETTLE_MS = 5_000
 const CONVERSATION_ID_PATTERN = /^[\w-]+$/u
 
 type ConversationStart = { kind: "new"; conversationId?: string } | { kind: "resume"; url: string }
@@ -25,7 +23,8 @@ type ConversationStart = { kind: "new"; conversationId?: string } | { kind: "res
  * inherit a supplied source; a resume always opens the saved conversation itself.
  * The caller owns the returned page. Failed startup closes pages it created and
  * records diagnostics before cleanup. All conversations are saved; fresh chats
- * start at the configured ChatGPT URL.
+ * start at the configured ChatGPT URL. A fork may still have a client-side draft
+ * URL; its first normal turn establishes durable identity, just like a fresh chat.
  */
 export async function startConversation(
   browser: Browser | undefined,
@@ -67,7 +66,6 @@ export async function startConversation(
         await sourcePage.close()
         ownedPages.delete(sourcePage)
       }
-      await delay(FORK_INITIAL_SETTLE_MS, signal)
     }
 
     const conversationId = extractConversationId(page.url())

@@ -274,21 +274,10 @@ export function createChatGptDelegationService(): ChatGptDelegationService {
     }
 
     const oldPage = agent.page
-    if (oldPage && !oldPage.isClosed() && extractConversationId(oldPage.url()) === conversationId) {
-      const payload = await oldPage
-        .evaluate(async (id) => {
-          const response = await fetch(`/backend-api/conversations/${encodeURIComponent(id)}`)
-          return response.ok ? response.json() : undefined
-        }, conversationId)
-        .catch(() => undefined)
-      const answer = findLatestAssistantAfterMessage(
-        extractConversationMessages(payload),
-        turn.submittedMessageId
-      )
-      if (answer) {
-        completeTurn(turn, answer.text)
-        return true
-      }
+    const savedAnswer = await readSavedTurnAnswer(turn)
+    if (savedAnswer) {
+      completeTurn(turn, savedAnswer.text)
+      return true
     }
 
     const page = await createManagedPage()
@@ -312,6 +301,38 @@ export function createChatGptDelegationService(): ChatGptDelegationService {
       if (agent.page !== page) await closePageIfOpen(page)
       throw error
     }
+  }
+
+  /**
+   * Check this submitted message once through its existing page, without disturbing
+   * the live observation. Missing, pending, or unavailable history is not a failure.
+   */
+  async function readSavedTurnAnswer(turn: BrowserTurnState) {
+    if (lifecycle.isDisposed || turn.status !== "running") return
+    const agent = lifecycle.agentForTurn(turn)
+    const page = agent?.page
+    const conversationId = extractConversationId(agent?.conversationUrl ?? "")
+    // Capture identity before awaiting: the live stream may settle the turn and
+    // allow a follow-up while this read is still in flight.
+    const submittedMessageId = turn.submittedMessageId
+    if (
+      !page ||
+      page.isClosed() ||
+      !conversationId ||
+      !submittedMessageId ||
+      extractConversationId(page.url()) !== conversationId
+    ) {
+      return
+    }
+    const payload = await page
+      .evaluate(async (id) => {
+        const response = await fetch(`/backend-api/conversations/${encodeURIComponent(id)}`, {
+          signal: AbortSignal.timeout(10_000),
+        })
+        return response.ok ? response.json() : undefined
+      }, conversationId)
+      .catch(() => undefined)
+    return findLatestAssistantAfterMessage(extractConversationMessages(payload), submittedMessageId)
   }
 
   async function disposeSubagents(): Promise<void> {
@@ -472,20 +493,17 @@ export function createChatGptDelegationService(): ChatGptDelegationService {
   async function cleanupIdleAgents(): Promise<void> {
     if (lifecycle.isDisposed) return
     for (const action of lifecycle.idleCleanupActions(Date.now())) {
+      if (action.kind === "check-history") {
+        const answer = await readSavedTurnAnswer(action.turn)
+        if (!lifecycle.isDisposed && answer) completeTurn(action.turn, answer.text)
+        continue
+      }
       if (action.kind === "recover") {
         await failOrRecoverSubmittedTurn(action.turn, action.error)
-      } else {
-        let closed = action.page.isClosed()
-        if (!closed) {
-          try {
-            await action.page.close()
-            closed = true
-          } catch {
-            closed = action.page.isClosed()
-          }
-        }
-        if (closed) lifecycle.commitIdlePageClosed(action.agent, action.page)
+        continue
       }
+      await closePageIfOpen(action.page)
+      if (action.page.isClosed()) lifecycle.commitIdlePageClosed(action.agent, action.page)
     }
   }
 
