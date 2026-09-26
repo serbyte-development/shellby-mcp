@@ -10,7 +10,6 @@ import process from "node:process"
 import test, { type TestContext } from "node:test"
 import { setTimeout as delay } from "node:timers/promises"
 import { type Browser, chromium } from "playwright-core"
-
 import { MCP_CONFIG } from "../../src/config.js"
 import {
   createBackgroundPage,
@@ -18,10 +17,11 @@ import {
   findComposer,
   submitComposer,
 } from "../../src/tools/delegation/chatgpt-browser.js"
-import { createChatGptDelegationService } from "../../src/tools/delegation/chatgpt-service.js"
-import { startConversation } from "../../src/tools/delegation/conversation.js"
+import { prepareConversationTab } from "../../src/tools/delegation/conversation-tab.js"
 import { DelegationDiagnostics } from "../../src/tools/delegation/diagnostics.js"
 import { observeAssistantResponse } from "../../src/tools/delegation/response-observer.js"
+import { createSubagents } from "../../src/tools/delegation/subagents.js"
+import { getAgentResponse, sendAgentMessage } from "../fixtures/subagents.js"
 
 // Opt in: starts disposable Chrome with local fixtures, never the managed profile
 // or real ChatGPT. CHROME_PATH can select another installed Chromium executable.
@@ -106,7 +106,7 @@ test("delegation contracts over a real Chrome CDP connection", {
     "redirect-popup",
     "moving-menu",
   ] as const) {
-    await t.test(`startConversation handles ${mode}`, async () => {
+    await t.test(`prepareConversationTab handles ${mode}`, async () => {
       const diagnostics = new DelegationDiagnostics(`cdp-${mode}`, undefined)
       const pagesBefore = context.pages().length
       const startSource =
@@ -116,7 +116,7 @@ test("delegation contracts over a real Chrome CDP connection", {
             ? "https://chatgpt.com/g/g-p-fixture/c/same-page"
             : mode
       try {
-        const page = await startConversation(
+        const page = await prepareConversationTab(
           connected,
           context,
           mode === "resume"
@@ -208,7 +208,7 @@ test("delegation contracts over a real Chrome CDP connection", {
       cdpEndpoint: MCP_CONFIG.chatGpt.cdpEndpoint,
       maxDelegatedAgents: MCP_CONFIG.chatGpt.maxDelegatedAgents,
     }
-    let service: ReturnType<typeof createChatGptDelegationService> | undefined
+    let service: ReturnType<typeof createSubagents> | undefined
     lifecycleTest.after(async () => {
       await service?.dispose()
       MCP_CONFIG.stateDir = savedConfig.stateDir
@@ -285,7 +285,7 @@ test("delegation contracts over a real Chrome CDP connection", {
     // Advance backend inactivity time only; Chrome, networking, page actions, and
     // the production service run normally against one reusable local conversation.
     lifecycleTest.mock.timers.enable({ apis: ["Date", "setInterval"], now: Date.now() })
-    const agentService = createChatGptDelegationService()
+    const agentService = createSubagents()
     service = agentService
     const request = { agentId: "cdp-lifecycle", prompt: "Test the lifecycle" }
 
@@ -299,21 +299,21 @@ test("delegation contracts over a real Chrome CDP connection", {
     }
 
     await lifecycleTest.test("heartbeats keep a long turn alive without recovery", async () => {
-      const turn = await agentService.ask(request, {})
+      const turn = await sendAgentMessage(agentService, request, {})
       await until(() => streams.has(1), "first submission")
       for (let interval = 0; interval < 5; interval += 1) {
         lifecycleTest.mock.timers.tick(120_000)
         streams.get(1)!.write(": heartbeat\n\n")
         await until(
-          async () => (await agentService.poll(turn, 0)).activityAgeMs === 0,
+          async () => (await getAgentResponse(agentService, turn, 0)).activityAgeMs === 0,
           "heartbeat reaches the lifecycle"
         )
-        assert.equal((await agentService.poll(turn, 0)).status, "running")
+        assert.equal((await getAgentResponse(agentService, turn, 0)).status, "running")
         assert.equal(historyReads, 0)
       }
       savedAnswers.set(1, "first completed")
       streams.get(1)!.end(completedStream("first completed", users[0]!.id))
-      assert.equal((await agentService.poll(turn, 5_000)).response, "first completed")
+      assert.equal((await getAgentResponse(agentService, turn, 5_000)).response, "first completed")
       assert.equal(users.length, 1)
     })
 
@@ -321,14 +321,21 @@ test("delegation contracts over a real Chrome CDP connection", {
       "idle recovery reads a saved final answer without resubmission",
       async () => {
         lifecycleTest.mock.timers.tick(60_000)
-        const turn = await agentService.ask({ ...request, prompt: "Recover completed history" }, {})
+        const turn = await sendAgentMessage(
+          agentService,
+          { ...request, prompt: "Recover completed history" },
+          {}
+        )
         await until(() => streams.has(2), "second submission")
         savedAnswers.set(2, "recovered completed answer")
         for (let minute = 0; minute < 3; minute += 1) {
           lifecycleTest.mock.timers.tick(60_000)
           await delay(100)
         }
-        assert.equal((await agentService.poll(turn, 5_000)).response, "recovered completed answer")
+        assert.equal(
+          (await getAgentResponse(agentService, turn, 5_000)).response,
+          "recovered completed answer"
+        )
         assert.equal(historyReads, 1)
         assert.equal(users.length, 2)
       }
@@ -338,7 +345,11 @@ test("delegation contracts over a real Chrome CDP connection", {
       "a late answer after pending history completes and leaves the agent reusable at capacity",
       async () => {
         lifecycleTest.mock.timers.tick(60_000)
-        const turn = await agentService.ask({ ...request, prompt: "History is still pending" }, {})
+        const turn = await sendAgentMessage(
+          agentService,
+          { ...request, prompt: "History is still pending" },
+          {}
+        )
         await until(() => streams.has(3), "third submission")
         const readsBefore = historyReads
         for (let minute = 0; minute < 3; minute += 1) {
@@ -346,23 +357,30 @@ test("delegation contracts over a real Chrome CDP connection", {
           await delay(100)
         }
         await until(() => historyReads > readsBefore, "pending history recovery")
-        assert.equal((await agentService.poll(turn, 0)).status, "running")
+        assert.equal((await getAgentResponse(agentService, turn, 0)).status, "running")
         assert.equal(historyReads, readsBefore + 1, "A quiet turn gets one history check")
 
         // History may lag streaming. Keep its third answer absent so a refreshed
         // history response cannot hide the loss of the original live observation.
         streams.get(3)!.end(completedStream("late completed answer", users[2]!.id))
-        const result = await agentService.poll(turn, 5_000)
+        const result = await getAgentResponse(agentService, turn, 5_000)
         assert.equal(result.status, "completed", "A late final answer must remain recoverable")
         assert.equal(result.response, "late completed answer")
         assert.equal(users.length, 3, "Recovery must not submit the prompt again")
 
         savedAnswers.set(3, "late completed answer")
         lifecycleTest.mock.timers.tick(60_000)
-        const followUp = await agentService.ask({ ...request, prompt: "Continue working" }, {})
+        const followUp = await sendAgentMessage(
+          agentService,
+          { ...request, prompt: "Continue working" },
+          {}
+        )
         await until(() => streams.has(4), "same agent accepts a follow-up at capacity")
         streams.get(4)!.end(completedStream("follow-up completed", users[3]!.id))
-        assert.equal((await agentService.poll(followUp, 5_000)).response, "follow-up completed")
+        assert.equal(
+          (await getAgentResponse(agentService, followUp, 5_000)).response,
+          "follow-up completed"
+        )
         assert.equal(users.length, 4)
       }
     )

@@ -3,20 +3,19 @@ import { mkdtemp, readFile, rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import test from "node:test"
-
 import { McpAuditLogger } from "../../src/server/audit/audit-log.js"
-import type { ChatGptDelegationService } from "../../src/tools/delegation/contracts.js"
+import { stubSubagents } from "../fixtures/subagents.js"
 import { connectClient, startMcpHttpServer } from "./helpers.js"
 
 test("audits tool calls made through the HTTP MCP boundary", { timeout: 10_000 }, async (t) => {
   const root = await mkdtemp(join(tmpdir(), "mcp-audit-integration-"))
   const auditPath = join(root, "agent-commands.yaml")
-  const chatGptDelegation: ChatGptDelegationService = {
-    async ask({ agentId }) {
+  const subagents = stubSubagents({
+    async send({ agentId }) {
       if (agentId === "failed-agent") throw new Error("Original submission error: composer missing")
       return `turn-${agentId}`
     },
-    async poll(_turnId) {
+    async read(_turnId) {
       if (_turnId === "failed-turn")
         return {
           status: "failed",
@@ -28,12 +27,11 @@ test("audits tool calls made through the HTTP MCP boundary", { timeout: 10_000 }
     drainEvents() {
       return []
     },
-    async dispose() {},
-  }
+  })
   const running = await startMcpHttpServer({
     port: 0,
     auditLogger: new McpAuditLogger(auditPath),
-    chatGptDelegation,
+    subagents,
   })
   t.after(async () => {
     await running.close()

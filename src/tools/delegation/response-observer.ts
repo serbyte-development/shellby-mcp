@@ -1,7 +1,7 @@
 import { StringDecoder } from "node:string_decoder"
 import type { CDPSession, Page } from "playwright-core"
 
-import type { ChatGptDelegationActivity } from "./contracts.js"
+import type { AgentActivity } from "./subagents.js"
 import {
   type ChatGptTurnCompletion,
   ChatGptTurnTracker,
@@ -34,7 +34,7 @@ export async function observeAssistantResponse(
   page: Page,
   input: {
     onSubmitted?: (messageId: string) => void
-    onActivity?: (activity?: ChatGptDelegationActivity) => void
+    onActivity?: (activity?: AgentActivity) => void
     onConversationId?: (conversationId: string) => void
   }
 ): Promise<AssistantResponseObservation> {

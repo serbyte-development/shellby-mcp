@@ -19,7 +19,7 @@ paths:
 
 ## Configuration owner
 
-[public-config.cts](../../../src/public-config.cts) owns the public schema, defaults, and `.shellby/config.toml` loader. [config.ts](../../../src/config.ts) resolves paths and derives `MCP_CONFIG`; internal retention/wait/resource limits remain code-owned there. Read those files for setting inventories and values.
+[public-config.cts](../../../src/public-config.cts) owns the public schema, defaults, and `.shellby/config.toml` loader. [config.ts](../../../src/config.ts) resolves paths and derives `MCP_CONFIG`. Capability owners also hold internal policy such as subagent retention; inspect the relevant owner before adding public configuration.
 
 Missing fields default silently. Invalid values warn and fall back individually; valid siblings survive. Unknown keys warn and are ignored. Missing/unreadable files or malformed TOML remain errors: whole-file fallback could silently re-enable disabled tools or lose a reserved tunnel URL.
 

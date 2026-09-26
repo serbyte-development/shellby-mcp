@@ -1,5 +1,5 @@
 import { asRecord } from "../../utils.js"
-import type { ChatGptDelegationActivity } from "./contracts.js"
+import type { AgentActivity } from "./subagents.js"
 
 const LINE_SEPARATOR = /\r?\n/u
 
@@ -30,7 +30,7 @@ export class ChatGptTurnTracker {
 
   constructor(
     private readonly submittedMessageId: string,
-    private readonly onActivity?: (activity?: ChatGptDelegationActivity) => void,
+    private readonly onActivity?: (activity?: AgentActivity) => void,
     private readonly onConversationId?: (conversationId: string) => void
   ) {}
 
@@ -211,7 +211,7 @@ function extractMessageText(content?: Record<string, unknown>): string {
   return stringValue(content.text) ?? ""
 }
 
-function classifyActivity(message: NormalizedMessage): ChatGptDelegationActivity {
+function classifyActivity(message: NormalizedMessage): AgentActivity {
   const recipient = message.recipient?.toLowerCase()
   if (recipient && recipient !== "all")
     return recipient.includes("web") || recipient.includes("search")

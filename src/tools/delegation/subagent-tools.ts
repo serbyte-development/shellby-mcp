@@ -2,22 +2,16 @@ import { z } from "zod"
 import { MCP_CONFIG } from "../../config.js"
 import type { ToolRegistrar } from "../../mcp/tool-registration-boundary.js"
 import { recordToolError } from "../../server/audit/audit-request.js"
-import {
-  ChatGptDelegationError,
-  type ChatGptDelegationService,
-  chatGptDelegationActivitySchema,
-  chatGptDelegationStatusSchema,
-} from "./contracts.js"
-import { delay } from "./delay.js"
-import { delegatedTurnsResult, pollDelegatedTurns } from "./turn-results.js"
+import { ChatGptDelegationError } from "./subagent-error.js"
+import { agentActivities, agentResponseStatuses, type Subagents } from "./subagents.js"
 
-const SUBAGENT_RUN_DELAYS_MS = [1_000, 5_000, 7_000] as const
 const SUBAGENT_UNAVAILABLE_ERROR =
   "SUBAGENT_UNAVAILABLE: The subagent service is temporarily unavailable. Retry the same subagent call once. If it fails again, continue without delegation. Do not change the task or prompt as a workaround."
 const SUBAGENT_FAILED_ERROR =
   "subagent_failed: The subagent failed unexpectedly. Continue the task without delegation."
 
-const subagentInputSchema = z.object({
+// Reject obsolete fields instead of silently turning a requested fork into a fresh chat.
+const subagentInputSchema = z.strictObject({
   agent_id: z
     .string()
     .min(1)
@@ -47,8 +41,9 @@ const subagentRunResultSchema = z.object({
 
 const subagentResultSchema = z.object({
   turn_id: z.string(),
-  status: chatGptDelegationStatusSchema,
-  activity: chatGptDelegationActivitySchema
+  status: z.enum(agentResponseStatuses),
+  activity: z
+    .enum(agentActivities)
     .optional()
     .describe("Current coarse activity while status is running."),
   activity_age_ms: z
@@ -60,10 +55,7 @@ const subagentResultSchema = z.object({
   error: z.string().optional(),
 })
 
-export function registerSubagentTools(
-  registerTool: ToolRegistrar,
-  chatGptDelegation: ChatGptDelegationService
-): void {
+export function registerSubagentTools(registerTool: ToolRegistrar, subagents: Subagents): void {
   registerTool(
     "subagent_run",
     {
@@ -90,40 +82,19 @@ export function registerSubagentTools(
       },
     },
     async ({ agents }, ctx) => {
-      const turns: Array<z.infer<typeof subagentRunResultSchema>> = []
-
-      for (let index = 0; index < agents.length; index += 1) {
-        const agent = agents[index]
-        if (!agent) continue
-
-        if (index > 0) {
-          try {
-            const delayMs = SUBAGENT_RUN_DELAYS_MS[index]
-            if (delayMs !== undefined) await delay(delayMs, ctx.mcpReq.signal)
-          } catch (error) {
-            turns.push(runFailure(agent.agent_id, error))
-            break
-          }
-        }
-
-        try {
-          const turnId = await chatGptDelegation.ask(
-            {
-              agentId: agent.agent_id,
-              prompt: agent.prompt,
-              startSource: agent.start_from,
-            },
-            { signal: ctx.mcpReq.signal }
-          )
-          turns.push({
-            agent_id: agent.agent_id,
-            turn_id: turnId,
-            status: "running",
-          })
-        } catch (error) {
-          turns.push(runFailure(agent.agent_id, error))
-        }
-      }
+      const results = await subagents.runAgents(
+        agents.map((agent) => ({
+          agentId: agent.agent_id,
+          prompt: agent.prompt,
+          startSource: agent.start_from,
+        })),
+        { signal: ctx.mcpReq.signal }
+      )
+      const turns = results.map((result) =>
+        result.status === "failed"
+          ? runFailure(result.agentId, result.error)
+          : { agent_id: result.agentId, turn_id: result.turnId, status: result.status }
+      )
 
       return delegatedTurnsResult(turns)
     }
@@ -164,13 +135,25 @@ export function registerSubagentTools(
       },
     },
     async ({ turn_ids, wait_ms }, ctx) => {
-      const results = await pollDelegatedTurns({
-        service: chatGptDelegation,
-        turnIds: turn_ids,
-        waitMs: wait_ms,
-        signal: ctx.mcpReq.signal,
-        formatFailure: (result) => subagentFailureText(result.errorCode, result.errorMessage),
-        formatError: subagentErrorText,
+      const responses = await subagents.getAgentResponses(turn_ids, wait_ms, ctx.mcpReq.signal)
+      const results = responses.map((result) => {
+        let error: string | undefined
+        if (result.status === "failed") {
+          const retainedFailure = `${result.errorCode ?? "subagent_failed"}: ${result.errorMessage ?? "Subagent turn failed."}`
+          recordToolError("error" in result ? result.error : retainedFailure)
+          error =
+            "error" in result
+              ? subagentErrorText(result.error)
+              : subagentFailureText(result.errorCode, result.errorMessage)
+        }
+        return {
+          turn_id: result.turnId,
+          status: result.status,
+          activity: result.activity,
+          activity_age_ms: result.activityAgeMs,
+          response: result.response,
+          error,
+        }
       })
 
       return delegatedTurnsResult(results)
@@ -210,5 +193,14 @@ function subagentFailureText(code: string | undefined, message: string | undefin
       return SUBAGENT_FAILED_ERROR
     default:
       return `${code}: ${message ?? "Subagent turn failed."}`
+  }
+}
+
+/** Preserve every batch entry; any failed entry marks the MCP call as an error. */
+export function delegatedTurnsResult<T extends { status: string }>(turns: T[]) {
+  return {
+    structuredContent: { turns },
+    content: [],
+    isError: turns.some((turn) => turn.status === "failed"),
   }
 }

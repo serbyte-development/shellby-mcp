@@ -20,7 +20,7 @@ Failed entries carry one bounded `error:` line. Thrown exceptions use their unde
 
 `formatFailureMessages` in [audit-format.ts](../../../src/server/audit/audit-format.ts) groups identical recorded or returned failure messages within one tool call, preserving first-seen order. Repeated messages appear once with an `xN` prefix; single messages have no prefix. Group full messages before truncation so distinct diagnostics remain distinct and occurrence counts stay visible. This formatting affects the audit summary; per-agent tool results and model-output token accounting retain all entries.
 
-Delegation startup/submission failures additionally emit `[delegation]` JSON to stderr, retained by PM2's error log. Those bounded browser diagnostics are owned by [Browser ChatGPT Subagents](../subagents/browser-chatgpt-subagents.md#failure-diagnostics); they are independent of the compact audit entry.
+Delegation startup/submission failures additionally emit `[delegation]` JSON to stderr, retained by PM2's error log. Those bounded browser diagnostics are owned by [Subagent Runtime](../subagents/browser-chatgpt-subagents.md#failure-diagnostics); they are independent of the compact audit entry.
 
 ## Retention and accounting
 

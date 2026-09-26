@@ -9,7 +9,7 @@ import { McpAuditLogger } from "./server/audit/audit-log.js"
 import { startMcpHttpServer } from "./server/http-server.js"
 import { CursorHostManager } from "./tools/computer/cursor-host.js"
 import { PeekabooClient } from "./tools/computer/peekaboo.js"
-import { createChatGptDelegationService } from "./tools/delegation/chatgpt-service.js"
+import { createSubagents } from "./tools/delegation/subagents.js"
 import { createShellSession } from "./tools/shell/session.js"
 import { createShellSessionManager } from "./tools/shell/session-manager.js"
 import { WebPageOpener } from "./tools/web/web-open.js"
@@ -19,7 +19,7 @@ const auditLogger = new McpAuditLogger(auditLogPath)
 const agentObserver = MCP_CONFIG.ui.enabled ? createAgentObserver() : undefined
 const authStore = new ShellbyAuthStore(join(MCP_CONFIG.stateDir, "auth.json"))
 await authStore.ensureState()
-const chatGptDelegation = MCP_CONFIG.tools.subagents ? createChatGptDelegationService() : undefined
+const subagents = MCP_CONFIG.tools.subagents ? createSubagents() : undefined
 const peekaboo = MCP_CONFIG.tools.computer ? new PeekabooClient({ localOnly: true }) : undefined
 const webPageOpener = MCP_CONFIG.tools.web ? new WebPageOpener() : undefined
 const cursorHost = MCP_CONFIG.tools.computer
@@ -41,7 +41,7 @@ try {
     createMcpServer: createMcpServerFactory({
       shellManager: shells,
       peekaboo,
-      chatGptDelegation,
+      subagents,
       webPageOpener,
     }),
     auditLogger,
@@ -65,7 +65,7 @@ console.log(
 )
 if (peekaboo) console.log(`Agent cursor: ${cursorHostStarted ? "enabled" : "disabled"}`)
 console.log(
-  `ChatGPT agents: ${chatGptDelegation ? `enabled via attach-only CDP ${MCP_CONFIG.chatGpt.cdpEndpoint}` : "disabled"}`
+  `ChatGPT agents: ${subagents ? `enabled via attach-only CDP ${MCP_CONFIG.chatGpt.cdpEndpoint}` : "disabled"}`
 )
 
 let shuttingDown = false
@@ -84,7 +84,7 @@ async function closeRuntimeServices(): Promise<void> {
   await Promise.allSettled([
     shells?.close(),
     peekaboo?.close(),
-    chatGptDelegation?.dispose(),
+    subagents?.dispose(),
     cursorHost?.close(),
   ])
 }

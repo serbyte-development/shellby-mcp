@@ -5,7 +5,7 @@ import { createMcpServerFactory } from "../src/mcp/server-factory.js"
 import { startMcpHttpServer } from "../src/server/http-server.js"
 import { countTokens, OUTPUT_TOKEN_ENCODING } from "../src/tokenizer.js"
 import { PeekabooClient } from "../src/tools/computer/peekaboo.js"
-import { createChatGptDelegationService } from "../src/tools/delegation/chatgpt-service.js"
+import { createSubagents } from "../src/tools/delegation/subagents.js"
 import { createShellSession } from "../src/tools/shell/session.js"
 import { createShellSessionManager } from "../src/tools/shell/session-manager.js"
 import { WebPageOpener } from "../src/tools/web/web-open.js"
@@ -17,14 +17,14 @@ const shells = MCP_CONFIG.tools.shell
     })
   : undefined
 const peekaboo = MCP_CONFIG.tools.computer ? new PeekabooClient({ localOnly: true }) : undefined
-const chatGptDelegation = MCP_CONFIG.tools.subagents ? createChatGptDelegationService() : undefined
+const subagents = MCP_CONFIG.tools.subagents ? createSubagents() : undefined
 const webPageOpener = MCP_CONFIG.tools.web ? new WebPageOpener() : undefined
 const running = await startMcpHttpServer(
   {
     createMcpServer: createMcpServerFactory({
       shellManager: shells,
       peekaboo,
-      chatGptDelegation,
+      subagents,
       webPageOpener,
     }),
   },
@@ -60,6 +60,6 @@ try {
   await Promise.allSettled([
     shells?.close() ?? Promise.resolve(),
     peekaboo?.close() ?? Promise.resolve(),
-    chatGptDelegation?.dispose() ?? Promise.resolve(),
+    subagents?.dispose() ?? Promise.resolve(),
   ])
 }

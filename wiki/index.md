@@ -14,5 +14,5 @@
 - [Project](./pages/project/index.md) — Open risks, deferred experiments, and prior evaluation research.
 - [Subagents](./pages/subagents/index.md) — Browser delegation ownership, completion/recovery, transport diagnostics, and live testing.
 - [Tool Naming and Schema Design](./pages/tool-naming-and-schema-design.md) — Tool metadata design and observed ChatGPT schema-projection pitfalls.
-- [Tools](./pages/tools/index.md) — Capability contracts: shell, patching, file/image transfer, fetching, subagents, and clones.
+- [Tools](./pages/tools/index.md) — Capability contracts: shells, patching, file/image transfer, fetching, and subagents.
 - [Workspace Tooling](./pages/workspace-tooling.md) — Workspace path ownership, skill discovery, dynamic loading, and setup-copy boundaries.

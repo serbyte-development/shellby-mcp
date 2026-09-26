@@ -1,8 +1,8 @@
 import assert from "node:assert/strict"
 import { getEventListeners } from "node:events"
 import test from "node:test"
-import { ChatGptDelegationError } from "../../../src/tools/delegation/contracts.js"
-import { delay } from "../../../src/tools/delegation/delay.js"
+import { delay } from "../../../src/tools/delegation/chatgpt-browser.js"
+import { ChatGptDelegationError } from "../../../src/tools/delegation/subagent-error.js"
 
 test("delay completes with and without a signal and removes its abort listener", async () => {
   await delay(1)

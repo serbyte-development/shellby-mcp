@@ -1,55 +1,47 @@
 ---
-summary: "Delegation ownership, capacity, persistence, page restoration, and at-most-once submission."
+summary: "Subagent ownership, identity capacity, tab lifetime, submission safety, and startup diagnostics."
 paths:
-  - src/tools/delegation/chatgpt-service.ts
-  - src/tools/delegation/lifecycle.ts
+  - src/tools/delegation/subagents.ts
+  - src/tools/delegation/conversation-tab.ts
   - src/tools/delegation/chatgpt-browser.ts
   - src/tools/delegation/diagnostics.ts
   - src/tools/delegation/store.ts
-  - src/config.ts
   - src/public-config.cts
 ---
 
-# Browser ChatGPT Subagents
+# Subagent Runtime
 
-Public adapters: [subagent contract](../tools/subagent.md), [clones](../tools/clones.md). Caller identity: [Agent Context](../agent-context.md).
+Caller contract: [subagent tools](../tools/subagent.md). Caller identity: [Agent Context](../agent-context.md).
 
 | Owner | Responsibility |
 | --- | --- |
-| [chatgpt-service.ts](../../../src/tools/delegation/chatgpt-service.ts) | Attach to Chrome; orchestrate pages, submission, observation, pacing, recovery |
-| [lifecycle.ts](../../../src/tools/delegation/lifecycle.ts) | Agent/turn mutations, conversation identity, admission/locks, settlement/events, result retention, persistence, idle decisions |
-| [chatgpt-browser.ts](../../../src/tools/delegation/chatgpt-browser.ts) | Background page creation, composer interaction, branching, navigation/history capture |
-| [diagnostics.ts](../../../src/tools/delegation/diagnostics.ts) | Bounded startup/submission failure evidence and shared DOM health snapshot |
-| [store.ts](../../../src/tools/delegation/store.ts) | SQLite mappings and explicit available/unavailable state |
+| [subagents.ts](../../../src/tools/delegation/subagents.ts) | One `createSubagents()` instance owns agent/turn state and complete submission, collection, recovery and cleanup workflows |
+| [conversation-tab.ts](../../../src/tools/delegation/conversation-tab.ts) | Prepare new, forked or saved tabs; own readiness and intermediate-tab cleanup |
+| [chatgpt-browser.ts](../../../src/tools/delegation/chatgpt-browser.ts) | CDP/tab and composer mechanics; no agent lifecycle |
+| [store.ts](../../../src/tools/delegation/store.ts) | Durable conversation mappings; explicit persistence failure |
 
-## State and admission
+## Identity and lifetime
 
-Each canonical `AgentIdentity` owns agent IDs, active-operation locks, turn records, and pending notices; headerless callers share an unscoped bucket. Subagents/clones share that namespace and the public `chatgpt.max_delegated_agents` cap. Admission counts saved IDs, live IDs, and in-flight creations; it is not a process-wide concurrency semaphore. Existing IDs remain reusable after the cap is reached or lowered. Reserve before browser work.
+Agent IDs belong to the calling `AgentIdentity`; headerless calls share one scope. Capacity counts saved, live and reserved identities, including idle or uncertain agents. Closing a tab or finishing a turn does not free an identity slot. Existing IDs remain reusable at capacity when idle; uncertain IDs stay blocked. There is no automatic retirement policy.
 
-A failed first submission releases a new subagent's unused ID and closes its page when no conversation or submitted turn exists. Established conversations and completed results survive an unsent follow-up failure. Otherwise repeated startup failures would exhaust capacity with `latest_turn_id=pending` entries.
+Reserve before browser work. Unsent first-start failures release the new identity and owned tab; failed follow-ups retain established identity. A submitted turn keeps its reservation until settlement, independently of the originating MCP request or polling. Returning a turn ID must not unlock the agent.
 
-Service consumes live read-only agent/turn views. Lifecycle operations own page association, conversation URL reconciliation/persistence, activity, and settlement. Service still owns browser effects and disposal of observations returned by settlement. Late activity cannot change a settled turn or its agent status.
+SQLite preserves caller/agent → conversation mappings. Tabs, active turns and results are process-local. Idle tab cleanup retains saved identity; later submissions reopen it. Persistence failure blocks new work, but a write failure after Send must not invalidate submitted work.
 
-`<state_dir>/subagents.sqlite` persists `(parent session ID, agent ID) → conversation URL, turn count, kind`. Pages, results, activity, uncertain state, and notices remain process-local. Temporary agents skip mapping lookup/save but still undergo capacity checks. Persistence failure blocks new submissions before browser work while leaving unrelated MCP tools available. A post-submit write failure does not invalidate an already-sent turn; later admissions fail closed.
+Keep mutable records inside the factory. The MCP adapter translates contracts and audits failures; it does not schedule browser work or manage lifecycle state. [Architecture](../architecture-map.md) explains why the factory outlives individual MCP servers.
 
-## Submission and restoration
+## Submission invariants
 
-A new saved agent opens the configured project URL; later turns use its stable conversation URL. Restore a missing page or navigate a mismatched page before submission. Temporary chats can continue only while their page survives. Clones follow their branched URL.
+New and forked conversations share submission and recovery. Preparation never sends; it returns the actual target tab, including same-tab or popup forks, and cleans up unused owned tabs. Managed Chrome is attach-only; [startup](../operations/configuration-and-startup.md) owns launching it.
 
-Install the CDP observer before entering/submitting the prompt. Preserve interaction/inter-turn delays, pre-submit grace, and rate-limit checks; dismiss overlays before Send and never retry that action after an error. Send does not wait for navigation: ChatGPT can start generation while navigation remains pending. Invoke Send through the observation's `submit` operation: it resolves pending outgoing-request metadata after an action error and preserves a known submission. The service need not inspect partially populated turn state to decide whether Send succeeded. Submission detaches generation from the originating request and returns a local turn ID. [Completion](./subagent-completion.md) owns message correlation.
+`submitTurn` installs observation before prompt entry. Its private `submitMessageToBrowser` owns settling delays, target rechecks, account-limit checks and one Send attempt. Composer visibility alone does not establish client readiness.
 
-Composer visibility does not establish that ChatGPT's client has finished initializing. The service's `INTERACTION_DELAY_MS` pauses before and after prompt entry. This is pacing, not a guarantee against frontend rendering failures.
+A click/navigation error can occur after ChatGPT accepted the message. The observer resolves pending request metadata before classifying that error; never retry Send merely because the action threw. [Completion](./subagent-completion.md) owns message correlation and settlement.
 
-First ordinary subagent prompt appends brevity and no-subagent instructions, also restricting `computer_*` when enabled. Later turns and clones omit this injection. Browser/account/UI details stay behind the service; public error projection belongs to the adapters.
+`WEB:` and `local-chatgpt:` URLs are drafts, not durable identity. Stream events and URL reconciliation feed `recordConversation`. A returned local turn ID does not guarantee that the saved conversation URL has arrived yet.
 
 ## Failure diagnostics
 
-Each start/resume operation records its phase and watches attached pages until submission returns. On failure, emit one `[delegation]` JSON line to stderr before page cleanup, so the configured PM2 error log retains the operation/agent/caller, elapsed time, observed submission identity, bounded error details, recent browser errors, and page health. Console errors matter: ChatGPT can catch a rendering exception and show only a Try again button without a page crash or failed HTTP request.
+[diagnostics.ts](../../../src/tools/delegation/diagnostics.ts) emits bounded `[delegation]` evidence before failed-startup cleanup. Inspect through `npm run logs`; use [CDP probes](./chatgpt-cdp-transport.md) for detached-generation failures. Startup diagnostics stop when submission returns.
 
-Diagnostics omit request/response bodies, headers, drafts, and conversation text; URL queries/fragments and common credential fields are redacted. Snapshot reads have a deadline, retained events are bounded, and listeners are removed on success or failure. These diagnostics cover admission, startup, and submission, not the detached generation lifetime. For deeper transport investigation, use the private [CDP probe](./chatgpt-cdp-transport.md#investigating-drift). Tests: [diagnostics](../../../test/tools/delegation/diagnostics.test.ts).
-
-## Idle cleanup
-
-Idle cleanup closes pages after the lifecycle TTL while retaining saved identity. Local results follow the separate [retention policy](./subagent-completion.md#results-and-events). Commit temporary expiration only after page close succeeds or the page is confirmed closed; failed close remains retryable. Saved agents reopen their conversation on reuse, including after process restart. Temporary expiration returns `TEMP_AGENT_EXPIRED`; changing the memory flag cannot revive it.
-
-[Completion](./subagent-completion.md) owns active-turn recovery, uncertainty, and notice semantics. [Runtime Recovery](../operations/runtime-recovery.md) owns intentional state resets. Tests: [service/lifecycle](../../../test/tools/delegation/chatgpt-service.test.ts), [capacity](../../../test/tools/delegation/delegated-agent-limit.test.ts), [store](../../../test/tools/delegation/store.test.ts).
+A blank page with only “Try again” does not establish blocking, authentication failure or a browser crash. Correlate console errors, network responses and page health before changing retries. [Testing](./testing.md) separates fixture coverage from authenticated evidence.

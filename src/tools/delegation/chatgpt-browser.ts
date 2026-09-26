@@ -1,7 +1,7 @@
 import process from "node:process"
+import { setTimeout as sleep } from "node:timers/promises"
 import type { Browser, BrowserContext, Locator, Page } from "playwright-core"
-import { ChatGptDelegationError } from "./contracts.js"
-import { delay } from "./delay.js"
+import { ChatGptDelegationError } from "./subagent-error.js"
 
 const BACKGROUND_PAGE_BIND_TIMEOUT_MS = 5_000
 const CHATGPT_OPERATION_TIMEOUT_MS = 120_000
@@ -239,7 +239,7 @@ export async function submitComposer(
         return
       }
     }
-    await delay(50, signal)
+    await delay(200, signal)
   }
   await composer.press("Enter", { noWaitAfter: true })
 }
@@ -371,5 +371,22 @@ export function extractConversationId(value: string): string | undefined {
     return CHATGPT_DRAFT_ID_RE.test(conversationId) ? undefined : conversationId
   } catch {
     return undefined
+  }
+}
+
+/** Wait in milliseconds; cancellation rejects with REQUEST_ABORTED. */
+export async function delay(ms: number, signal?: AbortSignal): Promise<void> {
+  try {
+    await sleep(ms, undefined, { signal })
+  } catch (error) {
+    if (signal?.aborted) {
+      // biome-ignore lint/style/useErrorCause: ChatGptDelegationError takes ErrorOptions as its third argument.
+      throw new ChatGptDelegationError(
+        "REQUEST_ABORTED",
+        "The ChatGPT subagent request was cancelled.",
+        { cause: error }
+      )
+    }
+    throw error
   }
 }

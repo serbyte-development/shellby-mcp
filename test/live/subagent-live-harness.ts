@@ -9,9 +9,9 @@ import { Client, StreamableHTTPClientTransport } from "@modelcontextprotocol/cli
 import { chromium, type Page } from "playwright-core"
 import { MCP_CONFIG } from "../../src/config.js"
 import { extractConversationId } from "../../src/tools/delegation/chatgpt-browser.js"
-import { createChatGptDelegationService } from "../../src/tools/delegation/chatgpt-service.js"
 import { DelegationDiagnostics } from "../../src/tools/delegation/diagnostics.js"
 import { createDelegationStore } from "../../src/tools/delegation/store.js"
+import { createSubagents } from "../../src/tools/delegation/subagents.js"
 import { submittedUserMessageId } from "../../src/tools/delegation/turn-protocol.js"
 import { asRecord } from "../../src/utils.js"
 import { startMcpHttpServer, toolText } from "../integrations/helpers.js"
@@ -312,7 +312,7 @@ export async function openLiveSubagentHarness(t: TestContext, deadline: number) 
 
   async function startServer(): Promise<void> {
     server = await startMcpHttpServer({
-      chatGptDelegation: createChatGptDelegationService(),
+      subagents: createSubagents(),
       profile: {
         tools: {
           review: false,

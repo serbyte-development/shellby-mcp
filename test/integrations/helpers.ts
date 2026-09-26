@@ -49,20 +49,20 @@ export async function startMcpHttpServer(options: TestMcpServerOptions = {}) {
   const peekaboo = tools.computer
     ? (services.peekaboo ?? new PeekabooClient({ localOnly: true }))
     : undefined
-  const chatGptDelegation = tools.subagents
-    ? (services.chatGptDelegation ?? createUnavailableDelegationService())
+  const subagents = tools.subagents
+    ? (services.subagents ?? createUnavailableSubagents())
     : undefined
   const capabilityServices = {
     shellManager,
     peekaboo,
-    chatGptDelegation,
+    subagents,
     webPageOpener: tools.web ? (services.webPageOpener ?? new WebPageOpener()) : undefined,
   }
   const closeRuntime = () =>
     Promise.allSettled([
       shellManager?.close() ?? Promise.resolve(),
       peekaboo?.close() ?? Promise.resolve(),
-      chatGptDelegation?.dispose() ?? Promise.resolve(),
+      subagents?.dispose() ?? Promise.resolve(),
     ])
 
   try {
@@ -92,15 +92,13 @@ export async function startMcpHttpServer(options: TestMcpServerOptions = {}) {
   }
 }
 
-function createUnavailableDelegationService(): NonNullable<
-  McpCapabilityServices["chatGptDelegation"]
-> {
+function createUnavailableSubagents(): NonNullable<McpCapabilityServices["subagents"]> {
   const unavailable = async (): Promise<never> => {
     throw new Error("This deterministic integration test did not supply a ChatGPT agent service.")
   }
   return {
-    ask: unavailable,
-    poll: unavailable,
+    runAgents: unavailable,
+    getAgentResponses: unavailable,
     drainEvents: () => [],
     dispose: async () => {},
   }

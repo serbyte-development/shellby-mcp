@@ -19,7 +19,7 @@ paths:
 | Dispatch, schemas, result notices | [Registration Boundary](./mcp-tool-registration-boundary.md) → `src/mcp/` |
 | Caller identity, dashboard steering | [Agent Context](./agent-context.md) → `src/agent/`; frontend → [UI wiki](../../ui/wiki/AGENTS.md) |
 | Persistent processes and output | [Shell Runtime](./persistent-shell-runtime.md) → `src/tools/shell/` |
-| Browser conversations and detached turns | [Delegation Runtime](./subagents/browser-chatgpt-subagents.md) → `src/tools/delegation/` |
+| Browser conversations and detached turns | [Subagent Runtime](./subagents/browser-chatgpt-subagents.md) → `src/tools/delegation/` |
 | Capability contracts | [Tools](./tools/index.md), [Computer Use](./computer-use.md), [Workspace Skills](./workspace-tooling.md) |
 | Audit retention and token accounting | [Audit Logging](./operations/audit-logging.md) → `src/server/audit/` |
 

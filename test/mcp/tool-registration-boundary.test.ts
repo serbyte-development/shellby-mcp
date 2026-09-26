@@ -9,7 +9,7 @@ import { createAgentObserver } from "../../src/agent/observer.js"
 import { ToolError } from "../../src/mcp/tool-error.js"
 import { createToolRegistrar } from "../../src/mcp/tool-registration-boundary.js"
 import type { McpAuditCall } from "../../src/server/audit/audit-request.js"
-import { delegatedTurnsResult } from "../../src/tools/delegation/turn-results.js"
+import { delegatedTurnsResult } from "../../src/tools/delegation/subagent-tools.js"
 
 for (const structuredOutput of [false, true]) {
   test(`preserves SDK validation and callback conventions with structuredOutput=${structuredOutput}`, async (t) => {

@@ -1,29 +1,26 @@
 import assert from "node:assert/strict"
 import test from "node:test"
-
 import { type AgentIdentity, getAgentIdentity } from "../../src/agent/context.js"
-import {
-  ChatGptDelegationError,
-  type ChatGptDelegationService,
-  type ChatGptSubagentRequest,
-} from "../../src/tools/delegation/contracts.js"
+import { ChatGptDelegationError } from "../../src/tools/delegation/subagent-error.js"
+import type { AgentRequest } from "../../src/tools/delegation/subagents.js"
+import { stubSubagents } from "../fixtures/subagents.js"
 import { connectClient, startMcpHttpServer, toolText } from "./helpers.js"
 
 for (const toolOutput of ["compact", "structured"] as const) {
   test(`delegation tools report submission and batch failures in ${toolOutput} output`, {
     timeout: 15_000,
   }, async (t) => {
-    const submittedRequests: ChatGptSubagentRequest[] = []
+    const submittedRequests: AgentRequest[] = []
     const submit = async (agentId: string): Promise<string> => {
       if (agentId === "failed") throw new ChatGptDelegationError("AGENT_TARGET_LOST", "lost")
       return `${agentId}_turn_1`
     }
-    const chatGptDelegation: ChatGptDelegationService = {
-      ask: (request) => {
+    const subagents = stubSubagents({
+      send: (request) => {
         submittedRequests.push(request)
         return submit(request.agentId)
       },
-      async poll(turnId) {
+      async read(turnId) {
         switch (turnId) {
           case "completed":
             return { status: "completed", response: "preserved response" }
@@ -38,10 +35,9 @@ for (const toolOutput of ["compact", "structured"] as const) {
         }
       },
       drainEvents: () => [],
-      dispose: async () => {},
-    }
+    })
     const running = await startMcpHttpServer({
-      chatGptDelegation,
+      subagents,
       profile: { toolOutput },
     })
     t.after(() => running.close())
@@ -156,11 +152,11 @@ test("delivers a completed subagent event on the next MCP response exactly once"
   timeout: 10_000,
 }, async (t) => {
   const events = new Map<string, string[]>()
-  const chatGptDelegation: ChatGptDelegationService = {
-    async ask() {
+  const subagents = stubSubagents({
+    async send() {
       throw new Error("unused")
     },
-    async poll() {
+    async read() {
       throw new Error("unused")
     },
     drainEvents() {
@@ -169,9 +165,8 @@ test("delivers a completed subagent event on the next MCP response exactly once"
       events.delete(key)
       return pending
     },
-    async dispose() {},
-  }
-  const running = await startMcpHttpServer({ chatGptDelegation })
+  })
+  const running = await startMcpHttpServer({ subagents })
   t.after(() => running.close())
   const other = await connectClient(
     running.url,
@@ -218,17 +213,15 @@ test("delivers a completed subagent event on the next MCP response exactly once"
   assert.doesNotMatch(secondText.text, /agent_finished/u)
 })
 
-test("runs staggered subagents and retrieves turns across MCP client sessions", {
+test("routes subagent batches and retrieves turns across MCP client sessions", {
   timeout: 15_000,
 }, async (t) => {
   const histories = new Map<string, string[]>()
   const completed = new Map<string, string>()
-  const starts: Array<{ agentId: string; at: number; parentAgent?: AgentIdentity }> = []
-  let activePolls = 0
-  let maxActivePolls = 0
+  const starts: Array<{ agentId: string; parentAgent?: AgentIdentity }> = []
 
-  const chatGptDelegation: ChatGptDelegationService = {
-    async ask({ agentId, prompt }, context) {
+  const subagents = stubSubagents({
+    async send({ agentId, prompt }, context) {
       if (agentId === "unavailable-agent") {
         throw new ChatGptDelegationError(
           "BROWSER_UNAVAILABLE",
@@ -236,7 +229,7 @@ test("runs staggered subagents and retrieves turns across MCP client sessions", 
         )
       }
       assert.ok(context.signal)
-      starts.push({ agentId, at: Date.now(), parentAgent: getAgentIdentity() })
+      starts.push({ agentId, parentAgent: getAgentIdentity() })
       const history = histories.get(agentId) ?? []
       history.push(prompt)
       histories.set(agentId, history)
@@ -244,40 +237,32 @@ test("runs staggered subagents and retrieves turns across MCP client sessions", 
       completed.set(turnId, `${agentId}:${history.length}:${prompt}`)
       return turnId
     },
-    async poll(turnId) {
-      activePolls += 1
-      maxActivePolls = Math.max(maxActivePolls, activePolls)
-      try {
-        await new Promise((resolve) => setTimeout(resolve, 25))
-        if (turnId === "heartbeat-fixture") {
-          return {
-            status: "running",
-            activity: "Searching the web",
-            activityAgeMs: 2_750,
-          }
+    async read(turnId) {
+      if (turnId === "heartbeat-fixture") {
+        return {
+          status: "running",
+          activity: "Searching the web",
+          activityAgeMs: 2_750,
         }
-        if (turnId === "backend-failure") {
-          return {
-            status: "failed",
-            errorCode: "BROWSER_UNAVAILABLE",
-            errorMessage: "Chrome disconnected while observing the turn.",
-          }
-        }
-        const response = completed.get(turnId)
-        if (!response)
-          throw new ChatGptDelegationError("UNKNOWN_TURN", `Unknown agent turn: ${turnId}`)
-        return { status: "completed", response }
-      } finally {
-        activePolls -= 1
       }
+      if (turnId === "backend-failure") {
+        return {
+          status: "failed",
+          errorCode: "BROWSER_UNAVAILABLE",
+          errorMessage: "Chrome disconnected while observing the turn.",
+        }
+      }
+      const response = completed.get(turnId)
+      if (!response)
+        throw new ChatGptDelegationError("UNKNOWN_TURN", `Unknown agent turn: ${turnId}`)
+      return { status: "completed", response }
     },
     drainEvents() {
       return []
     },
-    async dispose() {},
-  }
+  })
 
-  const running = await startMcpHttpServer({ chatGptDelegation })
+  const running = await startMcpHttpServer({ subagents })
   t.after(() => running.close())
 
   const first = await connectClient(
@@ -312,7 +297,6 @@ test("runs staggered subagents and retrieves turns across MCP client sessions", 
   const [firstStart, secondStart] = starts
   assert.ok(firstStart)
   assert.ok(secondStart)
-  assert.ok(secondStart.at - firstStart.at >= 4_500)
   assert.ok(firstStart.parentAgent)
   assert.equal(secondStart.parentAgent, firstStart.parentAgent)
   assert.equal(firstStart.parentAgent.taskSlug, "subagent-state")
@@ -336,7 +320,6 @@ test("runs staggered subagents and retrieves turns across MCP client sessions", 
       "test-reviewer:1:Review the tests.",
     ].join("\n")
   )
-  assert.equal(maxActivePolls, 2)
 
   const mixed = await second.client.callTool({
     name: "subagent_result",

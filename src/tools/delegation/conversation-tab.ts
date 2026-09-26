@@ -11,12 +11,12 @@ import {
   navigateChatGptPage,
   throwIfAborted,
 } from "./chatgpt-browser.js"
-import { ChatGptDelegationError } from "./contracts.js"
 import type { DelegationDiagnostics } from "./diagnostics.js"
+import { ChatGptDelegationError } from "./subagent-error.js"
 
 const CONVERSATION_ID_PATTERN = /^[\w-]+$/u
 
-type ConversationStart = { kind: "new"; startSource?: string } | { kind: "resume"; url: string }
+type ConversationTarget = { kind: "new"; startSource?: string } | { kind: "resume"; url: string }
 
 /**
  * Open a ready conversation without submitting a prompt. A new conversation may
@@ -27,47 +27,64 @@ type ConversationStart = { kind: "new"; startSource?: string } | { kind: "resume
  * start at the configured ChatGPT URL. A fork may still have a client-side draft
  * URL; its first normal turn establishes durable identity, just like a fresh chat.
  */
-export async function startConversation(
+export async function prepareConversationTab(
   browser: Browser | undefined,
   context: BrowserContext | undefined,
-  start: ConversationStart,
+  start: ConversationTarget,
   diagnostics: DelegationDiagnostics,
   signal?: AbortSignal
 ): Promise<Page> {
   throwIfAborted(signal)
   if (!browser || !context)
     throw new ChatGptDelegationError("BROWSER_UNAVAILABLE", "ChatGPT browser is not connected.")
-  const { url, forkSourceId } = resolveConversationStart(start)
+  const { url, forkSourceId } = resolveConversationTarget(start)
 
+  const connectedBrowser = browser
+  const browserContext = context
   const ownedPages = new Set<Page>()
   try {
+    const page = await loadPageTab()
+    await waitForConversationReady(page)
+    return page
+  } catch (error) {
+    await diagnostics.failure(error)
+    await Promise.allSettled([...ownedPages].map((page) => page.close()))
+    throw error
+  }
+
+  async function loadPageTab(): Promise<Page> {
+    return forkSourceId ? forkConversation(forkSourceId) : openConversationTab()
+  }
+
+  async function openConversationTab(): Promise<Page> {
     diagnostics.stage("create-page")
-    let page = await createBackgroundPage(browser, context)
+    const page = await createBackgroundPage(connectedBrowser, browserContext)
     ownedPages.add(page)
     diagnostics.watch(page)
     diagnostics.stage(forkSourceId ? "navigate-source" : "navigate")
     await navigateChatGptPage(page, url, signal)
     diagnostics.stage("authenticate")
     await assertAuthenticated(page)
+    return page
+  }
 
-    if (forkSourceId) {
-      if (extractConversationId(page.url()) !== forkSourceId) {
-        throw new ChatGptDelegationError(
-          "AGENT_TARGET_LOST",
-          "The source conversation did not open."
-        )
-      }
-      const sourcePage = page
-      diagnostics.stage("branch-conversation")
-      page = await forkLatestConversationTurn(sourcePage, signal)
-      ownedPages.add(page)
-      diagnostics.watch(page)
-      if (page !== sourcePage) {
-        await sourcePage.close()
-        ownedPages.delete(sourcePage)
-      }
+  async function forkConversation(sourceId: string): Promise<Page> {
+    const sourcePage = await openConversationTab()
+    if (extractConversationId(sourcePage.url()) !== sourceId) {
+      throw new ChatGptDelegationError("AGENT_TARGET_LOST", "The source conversation did not open.")
     }
+    diagnostics.stage("branch-conversation")
+    const page = await forkLatestConversationTurn(sourcePage, signal)
+    ownedPages.add(page)
+    diagnostics.watch(page)
+    if (page !== sourcePage) {
+      await sourcePage.close()
+      ownedPages.delete(sourcePage)
+    }
+    return page
+  }
 
+  async function waitForConversationReady(page: Page): Promise<void> {
     const conversationId = extractConversationId(page.url())
     const expectedId = start.kind === "resume" ? extractConversationId(start.url) : undefined
     const matches = forkSourceId ? conversationId !== forkSourceId : conversationId === expectedId
@@ -79,16 +96,11 @@ export async function startConversation(
     }
     diagnostics.stage("find-composer")
     await findComposer(page, signal)
-    return page
-  } catch (error) {
-    await diagnostics.failure(error)
-    await Promise.allSettled([...ownedPages].map((page) => page.close()))
-    throw error
   }
 }
 
 /** Resolve creation options before browser work; saved identity always refers to the target itself. */
-function resolveConversationStart(start: ConversationStart): {
+function resolveConversationTarget(start: ConversationTarget): {
   url: string
   forkSourceId?: string
 } {

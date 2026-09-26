@@ -5,8 +5,8 @@ import type { McpAuditRequest } from "../server/audit/audit-log.js"
 import { registerApplyPatchTool } from "../tools/apply-patch/apply-patch.js"
 import { registerComputerUseTools } from "../tools/computer/computer-tools.js"
 import type { PeekabooClient } from "../tools/computer/peekaboo.js"
-import type { ChatGptDelegationService } from "../tools/delegation/contracts.js"
 import { registerSubagentTools } from "../tools/delegation/subagent-tools.js"
+import type { Subagents } from "../tools/delegation/subagents.js"
 import { registerFileReadTool, registerFileWriteTool } from "../tools/file/file-tools.js"
 import { registerImageTools } from "../tools/image/image-tools.js"
 import {
@@ -28,7 +28,7 @@ import { createToolRegistrar } from "./tool-registration-boundary.js"
 
 export interface McpCapabilityServices {
   shellManager?: ShellSessionManager
-  chatGptDelegation?: ChatGptDelegationService
+  subagents?: Subagents
   peekaboo?: PeekabooClient
   webPageOpener?: WebPageOpener
 }
@@ -84,10 +84,10 @@ function createMcpServer(options: CreateMcpServerOptions, profile: McpRuntimePro
   const server = new McpServer(profile.server, {
     instructions: buildMcpInstructions(),
   })
-  const chatGptDelegation = options.chatGptDelegation
+  const subagents = options.subagents
   const registerTool = createToolRegistrar(server, {
     structuredOutput: profile.toolOutput === "structured",
-    drainPendingEvents: chatGptDelegation ? () => chatGptDelegation.drainEvents() : undefined,
+    drainPendingEvents: subagents ? () => subagents.drainEvents() : undefined,
     agentObserver: options.agentObserver,
     reviewPromptTracker: options.reviewPromptTracker,
     auditRequest: options.auditRequest,
@@ -103,10 +103,7 @@ function createMcpServer(options: CreateMcpServerOptions, profile: McpRuntimePro
   if (profile.tools.fileWrite) registerFileWriteTool(registerTool)
   if (shells) registerShellManagementTools(registerTool, shells)
   if (profile.tools.subagents)
-    registerSubagentTools(
-      registerTool,
-      requireCapabilityService(options.chatGptDelegation, "subagent")
-    )
+    registerSubagentTools(registerTool, requireCapabilityService(options.subagents, "subagent"))
   if (profile.tools.web)
     registerWebTool(registerTool, requireCapabilityService(options.webPageOpener, "web"))
   if (profile.tools.skills) registerSkillTools(registerTool)

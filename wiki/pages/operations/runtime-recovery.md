@@ -17,7 +17,7 @@ Follow the restart approval rule in [wiki/AGENTS.md](../../AGENTS.md). Configura
 
 ## Restart boundary
 
-[package.json](../../../package.json) routes lifecycle commands through [start.ts](../../../scripts/start.ts) and [pm2.ts](../../../scripts/pm2.ts). PM2 always uses `<state_dir>/pm2`, overriding inherited PM2 home; it manages this installation, not the default shared daemon.
+[package.json](../../../package.json) routes lifecycle commands through [start.ts](../../../scripts/start.ts) and [pm2.ts](../../../scripts/pm2.ts). PM2 always uses `<state_dir>/pm2`, overriding inherited PM2 home. Use `npm run logs` and `npm run logs:clear` for this instance; plain `pm2 flush` can target a different daemon.
 
 - `npm start`: build and start/reload managed services.
 - `npm run restart`: also clear the current audit log; retain the PM2 daemon.

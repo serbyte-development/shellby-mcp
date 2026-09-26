@@ -1,34 +1,27 @@
 ---
-summary: "Subagent caller contract: identity, temporary memory, polling, capacity, and failure guidance."
+summary: "Subagent tool boundary: start_from, agent versus turn identity, batch outcomes, and error projection."
 paths:
   - src/tools/delegation/subagent-tools.ts
-  - src/tools/delegation/contracts.ts
-  - src/tools/delegation/turn-results.ts
-  - src/tools/delegation/lifecycle.ts
+  - src/tools/delegation/subagents.ts
+  - src/tools/delegation/subagent-error.ts
 ---
 
 # subagent_run / subagent_result
 
-[subagent-tools.ts](../../../src/tools/delegation/subagent-tools.ts) owns public schemas and error projection. Use `npm run schemas -- subagent_run subagent_result` for current limits. [Delegation Runtime](../subagents/browser-chatgpt-subagents.md) owns browser orchestration, capacity, and persistence.
+[subagent-tools.ts](../../../src/tools/delegation/subagent-tools.ts) owns schemas, wire results and error projection. [createSubagents](../../../src/tools/delegation/subagents.ts) owns execution. Inspect source or `npm run schemas -- subagent_run subagent_result` for exact arguments and limits.
 
-`subagent_run` submits a small batch with distinct agent IDs, staggered between entries. Reuse an ID within the same calling MCP session to continue its conversation. The configured delegated-ID cap counts saved/live/reserved IDs across subagents and clones; it is independent of batch size. Existing IDs remain reusable at capacity.
+`agent_id` is a caller-scoped agent name; reuse it for follow-ups in its saved conversation. A returned `turn_id` identifies one submitted turn and belongs in `subagent_result`.
 
-`memory` is chosen when an agent is created. False creates a temporary ChatGPT chat with live multi-turn continuity but no saved restoration. Reusing a live ID with a different flag does not change its mode. Page loss or restart loses temporary context; idle-expired IDs return `TEMP_AGENT_EXPIRED`.
+For a new agent, `start_from` supplies a ChatGPT conversation URL: create a branch from that conversation, then submit the prompt into it. Without a source, start a new conversation at the configured project. Existing agents resume their own saved conversation even when `start_from` is supplied. All conversations use the same saved-identity lifecycle. Unknown per-agent fields are rejected rather than silently changing the requested operation.
 
-## Polling and result lifetime
+`runAgents` staggers submissions and returns after every attempted startup, preserving individual outcomes. Generation continues independently; cancellation stops unsent work without cancelling submitted turns. Identity capacity is separate from batch size; see [runtime admission](../subagents/browser-chatgpt-subagents.md#identity-and-lifetime).
 
-[subagent_result](../../../src/tools/delegation/turn-results.ts) retrieves local turn state concurrently: `running` with optional activity/age, `completed` with response, or `failed` with error. `wait_ms` waits for local settlement and does not set a generation deadline or poll ChatGPT.
+## Results and failures
 
-Any failed entry sets top-level `isError=true` for submission and polling, including unknown IDs and polling exceptions. Mixed batches preserve successful entries; retry only the failed work when its error guidance permits it.
+Polling waits on local results concurrently; `wait_ms` is not a generation deadline. [Completion](../subagents/subagent-completion.md) owns retention, notices and restart consequences.
 
-Turn results are process-local with bounded retention. Saved conversation mappings can restore identity, not old answers or polling records. [Subagent Completion](../subagents/subagent-completion.md#results-and-events) owns result lifetime, completion notices, and restart hints.
+Any failed entry sets top-level `isError=true`; mixed batches still retain successful entries. Never retry an entire mixed batch blindly.
 
-## Failure semantics
+Record original errors for audit before projecting caller guidance. Browser/auth/UI errors become `SUBAGENT_UNAVAILABLE`: retry the same call once, then continue without delegation. Rate limits prohibit automatic retry. Infrastructure errors must not cause callers to rewrite the delegated task; [historical rationale](../../log.md) explains why. `AGENT_BUSY` can also mean uncertain upstream work, not merely a locally running turn.
 
-- `AGENT_LIMIT_REACHED` lists existing IDs/latest known turns for reuse; these hints do not guarantee result availability after restart.
-- `SUBAGENT_PERSISTENCE_UNAVAILABLE` blocks admission before a new prompt is sent. Post-submit persistence failure leaves that detached turn valid.
-- `AGENT_BUSY` includes uncertain upstream state after unproven recovery. Use another available ID; overlapping the same conversation would risk duplicate work.
-- Browser/auth/UI availability errors become `SUBAGENT_UNAVAILABLE`: retry the same call once, then continue without delegation. Do not rewrite the task around infrastructure failure.
-- Rate limits prohibit automatic retry; request cancellation does not trigger resubmission.
-
-Keep backend diagnostics behind the adapter. [Historical rationale](../../log.md) records why leaking browser failures misdirected callers. Tests: [MCP delegation cases](../../../test/integrations/subagent.ts), plus lifecycle/protocol routes in [Build and Test](../operations/build-and-test.md).
+Wire-contract tests: [MCP subagent cases](../../../test/integrations/subagent.ts). Runtime and live checks: [Subagent Testing](../subagents/testing.md).

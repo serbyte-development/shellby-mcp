@@ -3,12 +3,12 @@ import { mkdtempSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import test from "node:test"
-
 import { getAgentIdentity, runWithAgent } from "../../../src/agent/context.js"
 import { MCP_CONFIG } from "../../../src/config.js"
-import { createChatGptDelegationService } from "../../../src/tools/delegation/chatgpt-service.js"
-import { ChatGptDelegationError } from "../../../src/tools/delegation/contracts.js"
 import { createDelegationStore } from "../../../src/tools/delegation/store.js"
+import { ChatGptDelegationError } from "../../../src/tools/delegation/subagent-error.js"
+import { createSubagents } from "../../../src/tools/delegation/subagents.js"
+import { sendAgentMessage } from "../../fixtures/subagents.js"
 
 for (const limit of [1, 3, 5]) {
   test(`limits each main agent to ${limit} persisted delegated agents while allowing reuse`, async (t) => {
@@ -35,7 +35,7 @@ for (const limit of [1, 3, 5]) {
     }
     store.close()
 
-    const service = createChatGptDelegationService()
+    const service = createSubagents()
     const controller = new AbortController()
     controller.abort()
     const existing = Array.from({ length: limit }, (_, index) => `agent-${index + 1}`).join(", ")
@@ -44,7 +44,11 @@ for (const limit of [1, 3, 5]) {
     try {
       await assert.rejects(
         runWithAgent(sessionId, () =>
-          service.ask({ agentId: "extra", prompt: "New work" }, { signal: controller.signal })
+          sendAgentMessage(
+            service,
+            { agentId: "extra", prompt: "New work" },
+            { signal: controller.signal }
+          )
         ),
         (error: unknown) =>
           error instanceof ChatGptDelegationError &&
@@ -53,7 +57,11 @@ for (const limit of [1, 3, 5]) {
       )
       await assert.rejects(
         runWithAgent(sessionId, () =>
-          service.ask({ agentId: "agent-1", prompt: "Follow up" }, { signal: controller.signal })
+          sendAgentMessage(
+            service,
+            { agentId: "agent-1", prompt: "Follow up" },
+            { signal: controller.signal }
+          )
         ),
         (error: unknown) =>
           error instanceof ChatGptDelegationError && error.code === "REQUEST_ABORTED"
@@ -61,7 +69,11 @@ for (const limit of [1, 3, 5]) {
       // Other sessions have their own quota, and raising the configured limit opens another slot.
       await assert.rejects(
         runWithAgent("other-session", () =>
-          service.ask({ agentId: "extra", prompt: "New work" }, { signal: controller.signal })
+          sendAgentMessage(
+            service,
+            { agentId: "extra", prompt: "New work" },
+            { signal: controller.signal }
+          )
         ),
         (error: unknown) =>
           error instanceof ChatGptDelegationError && error.code === "REQUEST_ABORTED"
@@ -69,7 +81,11 @@ for (const limit of [1, 3, 5]) {
       MCP_CONFIG.chatGpt.maxDelegatedAgents = limit + 1
       await assert.rejects(
         runWithAgent(sessionId, () =>
-          service.ask({ agentId: "extra", prompt: "New work" }, { signal: controller.signal })
+          sendAgentMessage(
+            service,
+            { agentId: "extra", prompt: "New work" },
+            { signal: controller.signal }
+          )
         ),
         (error: unknown) =>
           error instanceof ChatGptDelegationError && error.code === "REQUEST_ABORTED"
@@ -103,7 +119,7 @@ test("drains persisted delegated agents once after service restart", async (t) =
   })
   store.close()
 
-  const service = createChatGptDelegationService()
+  const service = createSubagents()
   try {
     assert.deepEqual(
       runWithAgent(sessionId, () => service.drainEvents()),
