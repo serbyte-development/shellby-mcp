@@ -98,6 +98,11 @@ test("live MCP subagent lifecycle with optional real conversation fork", {
     assert.notEqual(live.page(), firstPage)
     await live.assertSavedConversation()
     await live.assertWaitExecuted(LONG_WAIT_MS)
+    await live.stage("completion latency after a long turn and a short follow-up")
+    // The existing reopen supplies independent saved-final timestamps for both turns.
+    await live.assertCompletionLatency(firstTurnId)
+    await live.assertCompletionLatency(second.turn_id)
+    assert.equal((await live.poll(second.turn_id, 60_000)).response, secondResponse)
     for (const [turnId, response] of responses) {
       const repeated = await live.poll(turnId, 0)
       assert.equal(repeated.status, "completed")

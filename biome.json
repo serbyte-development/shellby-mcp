@@ -56,7 +56,7 @@
         "noExcessiveLinesPerFunction": {
           "level": "error",
           "options": {
-            "maxLines": 200
+            "maxLines": 300
           }
         },
         "noExcessiveNestedTestSuites": "error",

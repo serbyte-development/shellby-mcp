@@ -5,6 +5,7 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import process from "node:process"
 import type { TestContext } from "node:test"
+import { setTimeout as delay } from "node:timers/promises"
 import { Client, StreamableHTTPClientTransport } from "@modelcontextprotocol/client"
 import { chromium, type Page } from "playwright-core"
 import { MCP_CONFIG } from "../../src/config.js"
@@ -20,6 +21,8 @@ const AGENT_ID = "live-subagent-integration"
 const ARTIFACT_DIR = new URL("./artifacts/", import.meta.url)
 const CONVERSATION_FILE = new URL("subagent-live-conversation.json", ARTIFACT_DIR)
 const RESULT_FILE = new URL("subagent-live-last.json", ARTIFACT_DIR)
+// A regression ceiling for collection, separate from the agent's working time.
+const MAX_COMPLETION_LATENCY_MS = 5_000
 type LiveAgent = "source" | "fork"
 
 interface RunTurn {
@@ -42,7 +45,14 @@ interface Submission {
   agent: LiveAgent
   elapsed_ms: number
   message_id: string
+  turn_id?: string
   prompt: string
+}
+
+interface HistoryClock {
+  serverDate?: string
+  requestStartedAtMs: number
+  responseReceivedAtMs: number
 }
 
 /**
@@ -69,6 +79,7 @@ export async function openLiveSubagentHarness(t: TestContext, deadline: number) 
   const submissions: Submission[] = []
   const timeline: Array<Record<string, unknown>> = []
   const polls = new Map<string, Array<ResultTurn & { elapsed_ms: number }>>()
+  const completionLatencies: Array<Record<string, unknown>> = []
   const artifact: Record<string, unknown> = {
     generated_at: new Date().toISOString(),
     start: process.env.LIVE_SUBAGENT_START ?? "reuse",
@@ -76,6 +87,7 @@ export async function openLiveSubagentHarness(t: TestContext, deadline: number) 
     run_id: runId,
     submissions,
     timeline,
+    completion_latency: completionLatencies,
     result: "running",
   }
   const failures: unknown[] = []
@@ -100,7 +112,9 @@ export async function openLiveSubagentHarness(t: TestContext, deadline: number) 
   const store = createDelegationStore(join(stateDir, "subagents.sqlite"))
   let server: Awaited<ReturnType<typeof startMcpHttpServer>> | undefined
   let client: Client | undefined
-  let history: { page: Page; payload: Promise<unknown>; elapsedMs: number } | undefined
+  let history:
+    | { page: Page; payload: Promise<unknown>; elapsedMs: number; clock: HistoryClock }
+    | undefined
   const ownedPages = new Set<Page>()
   const diagnostics = new DelegationDiagnostics(AGENT_ID, undefined)
   t.after(async () => {
@@ -138,8 +152,17 @@ export async function openLiveSubagentHarness(t: TestContext, deadline: number) 
         page: response.request().frame().page(),
         payload: response.json().catch(() => undefined),
         elapsedMs: elapsed(),
+        clock: {
+          serverDate: response.headers().date,
+          requestStartedAtMs: response.request().timing().startTime,
+          responseReceivedAtMs: Date.now(),
+        },
       }
-      timeline.push({ stage: "authenticated history observed", elapsed_ms: elapsed() })
+      timeline.push({
+        stage: "authenticated history observed",
+        elapsed_ms: elapsed(),
+        clock: history.clock,
+      })
     })
     context.on("request", (request) => {
       if (request.method() !== "POST") return
@@ -183,6 +206,7 @@ export async function openLiveSubagentHarness(t: TestContext, deadline: number) 
       options: { agent?: LiveAgent; startSource?: string } = {}
     ): Promise<RunTurn> {
       const agent = agents[options.agent ?? "source"]
+      const submissionIndex = submissions.length
       const result = await call("subagent_run", {
         agents: [
           {
@@ -194,8 +218,18 @@ export async function openLiveSubagentHarness(t: TestContext, deadline: number) 
       })
       const turn = parseRunTurn(result)
       assert.equal(turn.agent_id, agent.id)
-      const submission = submissions.at(-1)
-      if (turn.turn_id && submission) diagnostics.submitted(turn.turn_id, submission.message_id)
+      if (turn.turn_id) {
+        // The separate CDP connection can report Send after the MCP response arrives.
+        // Sequential test runs bind their own new submission, never the previous turn.
+        const captureDeadline = Math.min(deadline, Date.now() + 5_000)
+        while (submissions.length === submissionIndex && Date.now() < captureDeadline)
+          await delay(10)
+        assert.equal(submissions.length, submissionIndex + 1, "Observe exactly one new submission")
+        const submission = submissions[submissionIndex]!
+        assert.equal(submission.agent, options.agent ?? "source")
+        submission.turn_id = turn.turn_id
+        diagnostics.submitted(turn.turn_id, submission.message_id)
+      }
       timeline.push({ elapsed_ms: elapsed(), operation: "run", ...turn })
       await persist()
       return turn
@@ -249,6 +283,36 @@ export async function openLiveSubagentHarness(t: TestContext, deadline: number) 
         waitMs
       )
       await persist()
+    },
+    async assertCompletionLatency(turnId: string): Promise<void> {
+      const submission = submissions.find((item) => item.turn_id === turnId)
+      const completed = polls.get(turnId)?.find((sample) => sample.status === "completed")
+      assert.ok(submission && completed, "Latency needs a submission and its first completed poll")
+      assert.ok(history && history.page === page(), "Reopen the source to read completion evidence")
+      const evidence = recordedCompletionLatency(
+        await history.payload,
+        submission.message_id,
+        startedAt + completed.elapsed_ms,
+        history.clock
+      )
+      completionLatencies.push({ turn_id: turnId, ...evidence })
+      await persist()
+      t.diagnostic(
+        `${turnId}: saved final -> MCP ${evidence.minimum_latency_ms.toFixed(1)}..${evidence.maximum_latency_ms.toFixed(1)}ms (clock uncertainty included)`
+      )
+      assert.ok(
+        evidence.maximum_latency_ms - evidence.minimum_latency_ms < MAX_COMPLETION_LATENCY_MS,
+        "History clock calibration is too imprecise to measure completion latency"
+      )
+      // Stream delivery can precede the final message's saved update timestamp slightly.
+      assert.ok(
+        evidence.maximum_latency_ms >= -MAX_COMPLETION_LATENCY_MS,
+        "The result predates its saved final answer; timing evidence is inconsistent"
+      )
+      assert.ok(
+        evidence.maximum_latency_ms < MAX_COMPLETION_LATENCY_MS,
+        `Final answer took up to ${evidence.maximum_latency_ms.toFixed(1)}ms to reach subagent_result`
+      )
     },
     async restartFromConversation(): Promise<void> {
       await client!.close()
@@ -357,11 +421,18 @@ export async function openLiveSubagentHarness(t: TestContext, deadline: number) 
   }
 
   async function poll(turnId: string, waitMs: number): Promise<ResultTurn> {
+    const cached = polls.get(turnId)?.some((sample) => sample.status === "completed")
+    const calledAt = performance.now()
     const result = parseResultTurn(
       await call("subagent_result", { turn_ids: [turnId], wait_ms: waitMs })
     )
     assert.equal(result.turn_id, turnId)
-    const sample = { elapsed_ms: elapsed(), ...result }
+    const sample = {
+      elapsed_ms: elapsed(),
+      call_duration_ms: performance.now() - calledAt,
+      wait_ms: waitMs,
+      ...result,
+    }
     const samples = polls.get(turnId) ?? []
     samples.push(sample)
     polls.set(turnId, samples)
@@ -370,6 +441,11 @@ export async function openLiveSubagentHarness(t: TestContext, deadline: number) 
       `+${sample.elapsed_ms}ms ${turnId}: ${result.status}, activity=${result.activity ?? "none"}, age=${result.activity_age_ms ?? "none"}ms`
     )
     await persist()
+    if (cached && result.status === "completed")
+      assert.ok(
+        sample.call_duration_ms < MAX_COMPLETION_LATENCY_MS,
+        `Cached result retrieval took ${sample.call_duration_ms.toFixed(1)}ms`
+      )
     return result
   }
 
@@ -500,13 +576,7 @@ function scalar(value: string): string {
  * ChatGPT redacts these message bodies; an assistant's text alone cannot establish tool execution.
  */
 export function recordedCodeModeWait(payload: unknown, userMessageId: string, minimumMs: number) {
-  const messages = activeBranchMessages(payload)
-  const firstIndex = messages.findIndex((message) => message.id === userMessageId)
-  assert.ok(firstIndex >= 0, "History must contain the observed user submission")
-  const nextUser = messages.findIndex(
-    (message, index) => index > firstIndex && asRecord(message.author)?.role === "user"
-  )
-  const turn = messages.slice(firstIndex + 1, nextUser < 0 ? undefined : nextUser)
+  const turn = submittedTurnMessages(payload, userMessageId)
   const invocation = turn.find(
     (message) =>
       asRecord(message.author)?.role === "assistant" && message.recipient === "functions.exec"
@@ -532,6 +602,64 @@ export function recordedCodeModeWait(payload: unknown, userMessageId: string, mi
     "The recorded Code Mode invocation must span the full wait"
   )
   return { invocation_id: invocation.id, result_id: result.id, elapsed_ms: elapsedMs }
+}
+
+/**
+ * Bound saved-final -> first completed MCP response latency in milliseconds, independently
+ * of the production stream decoder. The history response's HTTP Date calibrates server/local
+ * clock skew; its one-second precision and request round trip remain in the reported interval.
+ * Missing final identity/timing is a test failure, never zero latency or an older turn's answer.
+ */
+export function recordedCompletionLatency(
+  payload: unknown,
+  userMessageId: string,
+  resultReceivedAtMs: number,
+  clock: HistoryClock
+) {
+  const final = submittedTurnMessages(payload, userMessageId).find(
+    (message) =>
+      asRecord(message.author)?.role === "assistant" &&
+      message.channel === "final" &&
+      message.status === "finished_successfully" &&
+      message.end_turn === true &&
+      (message.recipient === undefined || message.recipient === "all")
+  )
+  assert.ok(final, "History must contain the submitted turn's completed final answer")
+  assert.ok(typeof final.id === "string" && final.id, "The final answer must have an ID")
+  assert.ok(
+    typeof final.update_time === "number" && Number.isFinite(final.update_time),
+    "Final completion timing needs the saved update_time, not the start of generation"
+  )
+  const serverDateMs = Date.parse(clock.serverDate ?? "")
+  assert.ok(Number.isFinite(serverDateMs), "History needs an HTTP Date for clock calibration")
+  assert.ok(
+    Number.isFinite(resultReceivedAtMs) &&
+      Number.isFinite(clock.requestStartedAtMs) &&
+      Number.isFinite(clock.responseReceivedAtMs) &&
+      clock.requestStartedAtMs >= 0 &&
+      clock.requestStartedAtMs <= clock.responseReceivedAtMs,
+    "Completion timing needs valid local request/response timestamps"
+  )
+  const completedAtMs = final.update_time * 1000
+  return {
+    message_id: final.id,
+    server_completed_at_ms: completedAtMs,
+    result_received_at_ms: resultReceivedAtMs,
+    minimum_latency_ms:
+      resultReceivedAtMs + serverDateMs - clock.responseReceivedAtMs - completedAtMs,
+    maximum_latency_ms:
+      resultReceivedAtMs + serverDateMs + 1000 - clock.requestStartedAtMs - completedAtMs,
+  }
+}
+
+function submittedTurnMessages(payload: unknown, userMessageId: string): Record<string, unknown>[] {
+  const messages = activeBranchMessages(payload)
+  const firstIndex = messages.findIndex((message) => message.id === userMessageId)
+  assert.ok(firstIndex >= 0, "History must contain the observed user submission")
+  const nextUser = messages.findIndex(
+    (message, index) => index > firstIndex && asRecord(message.author)?.role === "user"
+  )
+  return messages.slice(firstIndex + 1, nextUser < 0 ? undefined : nextUser)
 }
 
 function activeBranchMessages(payload: unknown): Record<string, unknown>[] {

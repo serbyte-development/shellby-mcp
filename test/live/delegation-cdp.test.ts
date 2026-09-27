@@ -22,6 +22,7 @@ import { DelegationDiagnostics } from "../../src/tools/delegation/diagnostics.js
 import { observeAssistantResponse } from "../../src/tools/delegation/response-observer.js"
 import { createSubagents } from "../../src/tools/delegation/subagents.js"
 import { getAgentResponse, sendAgentMessage } from "../fixtures/subagents.js"
+import { connectClient, startMcpHttpServer } from "../integrations/helpers.js"
 
 // Opt in: starts disposable Chrome with local fixtures, never the managed profile
 // or real ChatGPT. CHROME_PATH can select another installed Chromium executable.
@@ -209,8 +210,12 @@ test("delegation contracts over a real Chrome CDP connection", {
       maxDelegatedAgents: MCP_CONFIG.chatGpt.maxDelegatedAgents,
     }
     let service: ReturnType<typeof createSubagents> | undefined
+    let mcp: Awaited<ReturnType<typeof startMcpHttpServer>> | undefined
+    let connectedClient: Awaited<ReturnType<typeof connectClient>> | undefined
     lifecycleTest.after(async () => {
-      await service?.dispose()
+      await connectedClient?.client.close()
+      if (mcp) await mcp.close()
+      else await service?.dispose()
       MCP_CONFIG.stateDir = savedConfig.stateDir
       Object.assign(MCP_CONFIG.chatGpt, {
         projectUrl: savedConfig.projectUrl,
@@ -288,6 +293,89 @@ test("delegation contracts over a real Chrome CDP connection", {
     const agentService = createSubagents()
     service = agentService
     const request = { agentId: "cdp-lifecycle", prompt: "Test the lifecycle" }
+    mcp = await startMcpHttpServer({
+      subagents: agentService,
+      profile: {
+        toolOutput: "structured",
+        tools: {
+          review: false,
+          shell: false,
+          applyPatch: false,
+          fileRead: false,
+          fileWrite: false,
+          subagents: true,
+          web: false,
+          skills: false,
+          image: false,
+          computer: false,
+        },
+      },
+    })
+    connectedClient = await connectClient(mcp.url, "cdp-completion-latency")
+    const { client } = connectedClient
+    let resultWaitStarted: (() => void) | undefined
+    const readResponses = agentService.getAgentResponses
+    lifecycleTest.mock.method(
+      agentService,
+      "getAgentResponses",
+      (...args: Parameters<typeof readResponses>) => {
+        const result = readResponses(...args)
+        // Synchronize at the public service boundary, after the real waiter is installed.
+        resultWaitStarted?.()
+        resultWaitStarted = undefined
+        return result
+      }
+    )
+
+    async function readMcpResult(turnId: string, waitMs: number) {
+      const result = await client.callTool(
+        { name: "subagent_result", arguments: { turn_ids: [turnId], wait_ms: waitMs } },
+        { timeout: 7_000, signal: lifecycleTest.signal }
+      )
+      assert.notEqual(result.isError, true)
+      const { turns } = result.structuredContent as {
+        turns: Array<{ turn_id: string; status: string; response?: string }>
+      }
+      assert.equal(turns.length, 1)
+      assert.equal(turns[0]!.turn_id, turnId)
+      return turns[0]!
+    }
+
+    // The fixture, not the collector, establishes when the final answer exists.
+    // performance.now measures real CDP/MCP latency; Date measures simulated recovery time.
+    async function assertCompletionLatency(
+      turnId: string,
+      answer: string,
+      publishFinal: () => void | Promise<void>
+    ) {
+      assert.equal((await readMcpResult(turnId, 0)).status, "running")
+      const waiting = new Promise<void>((resolve) => {
+        resultWaitStarted = resolve
+      })
+      const pending = readMcpResult(turnId, 60_000)
+      await Promise.race([
+        waiting,
+        pending.then(() => assert.fail("Result polling must wait for the fixture's final answer")),
+      ])
+      const finalAt = performance.now()
+      const simulatedFinalAt = Date.now()
+      await publishFinal()
+      const result = await pending
+      const latencyMs = performance.now() - finalAt
+      assert.equal(result.status, "completed")
+      assert.equal(result.response, answer)
+      assert.ok(latencyMs < 5_000, `Completion took ${latencyMs}ms to reach subagent_result`)
+      lifecycleTest.diagnostic(
+        `${answer}: final -> MCP ${latencyMs.toFixed(1)}ms; simulated recovery wait ${Date.now() - simulatedFinalAt}ms`
+      )
+
+      // Both cached polling modes must return promptly, even with a large requested wait.
+      for (const waitMs of [60_000, 0]) {
+        const started = performance.now()
+        assert.deepEqual(await readMcpResult(turnId, waitMs), result)
+        assert.ok(performance.now() - started < 5_000, "A cached result must not wait again")
+      }
+    }
 
     async function until(predicate: () => boolean | Promise<boolean>, label: string) {
       const deadline = performance.now() + 7_000
@@ -311,9 +399,12 @@ test("delegation contracts over a real Chrome CDP connection", {
         assert.equal((await getAgentResponse(agentService, turn, 0)).status, "running")
         assert.equal(historyReads, 0)
       }
-      savedAnswers.set(1, "first completed")
-      streams.get(1)!.end(completedStream("first completed", users[0]!.id))
-      assert.equal((await getAgentResponse(agentService, turn, 5_000)).response, "first completed")
+      await assertCompletionLatency(turn, "first completed", () => {
+        savedAnswers.set(1, "first completed")
+        // Keep HTTP open: receiving the final answer, not socket closure, must release polling.
+        streams.get(1)!.write(completedStream("first completed", users[0]!.id))
+      })
+      assert.equal(streams.get(1)!.writableEnded, false)
       assert.equal(users.length, 1)
     })
 
@@ -327,15 +418,13 @@ test("delegation contracts over a real Chrome CDP connection", {
           {}
         )
         await until(() => streams.has(2), "second submission")
-        savedAnswers.set(2, "recovered completed answer")
-        for (let minute = 0; minute < 3; minute += 1) {
-          lifecycleTest.mock.timers.tick(60_000)
-          await delay(100)
-        }
-        assert.equal(
-          (await getAgentResponse(agentService, turn, 5_000)).response,
-          "recovered completed answer"
-        )
+        await assertCompletionLatency(turn, "recovered completed answer", async () => {
+          savedAnswers.set(2, "recovered completed answer")
+          for (let minute = 0; minute < 3; minute += 1) {
+            lifecycleTest.mock.timers.tick(60_000)
+            await delay(100)
+          }
+        })
         assert.equal(historyReads, 1)
         assert.equal(users.length, 2)
       }
@@ -362,10 +451,9 @@ test("delegation contracts over a real Chrome CDP connection", {
 
         // History may lag streaming. Keep its third answer absent so a refreshed
         // history response cannot hide the loss of the original live observation.
-        streams.get(3)!.end(completedStream("late completed answer", users[2]!.id))
-        const result = await getAgentResponse(agentService, turn, 5_000)
-        assert.equal(result.status, "completed", "A late final answer must remain recoverable")
-        assert.equal(result.response, "late completed answer")
+        await assertCompletionLatency(turn, "late completed answer", () => {
+          streams.get(3)!.write(completedStream("late completed answer", users[2]!.id))
+        })
         assert.equal(users.length, 3, "Recovery must not submit the prompt again")
 
         savedAnswers.set(3, "late completed answer")
@@ -376,11 +464,9 @@ test("delegation contracts over a real Chrome CDP connection", {
           {}
         )
         await until(() => streams.has(4), "same agent accepts a follow-up at capacity")
-        streams.get(4)!.end(completedStream("follow-up completed", users[3]!.id))
-        assert.equal(
-          (await getAgentResponse(agentService, followUp, 5_000)).response,
-          "follow-up completed"
-        )
+        await assertCompletionLatency(followUp, "follow-up completed", () => {
+          streams.get(4)!.end(completedStream("follow-up completed", users[3]!.id))
+        })
         assert.equal(users.length, 4)
       }
     )
