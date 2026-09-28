@@ -6,15 +6,20 @@ import { Textarea } from "../../components/ui/textarea"
 import { cancelSteer, steerAgent } from "../../lib/api"
 import type { Agent, AgentInstruction } from "../../types"
 
-export function SteerComposer({ agent }: { agent: Agent }) {
+export function SteerComposer({
+  agent,
+  onDismissInstruction,
+}: {
+  agent: Agent
+  onDismissInstruction: (instructionId: string) => void
+}) {
   const [message, setMessage] = useState("")
   const [sending, setSending] = useState(false)
   const [cancelling, setCancelling] = useState(false)
   const [error, setError] = useState<string>()
-  const [dismissedDeliveredId, setDismissedDeliveredId] = useState<string>()
-  const pending = agent.instructions.filter((instruction) => !instruction.deliveredAt)
+  const pending = agent.instructions.filter((instruction) => instruction.deliveredAt === undefined)
   const latestDelivered = agent.instructions.find(
-    (instruction) => instruction.deliveredAt && instruction.id !== dismissedDeliveredId
+    (instruction) => instruction.deliveredAt !== undefined
   )
 
   async function submit() {
@@ -84,7 +89,7 @@ export function SteerComposer({ agent }: { agent: Agent }) {
         queued={pending}
         delivered={latestDelivered}
         onCancelQueued={cancelQueued}
-        onDismissDelivered={() => latestDelivered && setDismissedDeliveredId(latestDelivered.id)}
+        onDismissDelivered={() => latestDelivered && onDismissInstruction(latestDelivered.id)}
       />
     </div>
   )

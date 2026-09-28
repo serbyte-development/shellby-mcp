@@ -1,20 +1,31 @@
-import { Check, Circle, LoaderCircle, TriangleAlert } from "lucide-react"
+import { Check, Circle, LoaderCircle, TriangleAlert, X } from "lucide-react"
 import { useState } from "react"
 
 import { Badge } from "../../components/ui/badge"
+import { Button } from "../../components/ui/button"
 import { Card, CardContent, CardHeader } from "../../components/ui/card"
 import type { Agent, AgentCall } from "../../types"
 import { AgentRoom } from "../agent-room/AgentRoom"
 import { SteerComposer } from "./SteerComposer"
 import { ToolCallModal } from "./ToolCallModal"
 
-export function AgentCard({ agent, now }: { agent: Agent; now: number }) {
+export function AgentCard({
+  agent,
+  now,
+  onDismiss,
+  onDismissInstruction,
+}: {
+  agent: Agent
+  now: number
+  onDismiss: () => void
+  onDismissInstruction: (instructionId: string) => void
+}) {
   const [selectedCall, setSelectedCall] = useState<AgentCall>()
   const active = now - agent.lastSeenAt < 30_000
   const recent = [agent.current, ...agent.recent].filter((call): call is AgentCall => Boolean(call))
 
   return (
-    <Card className="overflow-hidden">
+    <Card className="overflow-hidden" role="region" aria-label={agent.id}>
       <CardHeader className="border-b bg-card/70">
         <div className="flex items-start justify-between gap-4">
           <div className="min-w-0">
@@ -26,11 +37,24 @@ export function AgentCard({ agent, now }: { agent: Agent; now: number }) {
               {agent.taskSlug ?? "No task name yet"}
             </p>
           </div>
-          <Badge
-            className={active ? "border-emerald-200 bg-emerald-50 text-emerald-700" : undefined}
-          >
-            {active ? "ACTIVE" : "INACTIVE"}
-          </Badge>
+          <div className="flex shrink-0 items-center gap-1.5">
+            <Badge
+              className={active ? "border-emerald-200 bg-emerald-50 text-emerald-700" : undefined}
+            >
+              {active ? "ACTIVE" : "INACTIVE"}
+            </Badge>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="size-7 text-muted-foreground"
+              aria-label={`Dismiss ${agent.id}`}
+              title="Dismiss agent until new activity"
+              onClick={onDismiss}
+            >
+              <X className="size-3.5" />
+            </Button>
+          </div>
         </div>
       </CardHeader>
 
@@ -48,7 +72,7 @@ export function AgentCard({ agent, now }: { agent: Agent; now: number }) {
           </div>
         </div>
 
-        <SteerComposer agent={agent} />
+        <SteerComposer agent={agent} onDismissInstruction={onDismissInstruction} />
       </CardContent>
       <ToolCallModal call={selectedCall} onClose={() => setSelectedCall(undefined)} />
     </Card>

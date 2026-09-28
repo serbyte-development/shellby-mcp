@@ -4,7 +4,7 @@ import { useEffect, useState } from "react"
 import { Button } from "./components/ui/button"
 import { RoomEditor } from "./features/agent-room/editor/RoomEditor"
 import { AgentCard } from "./features/dashboard/AgentCard"
-import { useAgents } from "./hooks/useAgents"
+import { useDashboardAgents } from "./features/dashboard/useDashboardAgents"
 
 export function App() {
   const editorRoute =
@@ -15,7 +15,16 @@ export function App() {
 }
 
 function Dashboard() {
-  const { agents, connected, loading, error } = useAgents()
+  const {
+    agents,
+    dismissedAgents,
+    dismissAgent,
+    restoreAgent,
+    dismissInstruction,
+    connected,
+    loading,
+    error,
+  } = useDashboardAgents()
   const [now, setNow] = useState(Date.now())
 
   useEffect(() => {
@@ -23,7 +32,9 @@ function Dashboard() {
     return () => window.clearInterval(timer)
   }, [])
 
-  const activeCount = agents.filter((agent) => now - agent.lastSeenAt < 30_000).length
+  const activeCount = [...agents, ...dismissedAgents].filter(
+    (agent) => now - agent.lastSeenAt < 30_000
+  ).length
 
   return (
     <main className="min-h-screen">
@@ -36,7 +47,7 @@ function Dashboard() {
             <div>
               <h1 className="text-base font-semibold tracking-tight">Shellby Control</h1>
               <p className="text-xs text-muted-foreground">
-                {activeCount} active · {agents.length} observed
+                {activeCount} active · {agents.length + dismissedAgents.length} observed
               </p>
             </div>
           </div>
@@ -77,18 +88,60 @@ function Dashboard() {
         ) : agents.length === 0 ? (
           <div className="mx-auto max-w-lg py-24 text-center">
             <Activity className="mx-auto size-8 text-muted-foreground" />
-            <h2 className="mt-4 text-lg font-semibold">No agents observed yet</h2>
+            <h2 className="mt-4 text-lg font-semibold">
+              {dismissedAgents.length > 0 ? "All agents are dismissed" : "No agents observed yet"}
+            </h2>
             <p className="mt-2 text-sm leading-6 text-muted-foreground">
-              Agents will appear here automatically when they make a Shellby MCP tool call.
+              {dismissedAgents.length > 0
+                ? "Restore an agent below, or wait for new activity."
+                : "Agents will appear here automatically when they make a Shellby MCP tool call."}
             </p>
           </div>
         ) : (
           <div className="grid items-start gap-4 md:grid-cols-2 xl:grid-cols-3">
             {agents.map((agent) => (
-              <AgentCard key={agent.id} agent={agent} now={now} />
+              <AgentCard
+                key={agent.id}
+                agent={agent}
+                now={now}
+                onDismiss={() => dismissAgent(agent)}
+                onDismissInstruction={(instructionId) => dismissInstruction(agent, instructionId)}
+              />
             ))}
           </div>
         )}
+
+        {dismissedAgents.length > 0 ? (
+          <details className="mt-6 rounded-lg border bg-card px-4 py-3">
+            <summary className="cursor-pointer text-sm font-medium">
+              Dismissed agents ({dismissedAgents.length})
+            </summary>
+            <p className="mt-2 text-xs text-muted-foreground">
+              Agents return automatically when they become active again.
+            </p>
+            <ul className="mt-3 divide-y">
+              {dismissedAgents.map((agent) => (
+                <li key={agent.id} className="flex items-center justify-between gap-4 py-2">
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-medium">{agent.id}</p>
+                    <p className="truncate text-xs text-muted-foreground">
+                      {agent.taskSlug ?? "No task name yet"}
+                    </p>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    aria-label={`Restore ${agent.id}`}
+                    onClick={() => restoreAgent(agent)}
+                  >
+                    Restore
+                  </Button>
+                </li>
+              ))}
+            </ul>
+          </details>
+        ) : null}
       </div>
     </main>
   )
