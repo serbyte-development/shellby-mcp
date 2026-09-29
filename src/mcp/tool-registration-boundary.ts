@@ -6,7 +6,6 @@ import type {
 } from "@modelcontextprotocol/server"
 
 import { getAgentIdentity } from "../agent/context.js"
-import { stampAgentIdentity } from "../agent/identity-marker.js"
 import type { AgentObserver } from "../agent/observer.js"
 import { shellRunFileEditNotices } from "../tools/shell/apply-patch-guidance.js"
 import { START_HERE_TOOL_NAME } from "../tools/start-here/start-here.js"
@@ -78,10 +77,7 @@ export function createToolRegistrar(
       projected = formatToolError(error, structuredOutput)
     }
 
-    return stampAgentIdentity(
-      appendToolEvents(projected, collectToolEvents(name, input, agent, options)),
-      agent
-    )
+    return appendToolEvents(projected, collectToolEvents(name, input, agent, options))
   }
 
   const registerTool: ToolRegistrar = (name, config, callback) => {

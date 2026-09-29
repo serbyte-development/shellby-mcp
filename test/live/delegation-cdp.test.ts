@@ -531,11 +531,35 @@ test("delegation contracts over a real Chrome CDP connection", {
       }
     )
 
-    await lifecycleTest.test("MCP results bind the child identity through real CDP", async () =>
+    await lifecycleTest.test("startup links an HTTP parent to its CDP child", async () =>
       runWithAgent("cdp-lineage-parent", async () => {
         const parent = getAgentIdentity()!
+        // The parent is an HTTP MCP caller; only the child has an observed browser tab.
+        const parentClient = await connectClient(
+          mcp!.url,
+          "cdp-lineage-parent",
+          undefined,
+          false,
+          parent.sessionId
+        )
+        lifecycleTest.after(() => parentClient.client.close())
+        const parentStartup = await parentClient.client.callTool({
+          name: "start_here",
+          arguments: { mode: "general", task_id: "cdp-lineage-parent" },
+        })
+        assert.notEqual(parentStartup.isError, true)
         const submission = users.length + 1
-        const turn = await sendAgentMessage(agentService, request)
+        const submitted = await parentClient.client.callTool({
+          name: "subagent_run",
+          arguments: { agents: [{ agent_id: request.agentId, prompt: request.prompt }] },
+        })
+        assert.notEqual(submitted.isError, true)
+        const { turns } = submitted.structuredContent as {
+          turns: Array<{ status: string; turn_id?: string }>
+        }
+        assert.equal(turns[0]?.status, "running")
+        const turn = turns[0]?.turn_id
+        assert.ok(turn)
         await until(() => streams.has(submission), "lineage submission")
         const childSession = "cdp-lineage-child"
         const childClient = await connectClient(
@@ -546,13 +570,13 @@ test("delegation contracts over a real Chrome CDP connection", {
           childSession
         )
         lifecycleTest.after(() => childClient.client.close())
-        // Even the ordinary initialization error identifies an MCP caller. No new
-        // registration argument, successful start_here call, or model echo is needed.
+        // A normal startup response supplies the child's identity without an extra
+        // registration argument, prompt marker, or model echo.
         const childResult = await childClient.client.callTool({
-          name: "subagent_result",
-          arguments: { turn_ids: ["unknown"], wait_ms: 0 },
+          name: "start_here",
+          arguments: { mode: "general", task_id: "cdp-lineage-child" },
         })
-        assert.equal(childResult.isError, true)
+        assert.notEqual(childResult.isError, true)
         assert.ok(Array.isArray(childResult.content))
         const text = childResult.content
           .filter((item) => item.type === "text")
@@ -567,9 +591,9 @@ test("delegation contracts over a real Chrome CDP connection", {
           )
         await until(
           () => childIdentity.parent === parent,
-          "MCP response binds the child through real CDP"
+          "startup response binds the child through real CDP"
         )
-        assert.equal(childIdentity.taskSlug, undefined)
+        assert.equal(childIdentity.taskSlug, "cdp-lineage-child")
         streams.get(submission)!.end(completedStream("Linked", users[submission - 1]!.id))
         await until(
           async () => (await getAgentResponse(agentService, turn, 0)).status === "completed",

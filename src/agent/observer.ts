@@ -12,6 +12,9 @@ interface AgentCallSnapshot {
   detail?: string
   detailLanguage?: string
   response?: string
+  /** Full call token counts from the tracker, unaffected by dashboard projection. */
+  inputTokens?: number
+  outputTokens?: number
   startedAt: number
   finishedAt?: number
   status: AgentCallStatus
@@ -112,11 +115,13 @@ export function createAgentObserver(now: () => number = () => Date.now()): Agent
       tool: event.tool,
       ...presentToolCall(event.tool, event.input),
       startedAt: event.startedAt,
+      inputTokens: event.inputTokens,
       status: event.status,
       ...(event.status === "running"
         ? {}
         : {
             finishedAt: event.finishedAt,
+            outputTokens: event.outputTokens,
             ...(event.response === undefined
               ? {}
               : { response: presentToolResponse(event.response) }),

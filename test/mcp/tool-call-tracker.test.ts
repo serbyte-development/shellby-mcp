@@ -15,6 +15,88 @@ import {
   ToolCallTracker,
 } from "../../src/mcp/tool-call-tracker.js"
 import { createToolRegistrar } from "../../src/mcp/tool-registration-boundary.js"
+import { countTokens } from "../../src/tokenizer.js"
+
+test("counts full arguments and final response once for all consumers", (t) => {
+  const events: ToolCallEvent[] = []
+  const audits: CompletedToolCall[] = []
+  const tracker = new ToolCallTracker({
+    agentObserver: { observeToolCall: (call) => events.push(call) },
+    auditLogger: { recordToolCall: (call) => audits.push(call), recordToolsList() {} },
+  })
+  const args = { command: "printf hello", cwd: "/workspace", max_output_tokens: 20_000 }
+  const inputJson = t.mock.fn(() => args)
+  tracker.startRequest({
+    id: 1,
+    method: "tools/call",
+    params: { name: "shell_run", arguments: { toJSON: inputJson } },
+  })
+  const expectedInput = countTokens(JSON.stringify(args))
+  assert.equal(events[0]?.inputTokens, expectedInput)
+
+  const text = "Complete response, longer than the dashboard preview.\n".repeat(1_000)
+  const structured = { status: "done", count: 1_000 }
+  const outputJson = t.mock.fn(() => structured)
+  const response = {
+    content: [
+      { type: "text", text },
+      { type: "text", text: "Notice: additional context" },
+      { type: "image", data: "binary", mimeType: "image/png" },
+      { type: "audio", data: "binary", mimeType: "audio/wav" },
+      {
+        type: "resource",
+        resource: { uri: "file:///asset", blob: "binary", mimeType: "application/pdf" },
+      },
+      { type: "resource", resource: { uri: "file:///note", text: "Resource text" } },
+    ],
+    structuredContent: { toJSON: outputJson },
+  }
+  tracker.respond({ jsonrpc: "2.0", id: 1, result: response })
+  tracker.respond({ jsonrpc: "2.0", id: 1, result: response })
+  tracker.finishRequest({ httpStatus: 200, state: "finished" })
+  assert.equal(events[1], audits[0])
+  assert.equal(audits[0]?.inputTokens, expectedInput)
+  assert.equal(
+    audits[0]?.outputTokens,
+    countTokens(
+      [
+        text,
+        "Notice: additional context",
+        JSON.stringify(response.content[5]),
+        JSON.stringify(structured),
+      ].join("\n")
+    )
+  )
+  assert.equal(inputJson.mock.callCount(), 1, "Input is measured only at registration")
+  assert.equal(outputJson.mock.callCount(), 1, "Final output is measured only once")
+})
+
+test("token accounting failures do not interrupt tools or lose lifecycle events", (t) => {
+  const warnings = t.mock.method(console, "warn", () => {})
+  const events: ToolCallEvent[] = []
+  const audits: CompletedToolCall[] = []
+  const tracker = new ToolCallTracker({
+    agentObserver: { observeToolCall: (call) => events.push(call) },
+    auditLogger: { recordToolCall: (call) => audits.push(call), recordToolsList() {} },
+  })
+  const badJson = {
+    toJSON() {
+      throw new Error("Cannot serialize this value")
+    },
+  }
+  tracker.startRequest({
+    id: 1,
+    method: "tools/call",
+    params: { name: "custom", arguments: badJson },
+  })
+  tracker.respond({ jsonrpc: "2.0", id: 1, result: { structuredContent: badJson } })
+  assert.equal(events.length, 2)
+  assert.equal(events[1], audits[0])
+  assert.equal(audits[0]?.status, "completed")
+  assert.equal(audits[0]?.inputTokens, undefined)
+  assert.equal(audits[0]?.outputTokens, undefined)
+  assert.equal(warnings.mock.callCount(), 2)
+})
 
 test("counts each call once per agent across request trackers, including rejected attempts", () => {
   runWithAgent("call-count-first", () => {
@@ -93,6 +175,7 @@ test("one lifecycle correlates same-name batch responses and completes both cons
     isError: true,
     content: [{ type: "text", text: "Rejected by SDK" }],
   })
+  assert.equal(audits[1]?.outputTokens, countTokens("Rejected by SDK"))
 })
 
 test("retains undispatched HTTP failures and cannot reopen an ended request", () => {
@@ -112,6 +195,8 @@ test("retains undispatched HTTP failures and cannot reopen an ended request", ()
   assert.equal(audits[0]?.status, "failed")
   assert.equal(audits[0]?.httpStatus, 400)
   assert.equal(audits[0]?.response, undefined)
+  assert.equal(audits[0]?.inputTokens, countTokens("{}"))
+  assert.equal(audits[0]?.outputTokens, undefined)
   assert.equal(audits[0]?.error, undefined, "Transport metadata does not invent a tool error")
 })
 

@@ -12,7 +12,7 @@ export interface ChatGptTurnCompletion {
 export interface ChatGptTurnEvents {
   onActivity?: (activity?: AgentActivity) => void
   onConversationId?: (conversationId: string) => void
-  /** Completed MCP tool results from the submitted turn only; transports may repeat them. */
+  /** Plain MCP result text from the submitted turn only; transports may repeat it. */
   onToolResponse?: (text: string) => void
 }
 
@@ -205,7 +205,9 @@ export class ChatGptTurnTracker {
     )
       return
     this.reportedTools.add(message.id)
-    this.events.onToolResponse?.(message.text)
+    // ChatGPT wraps MCP output in JSON {text}; consumers receive the original tool text.
+    const wrapped = asRecord(tryParseJson(message.text))
+    this.events.onToolResponse?.(typeof wrapped?.text === "string" ? wrapped.text : message.text)
   }
 
   private result(): ChatGptTurnCompletion | undefined {

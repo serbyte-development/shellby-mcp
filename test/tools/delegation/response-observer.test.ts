@@ -19,7 +19,7 @@ for (const inlinePostData of [true, false]) {
         action: "next",
         messages: [{ id: "submitted-user", author: { role: "user" } }],
       })
-      const toolText = "MCP response\n[sb:K7Q2]"
+      const toolText = "MCP response"
       const body = completedStream("submitted-user", "Exact result", toolText)
       const cdp = Object.assign(new EventEmitter(), {
         async send(method: string) {
@@ -56,9 +56,9 @@ for (const inlinePostData of [true, false]) {
       // An old response containing identical text cannot bind to this turn.
       cdp.emit("Network.dataReceived", {
         requestId: "submitted-request",
-        data: Buffer.from(completedStream("old-user", "Wrong result", "stale marker")).toString(
-          "base64"
-        ),
+        data: Buffer.from(
+          completedStream("old-user", "Wrong result", "stale tool result")
+        ).toString("base64"),
       })
 
       if (transport === "http") {
@@ -88,7 +88,7 @@ for (const inlinePostData of [true, false]) {
       const result = await observation.response
       assert.equal(result.text, "Exact result")
       assert.deepEqual(submitted, ["submitted-user"])
-      assert.deepEqual(toolResponses, [JSON.stringify({ text: toolText })])
+      assert.deepEqual(toolResponses, [toolText])
       assert.equal(calls.includes("Network.getRequestPostData"), !inlinePostData)
     })
   }

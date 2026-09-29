@@ -11,9 +11,30 @@ import { createShellSessionManager } from "../../src/tools/shell/session-manager
 import {
   buildStartHereInstructions,
   discoverPromptModes,
+  readStartHereIdentity,
   readStartPrompt,
 } from "../../src/tools/start-here/start-here.js"
-import { agentToolText, connectClient, startMcpHttpServer, toolText } from "./helpers.js"
+import { connectClient, startHereText, startMcpHttpServer, toolText } from "./helpers.js"
+
+test("startup identity resolves only known sessions from the leading startup header", () => {
+  const identity = runWithAgent("startup-header-session", () => getAgentIdentity()!)
+  const header = { tool: "start_here", sessionId: identity.sessionId, agent: identity.agent }
+  assert.equal(
+    readStartHereIdentity(`${JSON.stringify(header)}\n\nInstructions\n\n**Notice:** update`),
+    identity
+  )
+  for (const text of [
+    "Instructions without an identity",
+    "{invalid json",
+    JSON.stringify({ ...header, tool: "shell_run" }),
+    JSON.stringify({ ...header, sessionId: "unknown-startup-session" }),
+    JSON.stringify({ ...header, sessionId: 42 }),
+    JSON.stringify({ nested: header }),
+    `Quoted output\n${JSON.stringify(header)}`,
+  ]) {
+    assert.equal(readStartHereIdentity(text), undefined)
+  }
+})
 
 test("requires start_here once per ChatGPT session", { timeout: 10_000 }, async (t) => {
   const workspace = await mkdtemp(join(tmpdir(), "shellby-start-here-"))
@@ -50,7 +71,7 @@ test("requires start_here once per ChatGPT session", { timeout: 10_000 }, async 
     arguments: { mode: "coding", task_id: "startup-session" },
   })
   assert.equal(started.isError, undefined)
-  const startInstructions = agentToolText(started, "startup-session-a")
+  const startInstructions = startHereText(started, "startup-session-a")
   const [sharedPrompt, codingPrompt] = await Promise.all([
     readStartPrompt("shared"),
     readStartPrompt("coding"),
@@ -63,6 +84,7 @@ test("requires start_here once per ChatGPT session", { timeout: 10_000 }, async 
 
   const allowed = await first.client.callTool({ name: "shell_list", arguments: {} })
   assert.equal(allowed.isError, undefined)
+  assert.equal(readStartHereIdentity(toolText(allowed)), undefined)
 
   const stillBlocked = await second.client.callTool({ name: "shell_list", arguments: {} })
   assert.equal(stillBlocked.isError, true)
@@ -104,7 +126,7 @@ test("suppresses duplicate start_here modes for five seconds per agent", {
   ])
   assert.ok(simultaneous.every((result) => !result.isError))
   const simultaneousText = simultaneous.map((result) =>
-    agentToolText(result, "start-cooldown-session-a")
+    startHereText(result, "start-cooldown-session-a")
   )
   assert.equal(simultaneousText.filter((text) => text === codingInstructions).length, 1)
   assert.equal(
@@ -128,21 +150,21 @@ test("suppresses duplicate start_here modes for five seconds per agent", {
     arguments: { mode: "general", task_id: "general-task" },
   })
   assert.equal(
-    agentToolText(otherMode, "start-cooldown-session-a"),
+    startHereText(otherMode, "start-cooldown-session-a"),
     await buildStartHereInstructions("general")
   )
   const otherAgent = await second.client.callTool({
     name: "start_here",
     arguments: { mode: "coding", task_id: "other-task" },
   })
-  assert.equal(agentToolText(otherAgent, "start-cooldown-session-b"), codingInstructions)
+  assert.equal(startHereText(otherAgent, "start-cooldown-session-b"), codingInstructions)
 
   now += 1
   const expired = await first.client.callTool({
     name: "start_here",
     arguments: { mode: "coding", task_id: "after-cooldown" },
   })
-  assert.equal(agentToolText(expired, "start-cooldown-session-a"), codingInstructions)
+  assert.equal(startHereText(expired, "start-cooldown-session-a"), codingInstructions)
 })
 
 test("suppresses rapid duplicate skill loads for the same agent", {
@@ -273,6 +295,7 @@ test("keeps a ChatGPT session locked when start_here fails", { timeout: 10_000 }
     arguments: { mode: "invalid", task_id: "invalid-mode" },
   })
   assert.equal(failed.isError, true)
+  assert.equal(readStartHereIdentity(toolText(failed)), undefined)
 
   const blocked = await connected.client.callTool({ name: "shell_list", arguments: {} })
   assert.equal(blocked.isError, true)
@@ -283,7 +306,7 @@ test("keeps a ChatGPT session locked when start_here fails", { timeout: 10_000 }
     arguments: { mode: "coding", task_id: "retry-startup" },
   })
   assert.equal(
-    agentToolText(retry, "startup-session-failure"),
+    startHereText(retry, "startup-session-failure"),
     await buildStartHereInstructions("coding")
   )
   const allowed = await connected.client.callTool({ name: "shell_list", arguments: {} })

@@ -21,6 +21,11 @@ export function getAgentIdentity(): AgentIdentity | undefined {
   return currentAgent.getStore()
 }
 
+/** Look up an existing session without registering a new agent. */
+export function findAgentIdentity(sessionId: string): AgentIdentity | undefined {
+  return agents.get(sessionId)
+}
+
 export function setAgentTaskSlug(taskSlug: string): void {
   const identity = currentAgent.getStore()
   if (identity) identity.taskSlug = taskSlug

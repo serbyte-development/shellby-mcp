@@ -3,7 +3,6 @@ import { request as httpRequest } from "node:http"
 
 import { Client, StreamableHTTPClientTransport } from "@modelcontextprotocol/client"
 import { getAgentIdentity, runWithAgent } from "../../src/agent/context.js"
-import { identityFromToolResponse } from "../../src/agent/identity-marker.js"
 import type { AgentObserver } from "../../src/agent/observer.js"
 import type { ShellbyAuthStore } from "../../src/auth/store.js"
 import {
@@ -18,6 +17,7 @@ import {
 } from "../../src/server/http-server.js"
 import { PeekabooClient } from "../../src/tools/computer/peekaboo.js"
 import { createShellSessionManager } from "../../src/tools/shell/session-manager.js"
+import { readStartHereIdentity } from "../../src/tools/start-here/start-here.js"
 import { WebPageOpener } from "../../src/tools/web/web-open.js"
 
 type TestMcpServerOptions = Partial<McpCapabilityServices> & {
@@ -275,17 +275,17 @@ export function toolText(result: Awaited<ReturnType<Client["callTool"]>>): strin
     .join("\n")
 }
 
-/** Assert the session correlation footer, then return only the tool's own output for comparison. */
-export function agentToolText(
+/** Assert startup's existing session identity, then return its instructions for comparison. */
+export function startHereText(
   result: Awaited<ReturnType<Client["callTool"]>>,
   sessionId: string
 ): string {
   const text = toolText(result)
   assert.equal(
-    identityFromToolResponse(text),
+    readStartHereIdentity(text),
     runWithAgent(sessionId, () => getAgentIdentity())
   )
-  return text.replace(/(?:^|\n\n)\[sb:[A-Z0-9]{4}\]$/u, "")
+  return text.slice(text.indexOf("\n\n") + 2)
 }
 
 export function compactField(text: string, key: string): string | undefined {

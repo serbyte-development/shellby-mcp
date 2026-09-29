@@ -3,6 +3,7 @@ import test from "node:test"
 
 import {
   bindAgentParent,
+  findAgentIdentity,
   getAgentChildren,
   getAgentIdentity,
   runWithAgent,
@@ -15,6 +16,8 @@ test("keeps one process-wide identity per OpenAI session and adds task context",
   const second = runWithAgent("agent-context-b", () => getAgentIdentity()!)
 
   assert.equal(same, first)
+  assert.equal(findAgentIdentity(first.sessionId), first)
+  assert.equal(findAgentIdentity("unregistered-session"), undefined)
   assert.equal(same.agent, first.agent)
   assert.equal(
     Number(second.agent.slice("agent-".length)),

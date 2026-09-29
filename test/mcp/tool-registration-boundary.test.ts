@@ -6,8 +6,7 @@ import { Client, StreamableHTTPClientTransport } from "@modelcontextprotocol/cli
 import { InMemoryTransport } from "@modelcontextprotocol/server"
 import { z } from "zod"
 
-import { getAgentIdentity, runWithAgent, setAgentTaskSlug } from "../../src/agent/context.js"
-import { identityFromToolResponse } from "../../src/agent/identity-marker.js"
+import { runWithAgent, setAgentTaskSlug } from "../../src/agent/context.js"
 import { createAgentObserver } from "../../src/agent/observer.js"
 import { ObservedMcpServer as McpServer } from "../../src/mcp/observed-server.js"
 import { type CompletedToolCall, ToolCallTracker } from "../../src/mcp/tool-call-tracker.js"
@@ -535,13 +534,6 @@ for (const structuredOutput of [false, true]) {
       assert.equal(calls, 0)
       assert.equal(rejected.isError, true)
       assert.match(JSON.stringify(rejected.content), /INITIALIZATION_REQUIRED: /u)
-      assert.ok(Array.isArray(rejected.content))
-      const firstMarker = rejected.content.at(-1)
-      assert.equal(firstMarker?.type, "text")
-      assert.equal(identityFromToolResponse(firstMarker.text), getAgentIdentity())
-      const footer = firstMarker.text.split("\n").at(-1)
-      assert.ok(footer)
-      assert.match(footer, /^\[sb:[A-Z0-9]{4}\]$/u)
       assert.equal(agentObserver.listAgents()[0]?.recent[0]?.status, "failed")
       assert.equal(audits.length, 1)
 
@@ -555,7 +547,7 @@ for (const structuredOutput of [false, true]) {
         assert.equal(result.isError, true)
         assert.ok(Array.isArray(result.content))
         assert.deepEqual(result.content, [
-          { type: "text", text: `${expected}\n\n**Notice:** fixture notice\n\n${footer}` },
+          { type: "text", text: `${expected}\n\n**Notice:** fixture notice` },
         ])
         assert.deepEqual(
           result.structuredContent,
@@ -583,10 +575,9 @@ for (const structuredOutput of [false, true]) {
 
       const success = await client.callTool({ name: "success" })
       assert.notEqual(success.isError, true)
-      assert.ok(Array.isArray(success.content))
-      const successText = success.content.at(-1)
-      assert.ok(successText?.type === "text")
-      assert.equal(identityFromToolResponse(successText.text), getAgentIdentity())
+      assert.deepEqual(success.content, [
+        { type: "text", text: "Done\n\n**Notice:** fixture notice" },
+      ])
       assert.equal(
         observed.mock.calls.filter(({ arguments: [call] }) => call.status === "failed").length,
         6

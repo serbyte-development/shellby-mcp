@@ -2,7 +2,6 @@ import { appendFileSync, chmodSync, existsSync } from "node:fs"
 
 import type { CompletedToolCall } from "../../mcp/tool-call-tracker.js"
 import { getTimeStamp } from "../../time.js"
-import { countTokens } from "../../tokenizer.js"
 import {
   errorMessage,
   formatAuditEntry,
@@ -48,11 +47,8 @@ export class McpAuditLogger {
         durationMs: Math.max(0, call.finishedAt - call.startedAt),
         httpStatus: call.httpStatus ?? 200,
         state: call.transportState ?? "finished",
-        inputTokens: countTokens(JSON.stringify(call.input ?? {})),
-        outputTokens:
-          toolResponse.modelOutput !== undefined
-            ? countTokens(toolResponse.modelOutput)
-            : undefined,
+        inputTokens: call.inputTokens,
+        outputTokens: call.outputTokens,
         toolFailed: call.status === "failed" || shellFailed,
         failureMessage,
         responseSummary: toolResponse,

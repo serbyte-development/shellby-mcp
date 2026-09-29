@@ -44,7 +44,7 @@ test("only fresh completed MCP results are reported; fork history, echoes, and o
   const encode = (value: unknown) => `data: ${JSON.stringify(value)}\n\n`
   const send = (value: unknown, source = topic) =>
     tracker.ingestFrame(turnFrame(source, encode(value)))
-  const tool = mcpToolResponse("current-tool", "result\n[sb:K7Q2]")
+  const tool = mcpToolResponse("current-tool", "result")
   send({ v: { message: tool } }) // Before the submitted user message: inherited history.
   send({
     type: "input_message",
@@ -85,7 +85,7 @@ test("only fresh completed MCP results are reported; fork history, echoes, and o
   assert.deepEqual(responses, [], "Incomplete results cannot establish identity")
   send({ p: "/message/status", o: "replace", v: "finished_successfully" })
   send({ v: { message: tool } })
-  assert.deepEqual(responses, [tool.content.text], "Replay is idempotent")
+  assert.deepEqual(responses, ["result"], "Replay is idempotent")
   tracker.ingestFrame(
     turnFrame(topic, message("assistant", "Actual final answer", { endTurn: true }))
   )

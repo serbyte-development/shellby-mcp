@@ -1,24 +1,14 @@
-// biome-ignore-all lint/security/noDangerouslySetInnerHtml: Highlight.js escapes source text and emits the markup required for syntax highlighting.
+// biome-ignore-all lint/security/noDangerouslySetInnerHtml: The highlighting module escapes all source text before adding syntax markup.
 import * as Dialog from "@radix-ui/react-dialog"
-import hljs from "highlight.js/lib/core"
-import bash from "highlight.js/lib/languages/bash"
-import diff from "highlight.js/lib/languages/diff"
-import json from "highlight.js/lib/languages/json"
 import { X } from "lucide-react"
 
 import { Button } from "../../components/ui/button"
 import type { AgentCall } from "../../types"
-
-hljs.registerLanguage("bash", bash)
-hljs.registerLanguage("diff", diff)
-hljs.registerLanguage("json", json)
+import { highlightInput, highlightResponse } from "./highlight-tool-text"
 
 export function ToolCallModal({ call, onClose }: { call?: AgentCall; onClose: () => void }) {
-  const detail = call?.detail || call?.summary || "No captured input for this tool call."
-  const highlighted =
-    call?.detailLanguage && hljs.getLanguage(call.detailLanguage)
-      ? hljs.highlight(detail, { language: call.detailLanguage }).value
-      : hljs.highlightAuto(detail).value
+  const detail = call?.detail ?? (call?.summary || "No captured input for this tool call.")
+  const highlighted = highlightInput(detail, call?.detailLanguage)
 
   return (
     <Dialog.Root open={Boolean(call)} onOpenChange={(open) => !open && onClose()}>
@@ -49,6 +39,7 @@ export function ToolCallModal({ call, onClose }: { call?: AgentCall; onClose: ()
           <div className="min-h-0 space-y-4 overflow-auto p-5">
             <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
               Input
+              <TokenCount count={call?.inputTokens} />
             </h3>
             <pre className="overflow-x-auto rounded-lg border bg-muted/30 p-4 text-xs leading-5">
               <code
@@ -58,10 +49,15 @@ export function ToolCallModal({ call, onClose }: { call?: AgentCall; onClose: ()
             </pre>
             <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
               Output returned to agent
+              <TokenCount count={call?.outputTokens} />
             </h3>
             {call?.response !== undefined ? (
               <pre className="whitespace-pre-wrap break-words rounded-lg border bg-muted/30 p-4 text-xs leading-5">
-                <code>{call.response || "No content returned."}</code>
+                <code
+                  dangerouslySetInnerHTML={{
+                    __html: highlightResponse(call.response || "No content returned."),
+                  }}
+                />
               </pre>
             ) : (
               <p className="text-sm text-muted-foreground">
@@ -74,5 +70,18 @@ export function ToolCallModal({ call, onClose }: { call?: AgentCall; onClose: ()
         </Dialog.Content>
       </Dialog.Portal>
     </Dialog.Root>
+  )
+}
+
+function TokenCount({ count }: { count?: number }) {
+  if (count === undefined) return null
+  return (
+    <span
+      className="ml-2 font-normal normal-case tracking-normal"
+      title="Full tool arguments and returned text/structured content (o200k_base), before display truncation. Excludes binary media and protocol overhead."
+    >
+      {" "}
+      {count.toLocaleString()} tokens
+    </span>
   )
 }

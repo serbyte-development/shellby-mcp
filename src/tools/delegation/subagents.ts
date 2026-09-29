@@ -4,8 +4,8 @@ import { join } from "node:path"
 import type { Browser, BrowserContext, Page } from "playwright-core"
 
 import { type AgentIdentity, bindAgentParent, getAgentIdentity } from "../../agent/context.js"
-import { identityFromToolResponse } from "../../agent/identity-marker.js"
 import { MCP_CONFIG } from "../../config.js"
+import { readStartHereIdentity } from "../start-here/start-here.js"
 import {
   assertAuthenticated,
   createBackgroundPage,
@@ -320,9 +320,9 @@ export function createSubagents(): Subagents {
           recordConversation(parentAgent, agent, conversationId),
         onActivity: (activity) => recordActivity(agent, turn, activity, Date.now()),
         onToolResponse: (text) => {
-          if (!parentAgent || disposed || turn.status !== "running") return
-          const child = identityFromToolResponse(text)
-          if (!child || agent.identity) return
+          if (!parentAgent || agent.identity || disposed || turn.status !== "running") return
+          const child = readStartHereIdentity(text)
+          if (!child) return
           agent.identity = bindAgentParent(child.sessionId, parentAgent.sessionId)
           if (agent.identity) persistAgent(parentAgent, agent)
         },

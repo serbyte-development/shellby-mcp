@@ -8,7 +8,8 @@ import { type Browser, chromium, type Page } from "playwright-core"
 import type { AgentIdentity } from "../../src/agent/context.js"
 import { createDashboardRouter } from "../../src/agent/dashboard-routes.js"
 import { type AgentObserver, createAgentObserver } from "../../src/agent/observer.js"
-import { publishCall, publishCompletion } from "../fixtures/tool-call.js"
+import { countTokens } from "../../src/tokenizer.js"
+import { publishCall } from "../fixtures/tool-call.js"
 
 const identity: AgentIdentity = {
   sessionId: "dashboard-test",
@@ -38,19 +39,37 @@ test("dashboard dismissal behavior", {
       await page.getByText("printf output", { exact: true }).click()
       const modal = page.getByRole("dialog")
       await modal.getByText("Waiting for the tool to return…", { exact: true }).waitFor()
+      await modal
+        .getByRole("heading", {
+          name: `Input ${countTokens(JSON.stringify({ command: "printf output" }))} tokens`,
+        })
+        .waitFor()
+      assert.equal(
+        await modal.getByRole("heading", { name: "Output returned to agent", exact: true }).count(),
+        1
+      )
       const output =
-        "First line\nSecond line\n<script>throw new Error('must not execute')</script>\n\n**Notice:** Human instruction: Continue"
-      publishCompletion(observer, callId, {
+        "First line\nSecond line\n<script>throw new Error('must not execute')</script>\n\n```js\nconst value = 42;\n```\n\n```markdown\n# Literal heading\n```\n\n**Notice:** Human instruction: Continue"
+      callId.finish({
         response: { content: [{ type: "text", text: output }] },
       })
       await modal.getByText(output, { exact: true }).waitFor()
+      await modal
+        .getByRole("heading", { name: `Output returned to agent ${countTokens(output)} tokens` })
+        .waitFor()
+      assert.equal(await modal.locator("pre").nth(1).textContent(), output)
+      assert.equal(
+        await modal.locator("pre").nth(1).locator(".hljs-keyword").textContent(),
+        "const"
+      )
+      assert.equal(await modal.locator("pre").nth(1).locator("h1, script").count(), 0)
       assert.equal(await modal.getByText("Waiting for the tool to return…").count(), 0)
       await modal.getByRole("button", { name: "Close tool call details" }).click()
 
       const failedCall = publishCall(observer, identity, "shell_run", {
         command: "failing command",
       })
-      publishCompletion(observer, failedCall, {
+      failedCall.finish({
         status: "failed",
         response: {
           isError: true,
@@ -62,9 +81,21 @@ test("dashboard dismissal behavior", {
       await modal.getByRole("button", { name: "Close tool call details" }).click()
 
       const legacyCall = publishCall(observer, identity, "shell_run", { command: "older call" })
-      publishCompletion(observer, legacyCall)
+      legacyCall.finish()
       await page.getByText("older call", { exact: true }).click()
       await modal.getByText("Output was not captured for this call.", { exact: true }).waitFor()
+      await modal.getByRole("button", { name: "Close tool call details" }).click()
+
+      const large = publishCall(observer, identity, "shell_run", { command: "large output" })
+      const fullOutput = "Full output before preview truncation.\n".repeat(1_000)
+      large.finish({ response: { content: [{ type: "text", text: fullOutput }] } })
+      await page.getByText("large output", { exact: true }).click()
+      await modal.getByText(/Dashboard output truncated/u).waitFor()
+      await modal
+        .getByRole("heading", {
+          name: `Output returned to agent ${countTokens(fullOutput).toLocaleString()} tokens`,
+        })
+        .waitFor()
     }
   )
 
@@ -73,7 +104,7 @@ test("dashboard dismissal behavior", {
     async (t) => {
       const observer = createAgentObserver()
       const callId = publishCall(observer, identity, "shell_run", { command: "pwd" })
-      publishCompletion(observer, callId)
+      callId.finish()
       const page = await openDashboard(t, browser, observer)
 
       for (const message of ["First steer", "Second steer"]) {
@@ -133,7 +164,7 @@ test("dashboard dismissal behavior", {
       let timestamp = Date.now() - 60_000
       const observer = createAgentObserver(() => ++timestamp)
       const callId = publishCall(observer, identity, "shell_run", { command: "pwd" }, ++timestamp)
-      publishCompletion(observer, callId, { finishedAt: ++timestamp })
+      callId.finish({ finishedAt: ++timestamp })
       const otherIdentity = { sessionId: "other-session", agent: "agent-2", taskSlug: "other-task" }
       publishCall(observer, otherIdentity, "shell_run", { command: "date" }, ++timestamp)
       const page = await openDashboard(t, browser, observer)
@@ -181,7 +212,7 @@ test("dashboard dismissal behavior", {
       // Finishing a call also counts as activity after dismissal of a running agent.
       await card.getByRole("button", { name: "Dismiss agent-1", exact: true }).click()
       await card.waitFor({ state: "detached" })
-      publishCompletion(observer, newCall, { finishedAt: ++timestamp })
+      newCall.finish({ finishedAt: ++timestamp })
       await card.getByText("echo resumed", { exact: true }).waitFor()
     }
   )

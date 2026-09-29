@@ -2,13 +2,14 @@ import assert from "node:assert/strict"
 import test from "node:test"
 import type { AgentIdentity } from "../../src/agent/context.js"
 import { createAgentObserver } from "../../src/agent/observer.js"
-import { publishCall, publishCompletion } from "../fixtures/tool-call.js"
+import { countTokens } from "../../src/tokenizer.js"
+import { publishCall } from "../fixtures/tool-call.js"
 
 test("retains bounded final response text and metadata without binary payloads", () => {
   const observer = createAgentObserver()
   const agent: AgentIdentity = { sessionId: "responses", agent: "agent-responses" }
   const callId = publishCall(observer, agent, "asset", {})
-  publishCompletion(observer, callId, {
+  callId.finish({
     response: {
       content: [
         { type: "text", text: "Actual output\n\n**Notice:** Keep going" },
@@ -27,9 +28,15 @@ test("retains bounded final response text and metadata without binary payloads",
   assert.match(response, /"count": 2/u)
   assert.match(response, /Ordinary structured data/u)
   assert.doesNotMatch(response, /PRIVATE_BASE64|PRIVATE_BLOB/u)
+  assert.equal(
+    observer.listAgents()[0]?.recent[0]?.outputTokens,
+    countTokens(
+      `Actual output\n\n**Notice:** Keep going\n${JSON.stringify({ count: 2, data: "Ordinary structured data" })}`
+    )
+  )
 
   const largeCall = publishCall(observer, agent, "large", {})
-  publishCompletion(observer, largeCall, {
+  largeCall.finish({
     status: "failed",
     response: {
       isError: true,
@@ -40,6 +47,8 @@ test("retains bounded final response text and metadata without binary payloads",
   assert.equal(large?.status, "failed")
   assert.ok((large?.response?.length ?? 0) < 33_000)
   assert.match(large?.response ?? "", /Dashboard output truncated/u)
+  assert.equal(large?.outputTokens, countTokens("x".repeat(40_000)))
+  assert.notEqual(large?.outputTokens, countTokens(large?.response ?? ""))
 })
 
 test("tracks current and recent tool activity for one agent", () => {
@@ -55,16 +64,28 @@ test("tracks current and recent tool activity for one agent", () => {
     summary: "npm test",
     detail: "npm test",
     detailLanguage: "bash",
+    inputTokens: countTokens(JSON.stringify({ command: "npm test" })),
     startedAt: 1_000,
     status: "running",
   })
 
   timestamp = 1_500
-  publishCompletion(observer, callId, { finishedAt: timestamp })
+  callId.finish({ finishedAt: timestamp })
   const snapshot = observer.listAgents()[0]
   assert.equal(snapshot?.current, undefined)
   assert.equal(snapshot?.recent[0]?.status, "completed")
   assert.equal(snapshot?.recent[0]?.finishedAt, 1_500)
+  assert.equal(snapshot?.recent[0]?.outputTokens, undefined)
+})
+
+test("counts full input arguments and distinguishes empty output from unavailable output", () => {
+  const observer = createAgentObserver()
+  const agent: AgentIdentity = { sessionId: "empty-tokens", agent: "agent-empty" }
+  const call = publishCall(observer, agent, "shell_run", { command: "" })
+  assert.equal(observer.listAgents()[0]?.current?.inputTokens, countTokens('{"command":""}'))
+  assert.equal(observer.listAgents()[0]?.current?.outputTokens, undefined)
+  call.finish({ response: { content: [{ type: "text", text: "" }] } })
+  assert.equal(observer.listAgents()[0]?.recent[0]?.outputTokens, 0)
 })
 
 test("queues and delivers steering instructions once", () => {
@@ -127,7 +148,7 @@ test("emits snapshots when agent state changes", () => {
   const unsubscribe = observer.subscribe((event) => events.push(`${event.type}:${event.agent.id}`))
 
   const callId = publishCall(observer, agent, "fetch_url", { url: "https://example.com" })
-  publishCompletion(observer, callId)
+  callId.finish()
   unsubscribe()
 
   assert.deepEqual(events, ["agent_changed:agent-1", "agent_changed:agent-1"])
@@ -150,11 +171,11 @@ test("keeps concurrent tool calls from the same agent", () => {
   assert.equal(observer.listAgents()[0]?.current?.id, second.id)
 
   timestamp = 3_200
-  publishCompletion(observer, second, { finishedAt: timestamp })
+  second.finish({ finishedAt: timestamp })
   assert.equal(observer.listAgents()[0]?.current?.id, first.id)
 
   timestamp = 3_300
-  publishCompletion(observer, first, { finishedAt: timestamp })
+  first.finish({ finishedAt: timestamp })
   const snapshot = observer.listAgents()[0]
   assert.equal(snapshot?.current, undefined)
   assert.deepEqual(

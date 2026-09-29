@@ -9,7 +9,6 @@ const SLOW_CALL_MS = 5_000
 
 export interface ToolResponseSummary {
   failureMessage?: string
-  modelOutput?: string
   structuredContent?: Record<string, unknown>
 }
 
@@ -20,7 +19,7 @@ export function formatAuditEntry(input: {
   durationMs: number
   httpStatus: number
   state: "finished" | "closed"
-  inputTokens: number
+  inputTokens?: number
   outputTokens?: number
   toolFailed: boolean
   failureMessage?: string
@@ -31,7 +30,7 @@ export function formatAuditEntry(input: {
     input.httpStatus >= 400 || input.state !== "finished"
       ? ` - HTTP ${input.httpStatus} ${input.state}`
       : ""
-  const tokenCounts = ` - ${input.inputTokens} in${input.outputTokens !== undefined ? ` / ${input.outputTokens} out` : ""}`
+  const tokenCounts = ` - ${input.inputTokens ?? "?"} in${input.outputTokens !== undefined ? ` / ${input.outputTokens} out` : ""}`
   const tag = auditTag(input)
   const tagPrefix = tag ? `${tag} ` : ""
   const heading = `--- # ${tagPrefix}${input.toolName} - ${input.durationMs}ms${tokenCounts}${abnormal} - ${input.timestamp}`
@@ -50,10 +49,8 @@ export function formatAuditEntry(input: {
 
 export function summarizeToolResult(call: CompletedToolCall): ToolResponseSummary {
   const toolRecord = asRecord(call.toolResult)
-  const modelRecord = asRecord(call.response)
-  const modelOutput = modelRecord ? serializeModelFacingToolResult(modelRecord) : undefined
   const structuredContent = asRecord(toolRecord?.structuredContent)
-  const summary = { modelOutput, structuredContent }
+  const summary = { structuredContent }
   if (call.error !== undefined)
     return { ...summary, failureMessage: originalErrorMessage(call.error) }
   if (call.status !== "failed") return summary
@@ -273,30 +270,6 @@ function formatComputerResponseSummary(value: Record<string, unknown>): string {
     typeof value.interactable_count === "number" ? `interactable=${value.interactable_count}` : "",
   ].filter(Boolean)
   return parts.length ? `result: ${parts.join(" ")}` : ""
-}
-
-function serializeModelFacingToolResult(value: Record<string, unknown>): string | undefined {
-  const parts: string[] = []
-  if (Array.isArray(value.content)) {
-    for (const item of value.content) {
-      const serialized = serializeModelFacingContentItem(item)
-      if (serialized !== undefined) parts.push(serialized)
-    }
-  }
-  if (value.structuredContent !== undefined) parts.push(JSON.stringify(value.structuredContent))
-  return parts.length > 0 ? parts.join("\n") : undefined
-}
-
-function serializeModelFacingContentItem(value: unknown): string | undefined {
-  const record = asRecord(value)
-  if (!record) return undefined
-  if (record.type === "text" && typeof record.text === "string") return record.text
-  if (record.type === "image" || record.type === "audio") return undefined
-  if (record.type === "resource") {
-    const resource = asRecord(record.resource)
-    if (resource && typeof resource.blob === "string") return undefined
-  }
-  return JSON.stringify(record)
 }
 
 function indentBlock(content: string): string {

@@ -4,6 +4,7 @@ import type { JSONRPCResponse, RequestId, ServerContext } from "@modelcontextpro
 import { type AgentIdentity, getAgentIdentity } from "../agent/context.js"
 import type { AgentObserver } from "../agent/observer.js"
 import type { McpAuditLogger } from "../server/audit/audit-log.js"
+import { countTokens } from "../tokenizer.js"
 import { asRecord } from "../utils.js"
 
 interface ToolCall {
@@ -14,6 +15,8 @@ interface ToolCall {
   // start_here can set the live identity's task slug while the call is running.
   readonly taskSlugAtStart?: string
   readonly startedAt: number
+  /** o200k_base tokens in the full JSON arguments; absent only if counting failed. */
+  readonly inputTokens?: number
 }
 
 export interface CompletedToolCall extends ToolCall {
@@ -21,6 +24,8 @@ export interface CompletedToolCall extends ToolCall {
   readonly finishedAt: number
   readonly toolResult?: unknown
   readonly response?: unknown
+  /** Full final text/structured response tokens, before display truncation; excludes binary media. */
+  readonly outputTokens?: number
   readonly error?: unknown
   readonly errors: readonly unknown[]
   readonly httpStatus?: number
@@ -57,7 +62,7 @@ export function recordToolError(error: unknown): void {
 }
 
 /**
- * Own call identities, timing, diagnostics, and terminal transitions within a request scope.
+ * Own call identities, timing, token counts, diagnostics, and terminal transitions within a request scope.
  * HTTP seeds raw requests so even undispatched calls are recorded. run also starts calls
  * for non-HTTP transports. Only the final SDK response or request termination completes
  * a call; late handler results cannot complete it again. Consumers receive snapshots,
@@ -77,7 +82,7 @@ export class ToolCallTracker {
     for (const value of Array.isArray(payload) ? payload : [payload]) {
       const request = asRecord(value)
       if (request?.method === "tools/list") {
-        this.notify(() => this.consumers.auditLogger?.recordToolsList(this.now()))
+        this.observe(() => this.consumers.auditLogger?.recordToolsList(this.now()))
       }
       if (request?.method !== "tools/call") continue
       const params = asRecord(request.params)
@@ -158,10 +163,13 @@ export class ToolCallTracker {
       agent,
       taskSlugAtStart: agent?.taskSlug,
       startedAt: this.now(),
+      inputTokens: this.observe(() => countTokens(JSON.stringify(input ?? {}))),
     }
     const pending: PendingCall = { call, errors: [] }
     this.pending.set(id, pending)
-    this.notify(() => this.consumers.agentObserver?.observeToolCall({ ...call, status: "running" }))
+    this.observe(() =>
+      this.consumers.agentObserver?.observeToolCall({ ...call, status: "running" })
+    )
     return pending
   }
 
@@ -181,6 +189,7 @@ export class ToolCallTracker {
       error,
       errors: pending.errors,
       finishedAt: this.now(),
+      outputTokens: this.observe(() => countResponseTokens(outcome.response)),
       status:
         rejected ||
         error !== undefined ||
@@ -194,15 +203,39 @@ export class ToolCallTracker {
           ? outcome.response
           : pending.toolResult,
     }
-    this.notify(() => this.consumers.agentObserver?.observeToolCall(call))
-    this.notify(() => this.consumers.auditLogger?.recordToolCall(call))
+    this.observe(() => this.consumers.agentObserver?.observeToolCall(call))
+    this.observe(() => this.consumers.auditLogger?.recordToolCall(call))
   }
 
-  private notify(operation: () => void): void {
+  private observe<T>(operation: () => T): T | undefined {
     try {
-      operation()
+      return operation()
     } catch (error) {
       console.warn("Could not record MCP tool activity:", error)
     }
   }
+}
+
+// Count what the model receives, including structured output and notices, rather than
+// raw handler metadata or dashboard previews. Binary payloads have no text-token count.
+function countResponseTokens(response: unknown): number | undefined {
+  const record = asRecord(response)
+  if (!record) return undefined
+  const parts: string[] = []
+  if (Array.isArray(record.content)) {
+    for (const item of record.content) {
+      const block = asRecord(item)
+      if (!block) continue
+      if (block.type === "text" && typeof block.text === "string") parts.push(block.text)
+      else if (
+        block.type !== "image" &&
+        block.type !== "audio" &&
+        !(block.type === "resource" && typeof asRecord(block.resource)?.blob === "string")
+      ) {
+        parts.push(JSON.stringify(block))
+      }
+    }
+  }
+  if (record.structuredContent !== undefined) parts.push(JSON.stringify(record.structuredContent))
+  return parts.length ? countTokens(parts.join("\n")) : undefined
 }

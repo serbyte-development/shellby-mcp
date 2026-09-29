@@ -4,7 +4,7 @@ import { type AgentIdentity, getAgentIdentity } from "../../src/agent/context.js
 import { ChatGptDelegationError } from "../../src/tools/delegation/subagent-error.js"
 import type { AgentRequest } from "../../src/tools/delegation/subagents.js"
 import { stubSubagents } from "../fixtures/subagents.js"
-import { agentToolText, connectClient, startMcpHttpServer, toolText } from "./helpers.js"
+import { connectClient, startMcpHttpServer, toolText } from "./helpers.js"
 
 for (const toolOutput of ["compact", "structured"] as const) {
   test(`delegation tools report submission and batch failures in ${toolOutput} output`, {
@@ -287,7 +287,7 @@ test("routes subagent batches and retrieves turns across MCP client sessions", {
     },
   })
   assert.equal(
-    agentToolText(started, "launch-session-1"),
+    toolText(started),
     [
       "turns:",
       "",

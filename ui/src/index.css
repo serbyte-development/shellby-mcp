@@ -62,7 +62,7 @@ body {
   color-scheme: dark;
 }
 
-/* Shared syntax colors for the tool inspector's Bash, JSON, and diff output. */
+/* Shared syntax colors for tool inputs and labeled code fences in responses. */
 .hljs {
   display: block;
   color: var(--foreground);
@@ -76,6 +76,22 @@ body {
 
 .hljs-title {
   color: light-dark(#6f42c1, #d2a8ff);
+}
+
+.hljs-strong,
+.hljs-emphasis,
+.hljs-bullet,
+.hljs-link {
+  color: light-dark(#6f42c1, #d2a8ff);
+}
+
+.hljs-tag,
+.hljs-name,
+.hljs-selector-tag,
+.hljs-selector-class,
+.hljs-attribute,
+.hljs-type {
+  color: light-dark(#047857, #6ee7b7);
 }
 
 .hljs-attr,

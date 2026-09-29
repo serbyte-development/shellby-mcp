@@ -3,9 +3,15 @@ import { readFile } from "node:fs/promises"
 import { dirname, join, resolve } from "node:path"
 import { fileURLToPath } from "node:url"
 import { z } from "zod"
-import { setAgentTaskSlug } from "../../agent/context.js"
+import {
+  type AgentIdentity,
+  findAgentIdentity,
+  getAgentIdentity,
+  setAgentTaskSlug,
+} from "../../agent/context.js"
 import { createAgentLoadDeduper } from "../../agent/load-deduper.js"
 import type { ToolRegistrar } from "../../mcp/tool-registration-boundary.js"
+import { asRecord } from "../../utils.js"
 
 export const START_HERE_TOOL_NAME = "start_here"
 const SHARED_PROMPT_NAME = "shared"
@@ -46,18 +52,35 @@ export function registerStartHereTool(registerTool: ToolRegistrar): void {
         buildStartHereInstructions(mode)
       )
       setAgentTaskSlug(task_id)
+      const identity = getAgentIdentity()
+      const text = reused
+        ? `Mode ${JSON.stringify(mode)} was loaded recently by this agent; reuse the previously returned instructions.`
+        : instructions
       return {
         content: [
           {
             type: "text",
-            text: reused
-              ? `Mode ${JSON.stringify(mode)} was loaded recently by this agent; reuse the previously returned instructions.`
-              : instructions,
+            // Expose the existing identity for the child browser listener; no extra ID registry.
+            text: identity
+              ? `${JSON.stringify({ tool: START_HERE_TOOL_NAME, sessionId: identity.sessionId, agent: identity.agent })}\n\n${text}`
+              : text,
           },
         ],
       }
     }
   )
+}
+
+/** Resolve a successful startup's JSON header, only from a fresh MCP tool response. */
+export function readStartHereIdentity(text: string): AgentIdentity | undefined {
+  try {
+    const header = asRecord(JSON.parse(text.split("\n", 1)[0] ?? ""))
+    if (header?.tool !== START_HERE_TOOL_NAME || typeof header.sessionId !== "string")
+      return undefined
+    return findAgentIdentity(header.sessionId)
+  } catch {
+    return undefined
+  }
 }
 
 export async function buildStartHereInstructions(

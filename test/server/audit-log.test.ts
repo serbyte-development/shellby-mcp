@@ -764,41 +764,58 @@ async function auditFile(t: TestContext): Promise<string> {
   return join(await tempDir(t, "mcp-audit-log-"), "agent-commands.yaml")
 }
 
-// Formatting fixtures already have their lifecycle resolved by the tracker.
+// Let the tracker provide canonical counts; fixtures supply resolved handler diagnostics.
 function auditCalls(logger: McpAuditLogger, payload: unknown) {
   return (Array.isArray(payload) ? payload : [payload]).map((value, index) => {
     const request = value as { params: { name: string; arguments?: unknown } }
-    const agent = getAgentIdentity()
-    const taskSlugAtStart = agent?.taskSlug
     const startedAt = Date.now()
+    let timestamp = startedAt
     const errors: unknown[] = []
+    let outcome: Partial<
+      Pick<CompletedToolCall, "toolResult" | "response" | "error" | "httpStatus">
+    > & { state?: "finished" | "closed"; durationMs?: number } = {}
+    const tracker = new ToolCallTracker(
+      {
+        auditLogger: {
+          recordToolsList() {},
+          recordToolCall(call) {
+            logger.recordToolCall({
+              ...call,
+              errors,
+              toolResult: outcome.toolResult,
+              error: outcome.error,
+              httpStatus: outcome.httpStatus,
+              transportState: outcome.state,
+              status:
+                outcome.error !== undefined || asRecord(outcome.toolResult)?.isError === true
+                  ? "failed"
+                  : call.status,
+            })
+          },
+        },
+      },
+      () => timestamp
+    )
+    tracker.startRequest({ ...request, id: index, method: "tools/call" })
     return {
       recordError: (error: unknown) => errors.push(error),
-      finish: (
-        input: Partial<
-          Pick<CompletedToolCall, "toolResult" | "response" | "error" | "httpStatus">
-        > & {
-          state?: "finished" | "closed"
-          durationMs?: number
-        } = {}
-      ) =>
-        logger.recordToolCall({
-          id: `fixture-${index}`,
-          tool: request.params.name,
-          input: request.params.arguments,
-          agent,
-          taskSlugAtStart,
-          startedAt,
-          finishedAt: startedAt + (input.durationMs ?? 0),
-          errors,
-          ...input,
-          status:
-            input.error !== undefined || asRecord(input.toolResult)?.isError === true
-              ? "failed"
-              : "completed",
-          response: input.response ?? input.toolResult,
-          transportState: input.state,
-        }),
+      finish(input: typeof outcome = {}) {
+        outcome = input
+        timestamp = startedAt + (input.durationMs ?? 0)
+        const response = input.response ?? input.toolResult
+        if (response === undefined) {
+          tracker.finishRequest({
+            httpStatus: input.httpStatus ?? 200,
+            state: input.state ?? "finished",
+          })
+        } else {
+          tracker.respond({
+            jsonrpc: "2.0",
+            id: index,
+            result: response as Record<string, unknown>,
+          })
+        }
+      },
     }
   })
 }

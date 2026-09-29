@@ -178,8 +178,7 @@ function indentBlock(value: string): string {
     .join("\n")
 }
 
-/** Append a footer to the last text block without mutating content or replacing native blocks. */
-export function appendTextContent(content: unknown, text: string): unknown[] {
+function appendTextContent(content: unknown, text: string): unknown[] {
   const items = Array.isArray(content) ? [...content] : []
   for (let index = items.length - 1; index >= 0; index -= 1) {
     const item = items[index]
