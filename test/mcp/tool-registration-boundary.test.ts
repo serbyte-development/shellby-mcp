@@ -1,4 +1,5 @@
 import assert from "node:assert/strict"
+import { join } from "node:path"
 import test from "node:test"
 import { setImmediate } from "node:timers/promises"
 import { Client, StreamableHTTPClientTransport } from "@modelcontextprotocol/client"
@@ -9,19 +10,25 @@ import { getAgentIdentity, runWithAgent, setAgentTaskSlug } from "../../src/agen
 import { identityFromToolResponse } from "../../src/agent/identity-marker.js"
 import { createAgentObserver } from "../../src/agent/observer.js"
 import { ObservedMcpServer as McpServer } from "../../src/mcp/observed-server.js"
+import { type CompletedToolCall, ToolCallTracker } from "../../src/mcp/tool-call-tracker.js"
 import { ToolError } from "../../src/mcp/tool-error.js"
 import { createToolRegistrar } from "../../src/mcp/tool-registration-boundary.js"
-import type { McpAuditCall } from "../../src/server/audit/audit-request.js"
+import { McpAuditLogger } from "../../src/server/audit/audit-log.js"
 import { startMcpHttpServer } from "../../src/server/http-server.js"
 import { delegatedTurnsResult } from "../../src/tools/delegation/subagent-tools.js"
+import { tempDir } from "../helpers/temp.js"
 
 test("keeps calls running through asynchronous SDK validation and correlates concurrent responses", {
   timeout: 10_000,
 }, async (t) => {
-  const server = new McpServer({ name: "concurrent-validation", version: "1.0.0" })
+  const agentObserver = createAgentObserver()
+  const server = new McpServer(
+    { name: "concurrent-validation", version: "1.0.0" },
+    {},
+    new ToolCallTracker({ agentObserver })
+  )
   const client = new Client({ name: "concurrent-validation-client", version: "1.0.0" })
   t.after(() => Promise.all([client.close(), server.close()]))
-  const agentObserver = createAgentObserver()
   let releaseValidation!: () => void
   let validationStarted!: () => void
   const release = new Promise<void>((resolve) => {
@@ -73,66 +80,96 @@ test("keeps calls running through asynchronous SDK validation and correlates con
   })
 })
 
-test("settles a disconnected call once while SDK output validation is pending", {
-  timeout: 10_000,
-}, async (t) => {
-  const server = new McpServer({ name: "disconnected-validation", version: "1.0.0" })
-  const client = new Client({ name: "disconnected-validation-client", version: "1.0.0" })
-  t.after(() => Promise.all([client.close(), server.close()]))
-  const agentObserver = createAgentObserver()
-  const finished = t.mock.method(agentObserver, "finishTool")
-  const failed = t.mock.method(agentObserver, "failTool")
-  let releaseValidation!: () => void
-  let validationStarted!: () => void
-  const release = new Promise<void>((resolve) => {
-    releaseValidation = resolve
-  })
-  const started = new Promise<void>((resolve) => {
-    validationStarted = resolve
-  })
-  t.after(() => releaseValidation())
-  const register = createToolRegistrar(server, { structuredOutput: true, agentObserver })
-  register(
-    "disconnect",
-    {
-      outputSchema: z.object({ answer: z.string() }).superRefine(async () => {
-        validationStarted()
-        await release
-      }),
-    },
-    async () => ({ structuredContent: { answer: "Finished after disconnection" }, content: [] })
-  )
-  const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair()
-  await Promise.all([server.connect(serverTransport), client.connect(clientTransport)])
-  await runWithAgent("disconnected-validation", async () => {
-    setAgentTaskSlug("disconnected-validation")
-    const disconnected = assert.rejects(client.callTool({ name: "disconnect" }), /closed/iu)
-    await started
-    assert.ok(agentObserver.listAgents()[0]?.current)
-    await server.close()
-    await disconnected
-    const observed = agentObserver.listAgents()[0]
-    assert.equal(observed?.current, undefined)
-    assert.equal(observed?.recent[0]?.status, "failed")
-    assert.equal(observed?.recent[0]?.response, undefined)
-    assert.equal(failed.mock.callCount(), 1)
-    releaseValidation()
-    await setImmediate()
-    assert.equal(failed.mock.callCount(), 1)
-    assert.equal(finished.mock.callCount(), 0)
-  })
-})
-
-for (const mode of ["auto", "legacy"] as const) {
-  test(`dashboard HTTP output matches SDK validation errors in ${mode} mode`, {
+for (const stage of ["handler", "validation"] as const) {
+  test(`settles a disconnected call once while ${stage} is pending`, {
     timeout: 10_000,
   }, async (t) => {
     const agentObserver = createAgentObserver()
+    const server = new McpServer(
+      { name: "disconnected-validation", version: "1.0.0" },
+      {},
+      new ToolCallTracker({ agentObserver })
+    )
+    const client = new Client({ name: "disconnected-validation-client", version: "1.0.0" })
+    t.after(() => Promise.all([client.close(), server.close()]))
+    const observed = t.mock.method(agentObserver, "observeToolCall")
+    let releaseValidation!: () => void
+    let validationStarted!: () => void
+    const release = new Promise<void>((resolve) => {
+      releaseValidation = resolve
+    })
+    const started = new Promise<void>((resolve) => {
+      validationStarted = resolve
+    })
+    t.after(() => releaseValidation())
+    const register = createToolRegistrar(server, { structuredOutput: true, agentObserver })
+    register(
+      "disconnect",
+      {
+        outputSchema: z.object({ answer: z.string() }).superRefine(async () => {
+          if (stage === "validation") {
+            validationStarted()
+            await release
+          }
+        }),
+      },
+      async () => {
+        if (stage === "handler") {
+          validationStarted()
+          await release
+        }
+        return { structuredContent: { answer: "Finished after disconnection" }, content: [] }
+      }
+    )
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair()
+    await Promise.all([server.connect(serverTransport), client.connect(clientTransport)])
+    await runWithAgent("disconnected-validation", async () => {
+      setAgentTaskSlug("disconnected-validation")
+      const disconnected = assert.rejects(client.callTool({ name: "disconnect" }), /closed/iu)
+      await started
+      assert.ok(agentObserver.listAgents()[0]?.current)
+      await server.close()
+      await disconnected
+      const snapshot = agentObserver.listAgents()[0]
+      assert.equal(snapshot?.current, undefined)
+      assert.equal(snapshot?.recent[0]?.status, "failed")
+      assert.equal(snapshot?.recent[0]?.response, undefined)
+      assert.equal(
+        observed.mock.calls.filter(({ arguments: [call] }) => call.status === "failed").length,
+        1
+      )
+      releaseValidation()
+      await setImmediate()
+      assert.equal(
+        observed.mock.calls.filter(({ arguments: [call] }) => call.status === "failed").length,
+        1
+      )
+      assert.equal(
+        observed.mock.calls.filter(({ arguments: [call] }) => call.status === "completed").length,
+        0
+      )
+    })
+  })
+}
+
+for (const mode of ["auto", "legacy"] as const) {
+  test(`audit and dashboard share SDK rejections before and after dispatch in ${mode} mode`, {
+    timeout: 10_000,
+  }, async (t) => {
+    const agentObserver = createAgentObserver()
+    const auditLogger = new McpAuditLogger(join(await tempDir(t, "call-rejections-"), "audit.yaml"))
+    const audited = t.mock.method(auditLogger, "recordToolCall")
+    const inputHandler = t.mock.fn(async () => ({ content: [] }))
     const running = await startMcpHttpServer(
       {
         agentObserver,
+        auditLogger,
         createMcpServer: (context) => {
-          const server = new McpServer({ name: "http-validation", version: "1.0.0" })
+          const server = new McpServer(
+            { name: "http-validation", version: "1.0.0" },
+            {},
+            context?.calls
+          )
           const register = createToolRegistrar(server, { structuredOutput: true, ...context })
           register("start_here", {}, async () => {
             setAgentTaskSlug("http-validation")
@@ -146,6 +183,7 @@ for (const mode of ["auto", "legacy"] as const) {
               content: [],
             })
           )
+          register("invalid_input", { inputSchema: z.object({ value: z.string() }) }, inputHandler)
           return server
         },
       },
@@ -163,42 +201,64 @@ for (const mode of ["auto", "legacy"] as const) {
       })
     )
     await client.callTool({ name: "start_here" })
-    const received = await client.callTool({ name: "invalid_output" })
-    assert.equal(received.isError, true)
-    assert.ok(Array.isArray(received.content))
-    const expected = received.content
-      .flatMap((item) => (item.type === "text" ? [item.text] : []))
-      .join("\n\n")
-    const dashboard = await fetch(`http://${running.host}:${running.port}/ui/api/agents`)
-    const body = (await dashboard.json()) as {
-      agents: Array<{ recent: Array<{ status: string; response?: string }> }>
+    for (const name of ["invalid_output", "invalid_input", "unknown_tool"]) {
+      const received = await client.callTool({ name, arguments: { value: 42 } }).catch((error) => {
+        // Legacy MCP rejects unknown tools at the protocol level instead of returning a tool error.
+        assert.equal(name, "unknown_tool")
+        assert.match(error.message, /Tool unknown_tool not found/u)
+        return { isError: true, content: [{ type: "text" as const, text: error.message }] }
+      })
+      assert.equal(received.isError, true)
+      assert.ok(Array.isArray(received.content))
+      const expected = received.content
+        .flatMap((item) => (item.type === "text" ? [item.text] : []))
+        .join("\n\n")
+      const dashboard = await fetch(`http://${running.host}:${running.port}/ui/api/agents`)
+      const body = (await dashboard.json()) as {
+        agents: Array<{
+          current?: unknown
+          recent: Array<{ id: string; status: string; response?: string }>
+        }>
+      }
+      const call = audited.mock.calls.at(-1)?.arguments[0]
+      assert.equal(body.agents[0]?.current, undefined)
+      assert.equal(body.agents[0]?.recent[0]?.status, "failed")
+      assert.equal(body.agents[0]?.recent[0]?.response, expected)
+      assert.equal(body.agents[0]?.recent[0]?.id, call?.id)
+      assert.equal(call?.tool, name)
+      // The modern wire envelope also contains resultType, which Client strips on receipt.
+      const recorded = call?.response as { content: unknown; isError: boolean }
+      assert.deepEqual(recorded.content, received.content)
+      assert.equal(recorded.isError, received.isError)
     }
-    assert.equal(body.agents[0]?.recent[0]?.status, "failed")
-    assert.equal(body.agents[0]?.recent[0]?.response, expected)
+    assert.equal(inputHandler.mock.callCount(), 0)
+    assert.equal(audited.mock.callCount(), 4)
   })
 }
 
 for (const structuredOutput of [false, true]) {
   test(`captures SDK output validation failures with structuredOutput=${structuredOutput}`, async (t) => {
-    const server = new McpServer({ name: "validated-response", version: "1.0.0" })
+    const agentObserver = createAgentObserver()
+    const audits: CompletedToolCall[] = []
+    const server = new McpServer(
+      { name: "validated-response", version: "1.0.0" },
+      {},
+      new ToolCallTracker({
+        agentObserver,
+        auditLogger: {
+          recordToolsList() {},
+          recordToolCall(call) {
+            audits.push(call)
+          },
+        },
+      })
+    )
     const client = new Client({ name: "validated-response-client", version: "1.0.0" })
     t.after(() => Promise.all([client.close(), server.close()]))
-    const agentObserver = createAgentObserver()
-    const finished = t.mock.method(agentObserver, "finishTool")
-    const failed = t.mock.method(agentObserver, "failTool")
-    const audits: Array<Parameters<McpAuditCall["finish"]>[0]> = []
+    const observed = t.mock.method(agentObserver, "observeToolCall")
     const register = createToolRegistrar(server, {
       structuredOutput,
       agentObserver,
-      auditRequest: {
-        claimTool: () => ({
-          recordError: () => {},
-          finish: (entry) => {
-            audits.push(entry)
-          },
-        }),
-        finishTransport: () => {},
-      },
     })
     const callback = t.mock.fn(async ({ missing }: { missing: boolean }) => ({
       ...(missing ? {} : { structuredContent: { answer: 123 } }),
@@ -228,22 +288,33 @@ for (const structuredOutput of [false, true]) {
         const observed = agentObserver.listAgents()[0]?.recent[0]
         assert.equal(observed?.status, "failed")
         assert.equal(observed?.response, expected)
-        assert.deepEqual(audits.at(-1)?.modelResult, received)
+        assert.deepEqual(audits.at(-1)?.response, received)
       }
     })
     assert.equal(callback.mock.callCount(), 2)
-    assert.equal(finished.mock.callCount(), 0, "Never publish success before SDK validation")
-    assert.equal(failed.mock.callCount(), 2)
+    assert.equal(
+      observed.mock.calls.filter(({ arguments: [call] }) => call.status === "completed").length,
+      0,
+      "Never publish success before SDK validation"
+    )
+    assert.equal(
+      observed.mock.calls.filter(({ arguments: [call] }) => call.status === "failed").length,
+      2
+    )
     assert.equal(audits.length, 2)
   })
 }
 
 for (const structuredOutput of [false, true]) {
   test(`captures the returned response and steering with structuredOutput=${structuredOutput}`, async (t) => {
-    const server = new McpServer({ name: "response-capture", version: "1.0.0" })
+    const agentObserver = createAgentObserver()
+    const server = new McpServer(
+      { name: "response-capture", version: "1.0.0" },
+      {},
+      new ToolCallTracker({ agentObserver })
+    )
     const client = new Client({ name: "response-capture-client", version: "1.0.0" })
     t.after(() => Promise.all([client.close(), server.close()]))
-    const agentObserver = createAgentObserver()
     const register = createToolRegistrar(server, { structuredOutput, agentObserver })
     register("capture", { inputSchema: z.object({ fail: z.boolean() }) }, async ({ fail }) => {
       const agent = agentObserver.listAgents()[0]
@@ -393,26 +464,28 @@ test("native result policy is explicit and independent of tool names", async (t)
 
 for (const structuredOutput of [false, true]) {
   test(`finalizes failures once and preserves partial results with structuredOutput=${structuredOutput}`, async (t) => {
-    const server = new McpServer({ name: "failure-boundary", version: "1.0.0" })
+    const agentObserver = createAgentObserver()
+    const audits: CompletedToolCall[] = []
+    const server = new McpServer(
+      { name: "failure-boundary", version: "1.0.0" },
+      {},
+      new ToolCallTracker({
+        agentObserver,
+        auditLogger: {
+          recordToolsList() {},
+          recordToolCall(call) {
+            audits.push(call)
+          },
+        },
+      })
+    )
     const client = new Client({ name: "failure-client", version: "1.0.0" })
     t.after(() => Promise.all([client.close(), server.close()]))
-    const agentObserver = createAgentObserver()
-    const finished = t.mock.method(agentObserver, "finishTool")
-    const failed = t.mock.method(agentObserver, "failTool")
-    const audits: Array<Parameters<McpAuditCall["finish"]>[0]> = []
+    const observed = t.mock.method(agentObserver, "observeToolCall")
     let noticeDrains = 0
     const register = createToolRegistrar(server, {
       structuredOutput,
       agentObserver,
-      auditRequest: {
-        claimTool: () => ({
-          recordError: () => {},
-          finish: (input) => {
-            audits.push(input)
-          },
-        }),
-        finishTransport: () => {},
-      },
       drainPendingEvents: () => {
         noticeDrains += 1
         return ["fixture notice"]
@@ -514,15 +587,21 @@ for (const structuredOutput of [false, true]) {
       const successText = success.content.at(-1)
       assert.ok(successText?.type === "text")
       assert.equal(identityFromToolResponse(successText.text), getAgentIdentity())
-      assert.equal(failed.mock.callCount(), 6)
-      assert.equal(finished.mock.callCount(), 1)
+      assert.equal(
+        observed.mock.calls.filter(({ arguments: [call] }) => call.status === "failed").length,
+        6
+      )
+      assert.equal(
+        observed.mock.calls.filter(({ arguments: [call] }) => call.status === "completed").length,
+        1
+      )
       assert.equal(audits.length, 7)
       assert.equal(noticeDrains, 7)
       const agent = agentObserver.listAgents()[0]
       assert.equal(agent?.current, undefined)
       assert.equal(agent?.recent.filter((call) => call.status === "failed").length, 6)
       assert.equal(agent?.recent.filter((call) => call.status === "completed").length, 1)
-      assert.ok(audits.every((audit) => audit?.toolResult && audit.modelResult))
+      assert.ok(audits.every((audit) => audit?.toolResult && audit.response))
       assert.ok(audits[1]?.error instanceof ToolError)
       assert.equal((audits[1].error.cause as Error).message, "private cause")
     })

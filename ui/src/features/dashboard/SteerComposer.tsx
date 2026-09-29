@@ -70,7 +70,7 @@ export function SteerComposer({
           type="button"
           variant="ghost"
           size="icon"
-          className={`absolute right-1 top-1 size-7 ${message.trim() && !sending ? "bg-blue-600 hover:bg-blue-50 hover:text-blue-700 text-white" : "text-muted-foreground"}`}
+          className={`absolute right-1 top-1 size-7 ${message.trim() && !sending ? "bg-blue-600 hover:bg-accent-muted hover:text-accent text-white" : "text-muted-foreground"}`}
           aria-label="Send instruction"
           disabled={!message.trim() || sending}
           onClick={() => void submit()}
@@ -123,7 +123,7 @@ function SteerStatus({
   if (error) {
     return (
       <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
-        <CircleAlert className="size-3.5 text-red-600" />
+        <CircleAlert className="size-3.5 text-destructive" />
         {error}
       </p>
     )
@@ -131,7 +131,7 @@ function SteerStatus({
   if (queued.length > 0) {
     return (
       <p className="group relative flex min-w-0 items-center gap-1.5 pr-16 text-xs text-muted-foreground">
-        <Clock3 className="size-3.5 shrink-0 text-amber-600" />
+        <Clock3 className="size-3.5 shrink-0 text-warning" />
         <span className="truncate">
           {queued.length === 1
             ? `Queued: ${queued[0].message}`
@@ -154,7 +154,7 @@ function SteerStatus({
   if (delivered) {
     return (
       <p className="group relative flex min-w-0 items-center gap-1.5 pr-16 text-xs text-muted-foreground">
-        <Check className="size-3.5 shrink-0 text-emerald-600" />
+        <Check className="size-3.5 shrink-0 text-success" />
         <span className="truncate">Delivered: {delivered.message}</span>
         <Button
           type="button"

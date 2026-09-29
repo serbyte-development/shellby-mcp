@@ -1,7 +1,7 @@
 import { z } from "zod"
 import { MCP_CONFIG } from "../../config.js"
+import { recordToolError } from "../../mcp/tool-call-tracker.js"
 import type { ToolRegistrar } from "../../mcp/tool-registration-boundary.js"
-import { recordToolError } from "../../server/audit/audit-request.js"
 import { ChatGptDelegationError } from "./subagent-error.js"
 import { agentActivities, agentResponseStatuses, type Subagents } from "./subagents.js"
 

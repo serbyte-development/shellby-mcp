@@ -98,7 +98,7 @@ export function EditorToolsPanel(props: {
             key={id}
             type="button"
             onClick={() => props.onToolChange(id)}
-            className={`flex h-9 items-center justify-center gap-1.5 rounded-md border text-xs ${props.tool === id ? "border-blue-500 bg-blue-50 text-blue-800" : "bg-background hover:bg-muted"}`}
+            className={`flex h-9 items-center justify-center gap-1.5 rounded-md border text-xs ${props.tool === id ? "border-accent bg-accent-muted text-accent" : "bg-background hover:bg-muted"}`}
           >
             <Icon className="size-3.5" /> {label}
           </button>
@@ -160,7 +160,7 @@ export function EditorInspectorPanel({
               <button
                 key={selectionKey(item)}
                 type="button"
-                className={`w-full rounded-md px-2 py-1.5 text-left text-xs ${selection && sameSelection(item, selection) ? "bg-blue-50 text-blue-800" : "hover:bg-muted"}`}
+                className={`w-full rounded-md px-2 py-1.5 text-left text-xs ${selection && sameSelection(item, selection) ? "bg-accent-muted text-accent" : "hover:bg-muted"}`}
                 onClick={() => onSelect(item)}
               >
                 {selectionLabel(layout, item)}
@@ -300,7 +300,7 @@ function ToolPalette(props: {
         </h3>
         <button
           type="button"
-          className={`mb-1.5 h-8 w-full rounded-md border text-xs ${props.characterAsset === null ? "border-blue-500 bg-blue-50" : "bg-background"}`}
+          className={`mb-1.5 h-8 w-full rounded-md border text-xs ${props.characterAsset === null ? "border-accent bg-accent-muted" : "bg-background"}`}
           onClick={() => props.onCharacterAsset(null)}
         >
           Automatic by agent
@@ -366,7 +366,7 @@ function AssetButton({
   return (
     <button
       type="button"
-      className={`flex min-h-20 flex-col items-center justify-center gap-1 rounded-md border p-2 text-center text-[11px] ${active ? "border-blue-500 bg-blue-50" : "bg-background hover:bg-muted"}`}
+      className={`flex min-h-20 flex-col items-center justify-center gap-1 rounded-md border p-2 text-center text-[11px] ${active ? "border-accent bg-accent-muted" : "bg-background hover:bg-muted"}`}
       onClick={onClick}
     >
       <img

@@ -2,21 +2,24 @@ import assert from "node:assert/strict"
 import test from "node:test"
 import type { AgentIdentity } from "../../src/agent/context.js"
 import { createAgentObserver } from "../../src/agent/observer.js"
+import { publishCall, publishCompletion } from "../fixtures/tool-call.js"
 
 test("retains bounded final response text and metadata without binary payloads", () => {
   const observer = createAgentObserver()
   const agent: AgentIdentity = { sessionId: "responses", agent: "agent-responses" }
-  const callId = observer.startTool(agent, "asset", {})
-  observer.finishTool(agent, callId, {
-    content: [
-      { type: "text", text: "Actual output\n\n**Notice:** Keep going" },
-      { type: "image", mimeType: "image/png", data: "PRIVATE_BASE64" },
-      {
-        type: "resource",
-        resource: { uri: "file:///fixture", mimeType: "application/pdf", blob: "PRIVATE_BLOB" },
-      },
-    ],
-    structuredContent: { count: 2, data: "Ordinary structured data" },
+  const callId = publishCall(observer, agent, "asset", {})
+  publishCompletion(observer, callId, {
+    response: {
+      content: [
+        { type: "text", text: "Actual output\n\n**Notice:** Keep going" },
+        { type: "image", mimeType: "image/png", data: "PRIVATE_BASE64" },
+        {
+          type: "resource",
+          resource: { uri: "file:///fixture", mimeType: "application/pdf", blob: "PRIVATE_BLOB" },
+        },
+      ],
+      structuredContent: { count: 2, data: "Ordinary structured data" },
+    },
   })
   const response = observer.listAgents()[0]?.recent[0]?.response ?? ""
   assert.match(response, /Actual output\n\n\*\*Notice:\*\* Keep going/u)
@@ -25,10 +28,13 @@ test("retains bounded final response text and metadata without binary payloads",
   assert.match(response, /Ordinary structured data/u)
   assert.doesNotMatch(response, /PRIVATE_BASE64|PRIVATE_BLOB/u)
 
-  const largeCall = observer.startTool(agent, "large", {})
-  observer.failTool(agent, largeCall, {
-    isError: true,
-    content: [{ type: "text", text: "x".repeat(40_000) }],
+  const largeCall = publishCall(observer, agent, "large", {})
+  publishCompletion(observer, largeCall, {
+    status: "failed",
+    response: {
+      isError: true,
+      content: [{ type: "text", text: "x".repeat(40_000) }],
+    },
   })
   const large = observer.listAgents()[0]?.recent[0]
   assert.equal(large?.status, "failed")
@@ -41,10 +47,10 @@ test("tracks current and recent tool activity for one agent", () => {
   const observer = createAgentObserver(() => timestamp)
   const agent: AgentIdentity = { sessionId: "session-a", agent: "agent-1", taskSlug: "dashboard" }
 
-  const callId = observer.startTool(agent, "shell_run", { command: "npm test" })
+  const callId = publishCall(observer, agent, "shell_run", { command: "npm test" }, timestamp)
   assert.ok(callId)
   assert.deepEqual(observer.listAgents()[0]?.current, {
-    id: callId,
+    id: callId.id,
     tool: "shell_run",
     summary: "npm test",
     detail: "npm test",
@@ -54,7 +60,7 @@ test("tracks current and recent tool activity for one agent", () => {
   })
 
   timestamp = 1_500
-  observer.finishTool(agent, callId)
+  publishCompletion(observer, callId, { finishedAt: timestamp })
   const snapshot = observer.listAgents()[0]
   assert.equal(snapshot?.current, undefined)
   assert.equal(snapshot?.recent[0]?.status, "completed")
@@ -66,7 +72,7 @@ test("queues and delivers steering instructions once", () => {
   const observer = createAgentObserver(() => timestamp)
   const agent: AgentIdentity = { sessionId: "session-a", agent: "agent-1", taskSlug: "dashboard" }
 
-  observer.startTool(agent, "shell_run", { command: "npm test" })
+  publishCall(observer, agent, "shell_run", { command: "npm test" }, timestamp)
   const instruction = observer.queueInstruction("agent-1", " Focus only on the dashboard. ")
   assert.equal(instruction?.message, "Focus only on the dashboard.")
 
@@ -82,7 +88,7 @@ test("cancels queued steering instructions before delivery", () => {
   const observer = createAgentObserver()
   const agent: AgentIdentity = { sessionId: "session-a", agent: "agent-1" }
 
-  observer.startTool(agent, "shell_run", { command: "pwd" })
+  publishCall(observer, agent, "shell_run", { command: "pwd" })
   const instruction = observer.queueInstruction("agent-1", "Do not run tests")
   assert.ok(instruction)
   assert.equal(observer.cancelInstruction("agent-1", instruction.id), true)
@@ -94,7 +100,7 @@ test("does not cancel an instruction after it is delivered", () => {
   const observer = createAgentObserver()
   const agent: AgentIdentity = { sessionId: "session-a", agent: "agent-1" }
 
-  observer.startTool(agent, "shell_run", { command: "pwd" })
+  publishCall(observer, agent, "shell_run", { command: "pwd" })
   const instruction = observer.queueInstruction("agent-1", "Keep going")
   assert.ok(instruction)
   assert.deepEqual(observer.drainInstructions(agent), ["Human instruction: Keep going"])
@@ -106,8 +112,8 @@ test("keeps steering instructions scoped to the intended agent", () => {
   const first: AgentIdentity = { sessionId: "session-a", agent: "agent-1" }
   const second: AgentIdentity = { sessionId: "session-b", agent: "agent-2" }
 
-  observer.startTool(first, "shell_run", { command: "pwd" })
-  observer.startTool(second, "shell_run", { command: "pwd" })
+  publishCall(observer, first, "shell_run", { command: "pwd" })
+  publishCall(observer, second, "shell_run", { command: "pwd" })
   observer.queueInstruction("agent-2", "Second agent only")
 
   assert.deepEqual(observer.drainInstructions(first), [])
@@ -120,8 +126,8 @@ test("emits snapshots when agent state changes", () => {
   const events: string[] = []
   const unsubscribe = observer.subscribe((event) => events.push(`${event.type}:${event.agent.id}`))
 
-  const callId = observer.startTool(agent, "fetch_url", { url: "https://example.com" })
-  observer.finishTool(agent, callId)
+  const callId = publishCall(observer, agent, "fetch_url", { url: "https://example.com" })
+  publishCompletion(observer, callId)
   unsubscribe()
 
   assert.deepEqual(events, ["agent_changed:agent-1", "agent_changed:agent-1"])
@@ -132,21 +138,27 @@ test("keeps concurrent tool calls from the same agent", () => {
   const observer = createAgentObserver(() => timestamp)
   const agent: AgentIdentity = { sessionId: "session-a", agent: "agent-1" }
 
-  const first = observer.startTool(agent, "shell_run", { command: "npm test" })
+  const first = publishCall(observer, agent, "shell_run", { command: "npm test" }, timestamp)
   timestamp = 3_100
-  const second = observer.startTool(agent, "fetch_url", { url: "https://example.com" })
-  assert.equal(observer.listAgents()[0]?.current?.id, second)
+  const second = publishCall(
+    observer,
+    agent,
+    "fetch_url",
+    { url: "https://example.com" },
+    timestamp
+  )
+  assert.equal(observer.listAgents()[0]?.current?.id, second.id)
 
   timestamp = 3_200
-  observer.finishTool(agent, second)
-  assert.equal(observer.listAgents()[0]?.current?.id, first)
+  publishCompletion(observer, second, { finishedAt: timestamp })
+  assert.equal(observer.listAgents()[0]?.current?.id, first.id)
 
   timestamp = 3_300
-  observer.finishTool(agent, first)
+  publishCompletion(observer, first, { finishedAt: timestamp })
   const snapshot = observer.listAgents()[0]
   assert.equal(snapshot?.current, undefined)
   assert.deepEqual(
     snapshot?.recent.map((call) => call.id),
-    [first, second]
+    [first.id, second.id]
   )
 })

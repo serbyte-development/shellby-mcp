@@ -4,20 +4,20 @@ import { join } from "node:path"
 import test, { type TestContext } from "node:test"
 
 import { getAgentIdentity, runWithAgent, setAgentTaskSlug } from "../../src/agent/context.js"
+import { type CompletedToolCall, ToolCallTracker } from "../../src/mcp/tool-call-tracker.js"
 import { ToolError } from "../../src/mcp/tool-error.js"
 import { McpAuditLogger } from "../../src/server/audit/audit-log.js"
-import { recordToolError, withAuditCall } from "../../src/server/audit/audit-request.js"
 import { countTokens } from "../../src/tokenizer.js"
+import { asRecord } from "../../src/utils.js"
 import { tempDir } from "../helpers/temp.js"
 
 test("writes one compact YAML document for a shell command", async (t) => {
   const file = await auditFile(t)
 
   const timestamp = new Date("2026-08-07T20:58:30-07:00")
-  let clock = 1_000
   t.mock.timers.enable({ apis: ["Date"], now: timestamp })
-  const logger = new McpAuditLogger(file, () => clock)
-  const [call] = claimAuditToolCalls(logger, {
+  const logger = new McpAuditLogger(file)
+  const [call] = auditCalls(logger, {
     jsonrpc: "2.0",
     id: 1,
     method: "tools/call",
@@ -31,9 +31,7 @@ test("writes one compact YAML document for a shell command", async (t) => {
     },
   })
   assert.ok(call)
-  clock = 1_275
-  call.finish({ httpStatus: 200, state: "finished" })
-  call.finish({ httpStatus: 500, state: "closed" })
+  call.finish({ httpStatus: 200, state: "finished", durationMs: 275 })
 
   assert.equal(
     await readFile(file, "utf8"),
@@ -52,8 +50,8 @@ test("logs shell output token count", async (t) => {
   const file = await auditFile(t)
 
   t.mock.timers.enable({ apis: ["Date"], now: new Date("2026-08-13T19:13:46-07:00") })
-  const logger = new McpAuditLogger(file, () => 1_380)
-  const [call] = claimAuditToolCalls(logger, {
+  const logger = new McpAuditLogger(file)
+  const [call] = auditCalls(logger, {
     method: "tools/call",
     params: {
       name: "shell_run",
@@ -65,7 +63,7 @@ test("logs shell output token count", async (t) => {
   const structuredContent = { status: "completed", exit_code: 0, cwd: "/workspace", output }
   call.finish({
     toolResult: { structuredContent },
-    modelResult: { content: [{ type: "text", text: output }] },
+    response: { content: [{ type: "text", text: output }] },
   })
 
   const log = await readFile(file, "utf8")
@@ -83,9 +81,9 @@ test("logs shell output token count", async (t) => {
 test("does not persist file download URLs or tokenize embedded file blobs", async (t) => {
   const file = await auditFile(t)
   t.mock.timers.enable({ apis: ["Date"], now: new Date("2026-09-22T20:00:00-07:00") })
-  const logger = new McpAuditLogger(file, () => 0)
+  const logger = new McpAuditLogger(file)
 
-  const [writeCall] = claimAuditToolCalls(logger, {
+  const [writeCall] = auditCalls(logger, {
     method: "tools/call",
     params: {
       name: "file_write",
@@ -101,15 +99,15 @@ test("does not persist file download URLs or tokenize embedded file blobs", asyn
     },
   })
   assert.ok(writeCall)
-  writeCall.finish({ modelResult: { content: [{ type: "text", text: "Wrote payload.bin." }] } })
+  writeCall.finish({ response: { content: [{ type: "text", text: "Wrote payload.bin." }] } })
 
-  const [readCall] = claimAuditToolCalls(logger, {
+  const [readCall] = auditCalls(logger, {
     method: "tools/call",
     params: { name: "file_read", arguments: { path: "/tmp/payload.bin" } },
   })
   assert.ok(readCall)
   readCall.finish({
-    modelResult: {
+    response: {
       content: [
         {
           type: "resource",
@@ -134,8 +132,8 @@ test("does not persist file download URLs or tokenize embedded file blobs", asyn
 test("puts audit heading before entry details with time last", async (t) => {
   const file = await auditFile(t)
   t.mock.timers.enable({ apis: ["Date"], now: new Date("2026-08-18T18:25:00-07:00") })
-  const logger = new McpAuditLogger(file, () => 0)
-  const [call] = claimAuditToolCalls(logger, {
+  const logger = new McpAuditLogger(file)
+  const [call] = auditCalls(logger, {
     method: "tools/call",
     params: { name: "shell_list", arguments: {} },
   })
@@ -151,16 +149,16 @@ test("puts audit heading before entry details with time last", async (t) => {
 test("aliases audit sessions in first-seen order without logging raw ids", async (t) => {
   const file = await auditFile(t)
   t.mock.timers.enable({ apis: ["Date"], now: new Date("2026-08-18T18:30:00-07:00") })
-  const logger = new McpAuditLogger(file, () => 0)
+  const logger = new McpAuditLogger(file)
   const request = { method: "tools/call", params: { name: "shell_list", arguments: {} } }
 
   const firstContext = runWithAgent("raw-session-a", () => ({
     identity: getAgentIdentity()!,
-    call: claimAuditToolCalls(logger, request)[0]!,
+    call: auditCalls(logger, request)[0]!,
   }))
   const secondContext = runWithAgent("raw-session-b", () => ({
     identity: getAgentIdentity()!,
-    call: claimAuditToolCalls(logger, request)[0]!,
+    call: auditCalls(logger, request)[0]!,
   }))
   const first = firstContext.call
   const second = secondContext.call
@@ -179,10 +177,10 @@ test("aliases audit sessions in first-seen order without logging raw ids", async
 test("adds the successful start_here task slug to later audit session aliases", async (t) => {
   const file = await auditFile(t)
   t.mock.timers.enable({ apis: ["Date"], now: new Date("2026-09-01T18:00:00-07:00") })
-  const logger = new McpAuditLogger(file, () => 0)
+  const logger = new McpAuditLogger(file)
   const agent = runWithAgent("raw-session-task-slug", () => {
     const identity = getAgentIdentity()!
-    const [startHere] = claimAuditToolCalls(logger, {
+    const [startHere] = auditCalls(logger, {
       method: "tools/call",
       params: {
         name: "start_here",
@@ -193,7 +191,7 @@ test("adds the successful start_here task slug to later audit session aliases", 
     startHere.finish({ toolResult: { content: [{ type: "text", text: "instructions" }] } })
 
     setAgentTaskSlug("audit-session-labels")
-    const [shellList] = claimAuditToolCalls(logger, {
+    const [shellList] = auditCalls(logger, {
       method: "tools/call",
       params: { name: "shell_list", arguments: {} },
     })
@@ -224,8 +222,8 @@ test("adds the successful start_here task slug to later audit session aliases", 
 test("keeps shell-specific yield and output arguments in the tool body", async (t) => {
   const file = await auditFile(t)
   t.mock.timers.enable({ apis: ["Date"], now: new Date("2026-08-14T08:11:00-07:00") })
-  const logger = new McpAuditLogger(file, () => 0)
-  const [call] = claimAuditToolCalls(logger, {
+  const logger = new McpAuditLogger(file)
+  const [call] = auditCalls(logger, {
     method: "tools/call",
     params: {
       name: "shell_run",
@@ -248,7 +246,7 @@ test("keeps shell-specific yield and output arguments in the tool body", async (
     /shell: "default\/markers"\nyield_time_ms: 1000\nmax_output_tokens: 4096\ncommand: \|-\n {2}pwd/u
   )
 
-  const [poll] = claimAuditToolCalls(logger, {
+  const [poll] = auditCalls(logger, {
     method: "tools/call",
     params: {
       name: "shell_poll",
@@ -275,8 +273,8 @@ test("audits batched tool calls independently", async (t) => {
   const file = await auditFile(t)
 
   t.mock.timers.enable({ apis: ["Date"], now: new Date("2026-08-14T00:30:00-07:00") })
-  const logger = new McpAuditLogger(file, () => 1_000)
-  const calls = claimAuditToolCalls(logger, [
+  const logger = new McpAuditLogger(file)
+  const calls = auditCalls(logger, [
     {
       jsonrpc: "2.0",
       id: 1,
@@ -314,43 +312,13 @@ test("audits batched tool calls independently", async (t) => {
   )
 })
 
-test("correlates same-name batched calls by MCP request id", async (t) => {
-  const file = await auditFile(t)
-  t.mock.timers.enable({ apis: ["Date"], now: new Date("2026-08-14T00:30:00-07:00") })
-  const logger = new McpAuditLogger(file, () => 1_000)
-  const auditRequest = logger.startRequest([
-    {
-      jsonrpc: "2.0",
-      id: 1,
-      method: "tools/call",
-      params: { name: "shell_list", arguments: { marker: "first" } },
-    },
-    {
-      jsonrpc: "2.0",
-      id: 2,
-      method: "tools/call",
-      params: { name: "shell_list", arguments: { marker: "second" } },
-    },
-  ])
-
-  const second = auditRequest.claimTool(2, "shell_list")
-  const first = auditRequest.claimTool(1, "shell_list")
-  assert.ok(second)
-  assert.ok(first)
-  second.finish()
-  first.finish()
-
-  const log = await readFile(file, "utf8")
-  assert.ok(log.indexOf('args: {"marker":"second"}') < log.indexOf('args: {"marker":"first"}'))
-})
-
 test("creates and repairs audit logs with owner-only permissions", async (t) => {
   const directory = await tempDir(t, "mcp-audit-log-permissions-")
   const newFile = join(directory, "new.yaml")
   const existingFile = join(directory, "existing.yaml")
 
   const newLogger = new McpAuditLogger(newFile)
-  const [call] = claimAuditToolCalls(newLogger, {
+  const [call] = auditCalls(newLogger, {
     method: "tools/call",
     params: { name: "shell_list", arguments: {} },
   })
@@ -369,19 +337,17 @@ test("logs apply_patch bodies only when the tool fails", async (t) => {
   const file = await auditFile(t)
 
   const timestamp = new Date("2026-08-07T21:12:03-07:00")
-  let clock = 2_000
   t.mock.timers.enable({ apis: ["Date"], now: timestamp })
-  const logger = new McpAuditLogger(file, () => clock)
+  const logger = new McpAuditLogger(file)
   const patch = "*** Begin Patch\n*** Update File: src/a.ts\n@@\n-old\n+new\n*** End Patch"
-  const [call] = claimAuditToolCalls(logger, {
+  const [call] = auditCalls(logger, {
     jsonrpc: "2.0",
     id: 2,
     method: "tools/call",
     params: { name: "apply_patch", arguments: { patch, cwd: "/workspace/project" } },
   })
   assert.ok(call)
-  clock = 2_051
-  call.finish({ toolResult: { isError: false } })
+  call.finish({ toolResult: { isError: false }, durationMs: 51 })
 
   let log = await readFile(file, "utf8")
   assert.equal(
@@ -390,13 +356,13 @@ test("logs apply_patch bodies only when the tool fails", async (t) => {
   )
   assert.doesNotMatch(log, /Begin Patch|Update File|old|new/u)
 
-  const [failedCall] = claimAuditToolCalls(logger, {
+  const [failedCall] = auditCalls(logger, {
     method: "tools/call",
     params: { name: "apply_patch", arguments: { patch, cwd: "/workspace/project" } },
   })
   assert.ok(failedCall)
-  clock = 2_100
   failedCall.finish({
+    durationMs: 49,
     toolResult: {
       isError: true,
       structuredContent: {
@@ -413,7 +379,7 @@ test("logs apply_patch bodies only when the tool fails", async (t) => {
   assert.match(log, /patch: \|-\n {2}\*\*\* Begin Patch/u)
   assert.match(log, / {2}\+new/u)
 
-  const [thrownFailure] = claimAuditToolCalls(logger, {
+  const [thrownFailure] = auditCalls(logger, {
     method: "tools/call",
     params: { name: "apply_patch", arguments: { patch, cwd: "/workspace/project" } },
   })
@@ -433,8 +399,8 @@ test("logs shell tool errors with their MCP failure reason", async (t) => {
   const file = await auditFile(t)
 
   t.mock.timers.enable({ apis: ["Date"], now: new Date("2026-08-11T22:50:00-07:00") })
-  const logger = new McpAuditLogger(file, () => 100)
-  const [poll] = claimAuditToolCalls(logger, {
+  const logger = new McpAuditLogger(file)
+  const [poll] = auditCalls(logger, {
     method: "tools/call",
     params: {
       name: "shell_poll",
@@ -458,7 +424,7 @@ test("logs shell tool errors with their MCP failure reason", async (t) => {
     /shell: "parallel\/missing"\ncursor: 0\nerror: "unknown_request: No retained command for request_id missing\."/u
   )
 
-  const [childNonzero] = claimAuditToolCalls(logger, {
+  const [childNonzero] = auditCalls(logger, {
     method: "tools/call",
     params: {
       name: "shell_run",
@@ -481,7 +447,7 @@ test("logs shell tool errors with their MCP failure reason", async (t) => {
         output: childOutput,
       },
     },
-    modelResult: { content: [{ type: "text", text: childOutput }] },
+    response: { content: [{ type: "text", text: childOutput }] },
   })
 
   const finalLog = await readFile(file, "utf8")
@@ -494,7 +460,7 @@ test("logs shell tool errors with their MCP failure reason", async (t) => {
   assert.match(finalLog, /result: status="completed" exit_code=1 cwd="\/workspace"/u)
   assert.match(finalLog, /error: "x{1000}… \[1000 chars omitted\]"/u)
 
-  const [pollCompletedNonzero] = claimAuditToolCalls(logger, {
+  const [pollCompletedNonzero] = auditCalls(logger, {
     method: "tools/call",
     params: {
       name: "shell_poll",
@@ -520,8 +486,8 @@ test("logs shell tool errors with their MCP failure reason", async (t) => {
 
 test("records the original cause as one error line and retains model token accounting", async (t) => {
   const file = await auditFile(t)
-  const logger = new McpAuditLogger(file, () => 0)
-  const [call] = claimAuditToolCalls(logger, {
+  const logger = new McpAuditLogger(file)
+  const [call] = auditCalls(logger, {
     method: "tools/call",
     params: { name: "fetch_url", arguments: { url: "http://localhost:3000" } },
   })
@@ -534,7 +500,7 @@ test("records the original cause as one error line and retains model token accou
     isError: true,
     content: [{ type: "text", text: "FETCH_FAILED: Try again later." }],
   }
-  call.finish({ error, toolResult, modelResult: toolResult })
+  call.finish({ error, toolResult, response: toolResult })
 
   const log = await readFile(file, "utf8")
   assert.match(log, /error: "ECONNREFUSED: connection refused\\nport 3000"/u)
@@ -543,41 +509,10 @@ test("records the original cause as one error line and retains model token accou
   assert.match(log, new RegExp(` / ${countTokens(toolResult.content[0]!.text)} out - `))
 })
 
-test("keeps concurrent batch diagnostics on their own audit entries", async (t) => {
-  const file = await auditFile(t)
-  const logger = new McpAuditLogger(file, () => 0)
-  await Promise.all(
-    ["first", "second"].map(async (name) => {
-      const [call] = claimAuditToolCalls(logger, {
-        method: "tools/call",
-        params: { name, arguments: {} },
-      })
-      assert.ok(call)
-      await withAuditCall(call, async () => {
-        await Promise.resolve()
-        recordToolError(new Error(`${name} original failure`))
-        call.finish({
-          toolResult: { isError: true, content: [{ type: "text", text: "Try again later." }] },
-        })
-        recordToolError(new Error("late failure"))
-      })
-    })
-  )
-  const log = await readFile(file, "utf8")
-  const entries = log.split("--- # ").filter(Boolean)
-  for (const name of ["first", "second"]) {
-    const entry = entries.find((value) => value.startsWith(`! ${name} `))!
-    assert.ok(entry)
-    assert.match(entry, new RegExp(`error: "${name} original failure"`))
-    assert.equal(entry.match(/^error:/gmu)?.length, 1)
-  }
-  assert.doesNotMatch(log, /late failure|Try again later/u)
-})
-
 test("records failed returned results without retaining successful batch responses", async (t) => {
   const file = await auditFile(t)
-  const logger = new McpAuditLogger(file, () => 0)
-  const [call] = claimAuditToolCalls(logger, {
+  const logger = new McpAuditLogger(file)
+  const [call] = auditCalls(logger, {
     method: "tools/call",
     params: { name: "subagent_result", arguments: {} },
   })
@@ -603,7 +538,7 @@ test("records failed returned results without retaining successful batch respons
 for (const source of ["recorded", "returned"] as const) {
   test(`groups identical ${source} failures per audit call while preserving distinct messages and model output`, async (t) => {
     const file = await auditFile(t)
-    const logger = new McpAuditLogger(file, () => 0)
+    const logger = new McpAuditLogger(file)
     const first = "AGENT_LIMIT_REACHED: Already at 5 agents."
     const different = "AGENT_LIMIT_REACHED: Already at 3 agents."
     const batches = [
@@ -620,7 +555,7 @@ for (const source of ["recorded", "returned"] as const) {
     ]
 
     for (const messages of batches) {
-      const [call] = claimAuditToolCalls(logger, {
+      const [call] = auditCalls(logger, {
         method: "tools/call",
         params: { name: "subagent_run", arguments: {} },
       })
@@ -635,7 +570,7 @@ for (const source of ["recorded", "returned"] as const) {
       }))
       const toolResult = { isError: true, structuredContent: { turns }, content: [] }
       const modelText = JSON.stringify(turns)
-      call.finish({ toolResult, modelResult: { content: [{ type: "text", text: modelText }] } })
+      call.finish({ toolResult, response: { content: [{ type: "text", text: modelText }] } })
 
       assert.equal(JSON.stringify(turns), modelText)
       const entries = (await readFile(file, "utf8")).split("--- # ").filter(Boolean)
@@ -651,8 +586,8 @@ for (const source of ["recorded", "returned"] as const) {
 
   test(`groups ${source} failures before truncation and keeps the count visible`, async (t) => {
     const file = await auditFile(t)
-    const logger = new McpAuditLogger(file, () => 0)
-    const [call] = claimAuditToolCalls(logger, {
+    const logger = new McpAuditLogger(file)
+    const [call] = auditCalls(logger, {
       method: "tools/call",
       params: { name: "subagent_run", arguments: {} },
     })
@@ -681,8 +616,8 @@ test("caps large ordinary tool arguments", async (t) => {
   const file = await auditFile(t)
 
   t.mock.timers.enable({ apis: ["Date"], now: new Date("2026-08-07T22:00:00-07:00") })
-  const logger = new McpAuditLogger(file, () => 0)
-  const [call] = claimAuditToolCalls(logger, {
+  const logger = new McpAuditLogger(file)
+  const [call] = auditCalls(logger, {
     method: "tools/call",
     params: { name: "skill_use", arguments: { name: "x".repeat(2_000) } },
   })
@@ -698,25 +633,21 @@ test("caps large ordinary tool arguments", async (t) => {
 test("uses Better Comments tags for slow and failed calls", async (t) => {
   const file = await auditFile(t)
 
-  let clock = 0
   t.mock.timers.enable({ apis: ["Date"], now: new Date("2026-08-07T22:30:00-07:00") })
-  const logger = new McpAuditLogger(file, () => clock)
+  const logger = new McpAuditLogger(file)
   const request = { method: "tools/call", params: { name: "shell_list", arguments: {} } }
 
-  const [normal] = claimAuditToolCalls(logger, request)
+  const [normal] = auditCalls(logger, request)
   assert.ok(normal)
-  clock = 100
-  normal.finish({ httpStatus: 200, state: "finished" })
+  normal.finish({ httpStatus: 200, state: "finished", durationMs: 100 })
 
-  const [slow] = claimAuditToolCalls(logger, request)
+  const [slow] = auditCalls(logger, request)
   assert.ok(slow)
-  clock = 5_200
-  slow.finish({ httpStatus: 200, state: "finished" })
+  slow.finish({ httpStatus: 200, state: "finished", durationMs: 5_100 })
 
-  const [failed] = claimAuditToolCalls(logger, request)
+  const [failed] = auditCalls(logger, request)
   assert.ok(failed)
-  clock = 5_250
-  failed.finish({ httpStatus: 500, state: "closed" })
+  failed.finish({ httpStatus: 500, state: "closed", durationMs: 50 })
 
   const log = await readFile(file, "utf8")
   assert.match(log, /--- # shell_list - 100ms - 1 in - Aug 7 10:30 PM/u)
@@ -731,23 +662,25 @@ test("records tools/list as one timestamped line and ignores other non-tool MCP 
   const timestamp = new Date("2026-08-07T22:30:00-07:00")
   t.mock.timers.enable({ apis: ["Date"], now: timestamp })
   const logger = new McpAuditLogger(file)
-  logger.startRequest({ jsonrpc: "2.0", id: 1, method: "tools/list" })
-  logger.startRequest({ jsonrpc: "2.0", id: 2, method: "initialize" })
+  const calls = new ToolCallTracker({ auditLogger: logger })
+  calls.startRequest({ jsonrpc: "2.0", id: 1, method: "tools/list" })
+  calls.startRequest({ jsonrpc: "2.0", id: 2, method: "initialize" })
   assert.equal(await readFile(file, "utf8"), "--- # tools/list - Aug 7 10:30 PM\n")
 })
 
 test("logs tool calls that never reach a handler without adding a generic error notice", async (t) => {
   const file = await auditFile(t)
   t.mock.timers.enable({ apis: ["Date"], now: new Date("2026-08-28T21:00:00-07:00") })
-  const logger = new McpAuditLogger(file, () => 0)
-  const request = runWithAgent("validation-session", () =>
-    logger.startRequest({
+  const logger = new McpAuditLogger(file)
+  const request = new ToolCallTracker({ auditLogger: logger })
+  runWithAgent("validation-session", () =>
+    request.startRequest({
       method: "tools/call",
       params: { name: "shell_run", arguments: { request_id: "x", cwd: "", command: "pwd" } },
     })
   )
 
-  request.finishTransport({ httpStatus: 200, state: "finished" })
+  request.finishRequest({ httpStatus: 200, state: "finished" })
 
   const log = await readFile(file, "utf8")
   assert.match(log, /--- # shell_run - 0ms - \d+ in - Aug 28 9:00 PM/u)
@@ -758,8 +691,8 @@ test("logs tool calls that never reach a handler without adding a generic error 
 test("logs compact computer metadata without retaining screenshot or inspection contents", async (t) => {
   const file = await auditFile(t)
   t.mock.timers.enable({ apis: ["Date"], now: new Date("2026-08-26T23:00:00-07:00") })
-  const logger = new McpAuditLogger(file, () => 0)
-  const [call] = claimAuditToolCalls(logger, {
+  const logger = new McpAuditLogger(file)
+  const [call] = auditCalls(logger, {
     method: "tools/call",
     params: { name: "computer_observe", arguments: { window_id: 42, annotate: false } },
   })
@@ -777,7 +710,7 @@ test("logs compact computer metadata without retaining screenshot or inspection 
   }
   call.finish({
     toolResult,
-    modelResult: toolResult,
+    response: toolResult,
   })
 
   const log = await readFile(file, "utf8")
@@ -792,8 +725,8 @@ test("logs compact computer metadata without retaining screenshot or inspection 
 test("counts large model-facing results without an audit byte cap", async (t) => {
   const file = await auditFile(t)
   t.mock.timers.enable({ apis: ["Date"], now: new Date("2026-08-26T23:05:00-07:00") })
-  const logger = new McpAuditLogger(file, () => 0)
-  const [call] = claimAuditToolCalls(logger, {
+  const logger = new McpAuditLogger(file)
+  const [call] = auditCalls(logger, {
     method: "tools/call",
     params: { name: "computer_observe", arguments: {} },
   })
@@ -810,7 +743,7 @@ test("counts large model-facing results without an audit byte cap", async (t) =>
     },
     content: [{ type: "text", text }],
   }
-  call.finish({ toolResult, modelResult: toolResult })
+  call.finish({ toolResult, response: toolResult })
 
   const log = await readFile(file, "utf8")
   const expectedOutputTokens = countTokens(
@@ -831,17 +764,41 @@ async function auditFile(t: TestContext): Promise<string> {
   return join(await tempDir(t, "mcp-audit-log-"), "agent-commands.yaml")
 }
 
-function claimAuditToolCalls(logger: McpAuditLogger, payload: unknown) {
-  const requests = (Array.isArray(payload) ? payload : [payload]).map(
-    (value, index): { id: string | number; params: { name: string }; [key: string]: unknown } => {
-      const request = value as { id?: string | number; params: { name: string } }
-      return { ...request, id: request.id ?? index + 1 }
+// Formatting fixtures already have their lifecycle resolved by the tracker.
+function auditCalls(logger: McpAuditLogger, payload: unknown) {
+  return (Array.isArray(payload) ? payload : [payload]).map((value, index) => {
+    const request = value as { params: { name: string; arguments?: unknown } }
+    const agent = getAgentIdentity()
+    const taskSlugAtStart = agent?.taskSlug
+    const startedAt = Date.now()
+    const errors: unknown[] = []
+    return {
+      recordError: (error: unknown) => errors.push(error),
+      finish: (
+        input: Partial<
+          Pick<CompletedToolCall, "toolResult" | "response" | "error" | "httpStatus">
+        > & {
+          state?: "finished" | "closed"
+          durationMs?: number
+        } = {}
+      ) =>
+        logger.recordToolCall({
+          id: `fixture-${index}`,
+          tool: request.params.name,
+          input: request.params.arguments,
+          agent,
+          taskSlugAtStart,
+          startedAt,
+          finishedAt: startedAt + (input.durationMs ?? 0),
+          errors,
+          ...input,
+          status:
+            input.error !== undefined || asRecord(input.toolResult)?.isError === true
+              ? "failed"
+              : "completed",
+          response: input.response ?? input.toolResult,
+          transportState: input.state,
+        }),
     }
-  )
-  const auditRequest = logger.startRequest(Array.isArray(payload) ? requests : requests[0])
-  return requests.map((request) => {
-    const call = auditRequest.claimTool(request.id, request.params.name)
-    assert.ok(call)
-    return call
   })
 }

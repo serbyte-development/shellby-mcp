@@ -47,7 +47,6 @@ export interface ShellSessionManager {
   close(): Promise<void>
 }
 
-// biome-ignore lint/complexity/noExcessiveLinesPerFunction: The manager is a cohesive closure over shared shell lifecycle state; splitting it would widen that mutable state surface.
 export function createShellSessionManager(
   options: ShellSessionManagerOptions = {}
 ): ShellSessionManager {

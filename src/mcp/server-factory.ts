@@ -1,7 +1,6 @@
 import type { McpServer } from "@modelcontextprotocol/server"
 import type { AgentObserver } from "../agent/observer.js"
 import { buildMcpInstructions, MCP_CONFIG } from "../config.js"
-import type { McpAuditRequest } from "../server/audit/audit-log.js"
 import { registerApplyPatchTool } from "../tools/apply-patch/apply-patch.js"
 import { registerComputerUseTools } from "../tools/computer/computer-tools.js"
 import type { PeekabooClient } from "../tools/computer/peekaboo.js"
@@ -9,11 +8,7 @@ import { registerSubagentTools } from "../tools/delegation/subagent-tools.js"
 import type { Subagents } from "../tools/delegation/subagents.js"
 import { registerFileReadTool, registerFileWriteTool } from "../tools/file/file-tools.js"
 import { registerImageTools } from "../tools/image/image-tools.js"
-import {
-  createReviewPromptTracker,
-  type ReviewPromptTracker,
-  registerReviewTool,
-} from "../tools/review/review-tool.js"
+import { registerReviewTool, reviewPrompt } from "../tools/review/review-tool.js"
 import type { ShellSessionManager } from "../tools/shell/session-manager.js"
 // import { registerIosShellTool } from "../tools/ios/ios-shell.js"
 import {
@@ -25,6 +20,7 @@ import { registerStartHereTool } from "../tools/start-here/start-here.js"
 import type { WebPageOpener } from "../tools/web/web-open.js"
 import { registerWebTool } from "../tools/web/web-tool.js"
 import { ObservedMcpServer } from "./observed-server.js"
+import { ToolCallTracker } from "./tool-call-tracker.js"
 import { createToolRegistrar } from "./tool-registration-boundary.js"
 
 export interface McpCapabilityServices {
@@ -47,20 +43,17 @@ export interface McpRuntimeProfileOverrides {
 }
 
 export interface McpServerRequestContext {
-  auditRequest?: McpAuditRequest
+  calls?: ToolCallTracker
   agentObserver?: AgentObserver
 }
 
-type CreateMcpServerOptions = McpCapabilityServices &
-  McpServerRequestContext & {
-    reviewPromptTracker?: ReviewPromptTracker
-  }
+type CreateMcpServerOptions = McpCapabilityServices & McpServerRequestContext
 
 export type McpServerFactory = (context?: McpServerRequestContext) => McpServer
 
 /**
  * Bind process-level capability services once and create short-lived MCP servers on demand.
- * Tool-group enablement, required service checks, review state, and capability registration stay
+ * Tool-group enablement, required service checks, and capability registration stay
  * on the MCP side of the transport boundary.
  */
 export function createMcpServerFactory(
@@ -68,13 +61,11 @@ export function createMcpServerFactory(
   profileOverrides: McpRuntimeProfileOverrides = {}
 ): McpServerFactory {
   const profile = snapshotMcpRuntimeProfile(profileOverrides)
-  const reviewPromptTracker = profile.tools.review ? createReviewPromptTracker() : undefined
   return (context = {}) =>
     createMcpServer(
       {
         ...services,
-        reviewPromptTracker,
-        auditRequest: context.auditRequest,
+        calls: context.calls,
         agentObserver: context.agentObserver,
       },
       profile
@@ -82,16 +73,17 @@ export function createMcpServerFactory(
 }
 
 function createMcpServer(options: CreateMcpServerOptions, profile: McpRuntimeProfile): McpServer {
-  const server = new ObservedMcpServer(profile.server, {
-    instructions: buildMcpInstructions(),
-  })
+  const server = new ObservedMcpServer(
+    profile.server,
+    { instructions: buildMcpInstructions() },
+    options.calls ?? new ToolCallTracker({ agentObserver: options.agentObserver })
+  )
   const subagents = options.subagents
   const registerTool = createToolRegistrar(server, {
     structuredOutput: profile.toolOutput === "structured",
     drainPendingEvents: subagents ? () => subagents.drainEvents() : undefined,
     agentObserver: options.agentObserver,
-    reviewPromptTracker: options.reviewPromptTracker,
-    auditRequest: options.auditRequest,
+    reviewPrompt: profile.tools.review ? reviewPrompt : undefined,
   })
 
   registerStartHereTool(registerTool)

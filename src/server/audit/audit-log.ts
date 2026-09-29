@@ -1,6 +1,6 @@
 import { appendFileSync, chmodSync, existsSync } from "node:fs"
 
-import { getAgentIdentity } from "../../agent/context.js"
+import type { CompletedToolCall } from "../../mcp/tool-call-tracker.js"
 import { getTimeStamp } from "../../time.js"
 import { countTokens } from "../../tokenizer.js"
 import {
@@ -10,15 +10,8 @@ import {
   originalErrorMessage,
   summarizeToolResult,
 } from "./audit-format.js"
-import { createAuditRequest, type McpAuditCall, type McpAuditRequest } from "./audit-request.js"
-
-export type { McpAuditRequest } from "./audit-request.js"
-
 export class McpAuditLogger {
-  constructor(
-    private readonly filePath: string,
-    private readonly clock: () => number = () => Date.now()
-  ) {
+  constructor(private readonly filePath: string) {
     try {
       if (existsSync(this.filePath)) chmodSync(this.filePath, 0o600)
     } catch (error) {
@@ -26,81 +19,50 @@ export class McpAuditLogger {
     }
   }
 
-  startRequest(payload: unknown): McpAuditRequest {
-    return createAuditRequest(
-      payload,
-      (toolName, argumentsValue) => this.startToolCall(toolName, argumentsValue),
-      () => this.appendToolList()
+  /** Persist one completed record; call tracking and deduplication belong to ToolCallTracker. */
+  recordToolCall(call: CompletedToolCall): void {
+    const toolResponse = summarizeToolResult(call)
+    const output = toolResponse.structuredContent?.output
+    const exitCode = toolResponse.structuredContent?.exit_code
+    // Nonzero shell exits are audit annotations even when MCP returns a successful tool result.
+    const shellFailed =
+      (call.tool === "shell_run" || call.tool === "shell_poll") &&
+      typeof exitCode === "number" &&
+      exitCode !== 0
+    let failureMessage = call.errors.length
+      ? formatFailureMessages(call.errors.map(originalErrorMessage))
+      : toolResponse.failureMessage
+    if (!failureMessage && shellFailed) {
+      failureMessage =
+        typeof output === "string" && output.trim()
+          ? output.trim()
+          : `Command exited with code ${exitCode}.`
+    }
+    let agentLabel = call.agent?.agent
+    if (agentLabel && call.taskSlugAtStart) agentLabel += `/${call.taskSlugAtStart}`
+    this.append(
+      formatAuditEntry({
+        timestamp: getTimeStamp(call.startedAt),
+        toolName: call.tool,
+        argumentsValue: call.input,
+        durationMs: Math.max(0, call.finishedAt - call.startedAt),
+        httpStatus: call.httpStatus ?? 200,
+        state: call.transportState ?? "finished",
+        inputTokens: countTokens(JSON.stringify(call.input ?? {})),
+        outputTokens:
+          toolResponse.modelOutput !== undefined
+            ? countTokens(toolResponse.modelOutput)
+            : undefined,
+        toolFailed: call.status === "failed" || shellFailed,
+        failureMessage,
+        responseSummary: toolResponse,
+        agentLabel,
+      })
     )
   }
 
-  private startToolCall(toolName: string, argumentsValue: unknown): McpAuditCall {
-    const identity = getAgentIdentity()
-    let agentLabel: string | undefined
-    if (identity) {
-      agentLabel = identity.taskSlug ? `${identity.agent}/${identity.taskSlug}` : identity.agent
-    }
-    const startedAt = this.clock()
-    const timestamp = getTimeStamp()
-    const inputTokens = countTokens(JSON.stringify(argumentsValue ?? {}))
-    let finished = false
-    const errors: string[] = []
-
-    return {
-      recordError: (error) => {
-        if (!finished) errors.push(originalErrorMessage(error))
-      },
-      finish: (input = {}) => {
-        if (finished) return
-        finished = true
-
-        const toolResponse = summarizeToolResult(
-          input.toolResult,
-          input.modelResult ?? input.toolResult,
-          input.error
-        )
-        const httpStatus = input.httpStatus ?? 200
-        const state = input.state ?? "finished"
-        const output = toolResponse.structuredContent?.output
-        const exitCode = toolResponse.structuredContent?.exit_code
-        const shellFailed =
-          (toolName === "shell_run" || toolName === "shell_poll") &&
-          typeof exitCode === "number" &&
-          exitCode !== 0
-        let failureMessage = errors.length
-          ? formatFailureMessages(errors)
-          : toolResponse.failureMessage
-        if (!failureMessage && shellFailed)
-          failureMessage =
-            typeof output === "string" && output.trim()
-              ? output.trim()
-              : `Command exited with code ${exitCode}.`
-
-        this.append(
-          formatAuditEntry({
-            timestamp,
-            toolName,
-            argumentsValue,
-            durationMs: Math.max(0, this.clock() - startedAt),
-            httpStatus,
-            state,
-            inputTokens,
-            outputTokens:
-              toolResponse.modelOutput !== undefined
-                ? countTokens(toolResponse.modelOutput)
-                : undefined,
-            toolFailed: toolResponse.failed || shellFailed,
-            failureMessage,
-            responseSummary: toolResponse,
-            agentLabel,
-          })
-        )
-      },
-    }
-  }
-
-  private appendToolList(): void {
-    this.append(`--- # tools/list - ${getTimeStamp()}\n`)
+  recordToolsList(at: number): void {
+    this.append(`--- # tools/list - ${getTimeStamp(at)}\n`)
   }
 
   private append(entry: string): void {

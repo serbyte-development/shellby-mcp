@@ -4,7 +4,6 @@ import hljs from "highlight.js/lib/core"
 import bash from "highlight.js/lib/languages/bash"
 import diff from "highlight.js/lib/languages/diff"
 import json from "highlight.js/lib/languages/json"
-import "highlight.js/styles/github.css"
 import { X } from "lucide-react"
 
 import { Button } from "../../components/ui/button"

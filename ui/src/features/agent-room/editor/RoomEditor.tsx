@@ -1,6 +1,7 @@
 import { ArrowLeft, RotateCcw, Save } from "lucide-react"
 import { type PointerEvent as ReactPointerEvent, useEffect, useRef, useState } from "react"
 
+import { ThemeSelect } from "../../../components/ThemeSelect"
 import { Button } from "../../../components/ui/button"
 import {
   cloneDefaultRoomLayout,
@@ -324,7 +325,7 @@ export function RoomEditor() {
   return (
     <main className="min-h-screen bg-muted/30">
       <header className="sticky top-0 z-20 border-b bg-background/95 backdrop-blur">
-        <div className="mx-auto flex max-w-[1600px] items-center justify-between gap-4 px-5 py-3 lg:px-8">
+        <div className="mx-auto flex max-w-[1600px] flex-wrap items-center justify-between gap-4 px-5 py-3 lg:px-8">
           <div className="flex items-center gap-3">
             <Button
               type="button"
@@ -342,9 +343,10 @@ export function RoomEditor() {
               </p>
             </div>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <ThemeSelect />
             <span
-              className={`hidden text-xs sm:inline ${dirty ? "text-amber-700" : "text-muted-foreground"}`}
+              className={`hidden text-xs sm:inline ${dirty ? "text-warning" : "text-muted-foreground"}`}
             >
               {dirty ? "Unsaved changes" : "Saved"}
             </span>
@@ -390,7 +392,7 @@ export function RoomEditor() {
         />
 
         <section className="min-w-0">
-          <div className="overflow-auto rounded-xl border bg-[#d8e7c3] p-3 shadow-sm">
+          <div className="overflow-auto rounded-xl border bg-card p-3 shadow-sm">
             <canvas
               ref={canvasRef}
               width={ROOM_WIDTH}

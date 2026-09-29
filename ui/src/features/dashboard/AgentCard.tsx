@@ -40,7 +40,7 @@ export function AgentCard({
           </div>
           <div className="flex shrink-0 items-center gap-1.5">
             <Badge
-              className={active ? "border-emerald-200 bg-emerald-50 text-emerald-700" : undefined}
+              className={active ? "border-success/25 bg-success-muted text-success" : undefined}
             >
               {active ? "ACTIVE" : "INACTIVE"}
             </Badge>
@@ -87,27 +87,27 @@ function ActivityRow({ call, onClick }: { call: AgentCall; onClick: () => void }
     <button
       type="button"
       onClick={onClick}
-      className={`flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs transition-colors ${failed ? "bg-red-50 text-red-700 hover:bg-red-100/70" : running ? "bg-emerald-50/60 hover:bg-emerald-50" : "hover:bg-muted/60"}`}
+      className={`flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs transition-colors ${failed ? "bg-danger-muted text-destructive hover:bg-destructive/15" : running ? "bg-success-muted/60 hover:bg-success-muted" : "hover:bg-muted/60"}`}
     >
       {failed ? (
-        <TriangleAlert className="size-3.5 shrink-0 text-red-600" />
+        <TriangleAlert className="size-3.5 shrink-0 text-destructive" />
       ) : running ? (
-        <LoaderCircle className="size-3.5 shrink-0 animate-spin text-emerald-600" />
+        <LoaderCircle className="size-3.5 shrink-0 animate-spin text-success" />
       ) : (
         <Check className="size-3.5 shrink-0 text-muted-foreground" />
       )}
       <span className="w-24 shrink-0 truncate font-medium">{call.tool}</span>
       <span
-        className={`min-w-0 flex-1 truncate font-mono ${failed ? "text-red-700" : "text-muted-foreground"}`}
+        className={`min-w-0 flex-1 truncate font-mono ${failed ? "text-destructive" : "text-muted-foreground"}`}
       >
         {call.summary || (running ? "Working..." : "Completed")}
       </span>
       <span
         className={
           failed
-            ? "shrink-0 text-red-600"
+            ? "shrink-0 text-destructive"
             : running
-              ? "shrink-0 text-emerald-600"
+              ? "shrink-0 text-success"
               : "shrink-0 text-muted-foreground"
         }
       >
@@ -119,9 +119,9 @@ function ActivityRow({ call, onClick }: { call: AgentCall; onClick: () => void }
 
 function StatusDot({ active }: { active: boolean }) {
   return active ? (
-    <span className="size-2.5 rounded-full bg-emerald-500 shadow-[0_0_0_3px_rgba(16,185,129,0.12)]" />
+    <span className="size-2.5 rounded-full bg-success shadow-[0_0_0_3px_rgba(16,185,129,0.12)]" />
   ) : (
-    <Circle className="size-2.5 fill-neutral-300 text-neutral-300" />
+    <Circle className="size-2.5 fill-current text-muted-foreground/50" />
   )
 }
 

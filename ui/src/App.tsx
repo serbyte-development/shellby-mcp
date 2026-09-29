@@ -1,6 +1,7 @@
 import { Activity, PencilRuler, RefreshCw, Wifi, WifiOff } from "lucide-react"
 import { useEffect, useState } from "react"
 
+import { ThemeSelect } from "./components/ThemeSelect"
 import { Button } from "./components/ui/button"
 import { RoomEditor } from "./features/agent-room/editor/RoomEditor"
 import { AgentCard } from "./features/dashboard/AgentCard"
@@ -39,7 +40,7 @@ function Dashboard() {
   return (
     <main className="min-h-screen">
       <header className="sticky top-0 z-10 border-b bg-background/95 backdrop-blur">
-        <div className="mx-auto flex max-w-[1500px] items-center justify-between gap-4 px-5 py-4 lg:px-8">
+        <div className="mx-auto flex max-w-[1500px] flex-wrap items-center justify-between gap-4 px-5 py-4 lg:px-8">
           <div className="flex items-center gap-3">
             <div className="flex size-9 items-center justify-center rounded-lg bg-foreground text-background">
               <Activity className="size-5" />
@@ -51,9 +52,10 @@ function Dashboard() {
               </p>
             </div>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <ThemeSelect />
             <div
-              className={`hidden items-center gap-1.5 text-xs sm:flex ${connected ? "text-emerald-600" : "text-muted-foreground"}`}
+              className={`hidden items-center gap-1.5 text-xs sm:flex ${connected ? "text-success" : "text-muted-foreground"}`}
             >
               {connected ? <Wifi className="size-3.5" /> : <WifiOff className="size-3.5" />}
               {connected ? "Live" : "Reconnecting"}

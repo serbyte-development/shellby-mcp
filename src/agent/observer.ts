@@ -1,5 +1,5 @@
 import { EventEmitter } from "node:events"
-
+import type { ToolCallEvent } from "../mcp/tool-call-tracker.js"
 import type { AgentIdentity } from "./context.js"
 import { presentToolCall, presentToolResponse } from "./tool-call-presentation.js"
 
@@ -46,9 +46,8 @@ interface AgentObserverEvent {
 
 export interface AgentObserver {
   listAgents(): AgentSnapshot[]
-  startTool(agent: AgentIdentity | undefined, tool: string, input: unknown): string | undefined
-  finishTool(agent: AgentIdentity | undefined, callId: string | undefined, response?: unknown): void
-  failTool(agent: AgentIdentity | undefined, callId: string | undefined, response?: unknown): void
+  /** Project ordered lifecycle events into bounded dashboard history. */
+  observeToolCall(call: ToolCallEvent): void
   queueInstruction(agentId: string, message: string): AgentInstructionSnapshot | undefined
   cancelInstruction(agentId: string, instructionId: string): boolean
   drainInstructions(agent: AgentIdentity | undefined): string[]
@@ -62,7 +61,6 @@ export function createAgentObserver(now: () => number = () => Date.now()): Agent
   const agentsBySession = new Map<string, AgentState>()
   const sessionsByAgentId = new Map<string, string>()
   const events = new EventEmitter()
-  let callCounter = 0
   let instructionCounter = 0
 
   function listAgents(): AgentSnapshot[] {
@@ -71,16 +69,18 @@ export function createAgentObserver(now: () => number = () => Date.now()): Agent
       .sort((left, right) => right.lastSeenAt - left.lastSeenAt)
   }
 
-  function ensureAgent(identity: AgentIdentity | undefined): AgentState | undefined {
+  function ensureAgent(
+    identity: AgentIdentity | undefined,
+    timestamp: number
+  ): AgentState | undefined {
     if (!identity) return undefined
     const existing = agentsBySession.get(identity.sessionId)
     if (existing) {
       existing.taskSlug = identity.taskSlug
-      existing.lastSeenAt = now()
+      existing.lastSeenAt = timestamp
       return existing
     }
 
-    const timestamp = now()
     const state: AgentState = {
       id: identity.agent,
       taskSlug: identity.taskSlug,
@@ -103,50 +103,31 @@ export function createAgentObserver(now: () => number = () => Date.now()): Agent
     } satisfies AgentObserverEvent)
   }
 
-  function startTool(
-    identity: AgentIdentity | undefined,
-    tool: string,
-    input: unknown
-  ): string | undefined {
-    const agent = ensureAgent(identity)
-    if (!agent) return undefined
-    const timestamp = now()
-    const presentation = presentToolCall(tool, input)
+  function observeToolCall(event: ToolCallEvent): void {
+    const timestamp = event.status === "running" ? event.startedAt : event.finishedAt
+    const agent = ensureAgent(event.agent, timestamp)
+    if (!agent) return
     const call: AgentCallSnapshot = {
-      id: `call-${++callCounter}`,
-      tool,
-      ...presentation,
-      startedAt: timestamp,
-      status: "running",
+      id: event.id,
+      tool: event.tool,
+      ...presentToolCall(event.tool, event.input),
+      startedAt: event.startedAt,
+      status: event.status,
+      ...(event.status === "running"
+        ? {}
+        : {
+            finishedAt: event.finishedAt,
+            ...(event.response === undefined
+              ? {}
+              : { response: presentToolResponse(event.response) }),
+          }),
     }
-    agent.activeCalls.set(call.id, call)
-    agent.current = call
-    agent.lastSeenAt = timestamp
-    emitAgent(agent)
-    return call.id
-  }
-
-  function settleTool(
-    identity: AgentIdentity | undefined,
-    callId: string | undefined,
-    status: "completed" | "failed",
-    response: unknown
-  ): void {
-    if (!identity || !callId) return
-    const agent = agentsBySession.get(identity.sessionId)
-    const activeCall = agent?.activeCalls.get(callId)
-    if (!agent || !activeCall) return
-    const timestamp = now()
-    agent.taskSlug = identity.taskSlug
-    const call: AgentCallSnapshot = {
-      ...activeCall,
-      status,
-      finishedAt: timestamp,
-      ...(response === undefined ? {} : { response: presentToolResponse(response) }),
+    if (event.status === "running") agent.activeCalls.set(call.id, call)
+    else {
+      agent.activeCalls.delete(call.id)
+      agent.recent = [call, ...agent.recent].slice(0, MAX_RECENT_CALLS)
     }
-    agent.activeCalls.delete(callId)
     agent.current = latestActiveCall(agent.activeCalls)
-    agent.recent = [call, ...agent.recent].slice(0, MAX_RECENT_CALLS)
     agent.lastSeenAt = timestamp
     emitAgent(agent)
   }
@@ -205,9 +186,7 @@ export function createAgentObserver(now: () => number = () => Date.now()): Agent
 
   return {
     listAgents,
-    startTool,
-    finishTool: (agent, callId, response) => settleTool(agent, callId, "completed", response),
-    failTool: (agent, callId, response) => settleTool(agent, callId, "failed", response),
+    observeToolCall,
     queueInstruction,
     cancelInstruction,
     drainInstructions,

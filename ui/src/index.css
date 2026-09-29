@@ -12,6 +12,12 @@
   --color-primary: var(--primary);
   --color-primary-foreground: var(--primary-foreground);
   --color-destructive: var(--destructive);
+  --color-success: light-dark(#047857, #6ee7b7);
+  --color-success-muted: light-dark(#ecfdf5, #102d25);
+  --color-warning: light-dark(#a16207, #fcd34d);
+  --color-accent: light-dark(#1d4ed8, #93c5fd);
+  --color-accent-muted: light-dark(#eff6ff, #1c2c46);
+  --color-danger-muted: light-dark(#fef2f2, #3b2024);
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
@@ -19,18 +25,19 @@
 }
 
 :root {
+  color-scheme: light dark;
   --radius: 0.75rem;
-  --background: oklch(0.985 0 0);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
+  --background: light-dark(oklch(0.985 0 0), oklch(0.145 0 0));
+  --foreground: light-dark(oklch(0.145 0 0), oklch(0.95 0 0));
+  --card: light-dark(oklch(1 0 0), oklch(0.19 0 0));
+  --card-foreground: light-dark(oklch(0.145 0 0), oklch(0.95 0 0));
+  --muted: light-dark(oklch(0.97 0 0), oklch(0.245 0 0));
+  --muted-foreground: light-dark(oklch(0.556 0 0), oklch(0.72 0 0));
+  --border: light-dark(oklch(0.922 0 0), oklch(0.32 0 0));
+  --input: light-dark(oklch(0.922 0 0), oklch(0.32 0 0));
+  --primary: light-dark(oklch(0.205 0 0), oklch(0.92 0 0));
+  --primary-foreground: light-dark(oklch(0.985 0 0), oklch(0.18 0 0));
+  --destructive: light-dark(#b91c1c, #fca5a5);
 }
 
 * {
@@ -45,4 +52,61 @@ body {
   color: var(--foreground);
   font-family:
     Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+}
+
+/* Shared syntax colors for the tool inspector's Bash, JSON, and diff output. */
+.hljs {
+  display: block;
+  color: var(--foreground);
+}
+
+.hljs-keyword,
+.hljs-doctag,
+.hljs-template-variable {
+  color: light-dark(#a62638, #ff9da4);
+}
+
+.hljs-title {
+  color: light-dark(#6f42c1, #d2a8ff);
+}
+
+.hljs-attr,
+.hljs-literal,
+.hljs-meta,
+.hljs-number,
+.hljs-variable,
+.hljs-section {
+  color: light-dark(#005cc5, #79c0ff);
+}
+
+.hljs-string,
+.hljs-regexp {
+  color: light-dark(#032f62, #a5d6ff);
+}
+
+.hljs-built_in,
+.hljs-symbol {
+  color: light-dark(#953800, #ffa657);
+}
+
+.hljs-comment {
+  color: var(--muted-foreground);
+}
+
+.hljs-addition {
+  color: var(--color-success);
+  background: var(--color-success-muted);
+}
+
+.hljs-deletion {
+  color: var(--destructive);
+  background: var(--color-danger-muted);
 }

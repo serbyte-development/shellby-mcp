@@ -105,7 +105,6 @@ export interface ShellSession {
   close(): Promise<void>
 }
 
-// biome-ignore lint/complexity/noExcessiveLinesPerFunction: The session remains the cohesive owner of persistent-shell arbitration and single-command state; parallel batch lifecycle is isolated in parallel-session.ts.
 export function createShellSession(options: ShellSessionOptions = {}): ShellSession {
   const transcriptLimit = positiveInteger(options.transcriptLimit, MCP_CONFIG.shell.transcriptChars)
   const transcript = createTranscriptBuffer(transcriptLimit)

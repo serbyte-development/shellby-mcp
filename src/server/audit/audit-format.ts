@@ -1,3 +1,4 @@
+import type { CompletedToolCall } from "../../mcp/tool-call-tracker.js"
 import { asRecord } from "../../utils.js"
 
 const MAX_INLINE_ARGUMENT_CHARS = 600
@@ -7,7 +8,6 @@ const MAX_FAILED_MESSAGE_CHARS = 1_000
 const SLOW_CALL_MS = 5_000
 
 export interface ToolResponseSummary {
-  failed: boolean
   failureMessage?: string
   modelOutput?: string
   structuredContent?: Record<string, unknown>
@@ -48,43 +48,37 @@ export function formatAuditEntry(input: {
   return details ? `${heading}\n${details}\n\n` : `${heading}\n\n`
 }
 
-export function summarizeToolResult(
-  toolResult: unknown,
-  modelResult: unknown,
-  error?: unknown
-): ToolResponseSummary {
-  const toolRecord = asRecord(toolResult)
-  const modelRecord = asRecord(modelResult)
+export function summarizeToolResult(call: CompletedToolCall): ToolResponseSummary {
+  const toolRecord = asRecord(call.toolResult)
+  const modelRecord = asRecord(call.response)
   const modelOutput = modelRecord ? serializeModelFacingToolResult(modelRecord) : undefined
   const structuredContent = asRecord(toolRecord?.structuredContent)
   const summary = { modelOutput, structuredContent }
-  if (error !== undefined)
-    return { ...summary, failed: true, failureMessage: originalErrorMessage(error) }
-  if (toolRecord?.isError !== true) return { ...summary, failed: false }
+  if (call.error !== undefined)
+    return { ...summary, failureMessage: originalErrorMessage(call.error) }
+  if (call.status !== "failed") return summary
 
   for (const detail of [structuredContent?.output, structuredContent?.error]) {
-    if (typeof detail === "string" && detail)
-      return { ...summary, failed: true, failureMessage: detail }
+    if (typeof detail === "string" && detail) return { ...summary, failureMessage: detail }
   }
   if (Array.isArray(structuredContent?.turns)) {
     const failures = structuredContent.turns.flatMap((value) => {
       const turn = asRecord(value)
       return turn?.status === "failed" && typeof turn.error === "string" ? [turn.error] : []
     })
-    if (failures.length)
-      return { ...summary, failed: true, failureMessage: formatFailureMessages(failures) }
+    if (failures.length) return { ...summary, failureMessage: formatFailureMessages(failures) }
   }
 
-  const content = toolRecord.content
+  const content = toolRecord?.content
   if (Array.isArray(content)) {
     const message = content
       .map((item) => asRecord(item))
       .filter((item): item is Record<string, unknown> => item !== undefined)
       .flatMap((item) => (item.type === "text" && typeof item.text === "string" ? [item.text] : []))
       .join("\n")
-    if (message) return { ...summary, failed: true, failureMessage: message }
+    if (message) return { ...summary, failureMessage: message }
   }
-  return { ...summary, failed: true }
+  return summary
 }
 
 /** Group exact messages in first-seen order; count duplicates before the audit entry is truncated. */

@@ -10,14 +10,11 @@ import type { AgentObserver } from "../agent/observer.js"
 import { ShellbyAuthError, type ShellbyAuthStore } from "../auth/store.js"
 import { MCP_CONFIG } from "../config.js"
 import type { McpServerFactory } from "../mcp/server-factory.js"
+import { ToolCallTracker } from "../mcp/tool-call-tracker.js"
 import { asRecord } from "../utils.js"
-import type { McpAuditLogger, McpAuditRequest } from "./audit/audit-log.js"
+import type { McpAuditLogger } from "./audit/audit-log.js"
 
 const MCP_ROUTE = /^\/mcp$/u
-
-interface RequestRuntimeContext {
-  auditRequest?: McpAuditRequest
-}
 
 export interface RunningMcpServer {
   host: string
@@ -47,17 +44,11 @@ export async function startMcpHttpServer(
   const port = profileOverrides.port ?? MCP_CONFIG.port
   const instanceId = profileOverrides.instanceId ?? MCP_CONFIG.instanceId
   const { createMcpServer, auditLogger, authStore, agentObserver } = services
-  const requestRuntime = new AsyncLocalStorage<RequestRuntimeContext>()
+  const requestCalls = new AsyncLocalStorage<ToolCallTracker>()
 
   const app = createMcpExpressApp({ host, jsonLimit: "1mb" })
   const mcpHandler = createMcpHandler(
-    () => {
-      const requestContext = requestRuntime.getStore()
-      return createMcpServer({
-        auditRequest: requestContext?.auditRequest,
-        agentObserver,
-      })
-    },
+    () => createMcpServer({ calls: requestCalls.getStore(), agentObserver }),
     {
       legacy: "stateless",
       onerror: reportMcpError,
@@ -75,17 +66,13 @@ export async function startMcpHttpServer(
   const handleMcpRequest = async (req: Request, res: Response): Promise<void> => {
     const sessionId = requestSessionId(req)
     await runWithAgent(sessionId, async () => {
-      const auditRequest = auditLogger?.startRequest(req.body)
-      let auditFinished = false
-      const finishAudit = (state: "finished" | "closed") => {
-        if (auditFinished) return
-        auditFinished = true
-        auditRequest?.finishTransport({ httpStatus: res.statusCode, state })
-      }
-      res.once("finish", () => finishAudit("finished"))
-      res.once("close", () => finishAudit("closed"))
-
-      await requestRuntime.run({ auditRequest }, () => nodeMcpHandler(req, res, req.body))
+      const calls = new ToolCallTracker({ auditLogger, agentObserver })
+      calls.startRequest(req.body)
+      res.once("finish", () =>
+        calls.finishRequest({ httpStatus: res.statusCode, state: "finished" })
+      )
+      res.once("close", () => calls.finishRequest({ httpStatus: res.statusCode, state: "closed" }))
+      await requestCalls.run(calls, () => nodeMcpHandler(req, res, req.body))
     })
   }
 

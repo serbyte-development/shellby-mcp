@@ -8,6 +8,7 @@ import { type Browser, chromium, type Page } from "playwright-core"
 import type { AgentIdentity } from "../../src/agent/context.js"
 import { createDashboardRouter } from "../../src/agent/dashboard-routes.js"
 import { type AgentObserver, createAgentObserver } from "../../src/agent/observer.js"
+import { publishCall, publishCompletion } from "../fixtures/tool-call.js"
 
 const identity: AgentIdentity = {
   sessionId: "dashboard-test",
@@ -32,29 +33,36 @@ test("dashboard dismissal behavior", {
     "open tool details update with returned output, errors, and unavailable history",
     async (t) => {
       const observer = createAgentObserver()
-      const callId = observer.startTool(identity, "shell_run", { command: "printf output" })
+      const callId = publishCall(observer, identity, "shell_run", { command: "printf output" })
       const page = await openDashboard(t, browser, observer)
       await page.getByText("printf output", { exact: true }).click()
       const modal = page.getByRole("dialog")
       await modal.getByText("Waiting for the tool to return…", { exact: true }).waitFor()
       const output =
         "First line\nSecond line\n<script>throw new Error('must not execute')</script>\n\n**Notice:** Human instruction: Continue"
-      observer.finishTool(identity, callId, { content: [{ type: "text", text: output }] })
+      publishCompletion(observer, callId, {
+        response: { content: [{ type: "text", text: output }] },
+      })
       await modal.getByText(output, { exact: true }).waitFor()
       assert.equal(await modal.getByText("Waiting for the tool to return…").count(), 0)
       await modal.getByRole("button", { name: "Close tool call details" }).click()
 
-      const failedCall = observer.startTool(identity, "shell_run", { command: "failing command" })
-      observer.failTool(identity, failedCall, {
-        isError: true,
-        content: [{ type: "text", text: "COMMAND_FAILED: exit 1" }],
+      const failedCall = publishCall(observer, identity, "shell_run", {
+        command: "failing command",
+      })
+      publishCompletion(observer, failedCall, {
+        status: "failed",
+        response: {
+          isError: true,
+          content: [{ type: "text", text: "COMMAND_FAILED: exit 1" }],
+        },
       })
       await page.getByText("failing command", { exact: true }).click()
       await modal.getByText("COMMAND_FAILED: exit 1", { exact: true }).waitFor()
       await modal.getByRole("button", { name: "Close tool call details" }).click()
 
-      const legacyCall = observer.startTool(identity, "shell_run", { command: "older call" })
-      observer.finishTool(identity, legacyCall)
+      const legacyCall = publishCall(observer, identity, "shell_run", { command: "older call" })
+      publishCompletion(observer, legacyCall)
       await page.getByText("older call", { exact: true }).click()
       await modal.getByText("Output was not captured for this call.", { exact: true }).waitFor()
     }
@@ -64,8 +72,8 @@ test("dashboard dismissal behavior", {
     "delivered messages stay dismissed, while new and queued messages still work",
     async (t) => {
       const observer = createAgentObserver()
-      const callId = observer.startTool(identity, "shell_run", { command: "pwd" })
-      observer.finishTool(identity, callId)
+      const callId = publishCall(observer, identity, "shell_run", { command: "pwd" })
+      publishCompletion(observer, callId)
       const page = await openDashboard(t, browser, observer)
 
       for (const message of ["First steer", "Second steer"]) {
@@ -124,10 +132,10 @@ test("dashboard dismissal behavior", {
     async (t) => {
       let timestamp = Date.now() - 60_000
       const observer = createAgentObserver(() => ++timestamp)
-      const callId = observer.startTool(identity, "shell_run", { command: "pwd" })
-      observer.finishTool(identity, callId)
+      const callId = publishCall(observer, identity, "shell_run", { command: "pwd" }, ++timestamp)
+      publishCompletion(observer, callId, { finishedAt: ++timestamp })
       const otherIdentity = { sessionId: "other-session", agent: "agent-2", taskSlug: "other-task" }
-      observer.startTool(otherIdentity, "shell_run", { command: "date" })
+      publishCall(observer, otherIdentity, "shell_run", { command: "date" }, ++timestamp)
       const page = await openDashboard(t, browser, observer)
       const card = page.getByRole("region", { name: "agent-1", exact: true })
       await card.getByText("INACTIVE", { exact: true }).waitFor()
@@ -155,7 +163,13 @@ test("dashboard dismissal behavior", {
       await page.getByRole("heading", { name: "All agents are dismissed" }).waitFor()
 
       timestamp = Date.now()
-      const newCall = observer.startTool(identity, "shell_run", { command: "echo resumed" })
+      const newCall = publishCall(
+        observer,
+        identity,
+        "shell_run",
+        { command: "echo resumed" },
+        ++timestamp
+      )
       await card.getByText("ACTIVE", { exact: true }).waitFor()
       await card.getByText("echo resumed", { exact: true }).waitFor()
       await page.getByText("Dismissed agents (1)", { exact: true }).waitFor()
@@ -167,7 +181,7 @@ test("dashboard dismissal behavior", {
       // Finishing a call also counts as activity after dismissal of a running agent.
       await card.getByRole("button", { name: "Dismiss agent-1", exact: true }).click()
       await card.waitFor({ state: "detached" })
-      observer.finishTool(identity, newCall)
+      publishCompletion(observer, newCall, { finishedAt: ++timestamp })
       await card.getByText("echo resumed", { exact: true }).waitFor()
     }
   )
@@ -176,7 +190,7 @@ test("dashboard dismissal behavior", {
     "old preferences cannot hide a reused agent ID or its new delivery notices",
     async (t) => {
       const observer = createAgentObserver()
-      observer.startTool(identity, "shell_run", { command: "pwd" })
+      publishCall(observer, identity, "shell_run", { command: "pwd" })
       const instruction = observer.queueInstruction(identity.agent, "New session instruction")
       assert.ok(instruction)
       observer.drainInstructions(identity)

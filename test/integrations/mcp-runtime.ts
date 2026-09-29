@@ -325,41 +325,61 @@ test("file_read and file_write can be enabled independently", { timeout: 10_000 
   }
 })
 
-test("asks once for a Shellby review after sustained tool use", { timeout: 10_000 }, async (t) => {
-  const running = await startMcpHttpServer()
-  t.after(() => running.close())
-  const connected = await connectClient(
-    running.url,
-    "review-client",
-    undefined,
-    false,
-    "review-session"
-  )
-  t.after(() => connected.client.close())
+for (const rejectedThreshold of [false, true]) {
+  test(`asks once for a Shellby review with rejected threshold=${rejectedThreshold}`, {
+    timeout: 10_000,
+  }, async (t) => {
+    const running = await startMcpHttpServer()
+    t.after(() => running.close())
+    const connected = await connectClient(
+      running.url,
+      "review-client",
+      undefined,
+      false,
+      `review-session-${rejectedThreshold}`
+    )
+    t.after(() => connected.client.close())
 
-  await connected.client.callTool({
-    name: "start_here",
-    arguments: { mode: "general", task_id: "review-feedback" },
+    await connected.client.callTool({
+      name: "start_here",
+      arguments: { mode: "general", task_id: "review-feedback" },
+    })
+
+    let beforeThreshold = await connected.client.callTool({ name: "shell_list", arguments: {} })
+    for (let call = 1; call < REVIEW_PROMPT_TOOL_CALLS - 2; call += 1) {
+      beforeThreshold = await connected.client.callTool({ name: "shell_list", arguments: {} })
+    }
+    assert.doesNotMatch(
+      beforeThreshold.content.find((item) => item.type === "text")?.text ?? "",
+      /submit_review/u
+    )
+
+    if (rejectedThreshold) {
+      // Call 25 never reaches a handler. The next eligible response must still ask once.
+      const rejected = await connected.client.callTool({
+        name: "start_here",
+        arguments: { mode: "invalid" },
+      })
+      assert.equal(rejected.isError, true)
+      assert.doesNotMatch(toolText(rejected), /Quick feedback request/u)
+    }
+    const responses = await Promise.all(
+      Array.from({ length: rejectedThreshold ? 2 : 1 }, () =>
+        connected.client.callTool({ name: "shell_list", arguments: {} })
+      )
+    )
+    assert.equal(
+      responses.filter((result) => /Quick feedback request/u.test(toolText(result))).length,
+      1
+    )
+
+    const noRepeat = await connected.client.callTool({ name: "shell_list", arguments: {} })
+    assert.doesNotMatch(
+      noRepeat.content.find((item) => item.type === "text")?.text ?? "",
+      /submit_review/u
+    )
   })
-
-  let beforeThreshold = await connected.client.callTool({ name: "shell_list", arguments: {} })
-  for (let call = 1; call < REVIEW_PROMPT_TOOL_CALLS - 2; call += 1) {
-    beforeThreshold = await connected.client.callTool({ name: "shell_list", arguments: {} })
-  }
-  assert.doesNotMatch(
-    beforeThreshold.content.find((item) => item.type === "text")?.text ?? "",
-    /submit_review/u
-  )
-
-  const prompted = await connected.client.callTool({ name: "shell_list", arguments: {} })
-  assert.match(prompted.content.find((item) => item.type === "text")?.text ?? "", /submit_review/u)
-
-  const noRepeat = await connected.client.callTool({ name: "shell_list", arguments: {} })
-  assert.doesNotMatch(
-    noRepeat.content.find((item) => item.type === "text")?.text ?? "",
-    /submit_review/u
-  )
-})
+}
 
 test("publishes ordinary tool results only through the compact MCP surface", {
   timeout: 10_000,
