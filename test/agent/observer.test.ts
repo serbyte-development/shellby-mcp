@@ -1,9 +1,43 @@
 import assert from "node:assert/strict"
 import test from "node:test"
-import type { AgentIdentity } from "../../src/agent/context.js"
-import { createAgentObserver } from "../../src/agent/observer.js"
+import {
+  type AgentIdentity,
+  bindAgentParent,
+  getAgentIdentity,
+  runWithAgent,
+} from "../../src/agent/context.js"
+import { type AgentObserver, createAgentObserver } from "../../src/agent/observer.js"
 import { countTokens } from "../../src/tokenizer.js"
 import { publishCall } from "../fixtures/tool-call.js"
+
+test("publishes late parent links without inventing activity, and unsubscribes cleanly", (t) => {
+  const observer = createAgentObserver()
+  const parent = runWithAgent("observer-parent", () => getAgentIdentity()!)
+  const child = runWithAgent("observer-child", () => getAgentIdentity()!)
+  publishCall(observer, parent, "subagent_run", {}, 1_000)
+  publishCall(observer, child, "shell_run", { command: "pwd" }, 2_000)
+  const updates: ReturnType<AgentObserver["listAgents"]> = []
+  const unsubscribe = observer.subscribe(({ agent }) => updates.push(agent))
+  t.after(unsubscribe)
+  assert.equal(observer.listAgents().find((agent) => agent.id === child.agent)?.parentId, undefined)
+
+  bindAgentParent(child.sessionId, parent.sessionId)
+  assert.equal(updates.length, 1)
+  assert.equal(updates[0]?.id, child.agent)
+  assert.equal(updates[0]?.parentId, parent.agent)
+  assert.equal(updates[0]?.lastSeenAt, 2_000)
+  assert.doesNotMatch(JSON.stringify(updates), /observer-parent|observer-child/u)
+  bindAgentParent(child.sessionId, parent.sessionId)
+  assert.equal(updates.length, 1, "Repeated evidence does not emit duplicate updates")
+  unsubscribe()
+  const ancestor = runWithAgent("observer-ancestor", () => getAgentIdentity()!)
+  bindAgentParent(parent.sessionId, ancestor.sessionId)
+  assert.equal(updates.length, 1)
+  assert.equal(
+    observer.listAgents().find((agent) => agent.id === parent.agent)?.parentId,
+    ancestor.agent
+  )
+})
 
 test("retains bounded final response text and metadata without binary payloads", () => {
   const observer = createAgentObserver()

@@ -12,6 +12,15 @@ export type AgentIdentity = Readonly<StoredAgentIdentity>
 
 const agents = new Map<string, StoredAgentIdentity>()
 const currentAgent = new AsyncLocalStorage<StoredAgentIdentity>()
+const parentListeners = new Set<(child: AgentIdentity) => void>()
+
+/** Notify live observers after a new parent link is resolved; unsubscribe when no longer observing. */
+export function subscribeToAgentParents(listener: (child: AgentIdentity) => void): () => void {
+  parentListeners.add(listener)
+  return () => {
+    parentListeners.delete(listener)
+  }
+}
 
 export function runWithAgent<T>(sessionId: string | undefined, callback: () => T): T {
   return sessionId ? currentAgent.run(agentForSession(sessionId), callback) : callback()
@@ -44,6 +53,13 @@ export function bindAgentParent(
     if (ancestor === child) return undefined
   }
   child.parent = parent
+  for (const listener of parentListeners) {
+    try {
+      listener(child)
+    } catch (error) {
+      console.warn("Could not publish agent parent link:", error)
+    }
+  }
   return child
 }
 

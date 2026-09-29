@@ -51,7 +51,7 @@ export function SteerComposer({
   }
 
   return (
-    <div className="space-y-1.5 border-t pt-3">
+    <div className="min-w-0 space-y-1.5 border-t pt-3 @xl:border-l @xl:border-t-0 @xl:pl-4 @xl:pt-0">
       <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
         Steer
       </h3>

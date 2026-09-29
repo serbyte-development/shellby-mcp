@@ -14,6 +14,15 @@ import {
 export const ROOM_PIXEL_SCALE = 2
 
 const imageCache = new Map<string, HTMLImageElement>()
+const imageListeners = new Set<() => void>()
+
+/** Static previews redraw as shared assets load, without running an animation loop. */
+export function subscribeRoomImages(listener: () => void): () => void {
+  imageListeners.add(listener)
+  return () => {
+    imageListeners.delete(listener)
+  }
+}
 
 export function drawRoomSurface(ctx: CanvasRenderingContext2D, layout: RoomLayout): void {
   const tileSize = gridToPixel(layout.tileSize)
@@ -167,6 +176,13 @@ export function getRoomImage(path: string): HTMLImageElement {
   const cached = imageCache.get(path)
   if (cached) return cached
   const image = new Image()
+  image.addEventListener(
+    "load",
+    () => {
+      for (const listener of imageListeners) listener()
+    },
+    { once: true }
+  )
   image.src = path
   imageCache.set(path, image)
   return image

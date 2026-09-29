@@ -24,6 +24,7 @@ export interface AgentInstruction {
 
 export interface Agent {
   id: string
+  parentId?: string
   taskSlug?: string
   firstSeenAt: number
   lastSeenAt: number

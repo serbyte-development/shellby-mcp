@@ -5,6 +5,7 @@ import { ThemeSelect } from "./components/ThemeSelect"
 import { Button } from "./components/ui/button"
 import { RoomEditor } from "./features/agent-room/editor/RoomEditor"
 import { AgentCard } from "./features/dashboard/AgentCard"
+import { groupAgentFamilies } from "./features/dashboard/agent-families"
 import { useDashboardAgents } from "./features/dashboard/useDashboardAgents"
 
 export function App() {
@@ -100,14 +101,14 @@ function Dashboard() {
             </p>
           </div>
         ) : (
-          <div className="grid items-start gap-4 md:grid-cols-2 xl:grid-cols-3">
-            {agents.map((agent) => (
+          <div className="grid items-start gap-5 md:grid-cols-2">
+            {groupAgentFamilies(agents, dismissedAgents).map((family) => (
               <AgentCard
-                key={agent.id}
-                agent={agent}
+                key={family.rootId}
+                family={family}
                 now={now}
-                onDismiss={() => dismissAgent(agent)}
-                onDismissInstruction={(instructionId) => dismissInstruction(agent, instructionId)}
+                onDismiss={dismissAgent}
+                onDismissInstruction={dismissInstruction}
               />
             ))}
           </div>

@@ -18,6 +18,7 @@
   --color-accent: light-dark(#1d4ed8, #93c5fd);
   --color-accent-muted: light-dark(#eff6ff, #1c2c46);
   --color-danger-muted: light-dark(#fef2f2, #3b2024);
+  --color-family-parent: light-dark(#7c3aed, #b49aff);
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
@@ -40,8 +41,10 @@
   --destructive: light-dark(#b91c1c, #fca5a5);
 }
 
-* {
-  border-color: var(--border);
+@layer base {
+  * {
+    border-color: var(--border);
+  }
 }
 
 body {

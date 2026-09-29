@@ -19,6 +19,7 @@ import {
   drawRoomWalls,
   getRoomImage,
   ROOM_PIXEL_SCALE,
+  subscribeRoomImages,
 } from "./renderer"
 import { useRoomLayout } from "./room-layout-storage"
 
@@ -26,7 +27,7 @@ const CHAR_FRAME_WIDTH = 16
 const CHAR_FRAME_HEIGHT = 32
 const SITTING_OFFSET = gridToPixel(1.5)
 
-export function AgentRoom({ agent }: { agent: Agent }) {
+export function AgentRoom({ agent, preview = false }: { agent: Agent; preview?: boolean }) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const stateRef = useRef<AgentRoomState>(createAgentRoomState())
   const agentRef = useRef(agent)
@@ -34,33 +35,55 @@ export function AgentRoom({ agent }: { agent: Agent }) {
 
   useEffect(() => {
     agentRef.current = agent
-    syncAgentActivities(stateRef.current, agent)
-  }, [agent])
+    if (!preview) syncAgentActivities(stateRef.current, agent)
+  }, [agent, preview])
 
   useEffect(() => {
+    if (preview) return
     stateRef.current = createAgentRoomState(stationsForLayout(layout))
     syncAgentActivities(stateRef.current, agentRef.current)
-  }, [layout])
+  }, [layout, preview])
 
   useEffect(() => {
     const canvas = canvasRef.current
     if (!canvas) return
     const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches
     const stations = stationsForLayout(layout)
+    if (preview) {
+      const ctx = canvas.getContext("2d")
+      if (!ctx) return
+      const state = createAgentRoomState(stations)
+      const render = () => {
+        ctx.imageSmoothingEnabled = false
+        renderRoom(ctx, state, agent.id, layout, stations)
+      }
+      const unsubscribe = subscribeRoomImages(render)
+      render()
+      return unsubscribe
+    }
     return startAgentRoomLoop(canvas, {
       update: (dt) => updateAgentRoom(stateRef.current, dt, reducedMotion, stations),
       render: (ctx) => renderRoom(ctx, stateRef.current, agent.id, layout, stations),
     })
-  }, [agent.id, layout])
+  }, [agent.id, layout, preview])
 
   return (
-    <div className="overflow-hidden rounded-lg border bg-[#d8e7c3]">
+    <div
+      className={
+        preview ? "overflow-hidden bg-muted" : "overflow-hidden rounded-lg border bg-[#d8e7c3]"
+      }
+    >
       <canvas
         ref={canvasRef}
         width={ROOM_WIDTH}
         height={ROOM_HEIGHT}
-        className="block h-auto w-full [image-rendering:pixelated]"
-        aria-label={`${agent.id} activity room`}
+        className={
+          preview
+            ? "block aspect-[16/9] w-full object-cover [image-rendering:pixelated]"
+            : "block h-auto w-full [image-rendering:pixelated]"
+        }
+        aria-label={`${agent.id} ${preview ? "room preview" : "activity room"}`}
+        data-animated={!preview}
       />
     </div>
   )

@@ -1,6 +1,6 @@
 import { EventEmitter } from "node:events"
 import type { ToolCallEvent } from "../mcp/tool-call-tracker.js"
-import type { AgentIdentity } from "./context.js"
+import { type AgentIdentity, subscribeToAgentParents } from "./context.js"
 import { presentToolCall, presentToolResponse } from "./tool-call-presentation.js"
 
 type AgentCallStatus = "running" | "completed" | "failed"
@@ -29,6 +29,7 @@ interface AgentInstructionSnapshot {
 
 interface AgentSnapshot {
   id: string
+  parentId?: string
   taskSlug?: string
   firstSeenAt: number
   lastSeenAt: number
@@ -38,7 +39,7 @@ interface AgentSnapshot {
 }
 
 interface AgentState extends AgentSnapshot {
-  sessionId: string
+  identity: AgentIdentity
   activeCalls: Map<string, AgentCallSnapshot>
 }
 
@@ -87,7 +88,7 @@ export function createAgentObserver(now: () => number = () => Date.now()): Agent
     const state: AgentState = {
       id: identity.agent,
       taskSlug: identity.taskSlug,
-      sessionId: identity.sessionId,
+      identity,
       firstSeenAt: timestamp,
       lastSeenAt: timestamp,
       recent: [],
@@ -186,7 +187,14 @@ export function createAgentObserver(now: () => number = () => Date.now()): Agent
 
   function subscribe(listener: (event: AgentObserverEvent) => void): () => void {
     events.on("event", listener)
-    return () => events.off("event", listener)
+    const unsubscribeParents = subscribeToAgentParents((identity) => {
+      const agent = agentsBySession.get(identity.sessionId)
+      if (agent) listener({ type: "agent_changed", agent: toSnapshot(agent) })
+    })
+    return () => {
+      events.off("event", listener)
+      unsubscribeParents()
+    }
   }
 
   return {
@@ -210,6 +218,7 @@ function latestActiveCall(calls: Map<string, AgentCallSnapshot>): AgentCallSnaps
 function toSnapshot(agent: AgentState): AgentSnapshot {
   return {
     id: agent.id,
+    parentId: agent.identity.parent?.agent,
     taskSlug: agent.taskSlug,
     firstSeenAt: agent.firstSeenAt,
     lastSeenAt: agent.lastSeenAt,
