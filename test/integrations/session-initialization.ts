@@ -13,7 +13,7 @@ import {
   discoverPromptModes,
   readStartPrompt,
 } from "../../src/tools/start-here/start-here.js"
-import { connectClient, startMcpHttpServer, toolText } from "./helpers.js"
+import { agentToolText, connectClient, startMcpHttpServer, toolText } from "./helpers.js"
 
 test("requires start_here once per ChatGPT session", { timeout: 10_000 }, async (t) => {
   const workspace = await mkdtemp(join(tmpdir(), "shellby-start-here-"))
@@ -50,7 +50,7 @@ test("requires start_here once per ChatGPT session", { timeout: 10_000 }, async 
     arguments: { mode: "coding", task_id: "startup-session" },
   })
   assert.equal(started.isError, undefined)
-  const startInstructions = toolText(started)
+  const startInstructions = agentToolText(started, "startup-session-a")
   const [sharedPrompt, codingPrompt] = await Promise.all([
     readStartPrompt("shared"),
     readStartPrompt("coding"),
@@ -103,7 +103,9 @@ test("suppresses duplicate start_here modes for five seconds per agent", {
     }),
   ])
   assert.ok(simultaneous.every((result) => !result.isError))
-  const simultaneousText = simultaneous.map(toolText)
+  const simultaneousText = simultaneous.map((result) =>
+    agentToolText(result, "start-cooldown-session-a")
+  )
   assert.equal(simultaneousText.filter((text) => text === codingInstructions).length, 1)
   assert.equal(
     simultaneousText.filter((text) => /loaded recently by this agent/u.test(text)).length,
@@ -125,19 +127,22 @@ test("suppresses duplicate start_here modes for five seconds per agent", {
     name: "start_here",
     arguments: { mode: "general", task_id: "general-task" },
   })
-  assert.equal(toolText(otherMode), await buildStartHereInstructions("general"))
+  assert.equal(
+    agentToolText(otherMode, "start-cooldown-session-a"),
+    await buildStartHereInstructions("general")
+  )
   const otherAgent = await second.client.callTool({
     name: "start_here",
     arguments: { mode: "coding", task_id: "other-task" },
   })
-  assert.equal(toolText(otherAgent), codingInstructions)
+  assert.equal(agentToolText(otherAgent, "start-cooldown-session-b"), codingInstructions)
 
   now += 1
   const expired = await first.client.callTool({
     name: "start_here",
     arguments: { mode: "coding", task_id: "after-cooldown" },
   })
-  assert.equal(toolText(expired), codingInstructions)
+  assert.equal(agentToolText(expired, "start-cooldown-session-a"), codingInstructions)
 })
 
 test("suppresses rapid duplicate skill loads for the same agent", {
@@ -277,7 +282,10 @@ test("keeps a ChatGPT session locked when start_here fails", { timeout: 10_000 }
     name: "start_here",
     arguments: { mode: "coding", task_id: "retry-startup" },
   })
-  assert.equal(toolText(retry), await buildStartHereInstructions("coding"))
+  assert.equal(
+    agentToolText(retry, "startup-session-failure"),
+    await buildStartHereInstructions("coding")
+  )
   const allowed = await connected.client.callTool({ name: "shell_list", arguments: {} })
   assert.equal(allowed.isError, undefined)
 })

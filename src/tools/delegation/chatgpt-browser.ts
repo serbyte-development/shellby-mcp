@@ -8,6 +8,7 @@ const CHATGPT_OPERATION_TIMEOUT_MS = 120_000
 const COMPOSER_SELECTORS = [
   "#prompt-textarea",
   '[data-testid="prompt-textarea"]',
+  '[contenteditable="true"][data-composer-markdown]',
   '[contenteditable="true"][aria-label*="Chat with ChatGPT" i]',
   '[contenteditable="true"][aria-label*="Ask ChatGPT" i]',
   'textarea[placeholder*="Ask ChatGPT" i]:not(.wcDTda_fallbackTextarea)',

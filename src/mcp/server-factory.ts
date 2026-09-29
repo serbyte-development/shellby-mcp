@@ -1,4 +1,4 @@
-import { McpServer } from "@modelcontextprotocol/server"
+import type { McpServer } from "@modelcontextprotocol/server"
 import type { AgentObserver } from "../agent/observer.js"
 import { buildMcpInstructions, MCP_CONFIG } from "../config.js"
 import type { McpAuditRequest } from "../server/audit/audit-log.js"
@@ -24,6 +24,7 @@ import { registerSkillTools } from "../tools/skills/skill-tools.js"
 import { registerStartHereTool } from "../tools/start-here/start-here.js"
 import type { WebPageOpener } from "../tools/web/web-open.js"
 import { registerWebTool } from "../tools/web/web-tool.js"
+import { ObservedMcpServer } from "./observed-server.js"
 import { createToolRegistrar } from "./tool-registration-boundary.js"
 
 export interface McpCapabilityServices {
@@ -81,7 +82,7 @@ export function createMcpServerFactory(
 }
 
 function createMcpServer(options: CreateMcpServerOptions, profile: McpRuntimeProfile): McpServer {
-  const server = new McpServer(profile.server, {
+  const server = new ObservedMcpServer(profile.server, {
     instructions: buildMcpInstructions(),
   })
   const subagents = options.subagents

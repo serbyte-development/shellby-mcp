@@ -3,13 +3,15 @@ import { mkdirSync } from "node:fs"
 import { dirname } from "node:path"
 import { DatabaseSync } from "node:sqlite"
 
-import type { AgentIdentity } from "../../agent/context.js"
+import { type AgentIdentity, bindAgentParent } from "../../agent/context.js"
 import { asRecord } from "../../utils.js"
 
 interface PersistedDelegatedAgent {
   conversationUrl: string
   /** Optional local numbering; the conversation URL alone is sufficient to resume. */
   turnCount?: number
+  /** MCP session observed in this conversation, absent when the child never uses MCP. */
+  childSessionId?: string
 }
 
 interface PersistedDelegatedAgentEntry extends PersistedDelegatedAgent {
@@ -39,6 +41,7 @@ export interface DelegationStore {
   close(): void
 }
 
+/** Open saved conversations and restore their parent links into the canonical identity registry. */
 export function createDelegationStore(path: string): DelegationStore {
   let failure: DelegationStoreError | undefined
 
@@ -91,21 +94,40 @@ export function createDelegationStore(path: string): DelegationStore {
         agent_id TEXT NOT NULL,
         conversation_url TEXT NOT NULL,
         turn_count INTEGER NOT NULL DEFAULT 0,
+        child_session_id TEXT,
         PRIMARY KEY (parent_session_id, agent_id)
       )
     `)
+    if (
+      !db
+        .prepare("PRAGMA table_info(agents)")
+        .all()
+        .some((column) => column.name === "child_session_id")
+    ) {
+      db.exec("ALTER TABLE agents ADD COLUMN child_session_id TEXT")
+    }
+    for (const row of db
+      .prepare(
+        "SELECT parent_session_id, child_session_id FROM agents WHERE child_session_id IS NOT NULL"
+      )
+      .all()) {
+      if (typeof row.parent_session_id === "string" && typeof row.child_session_id === "string") {
+        bindAgentParent(row.child_session_id, row.parent_session_id)
+      }
+    }
     const get = db.prepare(
-      /*sql*/ `SELECT conversation_url, turn_count FROM agents WHERE parent_session_id = ? AND agent_id = ?`
+      /*sql*/ `SELECT conversation_url, turn_count, child_session_id FROM agents WHERE parent_session_id = ? AND agent_id = ?`
     )
     const list = db.prepare(
-      /*sql*/ `SELECT agent_id, conversation_url, turn_count FROM agents WHERE parent_session_id = ? ORDER BY agent_id`
+      /*sql*/ `SELECT agent_id, conversation_url, turn_count, child_session_id FROM agents WHERE parent_session_id = ? ORDER BY agent_id`
     )
     const set = db.prepare(/*sql*/ `
-      INSERT INTO agents (parent_session_id, agent_id, conversation_url, turn_count)
-      VALUES (?, ?, ?, ?)
+      INSERT INTO agents (parent_session_id, agent_id, conversation_url, turn_count, child_session_id)
+      VALUES (?, ?, ?, ?, ?)
       ON CONFLICT(parent_session_id, agent_id) DO UPDATE SET
         conversation_url = excluded.conversation_url,
-        turn_count = excluded.turn_count
+        turn_count = excluded.turn_count,
+        child_session_id = excluded.child_session_id
     `)
 
     return {
@@ -150,7 +172,8 @@ export function createDelegationStore(path: string): DelegationStore {
             parentAgent?.sessionId ?? "",
             agentId,
             value.conversationUrl,
-            value.turnCount ?? 0
+            value.turnCount ?? 0,
+            value.childSessionId ?? null
           )
         } catch (error) {
           throw markFailed("write", error)
@@ -176,6 +199,9 @@ function readAgent(row: Record<string, unknown>): PersistedDelegatedAgent {
   }
   return {
     conversationUrl: row.conversation_url,
+    ...(typeof row.child_session_id === "string" && row.child_session_id
+      ? { childSessionId: row.child_session_id }
+      : {}),
     turnCount:
       typeof row.turn_count === "number" &&
       Number.isSafeInteger(row.turn_count) &&

@@ -6,6 +6,8 @@ import { DatabaseSync } from "node:sqlite"
 import test from "node:test"
 import { setImmediate } from "node:timers/promises"
 import { chromium } from "playwright-core"
+import { getAgentChildren, getAgentIdentity, runWithAgent } from "../../../src/agent/context.js"
+import { stampAgentIdentity } from "../../../src/agent/identity-marker.js"
 import { MCP_CONFIG } from "../../../src/config.js"
 import { extractConversationId } from "../../../src/tools/delegation/chatgpt-browser.js"
 import { createDelegationStore } from "../../../src/tools/delegation/store.js"
@@ -13,6 +15,68 @@ import { ChatGptDelegationError } from "../../../src/tools/delegation/subagent-e
 import { createSubagents } from "../../../src/tools/delegation/subagents.js"
 import { browserFixture } from "../../fixtures/subagent-browser.js"
 import { getAgentResponse, sendAgentMessage } from "../../fixtures/subagents.js"
+
+for (const fork of [false, true]) {
+  test(`observed MCP responses link ${fork ? "forked" : "fresh"} subagents to their parent without registration`, async (t) => {
+    const directory = mkdtempSync(join(tmpdir(), "shellby-agent-lineage-"))
+    const previousStateDir = MCP_CONFIG.stateDir
+    MCP_CONFIG.stateDir = directory
+    const fixture = browserFixture({ completeOnSubmit: false, stableUrlOnSubmit: true })
+    t.mock.method(chromium, "connectOverCDP", async () => fixture.browser)
+    const service = createSubagents()
+    t.after(async () => {
+      await service.dispose()
+      MCP_CONFIG.stateDir = previousStateDir
+      rmSync(directory, { recursive: true, force: true })
+    })
+    const parent = runWithAgent(`lineage-parent-${fork}`, () => getAgentIdentity()!)
+    const child = runWithAgent(`lineage-child-${fork}`, () => getAgentIdentity()!)
+    const stamped = stampAgentIdentity({ content: [] }, child) as {
+      content: Array<{ text: string }>
+    }
+    const toolText = stamped.content.map((item) => item.text).join("\n")
+    const request = {
+      agentId: "worker",
+      prompt: "Review this",
+      ...(fork ? { startSource: "https://chatgpt.com/c/source-conversation" } : {}),
+    }
+    const turnId = await runWithAgent(parent.sessionId, () => sendAgentMessage(service, request))
+    assert.equal(child.parent, undefined)
+    assert.equal(fixture.branches, Number(fork))
+    assert.equal(fixture.prompts[0]?.includes("[sb:"), false)
+    fixture.toolResponse(1, toolText)
+    await setImmediate()
+    assert.equal(child.parent, parent)
+    assert.equal(child.taskSlug, undefined, "A tool result alone establishes the link")
+    fixture.toolResponse(1, toolText)
+    fixture.completeTurn(1, "Done")
+    await setImmediate()
+    assert.equal(
+      (await runWithAgent(parent.sessionId, () => getAgentResponse(service, turnId, 0))).response,
+      "Done"
+    )
+    assert.deepEqual(getAgentChildren(parent), [child])
+    const store = createDelegationStore(join(directory, "subagents.sqlite"))
+    t.after(() => store.close())
+    assert.equal(store.get(parent, "worker")?.childSessionId, child.sessionId)
+
+    const noMcpTurn = await runWithAgent(parent.sessionId, () =>
+      sendAgentMessage(service, {
+        agentId: "no-mcp",
+        prompt: "Answer without tools",
+      })
+    )
+    fixture.completeTurn(2, "No tools needed")
+    await setImmediate()
+    assert.equal(
+      (await runWithAgent(parent.sessionId, () => getAgentResponse(service, noMcpTurn, 0))).status,
+      "completed"
+    )
+    assert.equal(store.get(parent, "no-mcp")?.childSessionId, undefined)
+    assert.ok(store.get(parent, "no-mcp")?.conversationUrl)
+    assert.deepEqual(getAgentChildren(parent), [child])
+  })
+}
 
 test("saved agents start at the configured URL and resume after idle or external tab closure", async (t) => {
   const directory = mkdtempSync(join(tmpdir(), "shellby-agent-lifecycle-"))

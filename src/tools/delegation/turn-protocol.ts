@@ -9,12 +9,21 @@ export interface ChatGptTurnCompletion {
   turnId?: string
 }
 
+export interface ChatGptTurnEvents {
+  onActivity?: (activity?: AgentActivity) => void
+  onConversationId?: (conversationId: string) => void
+  /** Completed MCP tool results from the submitted turn only; transports may repeat them. */
+  onToolResponse?: (text: string) => void
+}
+
 interface NormalizedMessage {
   id?: string
+  turnId?: string
   role?: string
   status?: string
   endTurn?: boolean | null
   recipient?: string | null
+  isMcpTool: boolean
   text: string
 }
 
@@ -22,16 +31,18 @@ interface NormalizedMessage {
 export class ChatGptTurnTracker {
   private sourceId?: string
   private sourceTurnId?: string
+  private submittedTurnId?: string
   private conversationId?: string
+  private message?: NormalizedMessage
   private assistant?: NormalizedMessage
+  private readonly reportedTools = new Set<string>()
   private lastDeltaPath?: string
   private lastDeltaOperation?: string
   private complete = false
 
   constructor(
     private readonly submittedMessageId: string,
-    private readonly onActivity?: (activity?: AgentActivity) => void,
-    private readonly onConversationId?: (conversationId: string) => void
+    private readonly events: ChatGptTurnEvents = {}
   ) {}
 
   ingestFrame(payloadData: string): ChatGptTurnCompletion | undefined {
@@ -92,19 +103,21 @@ export class ChatGptTurnTracker {
 
       if (this.sourceId !== sourceId) continue
       this.captureConversationId(record)
-      if (message) this.onActivity?.(classifyActivity(message))
-
-      if (message?.role === "assistant") {
-        this.assistant = { ...message }
+      if (message) {
+        this.events.onActivity?.(classifyActivity(message))
+        this.message = message
+        if (message.role === "assistant") this.assistant = message
+        // Deltas belong to the current message, including tools, never the previous assistant.
         this.lastDeltaPath = undefined
         this.lastDeltaOperation = undefined
       }
 
       this.applyDelta(record)
+      this.reportToolResponse()
       if (record.type === "message_stream_complete") this.complete = true
     }
 
-    if (this.sourceId === sourceId && text.length > 0) this.onActivity?.()
+    if (this.sourceId === sourceId && text.length > 0) this.events.onActivity?.()
 
     return this.result()
   }
@@ -116,6 +129,7 @@ export class ChatGptTurnTracker {
   ): void {
     if (message?.role === "user" && message.id === this.submittedMessageId) {
       this.bind(sourceId, turnId)
+      if (this.sourceId === sourceId) this.submittedTurnId ??= message.turnId
     }
   }
 
@@ -129,11 +143,11 @@ export class ChatGptTurnTracker {
     const conversationId = stringValue(record.conversation_id)
     if (this.conversationId || !conversationId) return
     this.conversationId = conversationId
-    this.onConversationId?.(conversationId)
+    this.events.onConversationId?.(conversationId)
   }
 
   private applyDelta(delta: Record<string, unknown>): void {
-    if (!this.assistant) return
+    if (!this.message) return
     const explicitOperation = stringValue(delta.o)
     const operation = explicitOperation ? explicitOperation : this.lastDeltaOperation
     if (operation === "patch" && Array.isArray(delta.v)) {
@@ -150,28 +164,48 @@ export class ChatGptTurnTracker {
     if (explicitOperation) this.lastDeltaOperation = explicitOperation
     if (!path) return
 
-    this.applyAssistantDelta(operation, path, delta.v)
+    this.applyMessageDelta(operation, path, delta.v)
   }
 
-  private applyAssistantDelta(operation: string | undefined, path: string, value: unknown): void {
-    if (!this.assistant) return
+  private applyMessageDelta(operation: string | undefined, path: string, value: unknown): void {
+    if (!this.message) return
     const target = `${operation ?? ""}:${path}`
-    if (target === "append:/message/content/parts/0" && typeof value === "string") {
-      this.assistant.text += value
-      this.onActivity?.("Generating response")
+    if (
+      (target === "append:/message/content/parts/0" || target === "append:/message/content/text") &&
+      typeof value === "string"
+    ) {
+      this.message.text += value
+      this.events.onActivity?.(classifyActivity(this.message))
       return
     }
     if (target === "replace:/message/status" && typeof value === "string") {
-      this.assistant.status = value
+      this.message.status = value
       return
     }
     if (target === "replace:/message/end_turn" && typeof value === "boolean") {
-      this.assistant.endTurn = value
+      this.message.endTurn = value
       return
     }
     if (target === "replace:/message/recipient" && (typeof value === "string" || value === null)) {
-      this.assistant.recipient = value
+      this.message.recipient = value
     }
+  }
+
+  private reportToolResponse(): void {
+    const message = this.message
+    // biome-ignore lint/suspicious/noUnnecessaryConditions: Biome misses mutation of completion state across stream events.
+    if (this.complete) return
+    if (
+      !message?.isMcpTool ||
+      !message.id ||
+      !message.text ||
+      message.status !== "finished_successfully" ||
+      (this.submittedTurnId !== undefined && message.turnId !== this.submittedTurnId) ||
+      this.reportedTools.has(message.id)
+    )
+      return
+    this.reportedTools.add(message.id)
+    this.events.onToolResponse?.(message.text)
   }
 
   private result(): ChatGptTurnCompletion | undefined {
@@ -194,12 +228,20 @@ function normalizeMessage(record: Record<string, unknown>): NormalizedMessage | 
   if (!message) return undefined
   const author = asRecord(message.author)
   if (!author) return undefined
+  const metadata = asRecord(message.metadata)
+  const resource = asRecord(metadata?.invoked_resource)
   return {
     id: stringValue(message.id),
+    turnId: stringValue(metadata?.working_turn_id),
     role: stringValue(author.role),
     status: stringValue(message.status),
     endTurn: nullableBoolean(message.end_turn),
     recipient: nullableString(message.recipient),
+    // Code mode exposes the underlying MCP result as its own message, even without text().
+    isMcpTool:
+      author.role === "tool" &&
+      author.name === "api_tool.call_tool" &&
+      resource?.contains_mcp_source === true,
     text: extractMessageText(asRecord(message.content)),
   }
 }

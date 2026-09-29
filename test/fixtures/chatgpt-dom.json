@@ -1,0 +1,10 @@
+{
+  "captured_at": "2026-09-29T02:32:15.370Z",
+  "chrome_version": "154.0.8037.58",
+  "scope": "Sanitized form, editor, and Send attributes from live ChatGPT. Layout, app behavior, fork menus, and network responses are simulated by the tests.",
+  "composers": {
+    "home": "<form><textarea dir=\"auto\" spellcheck=\"true\" placeholder=\"Ask ChatGPT\" aria-label=\"Chat with ChatGPT\"></textarea><button type=\"submit\" id=\"composer-submit-button\" aria-label=\"Send prompt\" data-testid=\"send-button\" aria-disabled=\"true\"><span aria-hidden=\"true\">↑</span></button></form>",
+    "project": "<form><div contenteditable=\"true\" spellcheck=\"true\" translate=\"no\" id=\"prompt-textarea\" role=\"textbox\" aria-multiline=\"true\" aria-label=\"New chat in Test project\"><p><br></p></div><button type=\"submit\" id=\"composer-submit-button\" aria-label=\"Send prompt\" data-testid=\"send-button\" aria-disabled=\"true\"><span aria-hidden=\"true\">↑</span></button></form>",
+    "conversation": "<form><div contenteditable=\"true\" spellcheck=\"true\" translate=\"no\" id=\"prompt-textarea\" role=\"textbox\" aria-multiline=\"true\" aria-label=\"New chat in Test project\"><p><br></p></div><button type=\"submit\" id=\"composer-submit-button\" aria-label=\"Send prompt\" data-testid=\"send-button\" aria-disabled=\"true\"><span aria-hidden=\"true\">↑</span></button></form>"
+  }
+}

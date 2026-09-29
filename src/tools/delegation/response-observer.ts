@@ -1,9 +1,9 @@
 import { StringDecoder } from "node:string_decoder"
 import type { CDPSession, Page } from "playwright-core"
 
-import type { AgentActivity } from "./subagents.js"
 import {
   type ChatGptTurnCompletion,
+  type ChatGptTurnEvents,
   ChatGptTurnTracker,
   submittedUserMessageId,
 } from "./turn-protocol.js"
@@ -32,10 +32,8 @@ interface HttpStream {
  */
 export async function observeAssistantResponse(
   page: Page,
-  input: {
+  input: ChatGptTurnEvents & {
     onSubmitted?: (messageId: string) => void
-    onActivity?: (activity?: AgentActivity) => void
-    onConversationId?: (conversationId: string) => void
   }
 ): Promise<AssistantResponseObservation> {
   let messageId: string | undefined
@@ -109,8 +107,8 @@ export async function observeAssistantResponse(
     if (!submittedId || (messageId && submittedId !== messageId)) return false
     if (!messageId) {
       messageId = submittedId
-      httpTracker = new ChatGptTurnTracker(messageId, input.onActivity, input.onConversationId)
-      webSocketTracker = new ChatGptTurnTracker(messageId, input.onActivity, input.onConversationId)
+      httpTracker = new ChatGptTurnTracker(messageId, input)
+      webSocketTracker = new ChatGptTurnTracker(messageId, input)
       input.onSubmitted?.(messageId)
     }
     return true
@@ -179,7 +177,7 @@ export async function observeAssistantResponse(
         const body = result.base64Encoded
           ? Buffer.from(result.body, "base64").toString("utf8")
           : result.body
-        const fallback = new ChatGptTurnTracker(messageId, input.onActivity, input.onConversationId)
+        const fallback = new ChatGptTurnTracker(messageId, input)
         finish(fallback.ingestSse(body))
       })
       .catch(() => undefined)

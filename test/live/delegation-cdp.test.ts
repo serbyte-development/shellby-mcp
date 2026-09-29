@@ -10,6 +10,7 @@ import process from "node:process"
 import test, { type TestContext } from "node:test"
 import { setTimeout as delay } from "node:timers/promises"
 import { type Browser, chromium } from "playwright-core"
+import { getAgentIdentity, runWithAgent } from "../../src/agent/context.js"
 import { MCP_CONFIG } from "../../src/config.js"
 import {
   createBackgroundPage,
@@ -21,8 +22,13 @@ import { prepareConversationTab } from "../../src/tools/delegation/conversation-
 import { DelegationDiagnostics } from "../../src/tools/delegation/diagnostics.js"
 import { observeAssistantResponse } from "../../src/tools/delegation/response-observer.js"
 import { createSubagents } from "../../src/tools/delegation/subagents.js"
+import { mcpToolResponse } from "../fixtures/chatgpt-tool-response.js"
 import { getAgentResponse, sendAgentMessage } from "../fixtures/subagents.js"
 import { connectClient, startMcpHttpServer } from "../integrations/helpers.js"
+
+const { composers } = JSON.parse(
+  await readFile(new URL("../fixtures/chatgpt-dom.json", import.meta.url), "utf8")
+) as { composers: Record<"home" | "project" | "conversation", string> }
 
 // Opt in: starts disposable Chrome with local fixtures, never the managed profile
 // or real ChatGPT. CHROME_PATH can select another installed Chromium executable.
@@ -95,6 +101,34 @@ test("delegation contracts over a real Chrome CDP connection", {
     await Promise.all(pages.map((page) => page.close()))
   })
 
+  for (const surface of ["home", "project", "conversation"] as const) {
+    await t.test(
+      `captured ${surface} composer accepts and submits the prompt`,
+      async (composerTest) => {
+        const page = await createBackgroundPage(connected, context)
+        composerTest.after(() => page.close())
+        // A hidden legacy editor and an unrelated textbox must not win selection.
+        await page.setContent(`
+      <div contenteditable="true" role="textbox" aria-label="Search chats">Search</div>
+      <textarea hidden id="prompt-textarea" class="wcDTda_fallbackTextarea" placeholder="Ask ChatGPT"></textarea>
+      ${composerFixture(surface, "document.querySelector('#submitted').textContent = prompt")}
+      <output id="submitted"></output>
+    `)
+        const composer = await findComposer(page, AbortSignal.timeout(2_000))
+        const prompt = "Exact prompt: café 中文 🐚\nSecond line"
+        assert.equal(await page.locator('button[type="submit"]').isEnabled(), false)
+        await enterPrompt(page, composer, prompt)
+        await submitComposer(page, composer)
+        assert.equal(await page.locator("#submitted").textContent(), prompt)
+        assert.equal(
+          await page.getByRole("textbox", { name: "Search chats" }).textContent(),
+          "Search"
+        )
+        assert.equal(await page.locator("#prompt-textarea").inputValue(), "")
+      }
+    )
+  }
+
   await context.route("https://chatgpt.com/**", (route) =>
     route.fulfill({ contentType: "text/html", body: conversationFixture(route.request().url()) })
   )
@@ -155,14 +189,18 @@ test("delegation contracts over a real Chrome CDP connection", {
       const origin = await startHttpsFixture(streamTest, profile, (request, response) => {
         if (request.url !== "/backend-api/f/conversation") {
           response.writeHead(200, { "Content-Type": "text/html" })
-          response.end(`<textarea id="prompt-textarea"></textarea>
-              <button data-testid="send-button" onclick="fetch('/backend-api/f/conversation', {
+          response.end(
+            composerFixture(
+              "home",
+              `fetch('/backend-api/f/conversation', {
                 method: 'POST',
                 body: JSON.stringify({action: 'next', messages: [{
                   id: 'cdp-user', author: {role: 'user'},
-                  content: {parts: [document.querySelector('#prompt-textarea').value]}
+                  content: {parts: [prompt]}
                 }]})
-              }).then(response => response.text())">Send</button>`)
+              }).then(response => response.text())`
+            )
+          )
           return
         }
         activeResponse = response
@@ -266,21 +304,23 @@ test("delegation contracts over a real Chrome CDP connection", {
         return
       }
       response.writeHead(200, { "Content-Type": "text/html" })
-      response.end(`<textarea id="prompt-textarea"></textarea>
-        <button data-testid="send-button" onclick="
-          history.replaceState({}, '', '/c/cdp-conversation');
-          fetch('/backend-api/f/conversation', {
-            method: 'POST',
-            body: JSON.stringify({action: 'next', messages: [{
-              id: crypto.randomUUID(), author: {role: 'user'},
-              content: {parts: [document.querySelector('#prompt-textarea').value]}
-            }]})
-          }).then(response => response.text())">Send</button>
-        <script>
-          if (location.pathname.startsWith('/c/')) {
-            fetch('/backend-api/conversations/cdp-conversation').then(response => response.json())
-          }
-        </script>`)
+      response.end(`${composerFixture(
+        request.url?.startsWith("/c/") ? "conversation" : "project",
+        `
+        history.replaceState({}, '', '/c/cdp-conversation');
+        fetch('/backend-api/f/conversation', {
+          method: 'POST',
+          body: JSON.stringify({action: 'next', messages: [{
+            id: crypto.randomUUID(), author: {role: 'user'},
+            content: {parts: [prompt]}
+          }]})
+        }).then(response => response.text())`
+      )}
+      <script>
+        if (location.pathname.startsWith('/c/')) {
+          fetch('/backend-api/conversations/cdp-conversation').then(response => response.json())
+        }
+      </script>`)
     })
 
     MCP_CONFIG.stateDir = join(profile, "lifecycle-state")
@@ -470,6 +510,53 @@ test("delegation contracts over a real Chrome CDP connection", {
         assert.equal(users.length, 4)
       }
     )
+
+    await lifecycleTest.test("MCP results bind the child identity through real CDP", async () =>
+      runWithAgent("cdp-lineage-parent", async () => {
+        const parent = getAgentIdentity()!
+        const submission = users.length + 1
+        const turn = await sendAgentMessage(agentService, request)
+        await until(() => streams.has(submission), "lineage submission")
+        const childSession = "cdp-lineage-child"
+        const childClient = await connectClient(
+          mcp!.url,
+          "cdp-lineage-child",
+          undefined,
+          false,
+          childSession
+        )
+        lifecycleTest.after(() => childClient.client.close())
+        // Even the ordinary initialization error identifies an MCP caller. No new
+        // registration argument, successful start_here call, or model echo is needed.
+        const childResult = await childClient.client.callTool({
+          name: "subagent_result",
+          arguments: { turn_ids: ["unknown"], wait_ms: 0 },
+        })
+        assert.equal(childResult.isError, true)
+        assert.ok(Array.isArray(childResult.content))
+        const text = childResult.content
+          .filter((item) => item.type === "text")
+          .map((item) => item.text)
+          .join("\n")
+        const childIdentity = runWithAgent(childSession, () => getAgentIdentity()!)
+        assert.equal(childIdentity.parent, undefined)
+        streams
+          .get(submission)!
+          .write(
+            `data: ${JSON.stringify({ v: { message: mcpToolResponse("cdp-child-result", text) } })}\n\n`
+          )
+        await until(
+          () => childIdentity.parent === parent,
+          "MCP response binds the child through real CDP"
+        )
+        assert.equal(childIdentity.taskSlug, undefined)
+        streams.get(submission)!.end(completedStream("Linked", users[submission - 1]!.id))
+        await until(
+          async () => (await getAgentResponse(agentService, turn, 0)).status === "completed",
+          "linked child completes"
+        )
+      })
+    )
   })
 
   await t.test("disconnect leaves Chrome available for reconnection", async () => {
@@ -556,11 +643,28 @@ function conversationFixture(url: string): string {
       onpointerleave="document.querySelector('#branch').hidden=true"
       onclick="document.querySelector('#branch').hidden=true">Open new branch</button>
     <button id="branch" role="menuitem" hidden onclick="${branchAction}">Branch in new Chat</button>
-    <textarea id="prompt-textarea"></textarea>
-    <button data-testid="send-button"
-      onclick="document.querySelector('#submitted').textContent=document.querySelector('#prompt-textarea').value">Send</button>
+    ${composerFixture(mode === "project" ? "project" : "conversation", "document.querySelector('#submitted').textContent = prompt")}
     <div id="submitted"></div>
   </body></html>`
+}
+
+/** Captured DOM with simulated input/submit behavior; onSubmit receives the entered `prompt`. */
+function composerFixture(surface: keyof typeof composers, onSubmit: string): string {
+  return `${composers[surface]}
+    <script>
+      const form = document.querySelector('form');
+      const editor = form.querySelector('[contenteditable="true"], textarea');
+      const send = form.querySelector('button[type="submit"]');
+      form.addEventListener('input', () => {
+        send.disabled = !(editor.value ?? editor.innerText).trim();
+        send.setAttribute('aria-disabled', String(send.disabled));
+      });
+      form.addEventListener('submit', event => {
+        event.preventDefault();
+        const prompt = editor.value ?? editor.innerText;
+        ${onSubmit}
+      });
+    </script>`
 }
 
 function completedMessage(answer: string) {

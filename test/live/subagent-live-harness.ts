@@ -64,7 +64,13 @@ interface HistoryClock {
  */
 export async function openLiveSubagentHarness(t: TestContext, deadline: number) {
   const startedAt = Date.now()
-  const runId = `LIVE_RUN_${randomUUID().replaceAll("-", "")}`
+  const runId = randomUUID()
+  // Share the exact heading between submission and capture so prompt wording
+  // cannot silently break source/fork correlation.
+  const promptHeadings: Record<LiveAgent, string> = {
+    source: `Workstream: ${runId}/notes.`,
+    fork: `Workstream: ${runId}/draft.`,
+  }
   const agents: Record<LiveAgent, { id: string; url?: string; fixture: URL }> = {
     source: {
       id: AGENT_ID,
@@ -177,7 +183,7 @@ export async function openLiveSubagentHarness(t: TestContext, deadline: number) 
       const messages = requestBody?.messages as Array<{ content?: { parts?: unknown[] } }>
       const prompt = messages.flatMap((message) => message.content?.parts ?? []).join("\n")
       const agent = (Object.keys(agents) as LiveAgent[]).find((key) =>
-        prompt.includes(`Test agent ${agents[key].id}.`)
+        prompt.includes(promptHeadings[key])
       )
       if (!agent) return
       submissions.push({ agent, elapsed_ms: elapsed(), message_id: messageId, prompt })
@@ -205,13 +211,14 @@ export async function openLiveSubagentHarness(t: TestContext, deadline: number) 
       prompt: string,
       options: { agent?: LiveAgent; startSource?: string } = {}
     ): Promise<RunTurn> {
-      const agent = agents[options.agent ?? "source"]
+      const key = options.agent ?? "source"
+      const agent = agents[key]
       const submissionIndex = submissions.length
       const result = await call("subagent_run", {
         agents: [
           {
             agent_id: agent.id,
-            prompt: `Test run ${runId}. Test agent ${agent.id}.\n${prompt}`,
+            prompt: `${promptHeadings[key]}\n${prompt}`,
             ...(options.startSource ? { start_from: options.startSource } : {}),
           },
         ],
@@ -226,7 +233,7 @@ export async function openLiveSubagentHarness(t: TestContext, deadline: number) 
           await delay(10)
         assert.equal(submissions.length, submissionIndex + 1, "Observe exactly one new submission")
         const submission = submissions[submissionIndex]!
-        assert.equal(submission.agent, options.agent ?? "source")
+        assert.equal(submission.agent, key)
         submission.turn_id = turn.turn_id
         diagnostics.submitted(turn.turn_id, submission.message_id)
       }

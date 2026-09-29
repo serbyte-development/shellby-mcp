@@ -20,9 +20,10 @@ export function AgentCard({
   onDismiss: () => void
   onDismissInstruction: (instructionId: string) => void
 }) {
-  const [selectedCall, setSelectedCall] = useState<AgentCall>()
+  const [selectedCallId, setSelectedCallId] = useState<string>()
   const active = now - agent.lastSeenAt < 30_000
   const recent = [agent.current, ...agent.recent].filter((call): call is AgentCall => Boolean(call))
+  const selectedCall = recent.find((call) => call.id === selectedCallId)
 
   return (
     <Card className="overflow-hidden" role="region" aria-label={agent.id}>
@@ -67,14 +68,14 @@ export function AgentCard({
           </h3>
           <div className="max-h-32 space-y-1 overflow-y-auto pr-1">
             {recent.map((call) => (
-              <ActivityRow key={call.id} call={call} onClick={() => setSelectedCall(call)} />
+              <ActivityRow key={call.id} call={call} onClick={() => setSelectedCallId(call.id)} />
             ))}
           </div>
         </div>
 
         <SteerComposer agent={agent} onDismissInstruction={onDismissInstruction} />
       </CardContent>
-      <ToolCallModal call={selectedCall} onClose={() => setSelectedCall(undefined)} />
+      <ToolCallModal call={selectedCall} onClose={() => setSelectedCallId(undefined)} />
     </Card>
   )
 }

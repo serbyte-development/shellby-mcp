@@ -47,13 +47,30 @@ export function ToolCallModal({ call, onClose }: { call?: AgentCall; onClose: ()
               </Button>
             </Dialog.Close>
           </div>
-          <div className="min-h-0 overflow-auto p-5">
+          <div className="min-h-0 space-y-4 overflow-auto p-5">
+            <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+              Input
+            </h3>
             <pre className="overflow-x-auto rounded-lg border bg-muted/30 p-4 text-xs leading-5">
               <code
                 className="hljs bg-transparent p-0"
                 dangerouslySetInnerHTML={{ __html: highlighted }}
               />
             </pre>
+            <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+              Output returned to agent
+            </h3>
+            {call?.response !== undefined ? (
+              <pre className="whitespace-pre-wrap break-words rounded-lg border bg-muted/30 p-4 text-xs leading-5">
+                <code>{call.response || "No content returned."}</code>
+              </pre>
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                {call?.status === "running"
+                  ? "Waiting for the tool to return…"
+                  : "Output was not captured for this call."}
+              </p>
+            )}
           </div>
         </Dialog.Content>
       </Dialog.Portal>

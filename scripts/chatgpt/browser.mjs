@@ -12,7 +12,9 @@ const optional = process.argv.includes("--optional")
 const endpoint = new URL(MCP_CONFIG.chatGpt.cdpEndpoint)
 const profileDir = join(MCP_CONFIG.stateDir, "chatgpt-chrome")
 const markerPath = join(profileDir, ".configured")
-const compactWindowSize = "430,900"
+const mobileUserAgent =
+  "Mozilla/5.0 (Linux; Android 14; Pixel 8 Pro) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Mobile Safari/537.36"
+const mobileWindowSize = "430,900"
 const configured = await exists(markerPath)
 const cdpReady = await isCdpReady(endpoint)
 
@@ -66,25 +68,22 @@ const port = endpoint.port
 const child = spawn(
   chrome,
   [
-    // Expose CDP only on localhost so Shellby can attach without opening it to the network.
     `--remote-debugging-port=${port}`,
     "--remote-debugging-address=127.0.0.1",
     // Keep a dedicated persistent Chrome profile so site auth survives browser restarts.
     `--user-data-dir=${profileDir}`,
-    // Start compact while still using normal desktop Chrome behavior and its native user agent.
-    `--window-size=${compactWindowSize}`,
+    //  Generation will break if this is changed from mobile
+    `--user-agent=${mobileUserAgent}`,
+
+    `--window-size=${mobileWindowSize}`,
     // Keep agent tabs responsive while Chrome is hidden or in the background. These deliberately
     // override Chrome's normal background throttling so automation can continue at foreground speed.
     "--disable-background-timer-throttling",
     "--disable-renderer-backgrounding",
-    // Extensions are unnecessary for the dedicated automation profile.
     "--disable-extensions",
-    // This profile is only for site sessions, so Chrome account sync is unnecessary.
     "--disable-sync",
-    // Skip bundled Chrome apps that are unrelated to browser automation.
     "--disable-default-apps",
     // Skip browser-only background services that this dedicated automation profile does not use.
-    "--disable-features=OptimizationGuideModelDownloading,MediaRouter",
     // Avoid crash-reporting overhead for this disposable browser process.
     "--disable-breakpad",
     // Bound caches so the persistent profile does not grow indefinitely.

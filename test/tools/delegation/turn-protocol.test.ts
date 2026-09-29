@@ -1,12 +1,12 @@
 import assert from "node:assert/strict"
 import test from "node:test"
-
 import {
   ChatGptTurnTracker,
   extractConversationMessages,
   findLatestAssistantAfterMessage,
   submittedUserMessageId,
 } from "../../../src/tools/delegation/turn-protocol.js"
+import { mcpToolResponse } from "../../fixtures/chatgpt-tool-response.js"
 
 function turnFrame(topicId: string, encodedItem: string): string {
   return JSON.stringify([
@@ -34,6 +34,78 @@ function message(
 ): string {
   return `event: delta\ndata: ${JSON.stringify({ conversation_id: options.conversationId, v: { message: { id: options.id ?? `${role}-1`, author: { role }, content: { content_type: "text", parts: [text] }, status: options.status ?? "finished_successfully", end_turn: options.endTurn ?? null, metadata: {}, recipient: options.recipient ?? "all" } } })}\n\n`
 }
+
+test("only fresh completed MCP results are reported; fork history, echoes, and other topics are ignored", () => {
+  const responses: string[] = []
+  const tracker = new ChatGptTurnTracker("submitted", {
+    onToolResponse: (text) => responses.push(text),
+  })
+  const topic = "conversation-turn-current"
+  const encode = (value: unknown) => `data: ${JSON.stringify(value)}\n\n`
+  const send = (value: unknown, source = topic) =>
+    tracker.ingestFrame(turnFrame(source, encode(value)))
+  const tool = mcpToolResponse("current-tool", "result\n[sb:K7Q2]")
+  send({ v: { message: tool } }) // Before the submitted user message: inherited history.
+  send({
+    type: "input_message",
+    input_message: {
+      id: "submitted",
+      author: { role: "user" },
+      content: { parts: ["new prompt"] },
+      metadata: { working_turn_id: "fixture-turn" },
+    },
+  })
+  send({ v: { message: tool } }, "conversation-turn-other")
+  send({
+    v: {
+      message: {
+        ...tool,
+        id: "old-tool",
+        metadata: {
+          ...tool.metadata,
+          working_turn_id: "inherited-turn",
+        },
+      },
+    },
+  })
+  send({ v: { message: { ...tool, id: "echo", author: { role: "assistant" } } } })
+  send({
+    v: {
+      message: { ...tool, id: "code-mode-echo", author: { role: "tool", name: "functions.exec" } },
+    },
+  })
+  send({
+    v: { message: { ...tool, id: "non-mcp-tool", metadata: { working_turn_id: "fixture-turn" } } },
+  })
+  assert.deepEqual(responses, [])
+  send({
+    v: { message: { ...tool, status: "in_progress", content: { ...tool.content, text: "" } } },
+  })
+  send({ p: "/message/content/text", o: "append", v: tool.content.text })
+  assert.deepEqual(responses, [], "Incomplete results cannot establish identity")
+  send({ p: "/message/status", o: "replace", v: "finished_successfully" })
+  send({ v: { message: tool } })
+  assert.deepEqual(responses, [tool.content.text], "Replay is idempotent")
+  tracker.ingestFrame(
+    turnFrame(topic, message("assistant", "Actual final answer", { endTurn: true }))
+  )
+  const result = send({ type: "message_stream_complete" })
+  assert.equal(result?.text, "Actual final answer")
+  send({ v: { message: { ...tool, id: "after-completion" } } })
+  assert.equal(responses.length, 1)
+})
+
+test("tool deltas never modify the prior assistant response", () => {
+  const tracker = new ChatGptTurnTracker("user-1")
+  tracker.ingestSse(message("user", "prompt"))
+  tracker.ingestSse(message("assistant", "answer", { endTurn: true }))
+  const tool = mcpToolResponse("tool", "irrelevant")
+  tracker.ingestSse(`data: ${JSON.stringify({ v: { message: tool } })}\n\n`)
+  tracker.ingestSse(
+    'data: {"p":"/message/content/text","o":"append","v":"should not enter answer"}\n\n'
+  )
+  assert.equal(tracker.ingestSse('data: {"type":"message_stream_complete"}\n\n')?.text, "answer")
+})
 
 test("history recovery rejects an older identical prompt before the current turn appears", () => {
   const staleHistory = [
@@ -141,13 +213,12 @@ test("outgoing request identity ignores malformed requests and non-submission ac
 test("CDP tracker binds only the submitted user-message ID and reconstructs exact final Markdown", () => {
   const activities: string[] = []
   const conversationIds: string[] = []
-  const tracker = new ChatGptTurnTracker(
-    "user-1",
-    (activity) => {
+  const tracker = new ChatGptTurnTracker("user-1", {
+    onActivity: (activity) => {
       if (activity) activities.push(activity)
     },
-    (conversationId) => conversationIds.push(conversationId)
-  )
+    onConversationId: (conversationId) => conversationIds.push(conversationId),
+  })
   const topic = "conversation-turn-turn-1"
 
   tracker.ingestFrame(
@@ -221,7 +292,9 @@ test("HTTP SSE tracker reconstructs the same final assistant response", () => {
 
 test("HTTP SSE tracker counts bound heartbeats and safety review updates as activity without changing the status label", () => {
   const activities: Array<string | undefined> = []
-  const tracker = new ChatGptTurnTracker("user-1", (activity) => activities.push(activity))
+  const tracker = new ChatGptTurnTracker("user-1", {
+    onActivity: (activity) => activities.push(activity),
+  })
 
   tracker.ingestSse(": ping - before-bind\r\n\r\n")
   assert.deepEqual(activities, [])
@@ -250,7 +323,9 @@ test("HTTP SSE tracker counts bound heartbeats and safety review updates as acti
 
 test("CDP tracker counts bound turn stream traffic as activity even when it has no status label", () => {
   const activities: Array<string | undefined> = []
-  const tracker = new ChatGptTurnTracker("user-1", (activity) => activities.push(activity))
+  const tracker = new ChatGptTurnTracker("user-1", {
+    onActivity: (activity) => activities.push(activity),
+  })
   const topic = "conversation-turn-turn-progress"
 
   tracker.ingestFrame(turnFrame(topic, message("user", "review")))

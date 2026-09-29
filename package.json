@@ -14,6 +14,7 @@
     "auth:reset": "node --import tsx src/auth/reset.ts",
     "build": "rm -rf dist && tsc -p tsconfig.build.json",
     "dev": "node --import tsx --watch src/index.ts",
+    "fixtures:chatgpt:refresh": "node --import tsx scripts/chatgpt/capture-fixtures.ts",
     "format": "biome format --write .",
     "inspect": "npx @modelcontextprotocol/inspector",
     "lint": "biome check .",

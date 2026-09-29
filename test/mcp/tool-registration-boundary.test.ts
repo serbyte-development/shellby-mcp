@@ -1,15 +1,276 @@
 import assert from "node:assert/strict"
 import test from "node:test"
-import { Client } from "@modelcontextprotocol/client"
-import { InMemoryTransport, McpServer } from "@modelcontextprotocol/server"
+import { setImmediate } from "node:timers/promises"
+import { Client, StreamableHTTPClientTransport } from "@modelcontextprotocol/client"
+import { InMemoryTransport } from "@modelcontextprotocol/server"
 import { z } from "zod"
 
-import { runWithAgent, setAgentTaskSlug } from "../../src/agent/context.js"
+import { getAgentIdentity, runWithAgent, setAgentTaskSlug } from "../../src/agent/context.js"
+import { identityFromToolResponse } from "../../src/agent/identity-marker.js"
 import { createAgentObserver } from "../../src/agent/observer.js"
+import { ObservedMcpServer as McpServer } from "../../src/mcp/observed-server.js"
 import { ToolError } from "../../src/mcp/tool-error.js"
 import { createToolRegistrar } from "../../src/mcp/tool-registration-boundary.js"
 import type { McpAuditCall } from "../../src/server/audit/audit-request.js"
+import { startMcpHttpServer } from "../../src/server/http-server.js"
 import { delegatedTurnsResult } from "../../src/tools/delegation/subagent-tools.js"
+
+test("keeps calls running through asynchronous SDK validation and correlates concurrent responses", {
+  timeout: 10_000,
+}, async (t) => {
+  const server = new McpServer({ name: "concurrent-validation", version: "1.0.0" })
+  const client = new Client({ name: "concurrent-validation-client", version: "1.0.0" })
+  t.after(() => Promise.all([client.close(), server.close()]))
+  const agentObserver = createAgentObserver()
+  let releaseValidation!: () => void
+  let validationStarted!: () => void
+  const release = new Promise<void>((resolve) => {
+    releaseValidation = resolve
+  })
+  const started = new Promise<void>((resolve) => {
+    validationStarted = resolve
+  })
+  t.after(() => releaseValidation())
+  const outputSchema = z.object({ name: z.string() }).superRefine(async ({ name }, context) => {
+    if (name === "slow") {
+      validationStarted()
+      await release
+      context.addIssue({ code: "custom", message: "Rejected after validation completed" })
+    }
+  })
+  const validate = t.mock.method(outputSchema["~standard"], "validate")
+  const register = createToolRegistrar(server, { structuredOutput: true, agentObserver })
+  register(
+    "concurrent",
+    {
+      inputSchema: z.object({ name: z.string() }),
+      outputSchema,
+    },
+    async ({ name }) => ({ structuredContent: { name }, content: [] })
+  )
+  const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair()
+  await Promise.all([server.connect(serverTransport), client.connect(clientTransport)])
+  await runWithAgent("concurrent-validation", async () => {
+    setAgentTaskSlug("concurrent-validation")
+    const slow = client.callTool({ name: "concurrent", arguments: { name: "slow" } })
+    await started
+    const slowId = agentObserver.listAgents()[0]?.current?.id
+    assert.ok(slowId)
+    assert.equal(agentObserver.listAgents()[0]?.recent.length, 0)
+    await client.callTool({ name: "concurrent", arguments: { name: "fast" } })
+    assert.equal(agentObserver.listAgents()[0]?.current?.id, slowId)
+    assert.match(agentObserver.listAgents()[0]?.recent[0]?.response ?? "", /fast/u)
+    releaseValidation()
+    const received = await slow
+    assert.equal(received.isError, true)
+    const finished = agentObserver.listAgents()[0]
+    assert.equal(finished?.current, undefined)
+    assert.equal(finished?.recent.length, 2)
+    assert.equal(finished?.recent[0]?.id, slowId)
+    assert.equal(finished?.recent[0]?.status, "failed")
+    assert.match(finished?.recent[0]?.response ?? "", /Rejected after validation completed/u)
+    assert.equal(validate.mock.callCount(), 2, "Only the SDK validates each output once")
+  })
+})
+
+test("settles a disconnected call once while SDK output validation is pending", {
+  timeout: 10_000,
+}, async (t) => {
+  const server = new McpServer({ name: "disconnected-validation", version: "1.0.0" })
+  const client = new Client({ name: "disconnected-validation-client", version: "1.0.0" })
+  t.after(() => Promise.all([client.close(), server.close()]))
+  const agentObserver = createAgentObserver()
+  const finished = t.mock.method(agentObserver, "finishTool")
+  const failed = t.mock.method(agentObserver, "failTool")
+  let releaseValidation!: () => void
+  let validationStarted!: () => void
+  const release = new Promise<void>((resolve) => {
+    releaseValidation = resolve
+  })
+  const started = new Promise<void>((resolve) => {
+    validationStarted = resolve
+  })
+  t.after(() => releaseValidation())
+  const register = createToolRegistrar(server, { structuredOutput: true, agentObserver })
+  register(
+    "disconnect",
+    {
+      outputSchema: z.object({ answer: z.string() }).superRefine(async () => {
+        validationStarted()
+        await release
+      }),
+    },
+    async () => ({ structuredContent: { answer: "Finished after disconnection" }, content: [] })
+  )
+  const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair()
+  await Promise.all([server.connect(serverTransport), client.connect(clientTransport)])
+  await runWithAgent("disconnected-validation", async () => {
+    setAgentTaskSlug("disconnected-validation")
+    const disconnected = assert.rejects(client.callTool({ name: "disconnect" }), /closed/iu)
+    await started
+    assert.ok(agentObserver.listAgents()[0]?.current)
+    await server.close()
+    await disconnected
+    const observed = agentObserver.listAgents()[0]
+    assert.equal(observed?.current, undefined)
+    assert.equal(observed?.recent[0]?.status, "failed")
+    assert.equal(observed?.recent[0]?.response, undefined)
+    assert.equal(failed.mock.callCount(), 1)
+    releaseValidation()
+    await setImmediate()
+    assert.equal(failed.mock.callCount(), 1)
+    assert.equal(finished.mock.callCount(), 0)
+  })
+})
+
+for (const mode of ["auto", "legacy"] as const) {
+  test(`dashboard HTTP output matches SDK validation errors in ${mode} mode`, {
+    timeout: 10_000,
+  }, async (t) => {
+    const agentObserver = createAgentObserver()
+    const running = await startMcpHttpServer(
+      {
+        agentObserver,
+        createMcpServer: (context) => {
+          const server = new McpServer({ name: "http-validation", version: "1.0.0" })
+          const register = createToolRegistrar(server, { structuredOutput: true, ...context })
+          register("start_here", {}, async () => {
+            setAgentTaskSlug("http-validation")
+            return { content: [{ type: "text", text: "Ready" }] }
+          })
+          register(
+            "invalid_output",
+            { outputSchema: z.object({ answer: z.string() }) },
+            async () => ({
+              structuredContent: { answer: 123 },
+              content: [],
+            })
+          )
+          return server
+        },
+      },
+      { host: "127.0.0.1", port: 0 }
+    )
+    t.after(() => running.close())
+    const client = new Client(
+      { name: "http-validation-client", version: "1.0.0" },
+      { versionNegotiation: { mode } }
+    )
+    t.after(() => client.close())
+    await client.connect(
+      new StreamableHTTPClientTransport(new URL(running.url), {
+        requestInit: { headers: { "x-openai-session": `http-validation-${mode}` } },
+      })
+    )
+    await client.callTool({ name: "start_here" })
+    const received = await client.callTool({ name: "invalid_output" })
+    assert.equal(received.isError, true)
+    assert.ok(Array.isArray(received.content))
+    const expected = received.content
+      .flatMap((item) => (item.type === "text" ? [item.text] : []))
+      .join("\n\n")
+    const dashboard = await fetch(`http://${running.host}:${running.port}/ui/api/agents`)
+    const body = (await dashboard.json()) as {
+      agents: Array<{ recent: Array<{ status: string; response?: string }> }>
+    }
+    assert.equal(body.agents[0]?.recent[0]?.status, "failed")
+    assert.equal(body.agents[0]?.recent[0]?.response, expected)
+  })
+}
+
+for (const structuredOutput of [false, true]) {
+  test(`captures SDK output validation failures with structuredOutput=${structuredOutput}`, async (t) => {
+    const server = new McpServer({ name: "validated-response", version: "1.0.0" })
+    const client = new Client({ name: "validated-response-client", version: "1.0.0" })
+    t.after(() => Promise.all([client.close(), server.close()]))
+    const agentObserver = createAgentObserver()
+    const finished = t.mock.method(agentObserver, "finishTool")
+    const failed = t.mock.method(agentObserver, "failTool")
+    const audits: Array<Parameters<McpAuditCall["finish"]>[0]> = []
+    const register = createToolRegistrar(server, {
+      structuredOutput,
+      agentObserver,
+      auditRequest: {
+        claimTool: () => ({
+          recordError: () => {},
+          finish: (entry) => {
+            audits.push(entry)
+          },
+        }),
+        finishTransport: () => {},
+      },
+    })
+    const callback = t.mock.fn(async ({ missing }: { missing: boolean }) => ({
+      ...(missing ? {} : { structuredContent: { answer: 123 } }),
+      content: [{ type: "text" as const, text: "This rejected answer must not appear as output." }],
+    }))
+    register(
+      "validated",
+      {
+        nativeContent: true,
+        inputSchema: z.object({ missing: z.boolean() }),
+        outputSchema: z.object({ answer: z.string() }),
+      },
+      callback
+    )
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair()
+    await Promise.all([server.connect(serverTransport), client.connect(clientTransport)])
+    await runWithAgent(`validated-response-${structuredOutput}`, async () => {
+      setAgentTaskSlug("validated-response")
+      for (const missing of [false, true]) {
+        const received = await client.callTool({ name: "validated", arguments: { missing } })
+        assert.equal(received.isError, true)
+        assert.ok(Array.isArray(received.content))
+        const expected = received.content
+          .flatMap((block) => (block.type === "text" ? [block.text] : []))
+          .join("\n\n")
+        assert.match(expected, /Output validation error/u)
+        const observed = agentObserver.listAgents()[0]?.recent[0]
+        assert.equal(observed?.status, "failed")
+        assert.equal(observed?.response, expected)
+        assert.deepEqual(audits.at(-1)?.modelResult, received)
+      }
+    })
+    assert.equal(callback.mock.callCount(), 2)
+    assert.equal(finished.mock.callCount(), 0, "Never publish success before SDK validation")
+    assert.equal(failed.mock.callCount(), 2)
+    assert.equal(audits.length, 2)
+  })
+}
+
+for (const structuredOutput of [false, true]) {
+  test(`captures the returned response and steering with structuredOutput=${structuredOutput}`, async (t) => {
+    const server = new McpServer({ name: "response-capture", version: "1.0.0" })
+    const client = new Client({ name: "response-capture-client", version: "1.0.0" })
+    t.after(() => Promise.all([client.close(), server.close()]))
+    const agentObserver = createAgentObserver()
+    const register = createToolRegistrar(server, { structuredOutput, agentObserver })
+    register("capture", { inputSchema: z.object({ fail: z.boolean() }) }, async ({ fail }) => {
+      const agent = agentObserver.listAgents()[0]
+      assert.ok(agent)
+      agentObserver.queueInstruction(agent.id, "Captured steering instruction")
+      if (fail) throw new ToolError("EXPECTED", "Captured failure")
+      return { structuredContent: { answer: "Captured answer" }, content: [] }
+    })
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair()
+    await Promise.all([server.connect(serverTransport), client.connect(clientTransport)])
+    await runWithAgent(`response-capture-${structuredOutput}`, async () => {
+      setAgentTaskSlug("response-capture")
+      for (const fail of [false, true]) {
+        const result = await client.callTool({ name: "capture", arguments: { fail } })
+        const captured = agentObserver.listAgents()[0]?.recent[0]
+        assert.equal(captured?.status, fail ? "failed" : "completed")
+        assert.ok(captured?.response)
+        assert.match(captured.response, fail ? /EXPECTED: Captured failure/u : /Captured answer/u)
+        assert.match(captured.response, /Human instruction: Captured steering instruction/u)
+        assert.ok(Array.isArray(result.content))
+        for (const block of result.content) {
+          if (block.type === "text") assert.ok(captured.response.includes(block.text))
+        }
+      }
+    })
+  })
+}
 
 for (const structuredOutput of [false, true]) {
   test(`preserves SDK validation and callback conventions with structuredOutput=${structuredOutput}`, async (t) => {
@@ -201,6 +462,13 @@ for (const structuredOutput of [false, true]) {
       assert.equal(calls, 0)
       assert.equal(rejected.isError, true)
       assert.match(JSON.stringify(rejected.content), /INITIALIZATION_REQUIRED: /u)
+      assert.ok(Array.isArray(rejected.content))
+      const firstMarker = rejected.content.at(-1)
+      assert.equal(firstMarker?.type, "text")
+      assert.equal(identityFromToolResponse(firstMarker.text), getAgentIdentity())
+      const footer = firstMarker.text.split("\n").at(-1)
+      assert.ok(footer)
+      assert.match(footer, /^\[sb:[A-Z0-9]{4}\]$/u)
       assert.equal(agentObserver.listAgents()[0]?.recent[0]?.status, "failed")
       assert.equal(audits.length, 1)
 
@@ -212,8 +480,9 @@ for (const structuredOutput of [false, true]) {
       ] as const) {
         const result = await client.callTool({ name })
         assert.equal(result.isError, true)
+        assert.ok(Array.isArray(result.content))
         assert.deepEqual(result.content, [
-          { type: "text", text: `${expected}\n\n**Notice:** fixture notice` },
+          { type: "text", text: `${expected}\n\n**Notice:** fixture notice\n\n${footer}` },
         ])
         assert.deepEqual(
           result.structuredContent,
@@ -241,6 +510,10 @@ for (const structuredOutput of [false, true]) {
 
       const success = await client.callTool({ name: "success" })
       assert.notEqual(success.isError, true)
+      assert.ok(Array.isArray(success.content))
+      const successText = success.content.at(-1)
+      assert.ok(successText?.type === "text")
+      assert.equal(identityFromToolResponse(successText.text), getAgentIdentity())
       assert.equal(failed.mock.callCount(), 6)
       assert.equal(finished.mock.callCount(), 1)
       assert.equal(audits.length, 7)

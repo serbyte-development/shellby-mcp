@@ -3,7 +3,8 @@ import { randomUUID } from "node:crypto"
 import { join } from "node:path"
 import type { Browser, BrowserContext, Page } from "playwright-core"
 
-import { type AgentIdentity, getAgentIdentity } from "../../agent/context.js"
+import { type AgentIdentity, bindAgentParent, getAgentIdentity } from "../../agent/context.js"
+import { identityFromToolResponse } from "../../agent/identity-marker.js"
 import { MCP_CONFIG } from "../../config.js"
 import {
   assertAuthenticated,
@@ -113,6 +114,7 @@ type BrowserAgentStatus = "idle" | "uncertain" | AgentActivity
 
 interface AgentState {
   agentId: string
+  identity?: AgentIdentity
   status: BrowserAgentStatus
   page?: Page
   conversationUrl?: string
@@ -317,6 +319,13 @@ export function createSubagents(): Subagents {
         onConversationId: (conversationId) =>
           recordConversation(parentAgent, agent, conversationId),
         onActivity: (activity) => recordActivity(agent, turn, activity, Date.now()),
+        onToolResponse: (text) => {
+          if (!parentAgent || disposed || turn.status !== "running") return
+          const child = identityFromToolResponse(text)
+          if (!child || agent.identity) return
+          agent.identity = bindAgentParent(child.sessionId, parentAgent.sessionId)
+          if (agent.identity) persistAgent(parentAgent, agent)
+        },
       })
 
       await submitMessageToBrowser(page, submittedPrompt, {
@@ -778,6 +787,10 @@ export function createSubagents(): Subagents {
       lastUsedAt: now,
       turnCount: persisted?.turnCount ?? 0,
       conversationUrl: persisted?.conversationUrl,
+      identity:
+        parentAgent && persisted?.childSessionId
+          ? bindAgentParent(persisted.childSessionId, parentAgent.sessionId)
+          : undefined,
     }
   }
 
@@ -899,6 +912,7 @@ export function createSubagents(): Subagents {
       store.set(parentAgent, agent.agentId, {
         conversationUrl: agent.conversationUrl,
         turnCount: agent.turnCount,
+        childSessionId: agent.identity?.sessionId,
       })
     } catch (error) {
       if (!(error instanceof DelegationStoreError)) {

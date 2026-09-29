@@ -1,12 +1,49 @@
 import assert from "node:assert/strict"
+import { execFileSync } from "node:child_process"
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
+import process from "node:process"
 import { DatabaseSync } from "node:sqlite"
 import test from "node:test"
 
-import type { AgentIdentity } from "../../../src/agent/context.js"
+import { type AgentIdentity, getAgentIdentity, runWithAgent } from "../../../src/agent/context.js"
 import { createDelegationStore, DelegationStoreError } from "../../../src/tools/delegation/store.js"
+
+test("restores parent references from existing identity IDs in a fresh process", () => {
+  const directory = mkdtempSync(join(tmpdir(), "shellby-parent-links-"))
+  const path = join(directory, "subagents.sqlite")
+  try {
+    const parent = runWithAgent("persisted-parent", () => getAgentIdentity()!)
+    const store = createDelegationStore(path)
+    store.set(parent, "worker", {
+      conversationUrl: "https://chatgpt.com/c/saved-child",
+      childSessionId: "persisted-child",
+    })
+    store.set(parent, "no-mcp", { conversationUrl: "https://chatgpt.com/c/no-mcp" })
+    store.close()
+    const script = `
+      import assert from "node:assert/strict";
+      import { createDelegationStore } from ${JSON.stringify(new URL("../../../src/tools/delegation/store.ts", import.meta.url).href)};
+      import { getAgentIdentity, getAgentChildren, runWithAgent } from ${JSON.stringify(new URL("../../../src/agent/context.ts", import.meta.url).href)};
+      const store = createDelegationStore(process.argv[1]);
+      const child = runWithAgent("persisted-child", () => getAgentIdentity());
+      const parent = runWithAgent("persisted-parent", () => getAgentIdentity());
+      assert.equal(child.parent, parent);
+      assert.deepEqual(getAgentChildren(parent), [child]);
+      assert.equal(parent.taskSlug, undefined);
+      assert.equal(store.get(parent, "worker").childSessionId, child.sessionId);
+      assert.equal(store.get(parent, "no-mcp").childSessionId, undefined);
+      store.close();
+    `
+    execFileSync(process.execPath, ["--import", "tsx", "--input-type=module", "-e", script, path], {
+      stdio: "pipe",
+      timeout: 10_000,
+    })
+  } finally {
+    rmSync(directory, { recursive: true, force: true })
+  }
+})
 
 test("persists subagent conversation state across store reopen", () => {
   const directory = mkdtempSync(join(tmpdir(), "shellby-subagents-"))

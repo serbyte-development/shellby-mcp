@@ -3,6 +3,7 @@ import { EventEmitter } from "node:events"
 import { setImmediate } from "node:timers/promises"
 import type { Browser, BrowserContext, Page } from "playwright-core"
 import { extractConversationId } from "../../src/tools/delegation/chatgpt-browser.js"
+import { mcpToolResponse } from "./chatgpt-tool-response.js"
 
 export function browserFixture(
   options: {
@@ -27,6 +28,7 @@ export function browserFixture(
   prompts: string[]
   navigations: string[]
   completeTurn: (submission: number, text: string) => void
+  toolResponse: (submission: number, text: string) => void
 } {
   const pages: Page[] = []
   const sessions = new Map<
@@ -34,6 +36,7 @@ export function browserFixture(
     EventEmitter & { send(method: string): Promise<unknown>; detach(): Promise<void> }
   >()
   const completions = new Map<number, (text: string) => void>()
+  const toolResponses = new Map<number, (text: string) => void>()
   let connected = true
   let submissions = 0
   let branches = 0
@@ -174,6 +177,14 @@ export function browserFixture(
                   v: { message: userMessage },
                   conversation_id: conversationId,
                 })
+                toolResponses.set(submissions, (text) => {
+                  cdp.emit("Network.dataReceived", {
+                    requestId: "turn",
+                    data: Buffer.from(
+                      encode({ v: { message: mcpToolResponse("tool-result", text) } })
+                    ).toString("base64"),
+                  })
+                })
                 completions.set(submissions, (text) => {
                   const body =
                     encode({
@@ -236,6 +247,11 @@ export function browserFixture(
     },
     prompts,
     navigations,
+    toolResponse: (submission, text) => {
+      const respond = toolResponses.get(submission)
+      assert.ok(respond, `Submission ${submission} must exist before its tool response`)
+      respond(text)
+    },
     completeTurn: (submission, text) => {
       const complete = completions.get(submission)
       assert.ok(complete, `Unknown submission ${submission}`)

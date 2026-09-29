@@ -25,9 +25,9 @@ test("live MCP subagent lifecycle with optional real conversation fork", {
   hardExitTimer.unref()
 
   const live = await openLiveSubagentHarness(t, Date.now() + LIVE_TIMEOUT_MS - 15_000)
-  const contextKey = `LIVE_CTX_${randomUUID().replaceAll("-", "")}`
-  const waitMarker = `WAIT_DONE_${randomUUID().replaceAll("-", "")}`
-  const sourceCheckpoint = `SOURCE_LAST_${randomUUID().replaceAll("-", "")}`
+  const contextKey = `document-${randomUUID()}`
+  const waitMarker = `receipt-${randomUUID()}`
+  const sourceCheckpoint = `revision-${randomUUID()}`
   const literal = "https://example.com/, `web.run`, --- and café 🧪 中文"
   const responses = new Map<string, string>()
 
@@ -35,15 +35,14 @@ test("live MCP subagent lifecycle with optional real conversation fork", {
     await live.stage("startup and real 4.5-minute tool wait")
     const first = await live.run(
       [
-        "This is a live subagent lifecycle test. Do not use connectors or delegate work.",
-        `Remember this exact context key for later turns: ${contextKey}`,
-        `Literal formatting to preserve: ${literal}`,
-        "Use Code Mode to execute this JavaScript, actually awaiting the timer:",
-        `const started = Date.now(); await new Promise(resolve => setTimeout(resolve, ${LONG_WAIT_MS})); text({ marker: "${waitMarker}", elapsed_ms: Date.now() - started });`,
-        "Allow at least 290000 ms for the tool call. A timeout setting alone is not a wait.",
-        "If the call yields, wait for that same call to finish. Do not start another timer.",
-        "If Code Mode or the timer is unavailable, report that; do not claim it ran.",
-        "After the tool finishes, reply with its marker, measured elapsed_ms, the context key, and the literal formatting line.",
+        "Keep a short working note for this conversation.",
+        `Document ID: ${contextKey}`,
+        `Sample text to preserve exactly: ${literal}`,
+        "Measure one 4.5-minute interval in Code Mode with this JavaScript:",
+        `const started = Date.now(); await new Promise(resolve => setTimeout(resolve, ${LONG_WAIT_MS})); text({ receipt: "${waitMarker}", elapsed_ms: Date.now() - started });`,
+        "Give the call at least 290000 ms. If it yields, wait on that same call until it finishes.",
+        "Then return the timer receipt, measured elapsed_ms, document ID, and sample text.",
+        "If Code Mode cannot run the timer, let me know.",
       ].join("\n")
     )
     assert.equal(first.status, "running", first.error)
@@ -52,7 +51,7 @@ test("live MCP subagent lifecycle with optional real conversation fork", {
 
     const initial = await live.poll(firstTurnId, 0)
     assert.equal(initial.status, "running", "The awaited tool call must still be running")
-    const busy = await live.run("This request must be rejected because this agent is busy.")
+    const busy = await live.run("Add a one-line summary to the working note.")
     assert.equal(busy.status, "failed")
     assert.match(busy.error ?? "", /^AGENT_BUSY:/u)
     assert.equal(busy.turn_id, undefined)
@@ -76,24 +75,24 @@ test("live MCP subagent lifecycle with optional real conversation fork", {
 
     await live.stage("same-page follow-up and stable completed results")
     const firstPage = live.page()
-    const second = await live.run(contextPrompt("FOLLOWUP_OK"))
+    const second = await live.run(contextPrompt("Note update 1"))
     assert.equal(second.status, "running", second.error)
     assert.ok(second.turn_id)
     assert.notEqual(second.turn_id, firstTurnId)
     assert.equal((await live.poll(firstTurnId, 0)).response, firstResponse)
     const secondResponse = await live.complete(second.turn_id)
-    assertContext(secondResponse, "FOLLOWUP_OK")
+    assertContext(secondResponse, "Note update 1")
     responses.set(second.turn_id, secondResponse)
     assert.equal(live.page(), firstPage, "A healthy follow-up should reuse its tab")
     await live.assertSavedConversation()
 
     await live.stage("reopen a closed tab using saved conversation identity")
     await firstPage.close()
-    const third = await live.run(contextPrompt("REOPEN_OK"))
+    const third = await live.run(contextPrompt("Note update 2"))
     assert.equal(third.status, "running", third.error)
     assert.ok(third.turn_id)
     const thirdResponse = await live.complete(third.turn_id)
-    assertContext(thirdResponse, "REOPEN_OK")
+    assertContext(thirdResponse, "Note update 2")
     responses.set(third.turn_id, thirdResponse)
     assert.notEqual(live.page(), firstPage)
     await live.assertSavedConversation()
@@ -115,16 +114,16 @@ test("live MCP subagent lifecycle with optional real conversation fork", {
     assert.equal(lostResult.status, "failed")
     assert.match(lostResult.error ?? "", /^UNKNOWN_TURN:/u)
     const fourth = await live.run(
-      contextPrompt("RESTART_OK") +
+      contextPrompt("Note update 3") +
         (TEST_FORK
-          ? `\nRemember this final source checkpoint and include it in your response: ${sourceCheckpoint}`
+          ? `\nAlso save this revision code with our current note and include it in the recap: ${sourceCheckpoint}`
           : "")
     )
     assert.equal(fourth.status, "running", fourth.error)
     assert.ok(fourth.turn_id)
     assert.ok(!responses.has(fourth.turn_id), "Lost counters must not reuse an old turn ID")
     const fourthResponse = await live.complete(fourth.turn_id)
-    assertContext(fourthResponse, "RESTART_OK")
+    assertContext(fourthResponse, "Note update 3")
     assert.equal((await live.poll(fourth.turn_id, 0)).response, fourthResponse)
     await live.assertSavedConversation()
     assert.equal(live.submissions.length, 4, "Exactly one submission per lifecycle step")
@@ -149,7 +148,7 @@ test("live MCP subagent lifecycle with optional real conversation fork", {
   }
 
   function contextPrompt(marker: string): string {
-    return `Do not use tools. Recall the exact LIVE_CTX_ key and Unicode text from the first message of this test run. Reply with ${marker}, that key, and the Unicode text. Do not include earlier completion markers.`
+    return `Please recap our current working note from the conversation, without using tools. Use "${marker}" as the heading, followed by the document ID and the exact sample text we saved. Leave out the timer receipt and previous update headings.`
   }
 
   function assertContext(response: string, marker: string): void {
@@ -165,13 +164,13 @@ test("live MCP subagent lifecycle with optional real conversation fork", {
   async function testFork(): Promise<void> {
     const sourceId = await live.assertSavedConversation()
     const sourcePage = live.page()
-    const branchKey = `FORK_ONLY_${randomUUID().replaceAll("-", "")}`
+    const branchKey = `draft-${randomUUID()}`
     const forkTurns = new Map<string, string>()
 
     await live.stage("fork from the latest source turn through subagent_run start_from")
     const first = await forkTurn(
-      `Remember this branch-only key: ${branchKey}`,
-      "FORK_STARTED_OK",
+      `For this draft, keep this draft ID: ${branchKey}`,
+      "Draft update 1",
       sourcePage.url()
     )
     const forkId = await live.assertSavedConversation("fork")
@@ -181,13 +180,13 @@ test("live MCP subagent lifecycle with optional real conversation fork", {
     const forkPage = live.page("fork")
 
     await live.stage("follow up in the fork without start_from")
-    await forkTurn("", "FORK_FOLLOWUP_OK")
+    await forkTurn("", "Draft update 2")
     assert.equal(live.page("fork"), forkPage)
     assert.equal((await live.poll(first.turn_id!, 0)).response, forkTurns.get(first.turn_id!))
 
     await live.stage("reopen the fork without creating another branch")
     await forkPage.close()
-    await forkTurn("", "FORK_REOPEN_OK", sourceId)
+    await forkTurn("", "Draft update 3", sourceId)
     assert.notEqual(live.page("fork"), forkPage)
     assert.equal(await live.assertSavedConversation("fork"), forkId)
 
@@ -196,14 +195,14 @@ test("live MCP subagent lifecycle with optional real conversation fork", {
     const lost = await live.poll(first.turn_id!, 0)
     assert.equal(lost.status, "failed")
     assert.match(lost.error ?? "", /^UNKNOWN_TURN:/u)
-    await forkTurn("", "FORK_RESTART_OK", sourceId)
+    await forkTurn("", "Draft update 4", sourceId)
     assert.equal(await live.assertSavedConversation("fork"), forkId)
 
     await live.stage("verify the source still works and contains no fork submissions")
-    const source = await live.run(contextPrompt("SOURCE_UNCHANGED_OK"))
+    const source = await live.run(contextPrompt("Note update 4"))
     assert.equal(source.status, "running", source.error)
     assert.ok(source.turn_id)
-    assertContext(await live.complete(source.turn_id), "SOURCE_UNCHANGED_OK")
+    assertContext(await live.complete(source.turn_id), "Note update 4")
     assert.equal(await live.assertSavedConversation(), sourceId)
     await live.assertForkIsolated()
 
@@ -211,8 +210,8 @@ test("live MCP subagent lifecycle with optional real conversation fork", {
       const turn = await live.run(
         [
           instruction,
-          "Do not use tools. Recall the exact LIVE_CTX_ key, SOURCE_LAST_ checkpoint, and Unicode text from the inherited source conversation, plus the FORK_ONLY_ key from this branch.",
-          `Reply with ${marker} and all three keys and the Unicode text. Do not include older completion markers.`,
+          "Please recap our current draft from the conversation, without using tools.",
+          `Use "${marker}" as the heading, followed by the document ID, latest revision code, draft ID, and exact sample text we saved. Leave out the timer receipt and previous update headings.`,
         ]
           .filter(Boolean)
           .join("\n"),

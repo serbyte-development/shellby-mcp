@@ -6,6 +6,7 @@ export interface AgentCall {
   summary: string
   detail?: string
   detailLanguage?: string
+  response?: string
   startedAt: number
   finishedAt?: number
   status: AgentCallStatus

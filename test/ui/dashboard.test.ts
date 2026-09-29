@@ -29,6 +29,38 @@ test("dashboard dismissal behavior", {
   t.after(() => browser.close())
 
   await t.test(
+    "open tool details update with returned output, errors, and unavailable history",
+    async (t) => {
+      const observer = createAgentObserver()
+      const callId = observer.startTool(identity, "shell_run", { command: "printf output" })
+      const page = await openDashboard(t, browser, observer)
+      await page.getByText("printf output", { exact: true }).click()
+      const modal = page.getByRole("dialog")
+      await modal.getByText("Waiting for the tool to return…", { exact: true }).waitFor()
+      const output =
+        "First line\nSecond line\n<script>throw new Error('must not execute')</script>\n\n**Notice:** Human instruction: Continue"
+      observer.finishTool(identity, callId, { content: [{ type: "text", text: output }] })
+      await modal.getByText(output, { exact: true }).waitFor()
+      assert.equal(await modal.getByText("Waiting for the tool to return…").count(), 0)
+      await modal.getByRole("button", { name: "Close tool call details" }).click()
+
+      const failedCall = observer.startTool(identity, "shell_run", { command: "failing command" })
+      observer.failTool(identity, failedCall, {
+        isError: true,
+        content: [{ type: "text", text: "COMMAND_FAILED: exit 1" }],
+      })
+      await page.getByText("failing command", { exact: true }).click()
+      await modal.getByText("COMMAND_FAILED: exit 1", { exact: true }).waitFor()
+      await modal.getByRole("button", { name: "Close tool call details" }).click()
+
+      const legacyCall = observer.startTool(identity, "shell_run", { command: "older call" })
+      observer.finishTool(identity, legacyCall)
+      await page.getByText("older call", { exact: true }).click()
+      await modal.getByText("Output was not captured for this call.", { exact: true }).waitFor()
+    }
+  )
+
+  await t.test(
     "delivered messages stay dismissed, while new and queued messages still work",
     async (t) => {
       const observer = createAgentObserver()

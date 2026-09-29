@@ -1,19 +1,20 @@
 import type {
   CallToolResult,
-  McpServer,
   ServerContext,
   StandardSchemaWithJSON,
   ToolCallback,
 } from "@modelcontextprotocol/server"
 
 import { getAgentIdentity } from "../agent/context.js"
+import { stampAgentIdentity } from "../agent/identity-marker.js"
 import type { AgentObserver } from "../agent/observer.js"
 import type { McpAuditRequest } from "../server/audit/audit-log.js"
 import { withAuditCall } from "../server/audit/audit-request.js"
 import type { ReviewPromptTracker } from "../tools/review/review-tool.js"
 import { shellRunFileEditNotices } from "../tools/shell/apply-patch-guidance.js"
 import { START_HERE_TOOL_NAME } from "../tools/start-here/start-here.js"
-import { asRecord, isRecord } from "../utils.js"
+import { asRecord } from "../utils.js"
+import type { ObservedMcpServer } from "./observed-server.js"
 import { ToolError } from "./tool-error.js"
 import { appendToolEvents, compactToolResult } from "./tool-output.js"
 import { prepareToolRegistration } from "./tool-schema-presentation.js"
@@ -27,7 +28,7 @@ export interface ToolRegistrationBoundaryOptions {
 }
 
 type ToolConfig<Input extends StandardSchemaWithJSON | undefined> = Omit<
-  Parameters<McpServer["registerTool"]>[1],
+  Parameters<ObservedMcpServer["registerTool"]>[1],
   "inputSchema" | "outputSchema"
 > & {
   inputSchema?: Input
@@ -40,7 +41,7 @@ export type ToolRegistrar = <Input extends StandardSchemaWithJSON | undefined = 
   name: string,
   config: ToolConfig<Input>,
   callback: ToolCallback<Input>
-) => ReturnType<McpServer["registerTool"]>
+) => ReturnType<ObservedMcpServer["registerTool"]>
 
 interface RegisteredTool {
   acceptsInput: boolean
@@ -48,9 +49,9 @@ interface RegisteredTool {
   callback: (...args: unknown[]) => unknown
 }
 
-/** Register tools through Shellby's execution policy while leaving the SDK server untouched. */
+/** Register tools through Shellby's execution policy; the SDK owns validation and projection. */
 export function createToolRegistrar(
-  server: McpServer,
+  server: ObservedMcpServer,
   options: ToolRegistrationBoundaryOptions
 ): ToolRegistrar {
   const { structuredOutput } = options
@@ -90,18 +91,35 @@ export function createToolRegistrar(
         projected = result
       }
 
-      const finalResult = appendToolEvents(
-        projected,
-        collectToolEvents(name, input, agent, options)
-      )
-      const failed = isRecord(result) && result.isError === true
-      if (failed) {
-        options.agentObserver?.failTool(agent, observedCallId)
-      } else {
-        options.agentObserver?.finishTool(agent, observedCallId)
+      if (options.agentObserver || auditCall) {
+        server.observeToolResponse(context, (message) => {
+          if (!message) {
+            options.agentObserver?.failTool(agent, observedCallId)
+            auditCall?.finish({ error: new Error("MCP request ended without a response.") })
+            return
+          }
+          const response =
+            "result" in message
+              ? message.result
+              : { isError: true, content: [{ type: "text", text: message.error.message }] }
+          const failed = asRecord(response)?.isError === true
+          if (failed) options.agentObserver?.failTool(agent, observedCallId, response)
+          else options.agentObserver?.finishTool(agent, observedCallId, response)
+          // A schema/protocol rejection replaces a successful handler result. Audit the
+          // error the SDK sent, preserving original handler diagnostics for ordinary failures.
+          const rejected = failed && asRecord(result)?.isError !== true
+          auditCall?.finish({
+            toolResult: rejected ? response : result,
+            modelResult: response,
+            error: failure,
+          })
+        })
       }
-      auditCall?.finish({ toolResult: result, modelResult: finalResult, error: failure })
-      return finalResult
+
+      return stampAgentIdentity(
+        appendToolEvents(projected, collectToolEvents(name, input, agent, options)),
+        agent
+      )
     })
   }
 

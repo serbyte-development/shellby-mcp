@@ -1,5 +1,48 @@
 import { asRecord } from "../utils.js"
 
+const MAX_RESPONSE_CHARS = 32_000
+
+/** Bounded dashboard rendering of the final agent response; binary payloads are omitted. */
+export function presentToolResponse(result: unknown): string {
+  const record = asRecord(result)
+  const blocks = Array.isArray(record?.content) ? record.content : []
+  const parts = blocks.map((block: unknown) => {
+    const content = asRecord(block)
+    return content?.type === "text" && typeof content.text === "string"
+      ? content.text
+      : serializeResponse(block)
+  })
+  if (record?.structuredContent !== undefined) {
+    parts.push(serializeResponse(record.structuredContent))
+  }
+  const text = parts.length > 0 ? parts.join("\n\n") : serializeResponse(result)
+  return text.length > MAX_RESPONSE_CHARS
+    ? `${text.slice(0, MAX_RESPONSE_CHARS)}\n\n[Dashboard output truncated at ${MAX_RESPONSE_CHARS.toLocaleString("en-US")} characters.]`
+    : text
+}
+
+function serializeResponse(value: unknown): string {
+  try {
+    return (
+      JSON.stringify(
+        value,
+        function (this: Record<string, unknown>, key, item) {
+          if (
+            (key === "data" && (this.type === "image" || this.type === "audio")) ||
+            (key === "blob" && typeof this.mimeType === "string")
+          ) {
+            return "[Binary content omitted from dashboard]"
+          }
+          return item
+        },
+        2
+      ) ?? "No content returned."
+    )
+  } catch {
+    return "Response could not be displayed."
+  }
+}
+
 export interface ToolCallPresentation {
   summary: string
   detail?: string

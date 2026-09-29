@@ -2,6 +2,8 @@ import assert from "node:assert/strict"
 import { request as httpRequest } from "node:http"
 
 import { Client, StreamableHTTPClientTransport } from "@modelcontextprotocol/client"
+import { getAgentIdentity, runWithAgent } from "../../src/agent/context.js"
+import { identityFromToolResponse } from "../../src/agent/identity-marker.js"
 import type { AgentObserver } from "../../src/agent/observer.js"
 import type { ShellbyAuthStore } from "../../src/auth/store.js"
 import {
@@ -271,6 +273,19 @@ export function toolText(result: Awaited<ReturnType<Client["callTool"]>>): strin
     .map((item) => (item.type === "text" ? item.text : ""))
     .filter(Boolean)
     .join("\n")
+}
+
+/** Assert the session correlation footer, then return only the tool's own output for comparison. */
+export function agentToolText(
+  result: Awaited<ReturnType<Client["callTool"]>>,
+  sessionId: string
+): string {
+  const text = toolText(result)
+  assert.equal(
+    identityFromToolResponse(text),
+    runWithAgent(sessionId, () => getAgentIdentity())
+  )
+  return text.replace(/(?:^|\n\n)\[sb:[A-Z0-9]{4}\]$/u, "")
 }
 
 export function compactField(text: string, key: string): string | undefined {

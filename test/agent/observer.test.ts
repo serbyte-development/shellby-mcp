@@ -3,6 +3,39 @@ import test from "node:test"
 import type { AgentIdentity } from "../../src/agent/context.js"
 import { createAgentObserver } from "../../src/agent/observer.js"
 
+test("retains bounded final response text and metadata without binary payloads", () => {
+  const observer = createAgentObserver()
+  const agent: AgentIdentity = { sessionId: "responses", agent: "agent-responses" }
+  const callId = observer.startTool(agent, "asset", {})
+  observer.finishTool(agent, callId, {
+    content: [
+      { type: "text", text: "Actual output\n\n**Notice:** Keep going" },
+      { type: "image", mimeType: "image/png", data: "PRIVATE_BASE64" },
+      {
+        type: "resource",
+        resource: { uri: "file:///fixture", mimeType: "application/pdf", blob: "PRIVATE_BLOB" },
+      },
+    ],
+    structuredContent: { count: 2, data: "Ordinary structured data" },
+  })
+  const response = observer.listAgents()[0]?.recent[0]?.response ?? ""
+  assert.match(response, /Actual output\n\n\*\*Notice:\*\* Keep going/u)
+  assert.match(response, /image\/png/u)
+  assert.match(response, /"count": 2/u)
+  assert.match(response, /Ordinary structured data/u)
+  assert.doesNotMatch(response, /PRIVATE_BASE64|PRIVATE_BLOB/u)
+
+  const largeCall = observer.startTool(agent, "large", {})
+  observer.failTool(agent, largeCall, {
+    isError: true,
+    content: [{ type: "text", text: "x".repeat(40_000) }],
+  })
+  const large = observer.listAgents()[0]?.recent[0]
+  assert.equal(large?.status, "failed")
+  assert.ok((large?.response?.length ?? 0) < 33_000)
+  assert.match(large?.response ?? "", /Dashboard output truncated/u)
+})
+
 test("tracks current and recent tool activity for one agent", () => {
   let timestamp = 1_000
   const observer = createAgentObserver(() => timestamp)

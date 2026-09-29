@@ -5,6 +5,7 @@ import { setImmediate } from "node:timers/promises"
 import type { Page } from "playwright-core"
 
 import { observeAssistantResponse } from "../../../src/tools/delegation/response-observer.js"
+import { mcpToolResponse } from "../../fixtures/chatgpt-tool-response.js"
 
 for (const inlinePostData of [true, false]) {
   for (const transport of ["http", "websocket", "binary-websocket", "body"] as const) {
@@ -12,12 +13,14 @@ for (const inlinePostData of [true, false]) {
       timeout: 2_000,
     }, async (t) => {
       const submitted: string[] = []
+      const toolResponses: string[] = []
       const calls: string[] = []
       const postData = JSON.stringify({
         action: "next",
         messages: [{ id: "submitted-user", author: { role: "user" } }],
       })
-      const body = completedStream("submitted-user", "Exact result")
+      const toolText = "MCP response\n[sb:K7Q2]"
+      const body = completedStream("submitted-user", "Exact result", toolText)
       const cdp = Object.assign(new EventEmitter(), {
         async send(method: string) {
           calls.push(method)
@@ -37,6 +40,7 @@ for (const inlinePostData of [true, false]) {
       }) as unknown as Page
       const observation = await observeAssistantResponse(page, {
         onSubmitted: (id) => submitted.push(id),
+        onToolResponse: (text) => toolResponses.push(text),
       })
       t.after(() => observation.dispose())
 
@@ -52,7 +56,9 @@ for (const inlinePostData of [true, false]) {
       // An old response containing identical text cannot bind to this turn.
       cdp.emit("Network.dataReceived", {
         requestId: "submitted-request",
-        data: Buffer.from(completedStream("old-user", "Wrong result")).toString("base64"),
+        data: Buffer.from(completedStream("old-user", "Wrong result", "stale marker")).toString(
+          "base64"
+        ),
       })
 
       if (transport === "http") {
@@ -82,6 +88,7 @@ for (const inlinePostData of [true, false]) {
       const result = await observation.response
       assert.equal(result.text, "Exact result")
       assert.deepEqual(submitted, ["submitted-user"])
+      assert.deepEqual(toolResponses, [JSON.stringify({ text: toolText })])
       assert.equal(calls.includes("Network.getRequestPostData"), !inlinePostData)
     })
   }
@@ -143,7 +150,7 @@ for (const bufferedPrefix of [false, true]) {
   })
 }
 
-function completedStream(userMessageId: string, response: string): string {
+function completedStream(userMessageId: string, response: string, toolText?: string): string {
   return [
     {
       type: "input_message",
@@ -155,6 +162,7 @@ function completedStream(userMessageId: string, response: string): string {
         },
       },
     },
+    ...(toolText ? [{ v: { message: mcpToolResponse("tool-result", toolText) } }] : []),
     {
       v: {
         message: {
