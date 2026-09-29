@@ -110,7 +110,7 @@ test("delegation contracts over a real Chrome CDP connection", {
         // A hidden legacy editor and an unrelated textbox must not win selection.
         await page.setContent(`
       <div contenteditable="true" role="textbox" aria-label="Search chats">Search</div>
-      <textarea hidden id="prompt-textarea" class="wcDTda_fallbackTextarea" placeholder="Ask ChatGPT"></textarea>
+      <textarea hidden id="legacy-composer" class="wcDTda_fallbackTextarea" placeholder="Ask ChatGPT"></textarea>
       ${composerFixture(surface, "document.querySelector('#submitted').textContent = prompt")}
       <output id="submitted"></output>
     `)
@@ -124,10 +124,29 @@ test("delegation contracts over a real Chrome CDP connection", {
           await page.getByRole("textbox", { name: "Search chats" }).textContent(),
           "Search"
         )
-        assert.equal(await page.locator("#prompt-textarea").inputValue(), "")
+        assert.equal(await page.locator("#legacy-composer").inputValue(), "")
       }
     )
   }
+
+  await t.test(
+    "project composer without an ID remains supported after fixture refresh",
+    async (composerTest) => {
+      const page = await createBackgroundPage(connected, context)
+      composerTest.after(() => page.close())
+      // Observed 2026-09-28. Retain this rollout variant even when a newer capture
+      // restores prompt-textarea IDs; its project-specific label needs its own selector.
+      await page.setContent(`
+      <div contenteditable="true" role="textbox" data-composer-markdown aria-label="New chat in Test project"><p><br></p></div>
+      <button aria-label="Send" onclick="document.querySelector('#submitted').textContent = document.querySelector('[contenteditable]').innerText">Send</button>
+      <output id="submitted"></output>
+    `)
+      const composer = await findComposer(page, AbortSignal.timeout(2_000))
+      await enterPrompt(page, composer, "A short working note")
+      await submitComposer(page, composer)
+      assert.equal(await page.locator("#submitted").textContent(), "A short working note")
+    }
+  )
 
   await context.route("https://chatgpt.com/**", (route) =>
     route.fulfill({ contentType: "text/html", body: conversationFixture(route.request().url()) })
@@ -135,6 +154,7 @@ test("delegation contracts over a real Chrome CDP connection", {
   for (const mode of [
     "fresh",
     "resume",
+    "direct-menu",
     "popup",
     "noopener",
     "same-page",
@@ -633,16 +653,22 @@ function conversationFixture(url: string): string {
     mode === "moving-menu"
       ? `if (!this.dataset.loaded) setTimeout(() => { this.dataset.loaded='1'; this.style.transform='translateY(-80px)'; }, 50); else setTimeout(() => document.querySelector('#branch').hidden=false, 100)`
       : `setTimeout(() => document.querySelector('#branch').hidden=false, 100)`
+  // Observed 2026-09-29: the action can appear directly, with lowercase "chat".
+  const directMenu = mode === "direct-menu"
   return `<!doctype html><html><body>
     <section data-testid="conversation-turn-1">
       <div data-message-author-role="assistant">Source answer</div>
-      <button aria-label="More actions" onclick="${redirectSource}document.querySelector('#branch-menu').hidden=false">More</button>
+      <button aria-label="More actions" onclick="${redirectSource}document.querySelector('${directMenu ? "#branch" : "#branch-menu"}').hidden=false">More</button>
     </section>
-    <button id="branch-menu" role="menuitem" hidden style="position:fixed;bottom:100px;left:100px"
+    ${
+      directMenu
+        ? ""
+        : `<button id="branch-menu" role="menuitem" hidden style="position:fixed;bottom:100px;left:100px"
       onpointermove="${hoverMenu}"
       onpointerleave="document.querySelector('#branch').hidden=true"
-      onclick="document.querySelector('#branch').hidden=true">Open new branch</button>
-    <button id="branch" role="menuitem" hidden onclick="${branchAction}">Branch in new Chat</button>
+      onclick="document.querySelector('#branch').hidden=true">Open new branch</button>`
+    }
+    <button id="branch" role="menuitem" hidden onclick="${branchAction}">${directMenu ? "Branch in new chat" : "Branch in new Chat"}</button>
     ${composerFixture(mode === "project" ? "project" : "conversation", "document.querySelector('#submitted').textContent = prompt")}
     <div id="submitted"></div>
   </body></html>`

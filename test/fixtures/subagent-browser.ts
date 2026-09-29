@@ -100,7 +100,7 @@ export function browserFixture(
               prompt = value
             },
           },
-          getByRole: (_role: string, input: { name: string }) => {
+          getByRole: (_role: string, input: { name: string | RegExp }) => {
             const item = {
               last: () => item,
               count: async () => 1,
@@ -110,7 +110,11 @@ export function browserFixture(
                 if (key === "Enter") await item.click()
               },
               click: async () => {
-                if (input.name !== "Branch in new Chat") return
+                const isBranchAction =
+                  typeof input.name === "string"
+                    ? input.name === "Branch in new Chat"
+                    : input.name.test("Branch in new chat")
+                if (!isBranchAction) return
                 branches += 1
                 const branchUrl = `https://chatgpt.com/c/${options.branchConversationId ?? `branch-${branches}`}`
                 if (options.branchInSamePage) url = branchUrl

@@ -119,10 +119,11 @@ for (const toolOutput of ["compact", "structured"] as const) {
     assert.equal(mixed.isError, true)
     assert.match(JSON.stringify(mixed), /ready_turn_1/u)
     assert.match(JSON.stringify(mixed), /AGENT_TARGET_LOST/u)
+    // Synthetic sources: the stub verifies forwarding without opening ChatGPT.
     for (const startSource of [
       "source",
-      "https://chatgpt.com/c/6ab6e22c-141c-83e8-9e6e-8e78547125c8",
-      "https://chatgpt.com/g/g-p-6a613ed242f48191b85fa547297fb073-github-contributing/c/6a84e234-9570-83e8-a563-ed656cfa2ec3",
+      "https://chatgpt.com/c/fixture-conversation",
+      "https://chatgpt.com/g/g-p-fixture-project/c/fixture-project-conversation",
     ]) {
       const fork = await connected.client.callTool({
         name: "subagent_run",

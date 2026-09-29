@@ -16,6 +16,7 @@ const COMPOSER_SELECTORS = [
 
 const LATEST_FORKABLE_TURN_SELECTOR =
   'section[data-testid^="conversation-turn-"]:has([data-message-author-role="assistant"])'
+const BRANCH_IN_NEW_CHAT_RE = /^Branch in new chat$/iu
 
 export async function createBackgroundPage(
   browser: Browser,
@@ -91,23 +92,15 @@ export async function forkLatestConversationTurn(page: Page, signal?: AbortSigna
   await retryAfterDismissingBlockingOverlay(page, () => moreActions.click(), signal)
 
   const openNewBranch = page.getByRole("menuitem", { name: "Open new branch", exact: true }).last()
-  await waitForVisibleLocator(
-    openNewBranch,
-    CHATGPT_OPERATION_TIMEOUT_MS,
-    signal,
-    '"Open new branch" menu item'
-  )
-  const branchInNewChat = page
-    .getByRole("menuitem", { name: "Branch in new Chat", exact: true })
-    .last()
+  const branchInNewChat = page.getByRole("menuitem", { name: BRANCH_IN_NEW_CHAT_RE }).last()
   const menuDeadline = Date.now() + CHATGPT_OPERATION_TIMEOUT_MS
-  // Lazy menu items move the trigger after opening. Re-hover its current position
-  // until the submenu is ready; this does not activate the branch action.
+  // ChatGPT can expose the action directly or under "Open new branch". In the
+  // nested menu, lazy items move the trigger: re-hover until its submenu is ready.
   while (!(await branchInNewChat.isVisible())) {
     throwIfAborted(signal)
     if (Date.now() >= menuDeadline)
-      throw new ChatGptDelegationError("CHATGPT_UI_CHANGED", 'Could not open "Branch in new Chat".')
-    await openNewBranch.hover()
+      throw new ChatGptDelegationError("CHATGPT_UI_CHANGED", 'Could not open "Branch in new chat".')
+    if (await openNewBranch.isVisible()) await openNewBranch.hover()
     await delay(200, signal)
   }
   let popup: Page | undefined

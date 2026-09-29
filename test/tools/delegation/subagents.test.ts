@@ -331,17 +331,17 @@ test("a failed first submission closes its unused page and releases agent capaci
   assert.equal(fixture.submissions, 0)
 })
 
+// Synthetic sources exercise URL normalization through the fake browser.
 for (const { startSource, forkSourceId, branchInSamePage } of [
   { startSource: "source", forkSourceId: "source", branchInSamePage: false },
   {
-    startSource: " https://chatgpt.com/c/6ab6e22c-141c-83e8-9e6e-8e78547125c8?view=chat#latest ",
-    forkSourceId: "6ab6e22c-141c-83e8-9e6e-8e78547125c8",
+    startSource: " https://chatgpt.com/c/fixture-conversation?view=chat#latest ",
+    forkSourceId: "fixture-conversation",
     branchInSamePage: true,
   },
   {
-    startSource:
-      "https://chatgpt.com/g/g-p-6a613ed242f48191b85fa547297fb073-github-contributing/c/6a84e234-9570-83e8-a563-ed656cfa2ec3",
-    forkSourceId: "6a84e234-9570-83e8-a563-ed656cfa2ec3",
+    startSource: "https://chatgpt.com/g/g-p-fixture-project/c/fixture-project-conversation",
+    forkSourceId: "fixture-project-conversation",
     branchInSamePage: false,
   },
 ]) {
