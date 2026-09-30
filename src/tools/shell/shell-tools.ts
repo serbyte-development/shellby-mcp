@@ -29,7 +29,7 @@ export function registerShellExecutionTools(
   registerTool(
     "shell_run",
     {
-      description: `Run commands in a persistent zsh shell. Provide exactly one of command or commands. Shells cwd start in ${workspaceDescription}. Use concise slugs for _id arguments.`,
+      description: `Run commands in a persistent zsh shell. Provide exactly one of command or commands. Shells cwd start in ${workspaceDescription}. Use concise slugs for _id arguments. To wait for completion or read more output, use shell_poll with the same shell_id and request_id and the returned next_cursor as cursor.`,
       inputSchema: shellRunInputSchema,
       outputSchema: shellRunOutputSchema,
       annotations: {
