@@ -45,6 +45,19 @@
   * {
     border-color: var(--border);
   }
+  button:not(:disabled),
+  [role="button"]:not(:disabled) {
+    cursor: pointer;
+  }
+  .flex-center {
+    @apply flex items-center justify-center;
+  }
+}
+
+@layer utilities {
+  .check {
+    @apply border border-red-500 border-dashed;
+  }
 }
 
 body {

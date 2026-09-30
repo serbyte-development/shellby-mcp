@@ -23,7 +23,10 @@
       "types": "recommended"
     },
     "rules": {
-      "preset": "recommended"
+      "preset": "recommended",
+      "nursery": {
+        "recommended": true
+      }
     }
   },
   "javascript": {

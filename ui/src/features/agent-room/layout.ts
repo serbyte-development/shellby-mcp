@@ -8,27 +8,27 @@ const ROOM_TILE_ROWS = ROOM_HEIGHT / (ROOM_GRID_SIZE * ROOM_TILE_SIZE)
 export type RoomDirection = "down" | "up" | "right" | "left"
 
 const ROOM_ASSETS = {
-  floor: "/ui/pixel-agents/assets/floors/floor_5.png",
-  deskFront: "/ui/pixel-agents/assets/furniture/DESK/DESK_FRONT.png",
-  deskSide: "/ui/pixel-agents/assets/furniture/DESK/DESK_SIDE.png",
-  pcFront: "/ui/pixel-agents/assets/furniture/PC/PC_FRONT_ON_1.png",
-  pcSide: "/ui/pixel-agents/assets/furniture/PC/PC_SIDE.png",
-  bookshelf: "/ui/pixel-agents/assets/furniture/BOOKSHELF/BOOKSHELF.png",
-  doubleBookshelf: "/ui/pixel-agents/assets/furniture/DOUBLE_BOOKSHELF/DOUBLE_BOOKSHELF.png",
-  whiteboard: "/ui/pixel-agents/assets/furniture/WHITEBOARD/WHITEBOARD.png",
-  smallTable: "/ui/pixel-agents/assets/furniture/SMALL_TABLE/SMALL_TABLE_FRONT.png",
-  smallTableSide: "/ui/pixel-agents/assets/furniture/SMALL_TABLE/SMALL_TABLE_SIDE.png",
-  painting: "/ui/pixel-agents/assets/furniture/LARGE_PAINTING/LARGE_PAINTING.png",
-  sofa: "/ui/pixel-agents/assets/furniture/SOFA/SOFA_FRONT.png",
-  cushionedChairSide: "/ui/pixel-agents/assets/furniture/CUSHIONED_CHAIR/CUSHIONED_CHAIR_SIDE.png",
-  woodenChairSide: "/ui/pixel-agents/assets/furniture/WOODEN_CHAIR/WOODEN_CHAIR_SIDE.png",
-  plant: "/ui/pixel-agents/assets/furniture/PLANT/PLANT.png",
-  largePlant: "/ui/pixel-agents/assets/furniture/LARGE_PLANT/LARGE_PLANT.png",
-  clock: "/ui/pixel-agents/assets/furniture/CLOCK/CLOCK.png",
-  hangingPlant: "/ui/pixel-agents/assets/furniture/HANGING_PLANT/HANGING_PLANT.png",
-  coffeeTable: "/ui/pixel-agents/assets/furniture/COFFEE_TABLE/COFFEE_TABLE.png",
-  coffee: "/ui/pixel-agents/assets/furniture/COFFEE/COFFEE.png",
-  smallPainting: "/ui/pixel-agents/assets/furniture/SMALL_PAINTING/SMALL_PAINTING.png",
+  floor: "/pixel-agents/assets/floors/floor_5.png",
+  deskFront: "/pixel-agents/assets/furniture/DESK/DESK_FRONT.png",
+  deskSide: "/pixel-agents/assets/furniture/DESK/DESK_SIDE.png",
+  pcFront: "/pixel-agents/assets/furniture/PC/PC_FRONT_ON_1.png",
+  pcSide: "/pixel-agents/assets/furniture/PC/PC_SIDE.png",
+  bookshelf: "/pixel-agents/assets/furniture/BOOKSHELF/BOOKSHELF.png",
+  doubleBookshelf: "/pixel-agents/assets/furniture/DOUBLE_BOOKSHELF/DOUBLE_BOOKSHELF.png",
+  whiteboard: "/pixel-agents/assets/furniture/WHITEBOARD/WHITEBOARD.png",
+  smallTable: "/pixel-agents/assets/furniture/SMALL_TABLE/SMALL_TABLE_FRONT.png",
+  smallTableSide: "/pixel-agents/assets/furniture/SMALL_TABLE/SMALL_TABLE_SIDE.png",
+  painting: "/pixel-agents/assets/furniture/LARGE_PAINTING/LARGE_PAINTING.png",
+  sofa: "/pixel-agents/assets/furniture/SOFA/SOFA_FRONT.png",
+  cushionedChairSide: "/pixel-agents/assets/furniture/CUSHIONED_CHAIR/CUSHIONED_CHAIR_SIDE.png",
+  woodenChairSide: "/pixel-agents/assets/furniture/WOODEN_CHAIR/WOODEN_CHAIR_SIDE.png",
+  plant: "/pixel-agents/assets/furniture/PLANT/PLANT.png",
+  largePlant: "/pixel-agents/assets/furniture/LARGE_PLANT/LARGE_PLANT.png",
+  clock: "/pixel-agents/assets/furniture/CLOCK/CLOCK.png",
+  hangingPlant: "/pixel-agents/assets/furniture/HANGING_PLANT/HANGING_PLANT.png",
+  coffeeTable: "/pixel-agents/assets/furniture/COFFEE_TABLE/COFFEE_TABLE.png",
+  coffee: "/pixel-agents/assets/furniture/COFFEE/COFFEE.png",
+  smallPainting: "/pixel-agents/assets/furniture/SMALL_PAINTING/SMALL_PAINTING.png",
 } as const
 
 export type RoomAsset = string
@@ -95,8 +95,8 @@ export interface RoomLayout {
   subagentSeat: { x: number; y: number; facing: RoomDirection }
 }
 
-const DEFAULT_FLOOR_ASSET = "/ui/pixel-agents/assets/floors/floor_5.png"
-const DEFAULT_WALL_ASSET = "/ui/pixel-agents/assets/walls/wall_0.png"
+const DEFAULT_FLOOR_ASSET = "/pixel-agents/assets/floors/floor_5.png"
+const DEFAULT_WALL_ASSET = "/pixel-agents/assets/walls/wall_0.png"
 export const DEFAULT_FLOOR_TINT = "#b9784c"
 export const DEFAULT_WALL_TINT = "#26394d"
 
@@ -230,5 +230,18 @@ export function migrateRoomLayout(value: Partial<RoomLayout> | undefined): RoomL
   next.subagentSeat = value.subagentSeat
     ? structuredClone(value.subagentSeat)
     : defaults.subagentSeat
+
+  // Saved selections must match the catalog's root URLs after moving the dashboard from /ui.
+  const rootAsset = (asset: string) => asset.replace(/^\/ui\/pixel-agents\//u, "/pixel-agents/")
+  for (const item of [
+    ...next.tiles,
+    ...next.carpetTiles,
+    ...next.pets,
+    ...next.wallDecor,
+    ...next.furniture,
+  ]) {
+    if (item && "asset" in item) item.asset = rootAsset(item.asset)
+  }
+  if (next.characterAsset) next.characterAsset = rootAsset(next.characterAsset)
   return next
 }

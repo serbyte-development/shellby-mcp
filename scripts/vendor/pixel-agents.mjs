@@ -94,7 +94,7 @@ async function buildCatalog(sourceAssets) {
       const relative = slash(path.relative(sourceAssets, file))
       return {
         kind: relative.split("/")[0],
-        path: `/ui/pixel-agents/assets/${relative}`,
+        path: `/pixel-agents/assets/${relative}`,
       }
     })
     .sort((left, right) => left.path.localeCompare(right.path))
@@ -137,7 +137,7 @@ async function buildCatalog(sourceAssets) {
         return {
           id: manifest.id ?? directory,
           label: manifest.name ?? manifest.id ?? directory,
-          path: `/ui/pixel-agents/assets/pets/${directory}/pet.png`,
+          path: `/pixel-agents/assets/pets/${directory}/pet.png`,
         }
       })
     )
@@ -214,7 +214,7 @@ function catalogFurnitureEntry(asset, base, directory, file, context) {
     id: asset.id,
     label: suffix ? `${base.baseName} · ${suffix}` : base.baseName,
     category: base.category,
-    path: `/ui/pixel-agents/assets/furniture/${directory}/${file}`,
+    path: `/pixel-agents/assets/furniture/${directory}/${file}`,
     width: asset.width,
     height: asset.height,
     footprintW: asset.footprintW,
@@ -263,7 +263,7 @@ async function checkVendorSnapshot() {
     ...catalog.images,
   ]
   const assetPaths = catalogEntries.map((entry) => {
-    const prefix = "/ui/pixel-agents/assets/"
+    const prefix = "/pixel-agents/assets/"
     if (!entry.path.startsWith(prefix)) throw new Error(`Unexpected catalog path: ${entry.path}`)
     const relative = entry.path.slice(prefix.length)
     return { relative, target: path.join(assetsTarget, relative) }

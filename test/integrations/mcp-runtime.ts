@@ -265,7 +265,7 @@ test("one HTTP observer drives dashboard state and tool observation", {
   })
   await connected.client.callTool({ name: "shell_list", arguments: {} })
 
-  const response = await fetch(`http://${running.host}:${running.port}/ui/api/agents`)
+  const response = await fetch(`http://${running.host}:${running.port}/api/agents`)
   assert.equal(response.status, 200)
   const body = (await response.json()) as {
     agents: Array<{ id: string; recent: Array<{ tool: string }> }>

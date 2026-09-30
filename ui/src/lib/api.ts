@@ -1,7 +1,7 @@
 import type { Agent, AgentChangedEvent, AgentInstruction } from "../types"
 
 export async function fetchAgents(): Promise<Agent[]> {
-  const response = await fetch("/ui/api/agents")
+  const response = await fetch("/api/agents")
   if (!response.ok) throw new Error(`Failed to load agents (${response.status})`)
   const body = (await response.json()) as { agents?: Agent[] }
   return body.agents ?? []
@@ -11,7 +11,7 @@ export function subscribeToAgents(
   onEvent: (event: AgentChangedEvent) => void,
   onConnection: (connected: boolean) => void
 ): () => void {
-  const source = new EventSource("/ui/api/events")
+  const source = new EventSource("/api/events")
   source.onopen = () => onConnection(true)
   source.onerror = () => onConnection(false)
   source.onmessage = (message) => {
@@ -22,7 +22,7 @@ export function subscribeToAgents(
 }
 
 export async function steerAgent(agentId: string, message: string): Promise<AgentInstruction> {
-  const response = await fetch(`/ui/api/agents/${encodeURIComponent(agentId)}/steer`, {
+  const response = await fetch(`/api/agents/${encodeURIComponent(agentId)}/steer`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ message }),
@@ -37,7 +37,7 @@ export async function steerAgent(agentId: string, message: string): Promise<Agen
 
 export async function cancelSteer(agentId: string, instructionId: string): Promise<void> {
   const response = await fetch(
-    `/ui/api/agents/${encodeURIComponent(agentId)}/instructions/${encodeURIComponent(instructionId)}`,
+    `/api/agents/${encodeURIComponent(agentId)}/instructions/${encodeURIComponent(instructionId)}`,
     { method: "DELETE" }
   )
   if (!response.ok) {

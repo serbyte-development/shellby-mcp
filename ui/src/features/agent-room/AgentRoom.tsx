@@ -79,7 +79,7 @@ export function AgentRoom({ agent, preview = false }: { agent: Agent; preview?: 
         height={ROOM_HEIGHT}
         className={
           preview
-            ? "block aspect-[16/9] w-full object-cover [image-rendering:pixelated]"
+            ? "block aspect-video w-full object-cover [image-rendering:pixelated]"
             : "block h-auto w-full [image-rendering:pixelated]"
         }
         aria-label={`${agent.id} ${preview ? "room preview" : "activity room"}`}
@@ -118,8 +118,7 @@ function drawCharacter(
   layout: RoomLayout
 ): void {
   const character = getRoomImage(
-    layout.characterAsset ??
-      `/ui/pixel-agents/assets/characters/char_${characterIndex(agentId)}.png`
+    layout.characterAsset ?? `/pixel-agents/assets/characters/char_${characterIndex(agentId)}.png`
   )
   if (!isReady(character)) return
 
@@ -155,7 +154,7 @@ function drawSubagentConversation(
   stations: AgentStationMap
 ): void {
   const subagent = getRoomImage(
-    `/ui/pixel-agents/assets/characters/char_${(characterIndex(agentId) + 1) % 6}.png`
+    `/pixel-agents/assets/characters/char_${(characterIndex(agentId) + 1) % 6}.png`
   )
   if (!isReady(subagent)) return
 

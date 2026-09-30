@@ -39,7 +39,7 @@ export interface PixelAgentsCatalog {
 }
 
 export async function fetchPixelAgentsCatalog(): Promise<PixelAgentsCatalog> {
-  const response = await fetch("/ui/pixel-agents/catalog.json")
+  const response = await fetch("/pixel-agents/catalog.json")
   if (!response.ok) throw new Error(`Failed to load Pixel Agents catalog (${response.status})`)
   return (await response.json()) as PixelAgentsCatalog
 }

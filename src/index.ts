@@ -53,7 +53,7 @@ try {
   throw error
 }
 console.log(`Local shell MCP server: ${running.url}`)
-if (MCP_CONFIG.ui.enabled) console.log(`Agent dashboard: http://${running.host}:${running.port}/ui`)
+if (MCP_CONFIG.ui.enabled) console.log(`Agent dashboard: http://${running.host}:${running.port}/`)
 console.log("Remote MCP authentication: trusted ChatGPT origin + bound OpenAI subject")
 console.log(`Default workspace: ${MCP_CONFIG.workspace}`)
 console.log(

@@ -9,7 +9,7 @@
       "id": "CUSHIONED_BENCH",
       "label": "Cushioned Bench",
       "category": "chairs",
-      "path": "/ui/pixel-agents/assets/furniture/CUSHIONED_BENCH/CUSHIONED_BENCH.png",
+      "path": "/pixel-agents/assets/furniture/CUSHIONED_BENCH/CUSHIONED_BENCH.png",
       "width": 16,
       "height": 16,
       "footprintW": 1,
@@ -25,7 +25,7 @@
       "id": "CUSHIONED_CHAIR_BACK",
       "label": "Cushioned Chair · Back",
       "category": "chairs",
-      "path": "/ui/pixel-agents/assets/furniture/CUSHIONED_CHAIR/CUSHIONED_CHAIR_BACK.png",
+      "path": "/pixel-agents/assets/furniture/CUSHIONED_CHAIR/CUSHIONED_CHAIR_BACK.png",
       "width": 16,
       "height": 16,
       "footprintW": 1,
@@ -41,7 +41,7 @@
       "id": "CUSHIONED_CHAIR_FRONT",
       "label": "Cushioned Chair · Front",
       "category": "chairs",
-      "path": "/ui/pixel-agents/assets/furniture/CUSHIONED_CHAIR/CUSHIONED_CHAIR_FRONT.png",
+      "path": "/pixel-agents/assets/furniture/CUSHIONED_CHAIR/CUSHIONED_CHAIR_FRONT.png",
       "width": 16,
       "height": 16,
       "footprintW": 1,
@@ -57,7 +57,7 @@
       "id": "CUSHIONED_CHAIR_SIDE",
       "label": "Cushioned Chair · Side",
       "category": "chairs",
-      "path": "/ui/pixel-agents/assets/furniture/CUSHIONED_CHAIR/CUSHIONED_CHAIR_SIDE.png",
+      "path": "/pixel-agents/assets/furniture/CUSHIONED_CHAIR/CUSHIONED_CHAIR_SIDE.png",
       "width": 16,
       "height": 16,
       "footprintW": 1,
@@ -73,7 +73,7 @@
       "id": "SOFA_BACK",
       "label": "Sofa · Back",
       "category": "chairs",
-      "path": "/ui/pixel-agents/assets/furniture/SOFA/SOFA_BACK.png",
+      "path": "/pixel-agents/assets/furniture/SOFA/SOFA_BACK.png",
       "width": 32,
       "height": 16,
       "footprintW": 2,
@@ -89,7 +89,7 @@
       "id": "SOFA_FRONT",
       "label": "Sofa · Front",
       "category": "chairs",
-      "path": "/ui/pixel-agents/assets/furniture/SOFA/SOFA_FRONT.png",
+      "path": "/pixel-agents/assets/furniture/SOFA/SOFA_FRONT.png",
       "width": 32,
       "height": 16,
       "footprintW": 2,
@@ -105,7 +105,7 @@
       "id": "SOFA_SIDE",
       "label": "Sofa · Side",
       "category": "chairs",
-      "path": "/ui/pixel-agents/assets/furniture/SOFA/SOFA_SIDE.png",
+      "path": "/pixel-agents/assets/furniture/SOFA/SOFA_SIDE.png",
       "width": 16,
       "height": 32,
       "footprintW": 1,
@@ -121,7 +121,7 @@
       "id": "WOODEN_BENCH",
       "label": "Wooden Bench",
       "category": "chairs",
-      "path": "/ui/pixel-agents/assets/furniture/WOODEN_BENCH/WOODEN_BENCH.png",
+      "path": "/pixel-agents/assets/furniture/WOODEN_BENCH/WOODEN_BENCH.png",
       "width": 16,
       "height": 16,
       "footprintW": 1,
@@ -137,7 +137,7 @@
       "id": "WOODEN_CHAIR_BACK",
       "label": "Wooden Chair · Back",
       "category": "chairs",
-      "path": "/ui/pixel-agents/assets/furniture/WOODEN_CHAIR/WOODEN_CHAIR_BACK.png",
+      "path": "/pixel-agents/assets/furniture/WOODEN_CHAIR/WOODEN_CHAIR_BACK.png",
       "width": 16,
       "height": 32,
       "footprintW": 1,
@@ -153,7 +153,7 @@
       "id": "WOODEN_CHAIR_FRONT",
       "label": "Wooden Chair · Front",
       "category": "chairs",
-      "path": "/ui/pixel-agents/assets/furniture/WOODEN_CHAIR/WOODEN_CHAIR_FRONT.png",
+      "path": "/pixel-agents/assets/furniture/WOODEN_CHAIR/WOODEN_CHAIR_FRONT.png",
       "width": 16,
       "height": 32,
       "footprintW": 1,
@@ -169,7 +169,7 @@
       "id": "WOODEN_CHAIR_SIDE",
       "label": "Wooden Chair · Side",
       "category": "chairs",
-      "path": "/ui/pixel-agents/assets/furniture/WOODEN_CHAIR/WOODEN_CHAIR_SIDE.png",
+      "path": "/pixel-agents/assets/furniture/WOODEN_CHAIR/WOODEN_CHAIR_SIDE.png",
       "width": 16,
       "height": 32,
       "footprintW": 1,
@@ -185,7 +185,7 @@
       "id": "CACTUS",
       "label": "Cactus",
       "category": "decor",
-      "path": "/ui/pixel-agents/assets/furniture/CACTUS/CACTUS.png",
+      "path": "/pixel-agents/assets/furniture/CACTUS/CACTUS.png",
       "width": 16,
       "height": 32,
       "footprintW": 1,
@@ -201,7 +201,7 @@
       "id": "LARGE_PLANT",
       "label": "Large Plant",
       "category": "decor",
-      "path": "/ui/pixel-agents/assets/furniture/LARGE_PLANT/LARGE_PLANT.png",
+      "path": "/pixel-agents/assets/furniture/LARGE_PLANT/LARGE_PLANT.png",
       "width": 32,
       "height": 48,
       "footprintW": 2,
@@ -217,7 +217,7 @@
       "id": "PLANT",
       "label": "Plant",
       "category": "decor",
-      "path": "/ui/pixel-agents/assets/furniture/PLANT/PLANT.png",
+      "path": "/pixel-agents/assets/furniture/PLANT/PLANT.png",
       "width": 16,
       "height": 32,
       "footprintW": 1,
@@ -233,7 +233,7 @@
       "id": "PLANT_2",
       "label": "Plant",
       "category": "decor",
-      "path": "/ui/pixel-agents/assets/furniture/PLANT_2/PLANT_2.png",
+      "path": "/pixel-agents/assets/furniture/PLANT_2/PLANT_2.png",
       "width": 16,
       "height": 32,
       "footprintW": 1,
@@ -249,7 +249,7 @@
       "id": "POT",
       "label": "Pot",
       "category": "decor",
-      "path": "/ui/pixel-agents/assets/furniture/POT/POT.png",
+      "path": "/pixel-agents/assets/furniture/POT/POT.png",
       "width": 16,
       "height": 16,
       "footprintW": 1,
@@ -265,7 +265,7 @@
       "id": "COFFEE_TABLE",
       "label": "Coffee Table",
       "category": "desks",
-      "path": "/ui/pixel-agents/assets/furniture/COFFEE_TABLE/COFFEE_TABLE.png",
+      "path": "/pixel-agents/assets/furniture/COFFEE_TABLE/COFFEE_TABLE.png",
       "width": 32,
       "height": 32,
       "footprintW": 2,
@@ -281,7 +281,7 @@
       "id": "DESK_FRONT",
       "label": "Desk · Front",
       "category": "desks",
-      "path": "/ui/pixel-agents/assets/furniture/DESK/DESK_FRONT.png",
+      "path": "/pixel-agents/assets/furniture/DESK/DESK_FRONT.png",
       "width": 48,
       "height": 32,
       "footprintW": 3,
@@ -297,7 +297,7 @@
       "id": "DESK_SIDE",
       "label": "Desk · Side",
       "category": "desks",
-      "path": "/ui/pixel-agents/assets/furniture/DESK/DESK_SIDE.png",
+      "path": "/pixel-agents/assets/furniture/DESK/DESK_SIDE.png",
       "width": 16,
       "height": 64,
       "footprintW": 1,
@@ -313,7 +313,7 @@
       "id": "SMALL_TABLE_FRONT",
       "label": "Small Table · Front",
       "category": "desks",
-      "path": "/ui/pixel-agents/assets/furniture/SMALL_TABLE/SMALL_TABLE_FRONT.png",
+      "path": "/pixel-agents/assets/furniture/SMALL_TABLE/SMALL_TABLE_FRONT.png",
       "width": 32,
       "height": 32,
       "footprintW": 2,
@@ -329,7 +329,7 @@
       "id": "SMALL_TABLE_SIDE",
       "label": "Small Table · Side",
       "category": "desks",
-      "path": "/ui/pixel-agents/assets/furniture/SMALL_TABLE/SMALL_TABLE_SIDE.png",
+      "path": "/pixel-agents/assets/furniture/SMALL_TABLE/SMALL_TABLE_SIDE.png",
       "width": 16,
       "height": 48,
       "footprintW": 1,
@@ -345,7 +345,7 @@
       "id": "TABLE_FRONT",
       "label": "Table",
       "category": "desks",
-      "path": "/ui/pixel-agents/assets/furniture/TABLE_FRONT/TABLE_FRONT.png",
+      "path": "/pixel-agents/assets/furniture/TABLE_FRONT/TABLE_FRONT.png",
       "width": 48,
       "height": 64,
       "footprintW": 3,
@@ -361,7 +361,7 @@
       "id": "PC_BACK",
       "label": "PC · Back",
       "category": "electronics",
-      "path": "/ui/pixel-agents/assets/furniture/PC/PC_BACK.png",
+      "path": "/pixel-agents/assets/furniture/PC/PC_BACK.png",
       "width": 16,
       "height": 32,
       "footprintW": 1,
@@ -377,7 +377,7 @@
       "id": "PC_FRONT_OFF",
       "label": "PC · Front · Off",
       "category": "electronics",
-      "path": "/ui/pixel-agents/assets/furniture/PC/PC_FRONT_OFF.png",
+      "path": "/pixel-agents/assets/furniture/PC/PC_FRONT_OFF.png",
       "width": 16,
       "height": 32,
       "footprintW": 1,
@@ -393,7 +393,7 @@
       "id": "PC_FRONT_ON_1",
       "label": "PC · Front · On",
       "category": "electronics",
-      "path": "/ui/pixel-agents/assets/furniture/PC/PC_FRONT_ON_1.png",
+      "path": "/pixel-agents/assets/furniture/PC/PC_FRONT_ON_1.png",
       "width": 16,
       "height": 32,
       "footprintW": 1,
@@ -409,7 +409,7 @@
       "id": "PC_SIDE",
       "label": "PC · Side",
       "category": "electronics",
-      "path": "/ui/pixel-agents/assets/furniture/PC/PC_SIDE.png",
+      "path": "/pixel-agents/assets/furniture/PC/PC_SIDE.png",
       "width": 16,
       "height": 32,
       "footprintW": 1,
@@ -425,7 +425,7 @@
       "id": "BIN",
       "label": "Bin",
       "category": "misc",
-      "path": "/ui/pixel-agents/assets/furniture/BIN/BIN.png",
+      "path": "/pixel-agents/assets/furniture/BIN/BIN.png",
       "width": 16,
       "height": 16,
       "footprintW": 1,
@@ -441,7 +441,7 @@
       "id": "COFFEE",
       "label": "Coffee",
       "category": "misc",
-      "path": "/ui/pixel-agents/assets/furniture/COFFEE/COFFEE.png",
+      "path": "/pixel-agents/assets/furniture/COFFEE/COFFEE.png",
       "width": 16,
       "height": 16,
       "footprintW": 1,
@@ -457,7 +457,7 @@
       "id": "BOOKSHELF",
       "label": "Bookshelf",
       "category": "wall",
-      "path": "/ui/pixel-agents/assets/furniture/BOOKSHELF/BOOKSHELF.png",
+      "path": "/pixel-agents/assets/furniture/BOOKSHELF/BOOKSHELF.png",
       "width": 32,
       "height": 16,
       "footprintW": 2,
@@ -473,7 +473,7 @@
       "id": "CLOCK",
       "label": "Clock",
       "category": "wall",
-      "path": "/ui/pixel-agents/assets/furniture/CLOCK/CLOCK.png",
+      "path": "/pixel-agents/assets/furniture/CLOCK/CLOCK.png",
       "width": 16,
       "height": 32,
       "footprintW": 1,
@@ -489,7 +489,7 @@
       "id": "DOUBLE_BOOKSHELF",
       "label": "Double Bookshelf",
       "category": "wall",
-      "path": "/ui/pixel-agents/assets/furniture/DOUBLE_BOOKSHELF/DOUBLE_BOOKSHELF.png",
+      "path": "/pixel-agents/assets/furniture/DOUBLE_BOOKSHELF/DOUBLE_BOOKSHELF.png",
       "width": 32,
       "height": 32,
       "footprintW": 2,
@@ -505,7 +505,7 @@
       "id": "HANGING_PLANT",
       "label": "Hanging Plant",
       "category": "wall",
-      "path": "/ui/pixel-agents/assets/furniture/HANGING_PLANT/HANGING_PLANT.png",
+      "path": "/pixel-agents/assets/furniture/HANGING_PLANT/HANGING_PLANT.png",
       "width": 16,
       "height": 32,
       "footprintW": 1,
@@ -521,7 +521,7 @@
       "id": "LARGE_PAINTING",
       "label": "Large Painting",
       "category": "wall",
-      "path": "/ui/pixel-agents/assets/furniture/LARGE_PAINTING/LARGE_PAINTING.png",
+      "path": "/pixel-agents/assets/furniture/LARGE_PAINTING/LARGE_PAINTING.png",
       "width": 32,
       "height": 32,
       "footprintW": 2,
@@ -537,7 +537,7 @@
       "id": "SMALL_PAINTING",
       "label": "Small Painting",
       "category": "wall",
-      "path": "/ui/pixel-agents/assets/furniture/SMALL_PAINTING/SMALL_PAINTING.png",
+      "path": "/pixel-agents/assets/furniture/SMALL_PAINTING/SMALL_PAINTING.png",
       "width": 16,
       "height": 32,
       "footprintW": 1,
@@ -553,7 +553,7 @@
       "id": "SMALL_PAINTING_2",
       "label": "Small Painting",
       "category": "wall",
-      "path": "/ui/pixel-agents/assets/furniture/SMALL_PAINTING_2/SMALL_PAINTING_2.png",
+      "path": "/pixel-agents/assets/furniture/SMALL_PAINTING_2/SMALL_PAINTING_2.png",
       "width": 16,
       "height": 32,
       "footprintW": 1,
@@ -569,7 +569,7 @@
       "id": "WHITEBOARD",
       "label": "Whiteboard",
       "category": "wall",
-      "path": "/ui/pixel-agents/assets/furniture/WHITEBOARD/WHITEBOARD.png",
+      "path": "/pixel-agents/assets/furniture/WHITEBOARD/WHITEBOARD.png",
       "width": 32,
       "height": 32,
       "footprintW": 2,
@@ -586,353 +586,353 @@
     {
       "id": "floor_0",
       "label": "Floor 1",
-      "path": "/ui/pixel-agents/assets/floors/floor_0.png"
+      "path": "/pixel-agents/assets/floors/floor_0.png"
     },
     {
       "id": "floor_1",
       "label": "Floor 2",
-      "path": "/ui/pixel-agents/assets/floors/floor_1.png"
+      "path": "/pixel-agents/assets/floors/floor_1.png"
     },
     {
       "id": "floor_2",
       "label": "Floor 3",
-      "path": "/ui/pixel-agents/assets/floors/floor_2.png"
+      "path": "/pixel-agents/assets/floors/floor_2.png"
     },
     {
       "id": "floor_3",
       "label": "Floor 4",
-      "path": "/ui/pixel-agents/assets/floors/floor_3.png"
+      "path": "/pixel-agents/assets/floors/floor_3.png"
     },
     {
       "id": "floor_4",
       "label": "Floor 5",
-      "path": "/ui/pixel-agents/assets/floors/floor_4.png"
+      "path": "/pixel-agents/assets/floors/floor_4.png"
     },
     {
       "id": "floor_5",
       "label": "Floor 6",
-      "path": "/ui/pixel-agents/assets/floors/floor_5.png"
+      "path": "/pixel-agents/assets/floors/floor_5.png"
     },
     {
       "id": "floor_6",
       "label": "Floor 7",
-      "path": "/ui/pixel-agents/assets/floors/floor_6.png"
+      "path": "/pixel-agents/assets/floors/floor_6.png"
     },
     {
       "id": "floor_7",
       "label": "Floor 8",
-      "path": "/ui/pixel-agents/assets/floors/floor_7.png"
+      "path": "/pixel-agents/assets/floors/floor_7.png"
     },
     {
       "id": "floor_8",
       "label": "Floor 9",
-      "path": "/ui/pixel-agents/assets/floors/floor_8.png"
+      "path": "/pixel-agents/assets/floors/floor_8.png"
     }
   ],
   "walls": [
     {
       "id": "wall_0",
       "label": "Wall 1",
-      "path": "/ui/pixel-agents/assets/walls/wall_0.png"
+      "path": "/pixel-agents/assets/walls/wall_0.png"
     }
   ],
   "carpets": [
     {
       "id": "carpet_0",
       "label": "Carpet 1",
-      "path": "/ui/pixel-agents/assets/carpets/carpet_0.png"
+      "path": "/pixel-agents/assets/carpets/carpet_0.png"
     },
     {
       "id": "carpet_1",
       "label": "Carpet 2",
-      "path": "/ui/pixel-agents/assets/carpets/carpet_1.png"
+      "path": "/pixel-agents/assets/carpets/carpet_1.png"
     },
     {
       "id": "carpet_2",
       "label": "Carpet 3",
-      "path": "/ui/pixel-agents/assets/carpets/carpet_2.png"
+      "path": "/pixel-agents/assets/carpets/carpet_2.png"
     }
   ],
   "characters": [
     {
       "id": "char_0",
       "label": "Character 1",
-      "path": "/ui/pixel-agents/assets/characters/char_0.png"
+      "path": "/pixel-agents/assets/characters/char_0.png"
     },
     {
       "id": "char_1",
       "label": "Character 2",
-      "path": "/ui/pixel-agents/assets/characters/char_1.png"
+      "path": "/pixel-agents/assets/characters/char_1.png"
     },
     {
       "id": "char_2",
       "label": "Character 3",
-      "path": "/ui/pixel-agents/assets/characters/char_2.png"
+      "path": "/pixel-agents/assets/characters/char_2.png"
     },
     {
       "id": "char_3",
       "label": "Character 4",
-      "path": "/ui/pixel-agents/assets/characters/char_3.png"
+      "path": "/pixel-agents/assets/characters/char_3.png"
     },
     {
       "id": "char_4",
       "label": "Character 5",
-      "path": "/ui/pixel-agents/assets/characters/char_4.png"
+      "path": "/pixel-agents/assets/characters/char_4.png"
     },
     {
       "id": "char_5",
       "label": "Character 6",
-      "path": "/ui/pixel-agents/assets/characters/char_5.png"
+      "path": "/pixel-agents/assets/characters/char_5.png"
     }
   ],
   "pets": [
     {
       "id": "claudio",
       "label": "Claudio",
-      "path": "/ui/pixel-agents/assets/pets/claudio/pet.png"
+      "path": "/pixel-agents/assets/pets/claudio/pet.png"
     },
     {
       "id": "gitcat",
       "label": "Gitcat",
-      "path": "/ui/pixel-agents/assets/pets/gitcat/pet.png"
+      "path": "/pixel-agents/assets/pets/gitcat/pet.png"
     }
   ],
   "images": [
     {
       "kind": "carpets",
-      "path": "/ui/pixel-agents/assets/carpets/carpet_0.png"
+      "path": "/pixel-agents/assets/carpets/carpet_0.png"
     },
     {
       "kind": "carpets",
-      "path": "/ui/pixel-agents/assets/carpets/carpet_1.png"
+      "path": "/pixel-agents/assets/carpets/carpet_1.png"
     },
     {
       "kind": "carpets",
-      "path": "/ui/pixel-agents/assets/carpets/carpet_2.png"
+      "path": "/pixel-agents/assets/carpets/carpet_2.png"
     },
     {
       "kind": "characters",
-      "path": "/ui/pixel-agents/assets/characters/char_0.png"
+      "path": "/pixel-agents/assets/characters/char_0.png"
     },
     {
       "kind": "characters",
-      "path": "/ui/pixel-agents/assets/characters/char_1.png"
+      "path": "/pixel-agents/assets/characters/char_1.png"
     },
     {
       "kind": "characters",
-      "path": "/ui/pixel-agents/assets/characters/char_2.png"
+      "path": "/pixel-agents/assets/characters/char_2.png"
     },
     {
       "kind": "characters",
-      "path": "/ui/pixel-agents/assets/characters/char_3.png"
+      "path": "/pixel-agents/assets/characters/char_3.png"
     },
     {
       "kind": "characters",
-      "path": "/ui/pixel-agents/assets/characters/char_4.png"
+      "path": "/pixel-agents/assets/characters/char_4.png"
     },
     {
       "kind": "characters",
-      "path": "/ui/pixel-agents/assets/characters/char_5.png"
+      "path": "/pixel-agents/assets/characters/char_5.png"
     },
     {
       "kind": "floors",
-      "path": "/ui/pixel-agents/assets/floors/floor_0.png"
+      "path": "/pixel-agents/assets/floors/floor_0.png"
     },
     {
       "kind": "floors",
-      "path": "/ui/pixel-agents/assets/floors/floor_1.png"
+      "path": "/pixel-agents/assets/floors/floor_1.png"
     },
     {
       "kind": "floors",
-      "path": "/ui/pixel-agents/assets/floors/floor_2.png"
+      "path": "/pixel-agents/assets/floors/floor_2.png"
     },
     {
       "kind": "floors",
-      "path": "/ui/pixel-agents/assets/floors/floor_3.png"
+      "path": "/pixel-agents/assets/floors/floor_3.png"
     },
     {
       "kind": "floors",
-      "path": "/ui/pixel-agents/assets/floors/floor_4.png"
+      "path": "/pixel-agents/assets/floors/floor_4.png"
     },
     {
       "kind": "floors",
-      "path": "/ui/pixel-agents/assets/floors/floor_5.png"
+      "path": "/pixel-agents/assets/floors/floor_5.png"
     },
     {
       "kind": "floors",
-      "path": "/ui/pixel-agents/assets/floors/floor_6.png"
+      "path": "/pixel-agents/assets/floors/floor_6.png"
     },
     {
       "kind": "floors",
-      "path": "/ui/pixel-agents/assets/floors/floor_7.png"
+      "path": "/pixel-agents/assets/floors/floor_7.png"
     },
     {
       "kind": "floors",
-      "path": "/ui/pixel-agents/assets/floors/floor_8.png"
+      "path": "/pixel-agents/assets/floors/floor_8.png"
     },
     {
       "kind": "furniture",
-      "path": "/ui/pixel-agents/assets/furniture/BIN/BIN.png"
+      "path": "/pixel-agents/assets/furniture/BIN/BIN.png"
     },
     {
       "kind": "furniture",
-      "path": "/ui/pixel-agents/assets/furniture/BOOKSHELF/BOOKSHELF.png"
+      "path": "/pixel-agents/assets/furniture/BOOKSHELF/BOOKSHELF.png"
     },
     {
       "kind": "furniture",
-      "path": "/ui/pixel-agents/assets/furniture/CACTUS/CACTUS.png"
+      "path": "/pixel-agents/assets/furniture/CACTUS/CACTUS.png"
     },
     {
       "kind": "furniture",
-      "path": "/ui/pixel-agents/assets/furniture/CLOCK/CLOCK.png"
+      "path": "/pixel-agents/assets/furniture/CLOCK/CLOCK.png"
     },
     {
       "kind": "furniture",
-      "path": "/ui/pixel-agents/assets/furniture/COFFEE_TABLE/COFFEE_TABLE.png"
+      "path": "/pixel-agents/assets/furniture/COFFEE_TABLE/COFFEE_TABLE.png"
     },
     {
       "kind": "furniture",
-      "path": "/ui/pixel-agents/assets/furniture/COFFEE/COFFEE.png"
+      "path": "/pixel-agents/assets/furniture/COFFEE/COFFEE.png"
     },
     {
       "kind": "furniture",
-      "path": "/ui/pixel-agents/assets/furniture/CUSHIONED_BENCH/CUSHIONED_BENCH.png"
+      "path": "/pixel-agents/assets/furniture/CUSHIONED_BENCH/CUSHIONED_BENCH.png"
     },
     {
       "kind": "furniture",
-      "path": "/ui/pixel-agents/assets/furniture/CUSHIONED_CHAIR/CUSHIONED_CHAIR_BACK.png"
+      "path": "/pixel-agents/assets/furniture/CUSHIONED_CHAIR/CUSHIONED_CHAIR_BACK.png"
     },
     {
       "kind": "furniture",
-      "path": "/ui/pixel-agents/assets/furniture/CUSHIONED_CHAIR/CUSHIONED_CHAIR_FRONT.png"
+      "path": "/pixel-agents/assets/furniture/CUSHIONED_CHAIR/CUSHIONED_CHAIR_FRONT.png"
     },
     {
       "kind": "furniture",
-      "path": "/ui/pixel-agents/assets/furniture/CUSHIONED_CHAIR/CUSHIONED_CHAIR_SIDE.png"
+      "path": "/pixel-agents/assets/furniture/CUSHIONED_CHAIR/CUSHIONED_CHAIR_SIDE.png"
     },
     {
       "kind": "furniture",
-      "path": "/ui/pixel-agents/assets/furniture/DESK/DESK_FRONT.png"
+      "path": "/pixel-agents/assets/furniture/DESK/DESK_FRONT.png"
     },
     {
       "kind": "furniture",
-      "path": "/ui/pixel-agents/assets/furniture/DESK/DESK_SIDE.png"
+      "path": "/pixel-agents/assets/furniture/DESK/DESK_SIDE.png"
     },
     {
       "kind": "furniture",
-      "path": "/ui/pixel-agents/assets/furniture/DOUBLE_BOOKSHELF/DOUBLE_BOOKSHELF.png"
+      "path": "/pixel-agents/assets/furniture/DOUBLE_BOOKSHELF/DOUBLE_BOOKSHELF.png"
     },
     {
       "kind": "furniture",
-      "path": "/ui/pixel-agents/assets/furniture/HANGING_PLANT/HANGING_PLANT.png"
+      "path": "/pixel-agents/assets/furniture/HANGING_PLANT/HANGING_PLANT.png"
     },
     {
       "kind": "furniture",
-      "path": "/ui/pixel-agents/assets/furniture/LARGE_PAINTING/LARGE_PAINTING.png"
+      "path": "/pixel-agents/assets/furniture/LARGE_PAINTING/LARGE_PAINTING.png"
     },
     {
       "kind": "furniture",
-      "path": "/ui/pixel-agents/assets/furniture/LARGE_PLANT/LARGE_PLANT.png"
+      "path": "/pixel-agents/assets/furniture/LARGE_PLANT/LARGE_PLANT.png"
     },
     {
       "kind": "furniture",
-      "path": "/ui/pixel-agents/assets/furniture/PC/PC_BACK.png"
+      "path": "/pixel-agents/assets/furniture/PC/PC_BACK.png"
     },
     {
       "kind": "furniture",
-      "path": "/ui/pixel-agents/assets/furniture/PC/PC_FRONT_OFF.png"
+      "path": "/pixel-agents/assets/furniture/PC/PC_FRONT_OFF.png"
     },
     {
       "kind": "furniture",
-      "path": "/ui/pixel-agents/assets/furniture/PC/PC_FRONT_ON_1.png"
+      "path": "/pixel-agents/assets/furniture/PC/PC_FRONT_ON_1.png"
     },
     {
       "kind": "furniture",
-      "path": "/ui/pixel-agents/assets/furniture/PC/PC_FRONT_ON_2.png"
+      "path": "/pixel-agents/assets/furniture/PC/PC_FRONT_ON_2.png"
     },
     {
       "kind": "furniture",
-      "path": "/ui/pixel-agents/assets/furniture/PC/PC_FRONT_ON_3.png"
+      "path": "/pixel-agents/assets/furniture/PC/PC_FRONT_ON_3.png"
     },
     {
       "kind": "furniture",
-      "path": "/ui/pixel-agents/assets/furniture/PC/PC_SIDE.png"
+      "path": "/pixel-agents/assets/furniture/PC/PC_SIDE.png"
     },
     {
       "kind": "furniture",
-      "path": "/ui/pixel-agents/assets/furniture/PLANT_2/PLANT_2.png"
+      "path": "/pixel-agents/assets/furniture/PLANT_2/PLANT_2.png"
     },
     {
       "kind": "furniture",
-      "path": "/ui/pixel-agents/assets/furniture/PLANT/PLANT.png"
+      "path": "/pixel-agents/assets/furniture/PLANT/PLANT.png"
     },
     {
       "kind": "furniture",
-      "path": "/ui/pixel-agents/assets/furniture/POT/POT.png"
+      "path": "/pixel-agents/assets/furniture/POT/POT.png"
     },
     {
       "kind": "furniture",
-      "path": "/ui/pixel-agents/assets/furniture/SMALL_PAINTING_2/SMALL_PAINTING_2.png"
+      "path": "/pixel-agents/assets/furniture/SMALL_PAINTING_2/SMALL_PAINTING_2.png"
     },
     {
       "kind": "furniture",
-      "path": "/ui/pixel-agents/assets/furniture/SMALL_PAINTING/SMALL_PAINTING.png"
+      "path": "/pixel-agents/assets/furniture/SMALL_PAINTING/SMALL_PAINTING.png"
     },
     {
       "kind": "furniture",
-      "path": "/ui/pixel-agents/assets/furniture/SMALL_TABLE/SMALL_TABLE_FRONT.png"
+      "path": "/pixel-agents/assets/furniture/SMALL_TABLE/SMALL_TABLE_FRONT.png"
     },
     {
       "kind": "furniture",
-      "path": "/ui/pixel-agents/assets/furniture/SMALL_TABLE/SMALL_TABLE_SIDE.png"
+      "path": "/pixel-agents/assets/furniture/SMALL_TABLE/SMALL_TABLE_SIDE.png"
     },
     {
       "kind": "furniture",
-      "path": "/ui/pixel-agents/assets/furniture/SOFA/SOFA_BACK.png"
+      "path": "/pixel-agents/assets/furniture/SOFA/SOFA_BACK.png"
     },
     {
       "kind": "furniture",
-      "path": "/ui/pixel-agents/assets/furniture/SOFA/SOFA_FRONT.png"
+      "path": "/pixel-agents/assets/furniture/SOFA/SOFA_FRONT.png"
     },
     {
       "kind": "furniture",
-      "path": "/ui/pixel-agents/assets/furniture/SOFA/SOFA_SIDE.png"
+      "path": "/pixel-agents/assets/furniture/SOFA/SOFA_SIDE.png"
     },
     {
       "kind": "furniture",
-      "path": "/ui/pixel-agents/assets/furniture/TABLE_FRONT/TABLE_FRONT.png"
+      "path": "/pixel-agents/assets/furniture/TABLE_FRONT/TABLE_FRONT.png"
     },
     {
       "kind": "furniture",
-      "path": "/ui/pixel-agents/assets/furniture/WHITEBOARD/WHITEBOARD.png"
+      "path": "/pixel-agents/assets/furniture/WHITEBOARD/WHITEBOARD.png"
     },
     {
       "kind": "furniture",
-      "path": "/ui/pixel-agents/assets/furniture/WOODEN_BENCH/WOODEN_BENCH.png"
+      "path": "/pixel-agents/assets/furniture/WOODEN_BENCH/WOODEN_BENCH.png"
     },
     {
       "kind": "furniture",
-      "path": "/ui/pixel-agents/assets/furniture/WOODEN_CHAIR/WOODEN_CHAIR_BACK.png"
+      "path": "/pixel-agents/assets/furniture/WOODEN_CHAIR/WOODEN_CHAIR_BACK.png"
     },
     {
       "kind": "furniture",
-      "path": "/ui/pixel-agents/assets/furniture/WOODEN_CHAIR/WOODEN_CHAIR_FRONT.png"
+      "path": "/pixel-agents/assets/furniture/WOODEN_CHAIR/WOODEN_CHAIR_FRONT.png"
     },
     {
       "kind": "furniture",
-      "path": "/ui/pixel-agents/assets/furniture/WOODEN_CHAIR/WOODEN_CHAIR_SIDE.png"
+      "path": "/pixel-agents/assets/furniture/WOODEN_CHAIR/WOODEN_CHAIR_SIDE.png"
     },
     {
       "kind": "pets",
-      "path": "/ui/pixel-agents/assets/pets/claudio/pet.png"
+      "path": "/pixel-agents/assets/pets/claudio/pet.png"
     },
     {
       "kind": "pets",
-      "path": "/ui/pixel-agents/assets/pets/gitcat/pet.png"
+      "path": "/pixel-agents/assets/pets/gitcat/pet.png"
     },
     {
       "kind": "walls",
-      "path": "/ui/pixel-agents/assets/walls/wall_0.png"
+      "path": "/pixel-agents/assets/walls/wall_0.png"
     }
   ]
 }

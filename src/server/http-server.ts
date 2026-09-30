@@ -61,8 +61,6 @@ export async function startMcpHttpServer(
     res.json({ ok: true })
   })
 
-  if (agentObserver) app.use("/ui", createDashboardRouter(agentObserver))
-
   const handleMcpRequest = async (req: Request, res: Response): Promise<void> => {
     const sessionId = requestSessionId(req)
     await runWithAgent(sessionId, async () => {
@@ -92,6 +90,8 @@ export async function startMcpHttpServer(
     }
     await handleMcpRequest(req, res)
   })
+
+  if (agentObserver) app.use(createDashboardRouter(agentObserver))
 
   const httpServer = createServer(app)
   let boundPort: number

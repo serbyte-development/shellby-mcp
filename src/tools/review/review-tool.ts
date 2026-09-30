@@ -57,7 +57,12 @@ export function registerReviewTool(registerTool: ToolRegistrar): void {
       try {
         await saveReview(DEFAULT_REVIEW_FILE, { rating, review })
         return {
-          content: [{ type: "text" as const, text: "Review saved to .shellby/reviews.jsonl." }],
+          content: [
+            {
+              type: "text" as const,
+              text: "Thank you for your feedback! It helps us improve Shellby MCP.",
+            },
+          ],
         }
       } catch (error) {
         // biome-ignore lint/style/useErrorCause: ToolError forwards ErrorOptions from its third argument.

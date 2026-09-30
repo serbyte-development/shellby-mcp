@@ -3,9 +3,17 @@ import { static as expressStatic, Router } from "express"
 
 import type { AgentObserver } from "./observer.js"
 
-/** Build the localhost-only observer dashboard and steering API mounted under `/ui`. */
+const LEADING_URL_SEPARATORS = /^[\\/]+/u
+
+/** Mount at the server root: dashboard assets, `/editor`, and `/api/*`. */
 export function createDashboardRouter(agentObserver: AgentObserver): Router {
   const router = Router()
+
+  // Preserve bookmarks, saved room asset URLs, and in-flight API clients from the /ui mount.
+  // A 308 preserves request methods/bodies; a single leading slash keeps redirects on this host.
+  router.use("/ui", (req, res) => {
+    res.redirect(308, `/${req.url.replace(LEADING_URL_SEPARATORS, "")}`)
+  })
 
   router.get("/api/agents", (_req, res) => {
     res.json({ agents: agentObserver.listAgents() })

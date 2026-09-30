@@ -1,4 +1,10 @@
-import { Activity, PencilRuler, RefreshCw, Wifi, WifiOff } from "lucide-react"
+import {
+  IconActivity,
+  IconPencil,
+  IconRefresh,
+  IconWifi,
+  IconWifiOff,
+} from "@react-zero-ui/icon-sprite"
 import { useEffect, useState } from "react"
 
 import { ThemeSelect } from "./components/ThemeSelect"
@@ -10,7 +16,7 @@ import { useDashboardAgents } from "./features/dashboard/useDashboardAgents"
 
 export function App() {
   const editorRoute =
-    window.location.pathname.replace(/\/+$/u, "") === "/ui/editor" ||
+    window.location.pathname.replace(/\/+$/u, "") === "/editor" ||
     new URLSearchParams(window.location.search).has("editor")
   if (editorRoute) return <RoomEditor />
   return <Dashboard />
@@ -41,11 +47,8 @@ function Dashboard() {
   return (
     <main className="min-h-screen">
       <header className="sticky top-0 z-10 border-b bg-background/95 backdrop-blur">
-        <div className="mx-auto flex max-w-[1500px] flex-wrap items-center justify-between gap-4 px-5 py-4 lg:px-8">
+        <div className="mx-auto flex max-w-375 flex-wrap items-center justify-between gap-4 px-5 py-1 lg:px-8">
           <div className="flex items-center gap-3">
-            <div className="flex size-9 items-center justify-center rounded-lg bg-foreground text-background">
-              <Activity className="size-5" />
-            </div>
             <div>
               <h1 className="text-base font-semibold tracking-tight">Shellby Control</h1>
               <p className="text-xs text-muted-foreground">
@@ -53,31 +56,27 @@ function Dashboard() {
               </p>
             </div>
           </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <ThemeSelect />
+          <div className="flex flex-wrap items-center gap-4">
             <div
               className={`hidden items-center gap-1.5 text-xs sm:flex ${connected ? "text-success" : "text-muted-foreground"}`}
             >
-              {connected ? <Wifi className="size-3.5" /> : <WifiOff className="size-3.5" />}
+              {connected ? <IconWifi className="size-3.5" /> : <IconWifiOff className="size-3.5" />}
               {connected ? "Live" : "Reconnecting"}
             </div>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => (window.location.href = "/ui/?editor=1")}
-            >
-              <PencilRuler className="size-3.5" />
+            <ThemeSelect />
+            <Button variant="outline" size="sm" onClick={() => (window.location.href = "/editor")}>
+              <IconPencil className="size-3.5" />
               Edit room
             </Button>
             <Button variant="outline" size="sm" onClick={() => window.location.reload()}>
-              <RefreshCw className="size-3.5" />
+              <IconRefresh className="size-3.5" />
               Refresh
             </Button>
           </div>
         </div>
       </header>
 
-      <div className="mx-auto max-w-[1500px] px-5 py-6 lg:px-8">
+      <div className="mx-auto max-w-375 px-5 py-6 lg:px-8">
         {error ? (
           <div className="mb-5 rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">
             {error}
@@ -90,7 +89,7 @@ function Dashboard() {
           </div>
         ) : agents.length === 0 ? (
           <div className="mx-auto max-w-lg py-24 text-center">
-            <Activity className="mx-auto size-8 text-muted-foreground" />
+            <IconActivity className="mx-auto size-8 text-muted-foreground" />
             <h2 className="mt-4 text-lg font-semibold">
               {dismissedAgents.length > 0 ? "All agents are dismissed" : "No agents observed yet"}
             </h2>

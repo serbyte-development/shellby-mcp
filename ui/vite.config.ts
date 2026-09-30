@@ -6,7 +6,6 @@ import { defineConfig } from "vite"
 import { loadPublicConfig } from "../src/public-config.cts"
 
 export default defineConfig({
-  base: "/ui/",
   plugins: [
     react({
       babel: {
@@ -17,7 +16,7 @@ export default defineConfig({
   ],
   server: {
     proxy: {
-      "/ui/api": {
+      "/api": {
         target: `http://127.0.0.1:${loadPublicConfig(fileURLToPath(new URL("../.shellby/config.toml", import.meta.url))).port}`,
         changeOrigin: true,
       },

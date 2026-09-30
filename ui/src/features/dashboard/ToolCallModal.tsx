@@ -1,7 +1,6 @@
 // biome-ignore-all lint/security/noDangerouslySetInnerHtml: The highlighting module escapes all source text before adding syntax markup.
 import * as Dialog from "@radix-ui/react-dialog"
-import { X } from "lucide-react"
-
+import { IconX } from "@react-zero-ui/icon-sprite"
 import { Button } from "../../components/ui/button"
 import type { AgentCall } from "../../types"
 import { highlightInput, highlightResponse } from "./highlight-tool-text"
@@ -15,15 +14,8 @@ export function ToolCallModal({ call, onClose }: { call?: AgentCall; onClose: ()
       <Dialog.Portal>
         <Dialog.Overlay className="fixed inset-0 z-40 bg-black/30 backdrop-blur-[1px]" />
         <Dialog.Content className="fixed left-1/2 top-1/2 z-50 flex max-h-[80vh] w-[min(760px,calc(100vw-2rem))] -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-xl border bg-background shadow-2xl outline-none">
-          <div className="flex items-start justify-between gap-4 border-b px-5 py-4">
-            <div className="min-w-0">
-              <Dialog.Title className="truncate text-base font-semibold">{call?.tool}</Dialog.Title>
-              {call?.summary ? (
-                <Dialog.Description className="mt-1 truncate text-xs text-muted-foreground">
-                  {call.summary}
-                </Dialog.Description>
-              ) : null}
-            </div>
+          <div className="flex items-center justify-between gap-4 border-b px-5 py-3">
+            <Dialog.Title className="truncate text-base font-semibold">{call?.tool}</Dialog.Title>
             <Dialog.Close asChild>
               <Button
                 type="button"
@@ -32,7 +24,7 @@ export function ToolCallModal({ call, onClose }: { call?: AgentCall; onClose: ()
                 className="size-8 shrink-0"
                 aria-label="Close tool call details"
               >
-                <X className="size-4" />
+                <IconX className="size-4" />
               </Button>
             </Dialog.Close>
           </div>
@@ -52,7 +44,7 @@ export function ToolCallModal({ call, onClose }: { call?: AgentCall; onClose: ()
               <TokenCount count={call?.outputTokens} />
             </h3>
             {call?.response !== undefined ? (
-              <pre className="whitespace-pre-wrap break-words rounded-lg border bg-muted/30 p-4 text-xs leading-5">
+              <pre className="whitespace-pre-wrap wrap-break-word rounded-lg border bg-muted/30 p-4 text-xs leading-5">
                 <code
                   dangerouslySetInnerHTML={{
                     __html: highlightResponse(call.response || "No content returned."),
@@ -75,9 +67,17 @@ export function ToolCallModal({ call, onClose }: { call?: AgentCall; onClose: ()
 
 function TokenCount({ count }: { count?: number }) {
   if (count === undefined) return null
+
+  let colorClass = ""
+  if (count > 10000) {
+    colorClass = "text-destructive"
+  } else if (count > 4000) {
+    colorClass = "text-accent"
+  }
+
   return (
     <span
-      className="ml-2 font-normal normal-case tracking-normal"
+      className={`ml-2 font-normal normal-case tracking-normal ${colorClass}`}
       title="Full tool arguments and returned text/structured content (o200k_base), before display truncation. Excludes binary media and protocol overhead."
     >
       {" "}

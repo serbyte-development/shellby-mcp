@@ -111,7 +111,7 @@ test("print-url uses this copy's ngrok API and filters other upstreams and domai
   )
   assert.equal(
     result.stdout.trim(),
-    "MCP URL: https://second.ngrok.app/mcp\nUI URL: http://127.0.0.1:3334/ui"
+    "MCP URL: https://second.ngrok.app/mcp\nUI URL: http://127.0.0.1:3334/"
   )
   assert.equal(requests, 1)
 })
@@ -163,7 +163,7 @@ test("print-url also prints the local UI URL when enabled", async (t) => {
   )
   assert.equal(
     result.stdout.trim(),
-    "MCP URL: http://127.0.0.1:3334/mcp (local only)\nUI URL: http://127.0.0.1:3334/ui"
+    "MCP URL: http://127.0.0.1:3334/mcp (local only)\nUI URL: http://127.0.0.1:3334/"
   )
 })
 

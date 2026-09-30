@@ -61,7 +61,7 @@ async function discoverNgrokUrl(attempts: number, attempt = 1): Promise<string |
 
 function printUiUrl(): void {
   if (!MCP_CONFIG.ui.enabled) return
-  console.log(`UI URL: http://${MCP_CONFIG.host}:${MCP_CONFIG.port}/ui`)
+  console.log(`UI URL: http://${MCP_CONFIG.host}:${MCP_CONFIG.port}/`)
 }
 
 function getNgrokTunnels(payload: unknown): NgrokTunnel[] {

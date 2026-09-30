@@ -1,15 +1,15 @@
 import {
-  Armchair,
-  BrickWall,
-  Copy,
-  FlipHorizontal2,
-  Grid2X2,
-  Layers3,
-  MousePointer2,
-  PaintBucket,
-  PawPrint,
-  Trash2,
-} from "lucide-react"
+  IconArmchair,
+  IconBucket,
+  IconCopy,
+  IconFlipHorizontal,
+  IconLayersIntersect,
+  IconLayoutGrid,
+  IconPaw,
+  IconPointer,
+  IconTrash,
+  IconWall,
+} from "@react-zero-ui/icon-sprite"
 
 import { Button } from "../../../components/ui/button"
 import {
@@ -52,13 +52,13 @@ export const FALLBACK_ASSET_CHOICES: AssetChoice[] = [
 ]
 
 const DIRECTIONS: RoomDirection[] = ["up", "right", "down", "left"]
-const TOOL_BUTTONS: Array<{ id: EditorTool; label: string; icon: typeof MousePointer2 }> = [
-  { id: "select", label: "Select", icon: MousePointer2 },
-  { id: "furniture", label: "Furniture", icon: Armchair },
-  { id: "floor", label: "Floor", icon: PaintBucket },
-  { id: "wall", label: "Wall", icon: BrickWall },
-  { id: "carpet", label: "Carpet", icon: Layers3 },
-  { id: "entities", label: "Entities", icon: PawPrint },
+const TOOL_BUTTONS: Array<{ id: EditorTool; label: string; icon: typeof IconPointer }> = [
+  { id: "select", label: "Select", icon: IconPointer },
+  { id: "furniture", label: "Furniture", icon: IconArmchair },
+  { id: "floor", label: "Floor", icon: IconBucket },
+  { id: "wall", label: "Wall", icon: IconWall },
+  { id: "carpet", label: "Carpet", icon: IconLayersIntersect },
+  { id: "entities", label: "Entities", icon: IconPaw },
 ]
 
 export function EditorToolsPanel(props: {
@@ -89,7 +89,7 @@ export function EditorToolsPanel(props: {
   return (
     <aside className="rounded-xl border bg-card p-3 shadow-sm">
       <div className="mb-3 flex items-center gap-2">
-        <Grid2X2 className="size-4" />
+        <IconLayoutGrid className="size-4" />
         <h2 className="text-sm font-semibold">Editor tools</h2>
       </div>
       <div className="grid grid-cols-2 gap-1.5">
@@ -569,7 +569,7 @@ function SelectionInspector({
           })
         }
       >
-        <FlipHorizontal2 className="size-3.5" /> Mirror horizontally
+        <IconFlipHorizontal className="size-3.5" /> Mirror horizontally
       </button>
       {selection.list === "furniture" ? (
         <label className="block text-xs">
@@ -649,7 +649,7 @@ function InspectorActions({
   return (
     <div className="grid grid-cols-2 gap-2 border-t pt-3">
       <Button type="button" variant="outline" size="sm" onClick={onDuplicate}>
-        <Copy className="size-3.5" /> Duplicate
+        <IconCopy className="size-3.5" /> Duplicate
       </Button>
       <Button
         type="button"
@@ -658,7 +658,7 @@ function InspectorActions({
         className="text-destructive"
         onClick={onDelete}
       >
-        <Trash2 className="size-3.5" /> Delete
+        <IconTrash className="size-3.5" /> Delete
       </Button>
     </div>
   )

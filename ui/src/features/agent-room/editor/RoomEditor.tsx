@@ -1,4 +1,4 @@
-import { ArrowLeft, RotateCcw, Save } from "lucide-react"
+import { IconArrowLeft, IconDeviceFloppy, IconRotate } from "@react-zero-ui/icon-sprite"
 import { type PointerEvent as ReactPointerEvent, useEffect, useRef, useState } from "react"
 
 import { ThemeSelect } from "../../../components/ThemeSelect"
@@ -27,9 +27,9 @@ import {
 import { renderEditor } from "./editor-canvas"
 import { hitSelections, type Selection, sameSelection, selectionPosition } from "./editor-selection"
 
-const DEFAULT_FLOOR = "/ui/pixel-agents/assets/floors/floor_5.png"
-const DEFAULT_WALL = "/ui/pixel-agents/assets/walls/wall_0.png"
-const DEFAULT_CARPET = "/ui/pixel-agents/assets/carpets/carpet_0.png"
+const DEFAULT_FLOOR = "/pixel-agents/assets/floors/floor_5.png"
+const DEFAULT_WALL = "/pixel-agents/assets/walls/wall_0.png"
+const DEFAULT_CARPET = "/pixel-agents/assets/carpets/carpet_0.png"
 
 export function RoomEditor() {
   const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -332,9 +332,9 @@ export function RoomEditor() {
               variant="ghost"
               size="icon"
               aria-label="Back to Shellby Control"
-              onClick={() => (window.location.href = "/ui/")}
+              onClick={() => (window.location.href = "/")}
             >
-              <ArrowLeft className="size-4" />
+              <IconArrowLeft className="size-4" />
             </Button>
             <div>
               <h1 className="text-base font-semibold tracking-tight">Room Editor</h1>
@@ -351,10 +351,10 @@ export function RoomEditor() {
               {dirty ? "Unsaved changes" : "Saved"}
             </span>
             <Button type="button" variant="outline" size="sm" onClick={resetDraft}>
-              <RotateCcw className="size-3.5" /> Reset draft
+              <IconRotate className="size-3.5" /> Reset draft
             </Button>
             <Button type="button" size="sm" onClick={save} disabled={!dirty}>
-              <Save className="size-3.5" /> Save layout
+              <IconDeviceFloppy className="size-3.5" /> Save layout
             </Button>
           </div>
         </div>
@@ -397,7 +397,7 @@ export function RoomEditor() {
               ref={canvasRef}
               width={ROOM_WIDTH}
               height={ROOM_HEIGHT}
-              className={`mx-auto block w-full max-w-[1000px] touch-none [image-rendering:pixelated] ${tool === "floor" || tool === "wall" || tool === "carpet" || placingFurniture || placingPet ? "cursor-crosshair" : "cursor-default"}`}
+              className={`mx-auto block w-full max-w-250 touch-none [image-rendering:pixelated] ${tool === "floor" || tool === "wall" || tool === "carpet" || placingFurniture || placingPet ? "cursor-crosshair" : "cursor-default"}`}
               onPointerDown={pointerDown}
               onPointerMove={pointerMove}
               onPointerUp={pointerUp}
