@@ -8,6 +8,7 @@ import type { Agent } from "../../types"
 import { AgentRoom } from "../agent-room/AgentRoom"
 import { AgentFamilyStrip } from "./AgentFamilyStrip"
 import { AgentStatusDot } from "./AgentStatusDot"
+import { AgentTokenUsage } from "./AgentTokenUsage"
 import type { AgentFamily } from "./agent-families"
 import { SteerComposer } from "./SteerComposer"
 import { ToolCallList } from "./ToolCallList"
@@ -41,16 +42,20 @@ export function AgentCard({
   const parent = family.agents.find((item) => item.id === agent.parentId)
 
   return (
-    <Card className="min-w-0 overflow-hidden" role="region" aria-label={agent.id}>
-      <CardHeader className="border-b bg-card/70">
-        <div className="gap-3 grid grid-cols-12 items-start">
-          <div className="min-w-0 col-span-7">
-            <div className="flex h-4 items-center gap-2 ">
+    <Card
+      className={`@container min-w-0 overflow-hidden ${active ? "border-accent/30" : ""}`}
+      role="region"
+      aria-label={agent.id}
+    >
+      <CardHeader className="pb-3">
+        <div className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-start gap-3">
+          <div className="min-w-0">
+            <div className="flex h-5 items-center gap-1 @md:gap-2">
               <AgentStatusDot active={active} />
               <h2
                 ref={headingRef}
                 tabIndex={-1}
-                className="min-w-0 capitalize truncate text-base font-semibold tracking-tight outline-none"
+                className="min-w-0 truncate text-base font-semibold capitalize tracking-tight outline-none @md:text-lg"
               >
                 {agent.id}
               </h2>
@@ -60,30 +65,34 @@ export function AgentCard({
                 <Badge className="bg-family-parent/10 text-family-parent">PARENT</Badge>
               ) : null}
             </div>
-            <p className="mt-2 truncate text-sm text-muted-foreground max-w-2xs">
+            <p className="mt-1.5 max-w-2xs truncate text-xs leading-5 text-muted-foreground">
               {agent.taskSlug
                 ?.split("-")
                 .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
                 .join(" ") ?? "No task name yet"}
             </p>
           </div>
-          <div className="mt-1 h-4 col-span-3">
-            {agent.parentId ? (
-              <button
-                type="button"
-                className="flex max-w-full items-center gap-1 text-xs text-muted-foreground enabled:hover:text-family-parent enabled:hover:underline"
-                disabled={!parent}
-                onClick={() => parent && selectAgent(parent.id)}
-                aria-label={`Show parent ${agent.parentId}`}
-              >
-                <IconGitBranch className="size-3 shrink-0" />
-                <span className="truncate">Parent: {agent.parentId}</span>
-              </button>
-            ) : null}
+          <div className="w-20 space-y-1">
+            <AgentTokenUsage usage={agent.toolUsage} />
+            <div className="h-4">
+              {agent.parentId ? (
+                <button
+                  type="button"
+                  className="flex max-w-full items-center gap-1 text-xs text-muted-foreground enabled:hover:text-family-parent enabled:hover:underline"
+                  disabled={!parent}
+                  onClick={() => parent && selectAgent(parent.id)}
+                  aria-label={`Show parent ${agent.parentId}`}
+                  title={`Parent: ${agent.parentId}`}
+                >
+                  <IconGitBranch className="size-3 shrink-0" />
+                  <span className="truncate">{agent.parentId}</span>
+                </button>
+              ) : null}
+            </div>
           </div>
-          <div className="flex shrink-0 items-center gap-1.5 col-span-2 justify-end">
+          <div className="flex shrink-0 items-center justify-end gap-1.5">
             <Badge
-              className={active ? "border-success/25 bg-success-muted text-success" : undefined}
+              className={`hidden @md:inline-flex ${active ? "border-success/25 bg-success-muted text-success" : ""}`}
             >
               {active ? "ACTIVE" : "INACTIVE"}
             </Badge>
@@ -91,7 +100,7 @@ export function AgentCard({
               type="button"
               variant="ghost"
               size="icon"
-              className="size-7 text-muted-foreground"
+              className="size-7 rounded-md border bg-surface text-muted-foreground"
               aria-label={`Dismiss ${agent.id}`}
               title="Dismiss agent until new activity"
               onClick={() => onDismiss(agent)}
@@ -102,7 +111,7 @@ export function AgentCard({
         </div>
       </CardHeader>
 
-      <CardContent className="space-y-2 pt-2">
+      <CardContent className="space-y-3">
         <AgentWorkspace
           key={`${agent.id}:${agent.firstSeenAt}`}
           agent={agent}
@@ -128,9 +137,9 @@ function AgentWorkspace({
   onDismissInstruction: (instructionId: string) => void
 }) {
   return (
-    <div className="@container space-y-4">
+    <div className="@container space-y-3">
       <AgentRoom agent={agent} />
-      <div className="grid gap-4 @xl:grid-cols-2">
+      <div className="grid gap-3 @md:grid-cols-2">
         <ToolCallList agent={agent} />
         <SteerComposer agent={agent} onDismissInstruction={onDismissInstruction} />
       </div>

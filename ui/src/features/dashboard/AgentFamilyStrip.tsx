@@ -15,8 +15,8 @@ export function AgentFamilyStrip({
 }) {
   if (agents.length === 0) return null
   return (
-    <fieldset className="min-w-0 border-t pt-4" aria-label={`Agent family ${rootId}`}>
-      <h3 className="mb-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+    <fieldset className="min-w-0 border-t pt-3" aria-label={`Agent family ${rootId}`}>
+      <h3 className="mb-3 text-xs font-semibold text-muted-foreground">
         Agent family · {agents.length + 1}
       </h3>
       <div className="grid grid-cols-3 gap-2 sm:gap-3">
@@ -29,7 +29,7 @@ export function AgentFamilyStrip({
               aria-label={`Show ${agent.id}${isParent ? ", parent" : ""}`}
               title={`${agent.id} · ${agent.taskSlug ?? "No task name yet"}`}
               onClick={() => onSelect(agent.id)}
-              className={`min-w-0 overflow-hidden rounded-lg border text-left transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-family-parent ${isParent ? "border-family-parent bg-family-parent/5 ring-1 ring-family-parent/40" : "bg-background/50 hover:border-muted-foreground"}`}
+              className={`min-w-0 overflow-hidden rounded-lg border text-left shadow-panel transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-family-parent ${isParent ? "border-family-parent/70 bg-family-parent/5 ring-1 ring-family-parent/25" : "bg-surface hover:border-accent/50"}`}
             >
               <AgentRoom agent={agent} preview />
               <div className="space-y-1 border-t px-2 py-2">

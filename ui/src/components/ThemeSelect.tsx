@@ -1,4 +1,4 @@
-import { ChevronDown } from "@react-zero-ui/icon-sprite"
+import { IconChevronDown } from "@react-zero-ui/icon-sprite"
 import { useState } from "react"
 
 const storageKey = "shellby-theme"
@@ -22,7 +22,7 @@ export function ThemeSelect() {
     <div className="relative inline-block">
       <select
         aria-label="Color theme"
-        className="appearance-none h-8 rounded-md border bg-background px-2 pr-8 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-muted-foreground"
+        className="h-8 appearance-none rounded-lg border bg-card/70 px-3 pr-8 text-xs shadow-panel transition-colors hover:border-accent/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50"
         value={theme}
         onChange={(event) => {
           const nextTheme = event.target.value
@@ -40,10 +40,8 @@ export function ThemeSelect() {
         <option value="dark">Dark</option>
       </select>
       <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground flex items-center">
-        {/* Simple chevron icon for dropdown, uses SVG */}
-        <ChevronDown className="size-4" />
+        <IconChevronDown className="size-3.5" />
       </span>
     </div>
-
   )
 }

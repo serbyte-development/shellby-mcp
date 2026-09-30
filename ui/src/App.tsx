@@ -9,6 +9,7 @@ import { useEffect, useState } from "react"
 
 import { ThemeSelect } from "./components/ThemeSelect"
 import { Button } from "./components/ui/button"
+import { WorkspaceHeader } from "./components/WorkspaceHeader"
 import { RoomEditor } from "./features/agent-room/editor/RoomEditor"
 import { AgentCard } from "./features/dashboard/AgentCard"
 import { groupAgentFamilies } from "./features/dashboard/agent-families"
@@ -46,37 +47,33 @@ function Dashboard() {
 
   return (
     <main className="min-h-screen">
-      <header className="sticky top-0 z-10 border-b bg-background/95 backdrop-blur">
-        <div className="mx-auto flex max-w-375 flex-wrap items-center justify-between gap-4 px-5 py-1 lg:px-8">
-          <div className="flex items-center gap-3">
-            <div>
-              <h1 className="text-base font-semibold tracking-tight">Shellby Control</h1>
-              <p className="text-xs text-muted-foreground">
-                {activeCount} active · {agents.length + dismissedAgents.length} observed
-              </p>
-            </div>
+      <WorkspaceHeader
+        title="Shellby Control"
+        description={`${activeCount} active · ${agents.length + dismissedAgents.length} observed`}
+        leading={
+          <div className="flex size-10 shrink-0 items-center justify-center rounded-lg border border-accent/20 bg-accent-muted text-accent shadow-panel">
+            <IconActivity className="size-5" />
           </div>
-          <div className="flex flex-wrap items-center gap-4">
-            <div
-              className={`hidden items-center gap-1.5 text-xs sm:flex ${connected ? "text-success" : "text-muted-foreground"}`}
-            >
-              {connected ? <IconWifi className="size-3.5" /> : <IconWifiOff className="size-3.5" />}
-              {connected ? "Live" : "Reconnecting"}
-            </div>
-            <ThemeSelect />
-            <Button variant="outline" size="sm" onClick={() => (window.location.href = "/editor")}>
-              <IconPencil className="size-3.5" />
-              Edit room
-            </Button>
-            <Button variant="outline" size="sm" onClick={() => window.location.reload()}>
-              <IconRefresh className="size-3.5" />
-              Refresh
-            </Button>
-          </div>
+        }
+      >
+        <div
+          className={`mr-2 hidden items-center gap-1.5 text-xs sm:flex ${connected ? "text-success" : "text-muted-foreground"}`}
+        >
+          {connected ? <IconWifi className="size-3.5" /> : <IconWifiOff className="size-3.5" />}
+          {connected ? "Live" : "Reconnecting"}
         </div>
-      </header>
+        <ThemeSelect />
+        <Button variant="outline" size="sm" onClick={() => (window.location.href = "/editor")}>
+          <IconPencil className="size-3.5" />
+          Edit room
+        </Button>
+        <Button variant="outline" size="sm" onClick={() => window.location.reload()}>
+          <IconRefresh className="size-3.5" />
+          Refresh
+        </Button>
+      </WorkspaceHeader>
 
-      <div className="mx-auto max-w-375 px-5 py-6 lg:px-8">
+      <div className="mx-auto max-w-375 px-4 py-5 lg:px-6">
         {error ? (
           <div className="mb-5 rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">
             {error}
@@ -88,7 +85,7 @@ function Dashboard() {
             Loading Shellby agents...
           </div>
         ) : agents.length === 0 ? (
-          <div className="mx-auto max-w-lg py-24 text-center">
+          <div className="mx-auto max-w-lg rounded-xl border bg-card px-6 py-20 text-center shadow-card">
             <IconActivity className="mx-auto size-8 text-muted-foreground" />
             <h2 className="mt-4 text-lg font-semibold">
               {dismissedAgents.length > 0 ? "All agents are dismissed" : "No agents observed yet"}
@@ -100,7 +97,7 @@ function Dashboard() {
             </p>
           </div>
         ) : (
-          <div className="grid items-start gap-5 md:grid-cols-2">
+          <div className="grid items-start gap-5 lg:grid-cols-2">
             {groupAgentFamilies(agents, dismissedAgents).map((family) => (
               <AgentCard
                 key={family.rootId}
@@ -114,7 +111,7 @@ function Dashboard() {
         )}
 
         {dismissedAgents.length > 0 ? (
-          <details className="mt-6 rounded-lg border bg-card px-4 py-3">
+          <details className="mt-6 rounded-xl border bg-card px-4 py-3 shadow-card">
             <summary className="cursor-pointer text-sm font-medium">
               Dismissed agents ({dismissedAgents.length})
             </summary>

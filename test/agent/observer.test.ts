@@ -7,8 +7,59 @@ import {
   runWithAgent,
 } from "../../src/agent/context.js"
 import { type AgentObserver, createAgentObserver } from "../../src/agent/observer.js"
+import { ToolCallTracker } from "../../src/mcp/tool-call-tracker.js"
 import { countTokens } from "../../src/tokenizer.js"
 import { publishCall } from "../fixtures/tool-call.js"
+
+test("publishes cumulative token totals beyond recent history, including concurrent calls", () => {
+  const observer = createAgentObserver()
+  const updates: ReturnType<AgentObserver["listAgents"]> = []
+  const unsubscribe = observer.subscribe(({ agent }) => updates.push(agent))
+  const agent = runWithAgent("observer-token-totals", () => getAgentIdentity()!)
+  const input = { command: "printf hello" }
+  const output = "Full response, before preview truncation.\n".repeat(1_000)
+  const inputTokens = countTokens(JSON.stringify(input))
+  const outputTokens = countTokens(output)
+  const pending = Array.from({ length: 15 }, () => {
+    const tracker = new ToolCallTracker({ agentObserver: observer })
+    runWithAgent(agent.sessionId, () =>
+      tracker.startRequest({
+        id: 1,
+        method: "tools/call",
+        params: { name: "shell_run", arguments: input },
+      })
+    )
+    return tracker
+  })
+  assert.deepEqual(observer.listAgents()[0]?.toolUsage, {
+    callCount: 15,
+    inputTokens: inputTokens * 15,
+    outputTokens: 0,
+  })
+  // Finish outside the originating context; attribution belongs to the registered call.
+  runWithAgent("observer-unrelated-finisher", () => {
+    for (const tracker of pending.reverse()) {
+      tracker.respond({
+        jsonrpc: "2.0",
+        id: 1,
+        result: { content: [{ type: "text", text: output }] },
+      })
+      tracker.finishRequest({ httpStatus: 200, state: "finished" })
+    }
+  })
+  unsubscribe()
+  const snapshot = observer.listAgents()[0]
+  assert.equal(snapshot?.recent.length, 12)
+  assert.equal(snapshot?.current, undefined)
+  assert.match(snapshot?.recent[0]?.response ?? "", /Dashboard output truncated/u)
+  assert.deepEqual(snapshot?.toolUsage, {
+    callCount: 15,
+    inputTokens: inputTokens * 15,
+    outputTokens: outputTokens * 15,
+  })
+  assert.deepEqual(updates.at(-1)?.toolUsage, snapshot?.toolUsage)
+  assert.deepEqual(updates[0]?.toolUsage, { callCount: 1, inputTokens, outputTokens: 0 })
+})
 
 test("publishes late parent links without inventing activity, and unsubscribes cleanly", (t) => {
   const observer = createAgentObserver()

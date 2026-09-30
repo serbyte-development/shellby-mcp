@@ -3,6 +3,7 @@ import { type PointerEvent as ReactPointerEvent, useEffect, useRef, useState } f
 
 import { ThemeSelect } from "../../../components/ThemeSelect"
 import { Button } from "../../../components/ui/button"
+import { WorkspaceHeader } from "../../../components/WorkspaceHeader"
 import {
   cloneDefaultRoomLayout,
   DEFAULT_FLOOR_TINT,
@@ -323,44 +324,37 @@ export function RoomEditor() {
   }
 
   return (
-    <main className="min-h-screen bg-muted/30">
-      <header className="sticky top-0 z-20 border-b bg-background/95 backdrop-blur">
-        <div className="mx-auto flex max-w-[1600px] flex-wrap items-center justify-between gap-4 px-5 py-3 lg:px-8">
-          <div className="flex items-center gap-3">
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              aria-label="Back to Shellby Control"
-              onClick={() => (window.location.href = "/")}
-            >
-              <IconArrowLeft className="size-4" />
-            </Button>
-            <div>
-              <h1 className="text-base font-semibold tracking-tight">Room Editor</h1>
-              <p className="text-xs text-muted-foreground">
-                8px object grid · 32px tile map · right-click erases paint
-              </p>
-            </div>
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <ThemeSelect />
-            <span
-              className={`hidden text-xs sm:inline ${dirty ? "text-warning" : "text-muted-foreground"}`}
-            >
-              {dirty ? "Unsaved changes" : "Saved"}
-            </span>
-            <Button type="button" variant="outline" size="sm" onClick={resetDraft}>
-              <IconRotate className="size-3.5" /> Reset draft
-            </Button>
-            <Button type="button" size="sm" onClick={save} disabled={!dirty}>
-              <IconDeviceFloppy className="size-3.5" /> Save layout
-            </Button>
-          </div>
-        </div>
-      </header>
+    <main className="min-h-screen">
+      <WorkspaceHeader
+        title="Room Editor"
+        description="8px object grid · 32px tile map · right-click erases paint"
+        leading={
+          <Button
+            type="button"
+            variant="outline"
+            size="icon"
+            aria-label="Back to Shellby Control"
+            onClick={() => (window.location.href = "/")}
+          >
+            <IconArrowLeft className="size-4" />
+          </Button>
+        }
+      >
+        <ThemeSelect />
+        <span
+          className={`hidden text-xs sm:inline ${dirty ? "text-warning" : "text-muted-foreground"}`}
+        >
+          {dirty ? "Unsaved changes" : "Saved"}
+        </span>
+        <Button type="button" variant="outline" size="sm" onClick={resetDraft}>
+          <IconRotate className="size-3.5" /> Reset draft
+        </Button>
+        <Button type="button" size="sm" onClick={save} disabled={!dirty}>
+          <IconDeviceFloppy className="size-3.5" /> Save layout
+        </Button>
+      </WorkspaceHeader>
 
-      <div className="mx-auto grid max-w-[1600px] gap-4 px-5 py-5 lg:grid-cols-[270px_minmax(0,1fr)_280px] lg:px-8">
+      <div className="mx-auto grid max-w-375 gap-4 px-4 py-5 lg:grid-cols-[270px_minmax(0,1fr)_280px] lg:px-6">
         <EditorToolsPanel
           tool={tool}
           onToolChange={setTool}

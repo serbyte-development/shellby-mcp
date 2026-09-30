@@ -87,21 +87,23 @@ export function EditorToolsPanel(props: {
   onCharacterAsset: (asset: string | null) => void
 }) {
   return (
-    <aside className="rounded-xl border bg-card p-3 shadow-sm">
+    <aside className="rounded-xl border bg-card p-3 shadow-card">
       <div className="mb-3 flex items-center gap-2">
         <IconLayoutGrid className="size-4" />
         <h2 className="text-sm font-semibold">Editor tools</h2>
       </div>
       <div className="grid grid-cols-2 gap-1.5">
         {TOOL_BUTTONS.map(({ id, label, icon: Icon }) => (
-          <button
+          <Button
             key={id}
             type="button"
+            variant="outline"
             onClick={() => props.onToolChange(id)}
-            className={`flex h-9 items-center justify-center gap-1.5 rounded-md border text-xs ${props.tool === id ? "border-accent bg-accent-muted text-accent" : "bg-background hover:bg-muted"}`}
+            aria-pressed={props.tool === id}
+            className={`h-9 gap-1.5 px-2 text-xs ${props.tool === id ? "border-accent/60 bg-accent-muted text-accent" : ""}`}
           >
             <Icon className="size-3.5" /> {label}
-          </button>
+          </Button>
         ))}
       </div>
       <div className="mt-4 max-h-[calc(100vh-15rem)] overflow-auto pr-1">
@@ -134,7 +136,7 @@ export function EditorInspectorPanel({
 }) {
   return (
     <aside className="space-y-4">
-      <div className="rounded-xl border bg-card p-4 shadow-sm">
+      <div className="rounded-xl border bg-card p-4 shadow-card">
         <h2 className="mb-3 text-sm font-semibold">Inspector</h2>
         {selection ? (
           <SelectionInspector
@@ -153,7 +155,7 @@ export function EditorInspectorPanel({
         )}
       </div>
       {itemsHere.length > 1 ? (
-        <div className="rounded-xl border bg-card p-4 shadow-sm">
+        <div className="rounded-xl border bg-card p-4 shadow-card">
           <h2 className="mb-2 text-sm font-semibold">Items here</h2>
           <div className="space-y-1">
             {itemsHere.map((item) => (

@@ -3,7 +3,7 @@ import { dirname, join, resolve } from "node:path"
 import { fileURLToPath } from "node:url"
 import { z } from "zod"
 import { type AgentIdentity, getAgentIdentity } from "../../agent/context.js"
-import { getAgentToolCallCount } from "../../mcp/tool-call-tracker.js"
+import { getAgentToolUsage } from "../../mcp/tool-call-tracker.js"
 import { ToolError } from "../../mcp/tool-error.js"
 import type { ToolRegistrar } from "../../mcp/tool-registration-boundary.js"
 import { getTimeStamp } from "../../time.js"
@@ -22,7 +22,7 @@ export function reviewPrompt(): string[] {
   if (
     !agent ||
     promptedAgents.has(agent) ||
-    getAgentToolCallCount(agent) < REVIEW_PROMPT_TOOL_CALLS
+    getAgentToolUsage(agent).callCount < REVIEW_PROMPT_TOOL_CALLS
   )
     return []
   promptedAgents.add(agent)

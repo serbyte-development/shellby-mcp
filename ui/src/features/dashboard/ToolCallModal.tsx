@@ -12,9 +12,9 @@ export function ToolCallModal({ call, onClose }: { call?: AgentCall; onClose: ()
   return (
     <Dialog.Root open={Boolean(call)} onOpenChange={(open) => !open && onClose()}>
       <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 z-40 bg-black/30 backdrop-blur-[1px]" />
-        <Dialog.Content className="fixed left-1/2 top-1/2 z-50 flex max-h-[80vh] w-[min(760px,calc(100vw-2rem))] -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-xl border bg-background shadow-2xl outline-none">
-          <div className="flex items-center justify-between gap-4 border-b px-5 py-3">
+        <Dialog.Overlay className="fixed inset-0 z-40 bg-black/50 backdrop-blur-sm" />
+        <Dialog.Content className="fixed left-1/2 top-1/2 z-50 flex max-h-[80vh] w-[min(760px,calc(100vw-2rem))] -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-xl border bg-card shadow-2xl outline-none">
+          <div className="flex items-center justify-between gap-4 border-b px-4 py-3">
             <Dialog.Title className="truncate text-base font-semibold">{call?.tool}</Dialog.Title>
             <Dialog.Close asChild>
               <Button
@@ -28,12 +28,12 @@ export function ToolCallModal({ call, onClose }: { call?: AgentCall; onClose: ()
               </Button>
             </Dialog.Close>
           </div>
-          <div className="min-h-0 space-y-4 overflow-auto p-5">
+          <div className="min-h-0 space-y-4 overflow-auto p-4">
             <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
               Input
               <TokenCount count={call?.inputTokens} />
             </h3>
-            <pre className="overflow-x-auto rounded-lg border bg-muted/30 p-4 text-xs leading-5">
+            <pre className="overflow-x-auto rounded-lg border bg-background/70 p-4 text-xs leading-5">
               <code
                 className="hljs bg-transparent p-0"
                 dangerouslySetInnerHTML={{ __html: highlighted }}
@@ -44,7 +44,7 @@ export function ToolCallModal({ call, onClose }: { call?: AgentCall; onClose: ()
               <TokenCount count={call?.outputTokens} />
             </h3>
             {call?.response !== undefined ? (
-              <pre className="whitespace-pre-wrap wrap-break-word rounded-lg border bg-muted/30 p-4 text-xs leading-5">
+              <pre className="whitespace-pre-wrap wrap-break-word rounded-lg border bg-background/70 p-4 text-xs leading-5">
                 <code
                   dangerouslySetInnerHTML={{
                     __html: highlightResponse(call.response || "No content returned."),

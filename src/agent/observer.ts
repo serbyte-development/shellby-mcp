@@ -1,5 +1,9 @@
 import { EventEmitter } from "node:events"
-import type { ToolCallEvent } from "../mcp/tool-call-tracker.js"
+import {
+  type AgentToolUsage,
+  getAgentToolUsage,
+  type ToolCallEvent,
+} from "../mcp/tool-call-tracker.js"
 import { type AgentIdentity, subscribeToAgentParents } from "./context.js"
 import { presentToolCall, presentToolResponse } from "./tool-call-presentation.js"
 
@@ -33,12 +37,13 @@ interface AgentSnapshot {
   taskSlug?: string
   firstSeenAt: number
   lastSeenAt: number
+  toolUsage: AgentToolUsage
   current?: AgentCallSnapshot
   recent: AgentCallSnapshot[]
   instructions: AgentInstructionSnapshot[]
 }
 
-interface AgentState extends AgentSnapshot {
+interface AgentState extends Omit<AgentSnapshot, "toolUsage"> {
   identity: AgentIdentity
   activeCalls: Map<string, AgentCallSnapshot>
 }
@@ -222,6 +227,7 @@ function toSnapshot(agent: AgentState): AgentSnapshot {
     taskSlug: agent.taskSlug,
     firstSeenAt: agent.firstSeenAt,
     lastSeenAt: agent.lastSeenAt,
+    toolUsage: getAgentToolUsage(agent.identity),
     current: agent.current ? { ...agent.current } : undefined,
     recent: agent.recent.map((call) => ({ ...call })),
     instructions: agent.instructions.map((instruction) => ({ ...instruction })),

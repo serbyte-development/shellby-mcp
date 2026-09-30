@@ -9,7 +9,7 @@ import { getAgentIdentity, runWithAgent, setAgentTaskSlug } from "../../src/agen
 import { ObservedMcpServer } from "../../src/mcp/observed-server.js"
 import {
   type CompletedToolCall,
-  getAgentToolCallCount,
+  getAgentToolUsage,
   recordToolError,
   type ToolCallEvent,
   ToolCallTracker,
@@ -98,34 +98,41 @@ test("token accounting failures do not interrupt tools or lose lifecycle events"
   assert.equal(warnings.mock.callCount(), 2)
 })
 
-test("counts each call once per agent across request trackers, including rejected attempts", () => {
+test("counts usage once per agent across request trackers, including rejected attempts", () => {
   runWithAgent("call-count-first", () => {
     const agent = getAgentIdentity()!
-    assert.equal(getAgentToolCallCount(agent), 0)
+    const empty = { callCount: 0, inputTokens: 0, outputTokens: 0 }
+    assert.deepEqual(getAgentToolUsage(agent), empty)
     const tracker = new ToolCallTracker()
     const request = { id: 1, method: "tools/call", params: { name: "shell_list" } }
+    const inputTokens = countTokens("{}")
     tracker.startRequest({ id: 0, method: "tools/list" })
-    assert.equal(getAgentToolCallCount(agent), 0)
+    assert.deepEqual(getAgentToolUsage(agent), empty)
     tracker.startRequest(request)
     tracker.startRequest(request)
-    assert.equal(getAgentToolCallCount(agent), 1)
+    const beforeResponse = getAgentToolUsage(agent)
+    assert.deepEqual(beforeResponse, { callCount: 1, inputTokens, outputTokens: 0 })
+    tracker.respond({ jsonrpc: "2.0", id: 1, error: { code: -32602, message: "Rejected" } })
     tracker.respond({ jsonrpc: "2.0", id: 1, error: { code: -32602, message: "Rejected" } })
     tracker.finishRequest({ httpStatus: 200, state: "finished" })
     tracker.finishRequest({ httpStatus: 200, state: "closed" })
-    assert.equal(getAgentToolCallCount(agent), 1)
+    const outputTokens = countTokens("Rejected")
+    assert.deepEqual(getAgentToolUsage(agent), { callCount: 1, inputTokens, outputTokens })
+    assert.equal(beforeResponse.outputTokens, 0, "Previously returned snapshots stay unchanged")
     const nextRequest = new ToolCallTracker()
     nextRequest.startRequest(request)
     nextRequest.finishRequest({ httpStatus: 400, state: "finished" })
-    assert.equal(getAgentToolCallCount(agent), 2)
+    const expected = { callCount: 2, inputTokens: inputTokens * 2, outputTokens }
+    assert.deepEqual(getAgentToolUsage(agent), expected)
     runWithAgent("call-count-second", () => {
       const other = getAgentIdentity()!
-      assert.equal(getAgentToolCallCount(other), 0)
+      assert.deepEqual(getAgentToolUsage(other), empty)
       const independent = new ToolCallTracker()
       independent.startRequest(request)
       independent.finishRequest({ httpStatus: 200, state: "finished" })
-      assert.equal(getAgentToolCallCount(other), 1)
+      assert.deepEqual(getAgentToolUsage(other), { callCount: 1, inputTokens, outputTokens: 0 })
     })
-    assert.equal(getAgentToolCallCount(agent), 2)
+    assert.deepEqual(getAgentToolUsage(agent), expected)
   })
 })
 

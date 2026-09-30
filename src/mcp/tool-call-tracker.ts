@@ -48,12 +48,22 @@ interface CallConsumers {
 }
 
 const currentErrors = new AsyncLocalStorage<(error: unknown) => void>()
-const agentToolCalls = new WeakMap<AgentIdentity, number>()
+const agentToolUsage = new WeakMap<AgentIdentity, AgentToolUsage>()
 let nextCallId = 0
 
-/** Process-lifetime count of registered call attempts for this canonical agent identity. */
-export function getAgentToolCallCount(agent: AgentIdentity): number {
-  return agentToolCalls.get(agent) ?? 0
+export interface AgentToolUsage {
+  readonly callCount: number
+  readonly inputTokens: number
+  readonly outputTokens: number
+}
+
+/**
+ * Process-lifetime usage for this canonical identity, across request trackers.
+ * Returns a snapshot of registered attempts and measured text tokens: input at
+ * registration, output at response handoff. Unavailable counts contribute zero.
+ */
+export function getAgentToolUsage(agent: AgentIdentity): AgentToolUsage {
+  return { ...(agentToolUsage.get(agent) ?? { callCount: 0, inputTokens: 0, outputTokens: 0 }) }
 }
 
 /** Keep original diagnostics before a tool replaces them with recovery guidance. */
@@ -155,7 +165,6 @@ export class ToolCallTracker {
     const existing = this.pending.get(id)
     if (existing) return existing
     const agent = getAgentIdentity()
-    if (agent) agentToolCalls.set(agent, getAgentToolCallCount(agent) + 1)
     const call: ToolCall = {
       id: `call-${++nextCallId}`,
       tool,
@@ -164,6 +173,14 @@ export class ToolCallTracker {
       taskSlugAtStart: agent?.taskSlug,
       startedAt: this.now(),
       inputTokens: this.observe(() => countTokens(JSON.stringify(input ?? {}))),
+    }
+    if (agent) {
+      const usage = getAgentToolUsage(agent)
+      agentToolUsage.set(agent, {
+        ...usage,
+        callCount: usage.callCount + 1,
+        inputTokens: usage.inputTokens + (call.inputTokens ?? 0),
+      })
     }
     const pending: PendingCall = { call, errors: [] }
     this.pending.set(id, pending)
@@ -202,6 +219,13 @@ export class ToolCallTracker {
         rejected && asRecord(pending.toolResult)?.isError !== true
           ? outcome.response
           : pending.toolResult,
+    }
+    if (call.agent) {
+      const usage = getAgentToolUsage(call.agent)
+      agentToolUsage.set(call.agent, {
+        ...usage,
+        outputTokens: usage.outputTokens + (call.outputTokens ?? 0),
+      })
     }
     this.observe(() => this.consumers.agentObserver?.observeToolCall(call))
     this.observe(() => this.consumers.auditLogger?.recordToolCall(call))

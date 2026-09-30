@@ -14,6 +14,7 @@ import {
 } from "../../src/agent/context.js"
 import { createDashboardRouter } from "../../src/agent/dashboard-routes.js"
 import { type AgentObserver, createAgentObserver } from "../../src/agent/observer.js"
+import { ToolCallTracker } from "../../src/mcp/tool-call-tracker.js"
 import { countTokens } from "../../src/tokenizer.js"
 import { publishCall } from "../fixtures/tool-call.js"
 
@@ -245,6 +246,80 @@ test("dashboard interactions", {
       )
     }
   )
+
+  await t.test("header token totals update live and follow the selected agent", async (t) => {
+    const observer = createAgentObserver()
+    const parentTracker = new ToolCallTracker({ agentObserver: observer })
+    const input = { command: "printf hello" }
+    const parent = runWithAgent("dashboard-token-parent", () => {
+      parentTracker.startRequest({
+        id: 1,
+        method: "tools/call",
+        params: { name: "shell_run", arguments: input },
+      })
+      return getAgentIdentity()!
+    })
+    const page = await openDashboard(t, browser, observer)
+    const parentCard = page.getByRole("region", { name: parent.agent, exact: true })
+    const totals = parentCard.getByRole("group", { name: "Tool token totals" })
+    await totals
+      .getByLabel(`Total tool input: ${countTokens(JSON.stringify(input)).toLocaleString()} tokens`)
+      .waitFor()
+    await totals.getByLabel("Total tool output: 0 tokens").waitFor()
+    const initialLayout = await cardLayout(parentCard)
+    const output = "Full output before preview truncation.\n".repeat(1_000)
+    const outputLabel = `Total tool output: ${countTokens(output).toLocaleString()} tokens`
+    parentTracker.respond({
+      jsonrpc: "2.0",
+      id: 1,
+      result: { content: [{ type: "text", text: output }] },
+    })
+    await totals.getByLabel(outputLabel).waitFor()
+    assert.match((await totals.getByLabel(outputLabel).textContent()) ?? "", /K$/u)
+    assert.deepEqual(await cardLayout(parentCard), initialLayout)
+
+    const childTracker = new ToolCallTracker({ agentObserver: observer })
+    const child = runWithAgent("dashboard-token-child", () => {
+      bindAgentParent(getAgentIdentity()!.sessionId, parent.sessionId)
+      childTracker.startRequest({
+        id: 1,
+        method: "tools/call",
+        params: { name: "shell_list" },
+      })
+      return getAgentIdentity()!
+    })
+    await page.getByRole("button", { name: `Show ${child.agent}`, exact: true }).click()
+    const childCard = page.getByRole("region", { name: child.agent, exact: true })
+    const childTotals = childCard.getByRole("group", { name: "Tool token totals" })
+    await childTotals.getByLabel(`Total tool input: ${countTokens("{}")} tokens`).waitFor()
+    await childTotals.getByLabel("Total tool output: 0 tokens").waitFor()
+    childTracker.respond({
+      jsonrpc: "2.0",
+      id: 1,
+      result: { content: [{ type: "text", text: "done" }] },
+    })
+    await childTotals.getByLabel(`Total tool output: ${countTokens("done")} tokens`).waitFor()
+    await childCard.getByRole("button", { name: `Show parent ${parent.agent}` }).click()
+    await totals.getByLabel(outputLabel).waitFor()
+    await page.reload()
+    await totals.getByLabel(outputLabel).waitFor()
+
+    await page.setViewportSize({ width: 375, height: 900 })
+    const mobileLayout = await cardLayout(parentCard)
+    await page.getByRole("button", { name: `Show ${child.agent}`, exact: true }).click()
+    assert.deepEqual(await cardLayout(childCard), mobileLayout)
+    assert.equal(
+      await childCard
+        .getByRole("heading", { name: child.agent, exact: true })
+        .evaluate((element) => element.scrollWidth <= element.clientWidth),
+      true,
+      "The compact header keeps the agent name readable"
+    )
+    assert.equal(
+      await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth),
+      true
+    )
+  })
 
   await t.test(
     "open tool details update with returned output, errors, and unavailable history",

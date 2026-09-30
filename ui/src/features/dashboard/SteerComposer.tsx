@@ -8,6 +8,7 @@ import {
 import { useState } from "react"
 
 import { Button } from "../../components/ui/button"
+import { CardPanel } from "../../components/ui/card"
 import { Textarea } from "../../components/ui/textarea"
 import { cancelSteer, steerAgent } from "../../lib/api"
 import type { Agent, AgentInstruction } from "../../types"
@@ -53,46 +54,44 @@ export function SteerComposer({
   }
 
   return (
-    <div className="min-w-0 space-y-1.5 border-t pt-3 @xl:border-l @xl:border-t-0 @xl:pl-4 @xl:pt-0">
-      <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-        Steer
-      </h3>
-      <div className="relative">
-        <Textarea
-          rows={1}
-          value={message}
-          onChange={(event) => setMessage(event.target.value)}
-          onKeyDown={(event) => {
-            if ((event.metaKey || event.ctrlKey) && event.key === "Enter") void submit()
-          }}
-          className="h-20 pr-10"
-          placeholder="Steer this agent..."
+    <CardPanel title="Steer agent">
+      <div className="space-y-2">
+        <div className="relative">
+          <Textarea
+            rows={1}
+            value={message}
+            onChange={(event) => setMessage(event.target.value)}
+            onKeyDown={(event) => {
+              if ((event.metaKey || event.ctrlKey) && event.key === "Enter") void submit()
+            }}
+            className="h-20 pr-12"
+            placeholder="Steer this agent..."
+          />
+          <Button
+            type="button"
+            size="icon"
+            className="absolute right-2 top-2 size-8 rounded-md"
+            aria-label="Send instruction"
+            disabled={!message.trim() || sending}
+            onClick={() => void submit()}
+          >
+            {sending ? (
+              <IconLoader2 className="size-3.5 animate-spin" />
+            ) : (
+              <IconSend className="size-3.5" />
+            )}
+          </Button>
+        </div>
+        <SteerInstructionList
+          instructions={agent.instructions}
+          sending={sending}
+          cancellingId={cancellingId}
+          error={error}
+          onCancel={cancelQueued}
+          onDismiss={onDismissInstruction}
         />
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          className={`absolute right-1 top-1 size-7 ${message.trim() && !sending ? "bg-blue-600 hover:bg-accent-muted hover:text-accent text-white" : "text-muted-foreground"}`}
-          aria-label="Send instruction"
-          disabled={!message.trim() || sending}
-          onClick={() => void submit()}
-        >
-          {sending ? (
-            <IconLoader2 className="size-3.5 animate-spin" />
-          ) : (
-            <IconSend className="size-3.5" />
-          )}
-        </Button>
       </div>
-      <SteerInstructionList
-        instructions={agent.instructions}
-        sending={sending}
-        cancellingId={cancellingId}
-        error={error}
-        onCancel={cancelQueued}
-        onDismiss={onDismissInstruction}
-      />
-    </div>
+    </CardPanel>
   )
 }
 
@@ -147,7 +146,7 @@ function SteerInstructionList({
               type="button"
               variant="ghost"
               size="sm"
-              className="pointer-events-none absolute right-0 top-1/2 h-6 -translate-y-1/2 px-2 text-[11px] opacity-0 transition-opacity group-hover:pointer-events-auto group-hover:opacity-100"
+              className="pointer-events-none absolute right-0 top-1/2 h-6 -translate-y-1/2 px-2 text-[11px] opacity-0 transition-opacity group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100"
               aria-label={delivered ? "Dismiss delivered instruction" : "Cancel queued instruction"}
               disabled={!delivered && cancellingId !== undefined}
               onClick={() => (delivered ? onDismiss(instruction.id) : onCancel(instruction))}

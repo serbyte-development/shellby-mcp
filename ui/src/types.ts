@@ -28,6 +28,12 @@ export interface Agent {
   taskSlug?: string
   firstSeenAt: number
   lastSeenAt: number
+  /** Cumulative captured tool usage; absent when connected to an older server. */
+  toolUsage?: {
+    callCount: number
+    inputTokens: number
+    outputTokens: number
+  }
   current?: AgentCall
   recent: AgentCall[]
   instructions: AgentInstruction[]

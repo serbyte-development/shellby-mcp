@@ -70,7 +70,9 @@ export function AgentRoom({ agent, preview = false }: { agent: Agent; preview?: 
   return (
     <div
       className={
-        preview ? "overflow-hidden bg-muted" : "overflow-hidden rounded-lg border bg-[#d8e7c3]"
+        preview
+          ? "overflow-hidden bg-surface"
+          : "overflow-hidden rounded-lg border bg-background/70 p-1.5 shadow-panel"
       }
     >
       <canvas
@@ -80,7 +82,7 @@ export function AgentRoom({ agent, preview = false }: { agent: Agent; preview?: 
         className={
           preview
             ? "block aspect-video w-full object-cover [image-rendering:pixelated]"
-            : "block h-auto w-full [image-rendering:pixelated]"
+            : "block h-auto w-full rounded-md [image-rendering:pixelated]"
         }
         aria-label={`${agent.id} ${preview ? "room preview" : "activity room"}`}
         data-animated={!preview}
