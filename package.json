@@ -31,6 +31,7 @@
     "reset-agents": "node --import tsx scripts/chatgpt/reset-delegation-state.ts",
     "restart": "node --import tsx scripts/start.ts --restart",
     "schemas": "node --import tsx scripts/tool-schemas.ts",
+    "schemas:json": "node --import tsx scripts/tool-schemas.ts --json",
     "setup": "node --import tsx scripts/setup.ts",
     "setup:chatgpt": "node --import tsx scripts/chatgpt/browser.mjs --setup",
     "setup:computer": "node scripts/peekaboo-permissions.mjs",

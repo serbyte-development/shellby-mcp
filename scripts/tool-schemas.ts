@@ -1,5 +1,6 @@
 import process from "node:process"
 import { Client, StreamableHTTPClientTransport } from "@modelcontextprotocol/client"
+import { renderToolsList } from "json-schema-to-openai-typescript"
 import { MCP_CONFIG } from "../src/config.js"
 import { createMcpServerFactory } from "../src/mcp/server-factory.js"
 import { startMcpHttpServer } from "../src/server/http-server.js"
@@ -10,7 +11,9 @@ import { createShellSession } from "../src/tools/shell/session.js"
 import { createShellSessionManager } from "../src/tools/shell/session-manager.js"
 import { WebPageOpener } from "../src/tools/web/web-open.js"
 
-const requestedNames = new Set(process.argv.slice(2))
+const args = process.argv.slice(2)
+const json = args.includes("--json")
+const requestedNames = new Set(args.filter((arg) => arg !== "--json"))
 const shells = MCP_CONFIG.tools.shell
   ? createShellSessionManager({
       createShell: () => createShellSession({ cwd: MCP_CONFIG.workspace }),
@@ -50,9 +53,12 @@ try {
     }
   }
 
-  const compactSchema = JSON.stringify(selected)
+  const output = json
+    ? JSON.stringify(selected, null, 2)
+    : renderToolsList({ tools: selected }, "mcp__shellby__")
+  const tokenText = json ? JSON.stringify(selected) : output
   process.stdout.write(
-    `Token count (${OUTPUT_TOKEN_ENCODING}): ${countTokens(compactSchema)}\n\n${JSON.stringify(selected, null, 2)}\n`
+    `Token count (${OUTPUT_TOKEN_ENCODING}): ${countTokens(tokenText)}\n\n${output}\n`
   )
 } finally {
   await client.close().catch(() => undefined)

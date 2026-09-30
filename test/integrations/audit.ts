@@ -65,7 +65,7 @@ test("audits tool calls made through the HTTP MCP boundary", { timeout: 10_000 }
   })
   const failedPoll = await connected.client.callTool({
     name: "subagent_result",
-    arguments: { turn_ids: ["failed-turn"], wait_ms: 0 },
+    arguments: { turn_ids: ["failed-turn"], yield_time_ms: 0 },
   })
   assert.equal(failedSubmit.isError, true)
   assert.equal(failedPoll.isError, true)

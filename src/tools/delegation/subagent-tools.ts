@@ -117,12 +117,14 @@ export function registerSubagentTools(registerTool: ToolRegistrar, subagents: Su
           .min(1)
           .max(3)
           .describe("turn_id values returned by subagent_run."),
-        wait_ms: z
+        yield_time_ms: z
           .int()
           .min(0)
           .max(MCP_CONFIG.chatGpt.maxPollWaitMs)
           .default(MCP_CONFIG.chatGpt.defaultPollWaitMs)
-          .describe("Returns immediately if completed."),
+          .describe(
+            "How long to wait for subagent responses to finish. If still running when this call returns, poll again or continue other work. A completion notice is included in your next tool response, regardless of which tool you call."
+          ),
       }),
       outputSchema: z.object({
         turns: z.array(subagentResultSchema),
@@ -134,8 +136,12 @@ export function registerSubagentTools(registerTool: ToolRegistrar, subagents: Su
         openWorldHint: true,
       },
     },
-    async ({ turn_ids, wait_ms }, ctx) => {
-      const responses = await subagents.getAgentResponses(turn_ids, wait_ms, ctx.mcpReq.signal)
+    async ({ turn_ids, yield_time_ms }, ctx) => {
+      const responses = await subagents.getAgentResponses(
+        turn_ids,
+        yield_time_ms,
+        ctx.mcpReq.signal
+      )
       const results = responses.map((result) => {
         let error: string | undefined
         if (result.status === "failed") {

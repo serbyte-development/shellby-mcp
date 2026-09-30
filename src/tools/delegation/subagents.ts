@@ -45,7 +45,7 @@ const MAX_RETAINED_TURNS = 100
 const PROJECT_PATH_PATTERN = /\/g\/g-p-[^/]+\/project\/?$/u
 const PROJECT_SUFFIX_PATTERN = /\/project\/?$/u
 
-const INJECTED_PROMPT = `Oververbosity: 1.\n\nDo not use \`subagent\`${MCP_CONFIG.tools.computer ? " or `computer_*`" : ""} tools.`
+const INJECTED_PROMPT = `If missing information or ambiguity would materially change the result, return concise clarifying questions before starting work. Otherwise, proceed and state any relevant assumptions.\n\n---\n\nOververbosity: 1.\n\nDo not use \`subagent\`${MCP_CONFIG.tools.computer ? " or `computer_*`" : ""} tools.`
 
 /** Coarse activity inferred from traffic belonging to the submitted user message. */
 export const agentActivities = [
@@ -282,7 +282,7 @@ export function createSubagents(): Subagents {
       diagnostics,
       request.startSource
     )
-    const prompt = `${request.prompt}\n\n---\n\n${INJECTED_PROMPT}`
+    const prompt = `${request.prompt}\n${INJECTED_PROMPT}`
     return submitTurn(parentAgent, agent, page, prompt, diagnostics)
   }
 

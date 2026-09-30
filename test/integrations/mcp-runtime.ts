@@ -114,9 +114,9 @@ test("publishes the assembled MCP tool surface", { timeout: 10_000 }, async (t) 
   const webTokens = webProperties.max_output_tokens
   const webCompact = webProperties.compact
   const webFormat = webProperties.format
-  const subagentWait = (
+  const subagentYield = (
     subagentResult.inputSchema.properties as Record<string, Record<string, unknown>>
-  ).wait_ms
+  ).yield_time_ms
   assert.equal(runYield?.default, MCP_CONFIG.shell.defaultWaitMs)
   assert.equal(runYield?.maximum, MCP_CONFIG.shell.maxWaitMs)
   assert.equal(pollYield?.default, MCP_CONFIG.shell.defaultPollWaitMs)
@@ -137,8 +137,9 @@ test("publishes the assembled MCP tool surface", { timeout: 10_000 }, async (t) 
     "mime_type",
     "file_name",
   ])
-  assert.equal(subagentWait?.default, MCP_CONFIG.chatGpt.defaultPollWaitMs)
-  assert.equal(subagentWait?.maximum, MCP_CONFIG.chatGpt.maxPollWaitMs)
+  assert.equal(subagentYield?.default, MCP_CONFIG.chatGpt.defaultPollWaitMs)
+  assert.equal(subagentYield?.maximum, MCP_CONFIG.chatGpt.maxPollWaitMs)
+  assert.equal(subagentResult.inputSchema.properties?.wait_ms, undefined)
   const dragProperties = computerDrag.inputSchema.properties as Record<
     string,
     Record<string, unknown>

@@ -36,6 +36,12 @@ for (const toolOutput of ["compact", "structured"] as const) {
       },
       drainEvents: () => [],
     })
+    const readResponses = subagents.getAgentResponses
+    const waits: number[] = []
+    subagents.getAgentResponses = (turnIds, waitMs, signal) => {
+      waits.push(waitMs)
+      return readResponses(turnIds, waitMs, signal)
+    }
     const running = await startMcpHttpServer({
       subagents,
       profile: { toolOutput },
@@ -57,8 +63,9 @@ for (const toolOutput of ["compact", "structured"] as const) {
     for (const { turnIds, failed } of cases) {
       const result = await connected.client.callTool({
         name: "subagent_result",
-        arguments: { turn_ids: turnIds, wait_ms: 0 },
+        arguments: { turn_ids: turnIds, yield_time_ms: 0 },
       })
+      assert.equal(waits.at(-1), 0)
       assert.equal(result.isError === true, failed, turnIds.join(","))
       if (toolOutput === "structured") {
         const { turns } = result.structuredContent as {
@@ -307,7 +314,10 @@ test("routes subagent batches and retrieves turns across MCP client sessions", {
   t.after(() => second.client.close())
   const results = await second.client.callTool({
     name: "subagent_result",
-    arguments: { turn_ids: ["turn-architecture-reviewer-1", "turn-test-reviewer-1"], wait_ms: 0 },
+    arguments: {
+      turn_ids: ["turn-architecture-reviewer-1", "turn-test-reviewer-1"],
+      yield_time_ms: 0,
+    },
   })
   assert.equal(
     toolText(results),
@@ -324,7 +334,7 @@ test("routes subagent batches and retrieves turns across MCP client sessions", {
 
   const mixed = await second.client.callTool({
     name: "subagent_result",
-    arguments: { turn_ids: ["turn-architecture-reviewer-1", "missing-turn"], wait_ms: 0 },
+    arguments: { turn_ids: ["turn-architecture-reviewer-1", "missing-turn"], yield_time_ms: 0 },
   })
   assert.equal(
     toolText(mixed),
@@ -377,7 +387,7 @@ test("routes subagent batches and retrieves turns across MCP client sessions", {
 
   const failedResult = await second.client.callTool({
     name: "subagent_result",
-    arguments: { turn_ids: ["backend-failure"], wait_ms: 0 },
+    arguments: { turn_ids: ["backend-failure"], yield_time_ms: 0 },
   })
   assert.equal(
     toolText(failedResult),

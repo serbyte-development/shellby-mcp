@@ -389,7 +389,7 @@ test("delegation contracts over a real Chrome CDP connection", {
 
     async function readMcpResult(turnId: string, waitMs: number) {
       const result = await client.callTool(
-        { name: "subagent_result", arguments: { turn_ids: [turnId], wait_ms: waitMs } },
+        { name: "subagent_result", arguments: { turn_ids: [turnId], yield_time_ms: waitMs } },
         { timeout: 7_000, signal: lifecycleTest.signal }
       )
       assert.notEqual(result.isError, true)

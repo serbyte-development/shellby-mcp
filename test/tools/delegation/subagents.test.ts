@@ -44,6 +44,14 @@ for (const fork of [false, true]) {
     assert.equal(child.parent, undefined)
     assert.equal(fixture.branches, Number(fork))
     assert.equal(fixture.prompts[0]?.includes(child.sessionId), false)
+    assert.match(
+      fixture.prompts[0]!,
+      /^Review this\nIf missing information or ambiguity would materially change the result, return concise clarifying questions before starting work\./u
+    )
+    assert.match(
+      fixture.prompts[0]!,
+      /\n\n---\n\nOververbosity: 1\.\n\nDo not use `subagent`(?: or `computer_\*`)? tools\.$/u
+    )
     runWithAgent(child.sessionId, () => setAgentTaskSlug("lineage-child"))
     const toolText = `${JSON.stringify({ tool: "start_here", sessionId: child.sessionId, agent: child.agent })}\n\nInitialized`
     fixture.toolResponse(1, toolText)

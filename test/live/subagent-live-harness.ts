@@ -431,13 +431,13 @@ export async function openLiveSubagentHarness(t: TestContext, deadline: number) 
     const cached = polls.get(turnId)?.some((sample) => sample.status === "completed")
     const calledAt = performance.now()
     const result = parseResultTurn(
-      await call("subagent_result", { turn_ids: [turnId], wait_ms: waitMs })
+      await call("subagent_result", { turn_ids: [turnId], yield_time_ms: waitMs })
     )
     assert.equal(result.turn_id, turnId)
     const sample = {
       elapsed_ms: elapsed(),
       call_duration_ms: performance.now() - calledAt,
-      wait_ms: waitMs,
+      yield_time_ms: waitMs,
       ...result,
     }
     const samples = polls.get(turnId) ?? []
