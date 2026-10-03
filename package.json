@@ -39,7 +39,7 @@
     "status": "node --import tsx scripts/pm2.ts status",
     "stop": "node --import tsx scripts/pm2.ts stop ecosystem.config.cjs",
     "test": "tsx --test --test-concurrency=4",
-    "test:cdp": "RUN_CDP_TESTS=1 tsx --test test/live/delegation-cdp.test.ts",
+    "test:cdp": "RUN_CDP_TESTS=1 tsx --test test/live/delegation-cdp.test.ts test/live/web-cdp.test.ts",
     "test:live:subagent": "RUN_LIVE_SUBAGENT_TESTS=1 tsx --test test/live/subagent-live.test.ts",
     "test:live:subagent:fork": "RUN_LIVE_SUBAGENT_TESTS=1 LIVE_SUBAGENT_FORK=1 tsx --test test/live/subagent-live.test.ts",
     "test:live:subagent:fresh": "RUN_LIVE_SUBAGENT_TESTS=1 LIVE_SUBAGENT_START=fresh tsx --test test/live/subagent-live.test.ts",
@@ -49,6 +49,7 @@
     "ui:build": "npm --prefix ui run build",
     "ui:dev": "npm --prefix ui run dev",
     "ui:install": "npm --prefix ui ci",
+    "ui:phone": "node --import tsx scripts/ui-phone.ts",
     "vendor:apply-patch": "scripts/vendor/build-apply-patch.sh",
     "vendor:peekaboo": "scripts/vendor/build-peekaboo.sh",
     "vendor:pixel-agents": "node scripts/vendor/pixel-agents.mjs",
@@ -56,16 +57,16 @@
   },
   "overrides": {
     "pm2": {
-      "js-yaml": "5.2.3"
+      "js-yaml": "$js-yaml"
     }
   },
   "dependencies": {
-    "@modelcontextprotocol/express": "^2.0.1",
-    "@modelcontextprotocol/node": "^2.1.0",
+    "@modelcontextprotocol/express": "^2.0.2",
+    "@modelcontextprotocol/node": "^2.1.1",
     "@modelcontextprotocol/server": "^2.2.0",
     "cloakbrowser": "^0.5.11",
     "express": "^5.2.1",
-    "js-yaml": "5.2.3",
+    "js-yaml": "5.4.2",
     "linkedom": "^0.18.13",
     "node-html-markdown": "^2.0.0",
     "playwright-core": "^1.63.0",
@@ -77,8 +78,8 @@
     "zod": "^4.6.5"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.5.14",
-    "@modelcontextprotocol/client": "^2.2.0",
+    "@biomejs/biome": "^2.5.15",
+    "@modelcontextprotocol/client": "^2.3.0",
     "@types/express": "^5.0.6",
     "@types/node": "22.18.13",
     "json-schema-to-openai-typescript": "^0.3.1",

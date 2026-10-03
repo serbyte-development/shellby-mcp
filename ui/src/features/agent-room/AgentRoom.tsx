@@ -11,12 +11,11 @@ import {
 } from "./engine"
 import { gridToPixel, ROOM_HEIGHT, ROOM_WIDTH, type RoomLayout } from "./layout"
 import {
+  drawRoomBackground,
   drawRoomBorder,
   drawRoomForeground,
   drawRoomFurnitureItems,
   drawRoomPets,
-  drawRoomSurface,
-  drawRoomWalls,
   getRoomImage,
   ROOM_PIXEL_SCALE,
   subscribeRoomImages,
@@ -64,6 +63,7 @@ export function AgentRoom({ agent, preview = false }: { agent: Agent; preview?: 
     return startAgentRoomLoop(canvas, {
       update: (dt) => updateAgentRoom(stateRef.current, dt, reducedMotion, stations),
       render: (ctx) => renderRoom(ctx, stateRef.current, agent.id, layout, stations),
+      isIdle: () => stateRef.current.mode === "idle" && stateRef.current.queue.length === 0,
     })
   }, [agent.id, layout, preview])
 
@@ -99,9 +99,7 @@ function renderRoom(
   stations: AgentStationMap
 ): void {
   ctx.clearRect(0, 0, ROOM_WIDTH, ROOM_HEIGHT)
-  drawRoomSurface(ctx, layout)
-  drawRoomWalls(ctx, layout)
-  drawRoomFurnitureItems(ctx, layout.wallDecor)
+  drawRoomBackground(ctx, layout)
   drawStationFocus(ctx, state, layout, stations)
   drawRoomFurnitureItems(ctx, layout.furniture)
   drawRoomPets(ctx, layout.pets)

@@ -93,10 +93,6 @@ test("publishes the assembled MCP tool surface", { timeout: 10_000 }, async (t) 
   }
   assert.deepEqual(Object.keys(agentsInput.items.properties), ["agent_id", "prompt", "start_from"])
   assert.deepEqual(agentsInput.items.required, ["agent_id", "prompt"])
-  assert.equal(
-    (agentsInput.items.properties.start_from as { description: string }).description,
-    "URL to use when given"
-  )
 
   const shellRun = tools.tools.find((tool) => tool.name === "shell_run")
   const shellPoll = tools.tools.find((tool) => tool.name === "shell_poll")
@@ -123,7 +119,7 @@ test("publishes the assembled MCP tool surface", { timeout: 10_000 }, async (t) 
   assert.equal(pollYield?.maximum, MCP_CONFIG.shell.maxPollWaitMs)
   assert.equal(webTokens?.default, MCP_CONFIG.web.defaultOutputTokens)
   assert.equal(webTokens?.maximum, MCP_CONFIG.web.maxOutputTokens)
-  assert.equal(webCompact?.default, false)
+  assert.equal(webCompact?.default, true)
   assert.deepEqual(webFormat?.enum, ["markdown", "html"])
   assert.equal(fetchUrl.outputSchema, undefined)
   assert.deepEqual((fileWrite as unknown as Record<string, unknown>)._meta, {
@@ -362,17 +358,14 @@ for (const rejectedThreshold of [false, true]) {
         arguments: { mode: "invalid" },
       })
       assert.equal(rejected.isError, true)
-      assert.doesNotMatch(toolText(rejected), /Quick feedback request/u)
+      assert.doesNotMatch(toolText(rejected), /submit_review/u)
     }
     const responses = await Promise.all(
       Array.from({ length: rejectedThreshold ? 2 : 1 }, () =>
         connected.client.callTool({ name: "shell_list", arguments: {} })
       )
     )
-    assert.equal(
-      responses.filter((result) => /Quick feedback request/u.test(toolText(result))).length,
-      1
-    )
+    assert.equal(responses.filter((result) => /submit_review/u.test(toolText(result))).length, 1)
 
     const noRepeat = await connected.client.callTool({ name: "shell_list", arguments: {} })
     assert.doesNotMatch(

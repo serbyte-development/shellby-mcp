@@ -84,6 +84,50 @@ test("rewritten commands export the RTK path to child processes", async (t) => {
   assert.equal(result.stdout, "0|1|/dev/null")
 })
 
+test("npm lint scripts keep their arguments and exit status through RTK", async (t) => {
+  const root = await fakeRtkRoot(t)
+  useRtk(t, join(root, "rtk"))
+  await writeFile(join(root, "npm"), '#!/bin/sh\nprintf "<%s>\\n" "$@"\nexit 7\n', {
+    mode: 0o755,
+  })
+
+  for (const command of ["npm run lint -- --fix 'a b'", "npm run-script lint -- --fix 'a b'"]) {
+    const prepared = prepareShellCommand(command, root, process.env)
+    const result = spawnSync(MCP_CONFIG.shell.path, ["-c", prepared], {
+      cwd: root,
+      encoding: "utf8",
+    })
+    assert.equal(result.status, 7, command)
+    assert.equal(result.stdout, "<run>\n<lint>\n<-->\n<--fix>\n<a b>\n", command)
+  }
+})
+
+test("embedded npm scripts preserve surrounding shell behavior", async (t) => {
+  const root = await fakeRtkRoot(t)
+  useRtk(t, join(root, "rtk"))
+  await writeFile(join(root, "npm"), '#!/bin/sh\nprintf "%s|%s\\n" "$CHECK_SCOPE" "$*"\n', {
+    mode: 0o755,
+  })
+  const env = { ...process.env, PATH: `${root}:${process.env.PATH}` }
+
+  for (const command of [
+    "CHECK_SCOPE=local npm run lint",
+    "export CHECK_SCOPE=local; npm run lint",
+  ]) {
+    const result = spawnSync(
+      MCP_CONFIG.shell.path,
+      ["-c", prepareShellCommand(command, root, env)],
+      {
+        cwd: root,
+        env,
+        encoding: "utf8",
+      }
+    )
+    assert.equal(result.status, 0, command)
+    assert.equal(result.stdout, "local|run lint\n", command)
+  }
+})
+
 test("RTK rewriting fails open when disabled, unavailable, unsupported, or opted out", async (t) => {
   const root = await fakeRtkRoot(t)
   const executable = join(root, "rtk")
@@ -189,6 +233,11 @@ case "\${1:-}" in
       "cat fixture.txt") printf '%s' 'rtk read fixture.txt'; exit 3 ;;
       "rtk env-probe") printf '%s' 'rtk env-probe'; exit 3 ;;
       "child-tool") printf '%s' 'child-tool'; exit 3 ;;
+      "npm run lint"*) printf 'rtk lint%s' "\${command#npm run lint}"; exit 3 ;;
+      "npm run-script lint"*) printf 'rtk lint%s' "\${command#npm run-script lint}"; exit 3 ;;
+      "CHECK_SCOPE=local npm run lint") printf '%s' 'CHECK_SCOPE=local rtk lint'; exit 3 ;;
+      "export CHECK_SCOPE=local; npm run lint")
+        printf '%s' 'export CHECK_SCOPE=local; rtk lint'; exit 3 ;;
       "cd child && export SHELLBY_RTK_STATE=present && git status --short")
         printf '%s' 'cd child && export SHELLBY_RTK_STATE=present && rtk git status --short'; exit 3 ;;
       "git status --short") printf '%s' 'rtk git status --short'; exit 3 ;;
@@ -202,6 +251,13 @@ case "\${1:-}" in
   git)
     shift
     exec /usr/bin/git "$@"
+    ;;
+  npm)
+    shift
+    exec npm "$@"
+    ;;
+  lint)
+    printf '%s' 'unexpected ESLint invocation'
     ;;
   env-probe)
     printf '%s' "$RTK_TEE|$RTK_TELEMETRY_DISABLED|$RTK_DB_PATH"

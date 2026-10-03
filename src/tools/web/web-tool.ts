@@ -19,12 +19,16 @@ export function registerWebTool(registerTool: ToolRegistrar, webPageOpener: WebP
           }, "url must use HTTP or HTTPS.")
           .transform((value) => new URL(value).href),
         format: z.enum(["markdown", "html"]).default(MCP_CONFIG.web.defaultFormat),
+        headless: z
+          .boolean()
+          .default(true)
+          .describe(
+            "Set false to fetch using a real chrome browser+profile, with access to google search, reddit, etc."
+          ),
         compact: z
           .boolean()
-          .default(false)
-          .describe(
-            "Set true to strip token-heavy webpage rendering details while preserving content."
-          ),
+          .default(true)
+          .describe("Strips token-heavy webpage rendering details while preserving content."),
         cursor: z
           .string()
           .min(1)
@@ -59,11 +63,12 @@ export function registerWebTool(registerTool: ToolRegistrar, webPageOpener: WebP
         openWorldHint: true,
       },
     },
-    async ({ url, format, compact, cursor, max_output_tokens }, ctx) => {
+    async ({ url, format, headless, compact, cursor, max_output_tokens }, ctx) => {
       try {
         const result = await webPageOpener.open({
           url,
           format,
+          headless,
           compact,
           cursor,
           maxOutputTokens: max_output_tokens,

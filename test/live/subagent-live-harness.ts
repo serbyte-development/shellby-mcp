@@ -292,7 +292,7 @@ export async function openLiveSubagentHarness(t: TestContext, deadline: number) 
       await persist()
     },
     async assertCompletionLatency(turnId: string): Promise<void> {
-      const submission = submissions.find((item) => item.turn_id === turnId)
+      const submission = submissions.filter((item) => item.turn_id === turnId).at(-1)
       const completed = polls.get(turnId)?.find((sample) => sample.status === "completed")
       assert.ok(submission && completed, "Latency needs a submission and its first completed poll")
       assert.ok(history && history.page === page(), "Reopen the source to read completion evidence")
@@ -326,6 +326,8 @@ export async function openLiveSubagentHarness(t: TestContext, deadline: number) 
       client = undefined
       await server!.close()
       server = undefined
+      // Polling IDs can repeat after losing counters; results belong to the current service.
+      polls.clear()
       // Omitting turnCount intentionally loses local numbering as well as in-memory results.
       for (const agent of Object.values(agents)) {
         if (!agent.url) continue

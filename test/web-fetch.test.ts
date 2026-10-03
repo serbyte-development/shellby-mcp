@@ -3,7 +3,23 @@ import test from "node:test"
 
 import { MCP_CONFIG } from "../src/config.js"
 import { countTokens } from "../src/tokenizer.js"
+import { headedJitterDelayMs } from "../src/tools/web/web-acquisition.js"
 import { WebOpenError, WebPageOpener } from "../src/tools/web/web-open.js"
+
+test("jitters every headed fetch between 2 and 30 seconds", () => {
+  assert.equal(
+    headedJitterDelayMs({ headless: true }, () => 0),
+    undefined
+  )
+  assert.equal(
+    headedJitterDelayMs({ headless: false }, () => 0),
+    2_000
+  )
+  assert.equal(
+    headedJitterDelayMs({ headless: false }, () => 0.999_999),
+    30_000
+  )
+})
 
 test("paginates fetched content without reopening the page", async () => {
   const expected = "🙂".repeat(1_500)
@@ -54,7 +70,7 @@ test("requires the same format and compact setting for cursor continuation", asy
   const requests: Array<{ format: string; compact: boolean }> = []
   const opener = new WebPageOpener({
     defaultOutputTokens: 256,
-    renderPage: async (_url, format, compact) => {
+    renderPage: async ({ format, compact }) => {
       requests.push({ format, compact })
       return {
         url: "https://example.com/",

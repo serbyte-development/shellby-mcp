@@ -161,6 +161,7 @@ See [Browser ChatGPT Subagents](wiki/pages/subagents/browser-chatgpt-subagents.m
 | `npm run stop`         | Stop the managed Shellby MCP and ngrok processes.                              |
 | `npm run auth:reset`   | Clear the bound remote ChatGPT subject after confirmation.                     |
 | `npm run reset-agents` | Forget persisted subagent conversation mappings.                               |
+| `npm run ui:phone`     | Expose only the built dashboard UI/API on LAN port `6001`; `/mcp` stays local. |
 
 PM2 is installed as a repository dependency. All Shellby PM2 commands use `<state_dir>/pm2` for their daemon, sockets, logs, and process state. `state_dir` defaults to `~/.shellby`. This is separate from the default `~/.pm2` daemon used by other projects; use `npm run pm2 -- <args>` for direct access to Shellby's daemon.
 

@@ -290,7 +290,13 @@ test("delegation contracts over a real Chrome CDP connection", {
     const streams = new Map<number, ServerResponse>()
     const savedAnswers = new Map<number, string>()
     let historyReads = 0
+    let unauthorizedHistoryReads = 0
     const origin = await startHttpsFixture(lifecycleTest, profile, (request, response) => {
+      if (request.url === "/api/auth/session") {
+        response.writeHead(200, { "Content-Type": "application/json" })
+        response.end(JSON.stringify({ accessToken: "fixture-session-token" }))
+        return
+      }
       if (request.url === "/backend-api/f/conversation" && request.method === "POST") {
         let body = ""
         request.on("data", (chunk) => {
@@ -311,6 +317,12 @@ test("delegation contracts over a real Chrome CDP connection", {
         return
       }
       if (request.url === "/backend-api/conversations/cdp-conversation") {
+        if (request.headers.authorization !== "Bearer fixture-session-token") {
+          unauthorizedHistoryReads += 1
+          response.writeHead(401, { "Content-Type": "application/json" })
+          response.end(JSON.stringify({ detail: { message: "Access token is missing" } }))
+          return
+        }
         historyReads += 1
         response.writeHead(200, { "Content-Type": "application/json" })
         response.end(
@@ -338,7 +350,9 @@ test("delegation contracts over a real Chrome CDP connection", {
       )}
       <script>
         if (location.pathname.startsWith('/c/')) {
-          fetch('/backend-api/conversations/cdp-conversation').then(response => response.json())
+          fetch('/backend-api/conversations/cdp-conversation', {
+            headers: { Authorization: 'Bearer fixture-session-token' }
+          }).then(response => response.json())
         }
       </script>`)
     })
@@ -486,6 +500,7 @@ test("delegation contracts over a real Chrome CDP connection", {
           }
         })
         assert.equal(historyReads, 1)
+        assert.equal(unauthorizedHistoryReads, 0, "Recovery must authenticate its history request")
         assert.equal(users.length, 2)
       }
     )
@@ -528,6 +543,40 @@ test("delegation contracts over a real Chrome CDP connection", {
           streams.get(4)!.end(completedStream("follow-up completed", users[3]!.id))
         })
         assert.equal(users.length, 4)
+      }
+    )
+
+    await lifecycleTest.test(
+      "a missed final stream is recovered after the first history check was still pending",
+      async () => {
+        lifecycleTest.mock.timers.tick(60_000)
+        const submission = users.length + 1
+        const turn = await sendAgentMessage(
+          agentService,
+          { ...request, prompt: "Complete after the first quiet check" },
+          {}
+        )
+        await until(() => streams.has(submission), "quiet submission")
+        const readsBefore = historyReads
+        const pageCount = context.pages().length
+        for (let minute = 0; minute < 3; minute += 1) {
+          lifecycleTest.mock.timers.tick(60_000)
+          await delay(100)
+        }
+        await until(() => historyReads > readsBefore, "first history is pending")
+        assert.equal((await getAgentResponse(agentService, turn, 0)).status, "running")
+
+        await assertCompletionLatency(turn, "final exists only in history", async () => {
+          savedAnswers.set(submission, "final exists only in history")
+          for (let minute = 0; minute < 3; minute += 1) {
+            lifecycleTest.mock.timers.tick(60_000)
+            await delay(100)
+          }
+        })
+        assert.equal(historyReads, readsBefore + 2)
+        assert.equal(unauthorizedHistoryReads, 0)
+        assert.equal(context.pages().length, pageCount, "Quiet checks must keep the original tab")
+        assert.equal(users.length, submission, "Recovery must not resubmit the prompt")
       }
     )
 

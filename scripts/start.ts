@@ -40,6 +40,14 @@ run("npm", ["run", "build"])
 if (hardRestart) {
   // Only a hard restart replaces the daemon's inherited macOS service context.
   run(process.execPath, ["--import", "tsx", pm2Script, "kill"])
+  // Stop all writers before clearing saved runs, including state from disabled subagents.
+  run(process.execPath, [
+    "--import",
+    "tsx",
+    join(repoRoot, "scripts", "chatgpt", "reset-delegation-state.ts"),
+  ])
+  await rm(join(MCP_CONFIG.stateDir, "pm2"), { recursive: true, force: true })
+  console.log("Hard restart: cleared saved subagents and PM2 runtime files.")
 } else {
   runAllowFailure(process.execPath, ["--import", "tsx", pm2Script, "delete", "shellby-cursor-host"])
 }

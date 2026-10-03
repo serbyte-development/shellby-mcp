@@ -3,7 +3,7 @@ import { createServer } from "node:http"
 import process from "node:process"
 import test, { type TestContext } from "node:test"
 import express, { type Express, type Response } from "express"
-import { type Browser, chromium, type Locator, type Page } from "playwright-core"
+import { type Browser, chromium, type Locator, type Page, type Route } from "playwright-core"
 
 import {
   type AgentIdentity,
@@ -16,6 +16,7 @@ import { createDashboardRouter } from "../../src/agent/dashboard-routes.js"
 import { type AgentObserver, createAgentObserver } from "../../src/agent/observer.js"
 import { ToolCallTracker } from "../../src/mcp/tool-call-tracker.js"
 import { countTokens } from "../../src/tokenizer.js"
+import { cloneDefaultRoomLayout } from "../../ui/src/features/agent-room/layout.js"
 import { publishCall } from "../fixtures/tool-call.js"
 
 const identity: AgentIdentity = {
@@ -108,6 +109,138 @@ test("dashboard interactions", {
       assert.equal(new URL(page.url()).search, "?editor=1")
     }
   )
+
+  await t.test(
+    "rooms idle slowly, pause offscreen or hidden, and resume new activity",
+    async (t) => {
+      const observer = createAgentObserver()
+      for (let index = 0; index < 7; index++) {
+        const agent = { sessionId: `room-${index}`, agent: `room-${index}` }
+        publishCall(observer, agent, "shell_run", { command: "finished" }).finish()
+      }
+      const page = await openDashboard(t, browser, observer)
+      await page.waitForLoadState("networkidle")
+      const idle = await measureRoomRendering(page)
+      assert.ok(
+        idle.rooms.some((room) => !room.visible),
+        "Fixture includes offscreen rooms"
+      )
+      for (const room of idle.rooms) {
+        assert.ok(
+          room.visible ? room.frames > 0 && room.frames <= 4 : room.frames === 0,
+          `Idle redraws stay bounded: ${JSON.stringify(room)}`
+        )
+      }
+
+      const canvas = page.locator('canvas[data-animated="true"]').last()
+      const label = await canvas.getAttribute("aria-label")
+      assert.ok(label)
+      const agentId = label.replace(" activity room", "")
+      await canvas.scrollIntoViewIfNeeded()
+      await page.evaluate(
+        () =>
+          new Promise<void>((resolve) =>
+            requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
+          )
+      )
+      const scrolled = await measureRoomRendering(page)
+      assert.ok(scrolled.rooms.find((room) => room.label === label)!.frames > 0)
+      assert.ok(scrolled.rooms.filter((room) => !room.visible).every((room) => room.frames === 0))
+
+      const call = publishCall(observer, { sessionId: agentId, agent: agentId }, "shell_run", {
+        command: "new visible activity",
+      })
+      await page.getByTitle("new visible activity", { exact: true }).waitFor()
+      const active = await measureRoomRendering(page, 1_000)
+      const activeFrames = active.rooms.find((room) => room.label === label)!.frames
+      assert.ok(
+        activeFrames > 10 && activeFrames <= 32,
+        `New activity resumes animation capped at 30 FPS: ${activeFrames} frames`
+      )
+
+      // Exercise page visibility separately from scrolling in disposable headless Chrome.
+      await page.evaluate(() => {
+        Object.defineProperty(document, "hidden", { configurable: true, value: true })
+        document.dispatchEvent(new Event("visibilitychange"))
+      })
+      assert.ok((await measureRoomRendering(page)).rooms.every((room) => room.frames === 0))
+      await page.evaluate(() => {
+        Reflect.deleteProperty(document, "hidden")
+        document.dispatchEvent(new Event("visibilitychange"))
+      })
+      const resumed = await measureRoomRendering(page)
+      assert.ok(resumed.rooms.find((room) => room.label === label)!.frames > 10)
+      call.finish()
+      await page
+        .getByRole("button", {
+          name: "Inspect shell_run: new visible activity (completed)",
+          exact: true,
+        })
+        .waitFor()
+    }
+  )
+
+  await t.test("cached backgrounds refresh when assets load or saved layouts change", async (t) => {
+    const observer = createAgentObserver()
+    publishCall(observer, identity, "shell_run", { command: "finished" }).finish()
+    const page = await openDashboard(t, browser, observer)
+    let acceptFloor: (route: Route) => void = () => undefined
+    const requestedFloor = new Promise<Route>((resolve) => {
+      acceptFloor = resolve
+    })
+    await page.route("**/floors/audit-floor.svg", (route) => acceptFloor(route))
+    const layout = cloneDefaultRoomLayout()
+    layout.tiles = layout.tiles.map(() => ({
+      type: "floor",
+      asset: "/floors/audit-floor.svg",
+      tint: "#22c55e",
+    }))
+    layout.rugs = []
+    layout.carpetTiles.fill(null)
+    layout.wallDecor = []
+    layout.furniture = []
+    layout.pets = []
+    await page.evaluate((saved) => {
+      localStorage.setItem("shellby-room-layout-v1", JSON.stringify(saved))
+      globalThis.dispatchEvent(new Event("shellby-room-layout-changed"))
+    }, layout)
+    const floor = await requestedFloor
+    await page.waitForFunction(() => {
+      const pixel = document
+        .querySelector("canvas")!
+        .getContext("2d")!
+        .getImageData(16, 16, 1, 1).data
+      return pixel[0] === 38 && pixel[1] === 57 && pixel[2] === 77
+    })
+    await floor.fulfill({
+      contentType: "image/svg+xml",
+      body: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16"><path fill="white" d="M0 0h16v16H0z"/></svg>',
+    })
+    await page.waitForFunction(() => {
+      const pixel = document
+        .querySelector("canvas")!
+        .getContext("2d")!
+        .getImageData(16, 16, 1, 1).data
+      return pixel[0] === 34 && pixel[1] === 197 && pixel[2] === 94
+    })
+    await page.waitForLoadState("networkidle")
+    const cached = await measureRoomRendering(page)
+    assert.ok(cached.rooms[0]!.frames > 0, "The room continues rendering")
+    assert.equal(cached.terrainDraws, 0, "Static terrain is reused between frames")
+
+    for (const tile of layout.tiles) if (tile.type === "floor") tile.tint = "#3b82f6"
+    await page.evaluate((saved) => {
+      localStorage.setItem("shellby-room-layout-v1", JSON.stringify(saved))
+      globalThis.dispatchEvent(new Event("shellby-room-layout-changed"))
+    }, layout)
+    await page.waitForFunction(() => {
+      const pixel = document
+        .querySelector("canvas")!
+        .getContext("2d")!
+        .getImageData(16, 16, 1, 1).data
+      return pixel[0] === 59 && pixel[1] === 130 && pixel[2] === 246
+    })
+  })
 
   await t.test(
     "late parent links form selectable families with three-column previews and two main columns",
@@ -780,6 +913,50 @@ async function openDashboard(
   await page.getByRole("region").first().waitFor()
   await page.getByText("Live", { exact: true }).waitFor()
   return page
+}
+
+async function measureRoomRendering(page: Page, durationMs = 600) {
+  return page.evaluate(async (duration) => {
+    const rooms = new Map(
+      [...document.querySelectorAll<HTMLCanvasElement>('canvas[data-animated="true"]')].map(
+        (canvas) => {
+          const bounds = canvas.getBoundingClientRect()
+          const room = {
+            label: canvas.getAttribute("aria-label"),
+            visible: bounds.top < innerHeight && bounds.bottom > 0,
+            frames: 0,
+          }
+          return [canvas, room] as const
+        }
+      )
+    )
+    let terrainDraws = 0
+    const originalClear = CanvasRenderingContext2D.prototype.clearRect
+    const originalDraw = CanvasRenderingContext2D.prototype.drawImage
+    CanvasRenderingContext2D.prototype.clearRect = function (
+      this: CanvasRenderingContext2D,
+      ...args
+    ) {
+      const room = rooms.get(this.canvas as HTMLCanvasElement)
+      if (room) room.frames += 1
+      return originalClear.apply(this, args)
+    }
+    CanvasRenderingContext2D.prototype.drawImage = function (
+      this: CanvasRenderingContext2D,
+      image: CanvasImageSource,
+      ...coordinates: number[]
+    ) {
+      if (image instanceof HTMLImageElement && image.src.includes("/floors/")) terrainDraws += 1
+      return Reflect.apply(originalDraw, this, [image, ...coordinates])
+    }
+    try {
+      await new Promise((resolve) => setTimeout(resolve, duration))
+      return { rooms: [...rooms.values()], terrainDraws }
+    } finally {
+      CanvasRenderingContext2D.prototype.clearRect = originalClear
+      CanvasRenderingContext2D.prototype.drawImage = originalDraw
+    }
+  }, durationMs)
 }
 
 async function cardLayout(card: Locator) {

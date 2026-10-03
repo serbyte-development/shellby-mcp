@@ -161,6 +161,32 @@ const CHATGPT_LOGIN_ROUTE_RE = /\/auth\/(login|signin)/iu
 const CHATGPT_CONVERSATION_ID_RE = /(?:^|\/)c\/([^/?#]+)/u
 const CHATGPT_DRAFT_ID_RE = /^(?:web|local-chatgpt):/iu
 
+/**
+ * Read saved history without navigating or submitting. Use the current signed-in
+ * session inside the page; its access token never leaves the browser. An unavailable
+ * session/history or a request exceeding ten seconds returns undefined.
+ */
+export async function readConversationPayload(
+  page: Page,
+  conversationId: string
+): Promise<unknown | undefined> {
+  return page
+    .evaluate(async (id) => {
+      const signal = AbortSignal.timeout(10_000)
+      const sessionResponse = await fetch("/api/auth/session", { signal, cache: "no-store" })
+      if (!sessionResponse.ok) return
+      const accessToken = (await sessionResponse.json())?.accessToken
+      if (typeof accessToken !== "string" || !accessToken) return
+      // Cookies alone receive 401 from this endpoint, even in an authenticated tab.
+      const response = await fetch(`/backend-api/conversations/${encodeURIComponent(id)}`, {
+        signal,
+        headers: { Authorization: `Bearer ${accessToken}` },
+      })
+      return response.ok ? response.json() : undefined
+    }, conversationId)
+    .catch(() => undefined)
+}
+
 export async function navigateAndCaptureConversationPayload(
   page: Page,
   conversationUrl: string

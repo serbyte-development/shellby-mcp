@@ -248,7 +248,7 @@ function isAmbiguousBareString(value: string): boolean {
 
 function minifiedJson(value: unknown): string {
   try {
-    return JSON.stringify(value) ?? String(value)
+    return JSON.stringify(value)
   } catch {
     return String(value)
   }

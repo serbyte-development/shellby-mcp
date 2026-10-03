@@ -113,6 +113,7 @@ test("live MCP subagent lifecycle with optional real conversation fork", {
     const lostResult = await live.poll(firstTurnId, 0)
     assert.equal(lostResult.status, "failed")
     assert.match(lostResult.error ?? "", /^UNKNOWN_TURN:/u)
+    responses.clear()
     const fourth = await live.run(
       contextPrompt("Note update 3") +
         (TEST_FORK
@@ -121,7 +122,7 @@ test("live MCP subagent lifecycle with optional real conversation fork", {
     )
     assert.equal(fourth.status, "running", fourth.error)
     assert.ok(fourth.turn_id)
-    assert.ok(!responses.has(fourth.turn_id), "Lost counters must not reuse an old turn ID")
+    assert.equal(fourth.turn_id, `${fourth.agent_id}_turn_1`)
     const fourthResponse = await live.complete(fourth.turn_id)
     assertContext(fourthResponse, "Note update 3")
     assert.equal((await live.poll(fourth.turn_id, 0)).response, fourthResponse)
@@ -195,6 +196,7 @@ test("live MCP subagent lifecycle with optional real conversation fork", {
     const lost = await live.poll(first.turn_id!, 0)
     assert.equal(lost.status, "failed")
     assert.match(lost.error ?? "", /^UNKNOWN_TURN:/u)
+    forkTurns.clear()
     await forkTurn("", "Draft update 4", sourceId)
     assert.equal(await live.assertSavedConversation("fork"), forkId)
 
@@ -221,7 +223,7 @@ test("live MCP subagent lifecycle with optional real conversation fork", {
       assert.ok(turn.turn_id)
       assert.ok(
         !forkTurns.has(turn.turn_id) && !responses.has(turn.turn_id),
-        "Every fork turn must have a unique polling ID"
+        "Fork turn IDs must be distinct within the running service"
       )
       const response = await live.complete(turn.turn_id)
       assertContext(response, marker)

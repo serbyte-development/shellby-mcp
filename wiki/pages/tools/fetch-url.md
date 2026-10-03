@@ -2,6 +2,7 @@
 summary: "Browser acquisition versus document retention, MIME conversion, cursor identity, and fetch errors."
 paths:
   - src/tools/web/
+  - src/tools/delegation/chatgpt-browser.ts
   - src/tools/image/image-encoding.ts
   - src/tokenizer.ts
 ---
@@ -11,6 +12,8 @@ paths:
 [web-tool.ts](../../../src/tools/web/web-tool.ts) owns MCP schema and domain-error translation; the [registration boundary](../mcp-tool-registration-boundary.md) owns failure rendering. [web-acquisition.ts](../../../src/tools/web/web-acquisition.ts) owns browser/CDP acquisition, conversion, and cleanup. [web-open.ts](../../../src/tools/web/web-open.ts) owns retained documents and cursor paging. One opener is shared across short-lived MCP servers.
 
 HTML uses a separate headless CloakBrowser render, not authenticated delegation Chrome. Non-HTML interception consumes the original Chromium response once, preserving cookies/redirects rather than refetching through another client. PDFs extract text with page headings; images use the [shared encoder](./files-and-images.md); common text media decode without reparsing values. Unsupported binary types fail explicitly. Empty/bodyless responses retain HTTP metadata.
+
+`headless: false` attaches to the managed Chrome profile and reuses `createBackgroundPage` from [chatgpt-browser.ts](../../../src/tools/delegation/chatgpt-browser.ts), so fetch tabs open without taking browser focus. This is a temporary shared dependency. If background-tab creation gains more consumers or broader browser ownership, move that helper into a shared browser module and keep both delegation and web acquisition on the same implementation.
 
 ## Retention and errors
 

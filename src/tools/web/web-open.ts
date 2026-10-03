@@ -5,7 +5,6 @@ import { tokenChunk } from "../../tokenizer.js"
 import { asRecord, utf8Prefix } from "../../utils.js"
 import type { EncodedMcpImage } from "../image/image-encoding.js"
 import {
-  type AcquiredResource,
   type AcquiredTextResource,
   acquireWebResource,
   type WebsiteContentFormat,
@@ -18,6 +17,7 @@ export interface WebOpenInput {
   url: string
   format: WebsiteContentFormat
   compact: boolean
+  headless?: boolean
   cursor?: string
   maxOutputTokens: number
   signal?: AbortSignal
@@ -40,13 +40,7 @@ export interface WebOpenResult extends Record<string, unknown> {
 }
 
 export interface WebPageOpenerOptions {
-  renderPage?: (
-    url: string,
-    format: WebsiteContentFormat,
-    compact: boolean,
-    signal?: AbortSignal,
-    resourceByteLimit?: number
-  ) => Promise<AcquiredResource>
+  renderPage?: typeof acquireWebResource
   defaultOutputTokens?: number
   maxOutputTokens?: number
   documentByteLimit?: number
@@ -110,13 +104,14 @@ export class WebPageOpener {
       document = resumed.document
       offset = resumed.offset
     } else {
-      const rendered = await this.renderPage(
-        requestedUrl,
+      const rendered = await this.renderPage({
+        url: requestedUrl,
         format,
         compact,
-        input.signal,
-        this.resourceByteLimit
-      )
+        headless: input.headless ?? true,
+        signal: input.signal,
+        resourceByteLimit: this.resourceByteLimit,
+      })
       if (rendered.kind === "image") {
         return {
           kind: "image",

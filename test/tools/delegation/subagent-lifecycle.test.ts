@@ -37,6 +37,46 @@ test("an idle history check keeps observation alive and a later answer releases 
   assert.equal(browser.submissions, 2)
 })
 
+for (const firstRead of ["pending", "unavailable"] as const) {
+  test(`quiet history is checked again when the first read is ${firstRead}`, async (t) => {
+    const { service, browser, send } = createFixture(t)
+    const turn = await send("worker")
+    const user = { id: "submitted-user-1", author: { role: "user" } }
+    let reads = 0
+    t.mock.method(browser.pages[0]!, "evaluate", async () => {
+      reads += 1
+      if (reads === 1) return firstRead === "pending" ? { messages: [user] } : undefined
+      return {
+        messages: [
+          user,
+          {
+            author: { role: "assistant" },
+            content: { parts: ["saved final answer"] },
+            status: "finished_successfully",
+            end_turn: true,
+          },
+        ],
+      }
+    })
+
+    t.mock.timers.tick(4 * 60_000)
+    await setImmediate()
+    assert.equal(reads, 1)
+    assert.equal((await getAgentResponse(service, turn, 0)).status, "running")
+    t.mock.timers.tick(2 * 60_000)
+    await setImmediate()
+    assert.equal(reads, 1, "History reads are paced even when the live stream stays silent")
+    t.mock.timers.tick(60_000)
+    await setImmediate()
+    assert.equal((await getAgentResponse(service, turn, 0)).response, "saved final answer")
+    assert.equal(reads, 2)
+    assert.equal(browser.pages.length, 1)
+    assert.equal(browser.submissions, 1)
+    await send("worker")
+    assert.equal(browser.submissions, 2, "Recovered completion releases the existing agent")
+  })
+}
+
 test("navigation during prompt entry prevents Send and leaves the saved agent reusable", async (t) => {
   const { service, browser, send } = createFixture(t)
   const first = await send("worker")

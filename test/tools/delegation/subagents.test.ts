@@ -107,6 +107,7 @@ test("saved agents start at the configured URL and resume after idle or external
 
   const request = { agentId: "researcher", prompt: "Review this" }
   const turnId = await sendAgentMessage(service, request, {})
+  assert.equal(turnId, "researcher_turn_1")
   const completed = await getAgentResponse(service, turnId, 0)
   assert.equal(completed.status, "completed")
   assert.equal(completed.response, "Reviewed")
@@ -121,6 +122,7 @@ test("saved agents start at the configured URL and resume after idle or external
   assert.deepEqual(await getAgentResponse(service, turnId, 0), completed)
 
   const nextTurnId = await sendAgentMessage(service, { ...request, prompt: "Follow up" }, {})
+  assert.equal(nextTurnId, "researcher_turn_2")
   assert.equal((await getAgentResponse(service, nextTurnId, 0)).status, "completed")
   assert.equal(fixture.pages.length, 2)
   assert.equal(extractConversationId(fixture.pages[1]!.url()), "lifecycle-conversation")
@@ -131,6 +133,7 @@ test("saved agents start at the configured URL and resume after idle or external
     { ...request, prompt: "Continue after tab closure" },
     {}
   )
+  assert.equal(thirdTurnId, "researcher_turn_3")
   assert.equal((await getAgentResponse(service, thirdTurnId, 0)).status, "completed")
   assert.equal(fixture.pages.length, 3)
   assert.equal(extractConversationId(fixture.pages[2]!.url()), "lifecycle-conversation")
@@ -200,7 +203,7 @@ test("post-submit persistence failure keeps the turn valid and blocks later subm
     { agentId: "researcher", prompt: "Review this" },
     {}
   )
-  assert.match(turnId, /^researcher_turn_1_/u)
+  assert.equal(turnId, "researcher_turn_1")
   assert.equal((await getAgentResponse(service, turnId, 0)).status, "completed")
   assert.equal(fixture.submissions, 1)
   assert.equal(warn.mock.callCount(), 1)
@@ -262,7 +265,7 @@ for (const inlinePostData of [true, false]) {
         { agentId: "researcher", prompt: "Review this" },
         {}
       )
-      assert.match(turnId, /^researcher_turn_1_/u)
+      assert.equal(turnId, "researcher_turn_1")
       assert.equal(fixture.submissions, 1)
       assert.equal((await getAgentResponse(service, turnId, 1_000)).response, "Reviewed")
     })
@@ -375,7 +378,7 @@ for (const { startSource, forkSourceId, branchInSamePage } of [
     }
     const first = await sendAgentMessage(service, request, {})
     assert.equal(fixture.navigations[0], `https://chatgpt.com/c/${forkSourceId}`)
-    assert.match(first, /^reviewer_turn_1_/u)
+    assert.equal(first, "reviewer_turn_1")
     assert.equal((await getAgentResponse(service, first, 0)).response, "Reviewed")
     await fixture.pages.at(-1)?.close()
     const second = await sendAgentMessage(
@@ -383,7 +386,7 @@ for (const { startSource, forkSourceId, branchInSamePage } of [
       { agentId: request.agentId, prompt: "Follow up" },
       {}
     )
-    assert.match(second, /^reviewer_turn_2_/u)
+    assert.equal(second, "reviewer_turn_2")
     assert.equal((await getAgentResponse(service, second, 0)).response, "Reviewed")
     assert.equal(fixture.branches, 1)
     assert.equal(fixture.submissions, 2)
@@ -399,42 +402,51 @@ for (const { startSource, forkSourceId, branchInSamePage } of [
   })
 }
 
-test("saved conversations resume after losing counters and results without reforking or reusing polling IDs", async (t) => {
-  const directory = mkdtempSync(join(tmpdir(), "shellby-conversation-continuity-"))
-  const previousStateDir = MCP_CONFIG.stateDir
-  MCP_CONFIG.stateDir = directory
-  const fixtures = [browserFixture(), browserFixture()]
-  let connection = 0
-  t.mock.method(chromium, "connectOverCDP", async () => fixtures[connection++]!.browser)
-  const firstService = createSubagents()
-  let restored: ReturnType<typeof createSubagents> | undefined
-  t.after(async () => {
-    await (restored ?? firstService).dispose()
-    MCP_CONFIG.stateDir = previousStateDir
-    rmSync(directory, { recursive: true, force: true })
+for (const loseCounter of [false, true]) {
+  test(`saved conversations resume with ${loseCounter ? "lost" : "retained"} turn numbering`, async (t) => {
+    const directory = mkdtempSync(join(tmpdir(), "shellby-conversation-continuity-"))
+    const previousStateDir = MCP_CONFIG.stateDir
+    MCP_CONFIG.stateDir = directory
+    const fixtures = [browserFixture(), browserFixture({ completeOnSubmit: false })]
+    let connection = 0
+    t.mock.method(chromium, "connectOverCDP", async () => fixtures[connection++]!.browser)
+    const firstService = createSubagents()
+    let restored: ReturnType<typeof createSubagents> | undefined
+    t.after(async () => {
+      await (restored ?? firstService).dispose()
+      MCP_CONFIG.stateDir = previousStateDir
+      rmSync(directory, { recursive: true, force: true })
+    })
+    const request = { agentId: "reviewer", prompt: "First" }
+    const first = await sendAgentMessage(firstService, request, {})
+    assert.equal(first, "reviewer_turn_1")
+    assert.equal((await getAgentResponse(firstService, first, 0)).response, "Reviewed")
+    await firstService.dispose()
+    if (loseCounter) {
+      const db = new DatabaseSync(join(directory, "subagents.sqlite"))
+      db.exec("UPDATE agents SET turn_count = 'lost'")
+      db.close()
+    }
+    restored = createSubagents()
+    assert.deepEqual(restored.drainEvents(), ["existing_agent agent_id=reviewer"])
+    await assert.rejects(getAgentResponse(restored, first, 0), { code: "UNKNOWN_TURN" })
+    const next = await sendAgentMessage(
+      restored,
+      { ...request, prompt: "Continue", startSource: "https://chatgpt.com/c/ignored-source" },
+      {}
+    )
+    assert.equal(next, loseCounter ? "reviewer_turn_1" : "reviewer_turn_2")
+    assert.equal((await getAgentResponse(restored, next, 0)).status, "running")
+    fixtures[1]!.completeTurn(1, "Continued")
+    await setImmediate()
+    assert.equal((await getAgentResponse(restored, next, 0)).response, "Continued")
+    if (!loseCounter)
+      await assert.rejects(getAgentResponse(restored, first, 0), { code: "UNKNOWN_TURN" })
+    assert.equal(fixtures[1]!.branches, 0)
+    assert.equal(extractConversationId(fixtures[1]!.pages[0]!.url()), "lifecycle-conversation")
+    assert.deepEqual(fixtures[1]!.prompts, ["Continue"])
   })
-  const request = { agentId: "reviewer", prompt: "First" }
-  const first = await sendAgentMessage(firstService, request, {})
-  assert.equal((await getAgentResponse(firstService, first, 0)).status, "completed")
-  await firstService.dispose()
-  const db = new DatabaseSync(join(directory, "subagents.sqlite"))
-  db.exec("UPDATE agents SET turn_count = 'lost'")
-  db.close()
-  restored = createSubagents()
-  assert.deepEqual(restored.drainEvents(), ["existing_agent agent_id=reviewer"])
-  const next = await sendAgentMessage(
-    restored,
-    { ...request, prompt: "Continue", startSource: "https://chatgpt.com/c/ignored-source" },
-    {}
-  )
-  assert.match(next, /^reviewer_turn_1_/u)
-  assert.notEqual(next, first)
-  assert.equal((await getAgentResponse(restored, next, 0)).status, "completed")
-  await assert.rejects(getAgentResponse(restored, first, 0), { code: "UNKNOWN_TURN" })
-  assert.equal(fixtures[1]!.branches, 0)
-  assert.equal(extractConversationId(fixtures[1]!.pages[0]!.url()), "lifecycle-conversation")
-  assert.deepEqual(fixtures[1]!.prompts, ["Continue"])
-})
+}
 
 for (const branchConversationId of [
   "web:pending-branch",

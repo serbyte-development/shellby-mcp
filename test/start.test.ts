@@ -1,10 +1,28 @@
 import assert from "node:assert/strict"
 import { spawnSync } from "node:child_process"
+import { existsSync } from "node:fs"
 import { copyFile, mkdir, readFile, realpath, writeFile } from "node:fs/promises"
-import { delimiter, join } from "node:path"
+import { delimiter, dirname, join } from "node:path"
 import process from "node:process"
 import test, { type TestContext } from "node:test"
 import { tempDir } from "./helpers/temp.js"
+
+const RESET_FILES = [
+  "state/subagents.sqlite",
+  "state/subagents.sqlite-shm",
+  "state/subagents.sqlite-wal",
+  "state/subagents.sqlite-journal",
+  "state/pm2/dump.pm2",
+  "state/pm2/logs/shellby-mcp-error.log",
+]
+const RETAINED_FILES = [
+  "state/auth.json",
+  "state/chatgpt-chrome/.configured",
+  "state/chatgpt-chrome/Default/Cookies",
+  ".shellby/config.toml",
+  "project.txt",
+  "unrelated-pm2/dump.pm2",
+]
 
 // Run the real entrypoint in a disposable repository with fake external commands, never the live PM2 daemon.
 async function runStartup(
@@ -19,6 +37,7 @@ async function runStartup(
     healthInstance?: string
     ngrokEnabled?: boolean
     existingTunnel?: boolean
+    runtimeState?: "present" | "absent" | "blocked"
   } = {}
 ) {
   const root = await realpath(await tempDir(t, "shellby-start-"))
@@ -27,6 +46,10 @@ async function runStartup(
   await writeFile(join(root, "package.json"), '{"type":"module"}\n')
   await copyFile(new URL("../scripts/start.ts", import.meta.url), join(root, "scripts", "start.ts"))
   await copyFile(new URL("../scripts/pm2.ts", import.meta.url), join(root, "scripts", "pm2.ts"))
+  await copyFile(
+    new URL("../scripts/chatgpt/reset-delegation-state.ts", import.meta.url),
+    join(root, "scripts", "chatgpt", "reset-delegation-state.ts")
+  )
   await writeFile(
     join(root, "src", "config.ts"),
     `export const MCP_CONFIG = ${JSON.stringify({ host: "127.0.0.1", port: 3334, instanceId: "fixture", stateDir: join(root, "state"), workspace: root, ngrok: { enabled: options.ngrokEnabled ?? true }, shell: { rtk: false }, tools: { subagents: options.agentsEnabled ?? false } })}`
@@ -45,6 +68,18 @@ export function printPreflightErrors() {}`
   )
   await writeFile(join(root, "agent-commands.yaml"), "previous audit\n")
   await writeFile(join(root, "calls.jsonl"), "")
+  for (const file of [
+    ...RETAINED_FILES,
+    ...(options.runtimeState === "absent" ? [] : RESET_FILES),
+  ]) {
+    const path = join(root, file)
+    await mkdir(dirname(path), { recursive: true })
+    if (options.runtimeState === "blocked" && file === "state/subagents.sqlite") {
+      await mkdir(path)
+    } else {
+      await writeFile(path, file)
+    }
+  }
 
   for (const [command, path] of [
     ["npm", "bin/npm"],
@@ -58,6 +93,7 @@ import { appendFileSync, existsSync } from "node:fs";
 const args = process.argv.slice(2);
 appendFileSync(${JSON.stringify(join(root, "calls.jsonl"))}, JSON.stringify({
   command: ${JSON.stringify(command)}, args, auditExists: existsSync(${JSON.stringify(join(root, "agent-commands.yaml"))}),
+  resetFiles: ${JSON.stringify(RESET_FILES)}.filter(file => existsSync(${JSON.stringify(root)} + "/" + file)),
   pm2Home: process.env.PM2_HOME, cwd: process.cwd()
 }) + "\\n");
 if ([${JSON.stringify(command)} + " " + args[0], ${JSON.stringify(command)} + " " + args.join(" ")].includes(process.env.START_TEST_FAIL)) process.exit(7);
@@ -95,18 +131,21 @@ if (${JSON.stringify(command)} === "pm2" && args[0] === "jlist") console.log(${J
     }
   )
   assert.ifError(result.error)
+  const filesAtCalls: string[][] = []
   const calls = (await readFile(join(root, "calls.jsonl"), "utf8"))
     .trim()
     .split("\n")
     .filter(Boolean)
     .map((line) => {
-      const { pm2Home, cwd, ...call } = JSON.parse(line) as {
+      const { pm2Home, cwd, resetFiles, ...call } = JSON.parse(line) as {
         command: string
         args: string[]
         auditExists: boolean
         pm2Home: string
         cwd: string
+        resetFiles: string[]
       }
+      filesAtCalls.push(resetFiles)
       if (call.command === "pm2") {
         assert.equal(
           pm2Home,
@@ -117,13 +156,18 @@ if (${JSON.stringify(command)} === "pm2" && args[0] === "jlist") console.log(${J
       }
       return call
     })
-  return { root, result, calls }
+  const remainingResetFiles = RESET_FILES.filter((file) => existsSync(join(root, file)))
+  return { root, result, calls, filesAtCalls, remainingResetFiles }
 }
 
 for (const fromShellby of [false, true]) {
   test(`ordinary restart ${fromShellby ? "inside Shellby" : "from a terminal"} keeps PM2 and reloads MCP last`, async (t) => {
-    const { result, calls } = await runStartup(t, { restart: true, fromShellby })
+    const { result, calls, remainingResetFiles } = await runStartup(t, {
+      restart: true,
+      fromShellby,
+    })
     assert.equal(result.status, 0, result.stderr)
+    assert.deepEqual(remainingResetFiles, RESET_FILES)
     assert.deepEqual(calls, [
       { command: "npm", args: ["run", "build"], auditExists: true },
       { command: "pm2", args: ["delete", "shellby-cursor-host"], auditExists: true },
@@ -216,6 +260,43 @@ test("hard restart rebuilds before replacing PM2 and clears the audit only after
   ])
 })
 
+for (const agentsEnabled of [false, true]) {
+  test(`hard restart clears runtime state with subagents ${agentsEnabled ? "enabled" : "disabled"}`, async (t) => {
+    const { root, result, calls, filesAtCalls, remainingResetFiles } = await runStartup(t, {
+      hard: true,
+      agentsEnabled,
+    })
+    assert.equal(result.status, 0, result.stderr)
+    const shutdown = calls.findIndex(({ command, args }) => command === "pm2" && args[0] === "kill")
+    assert.ok(shutdown >= 0)
+    for (const files of filesAtCalls.slice(0, shutdown + 1)) assert.deepEqual(files, RESET_FILES)
+    for (const files of filesAtCalls.slice(shutdown + 1)) assert.deepEqual(files, [])
+    assert.deepEqual(remainingResetFiles, [])
+    for (const file of RETAINED_FILES) assert.equal(await readFile(join(root, file), "utf8"), file)
+  })
+}
+
+test("hard restart succeeds when runtime state is already absent", async (t) => {
+  const { result, remainingResetFiles } = await runStartup(t, {
+    hard: true,
+    runtimeState: "absent",
+  })
+  assert.equal(result.status, 0, result.stderr)
+  assert.deepEqual(remainingResetFiles, [])
+})
+
+test("hard restart does not start services when subagent state cannot be reset", async (t) => {
+  const { result, calls } = await runStartup(t, { hard: true, runtimeState: "blocked" })
+  assert.notEqual(result.status, 0)
+  assert.deepEqual(
+    calls.map(({ command, args }) => [command, ...args]),
+    [
+      ["npm", "run", "build"],
+      ["pm2", "kill"],
+    ]
+  )
+})
+
 test("hard restart inside Shellby fails before build or shutdown", async (t) => {
   const { root, result, calls } = await runStartup(t, {
     restart: true,
@@ -289,12 +370,13 @@ test("a failed tunnel reload leaves MCP running", async (t) => {
 
 for (const failure of ["npm run", "pm2 kill"]) {
   test(`hard restart stops after ${failure} fails and preserves the audit log`, async (t) => {
-    const { root, result, calls } = await runStartup(t, {
+    const { root, result, calls, remainingResetFiles } = await runStartup(t, {
       restart: true,
       hard: true,
       failCommand: failure,
     })
     assert.equal(result.status, 7)
+    assert.deepEqual(remainingResetFiles, RESET_FILES)
     assert.equal(calls.length, failure === "npm run" ? 1 : 2)
     assert.equal(await readFile(join(root, "agent-commands.yaml"), "utf8"), "previous audit\n")
   })

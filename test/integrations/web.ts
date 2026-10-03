@@ -3,18 +3,51 @@ import { createServer } from "node:http"
 import process from "node:process"
 import test from "node:test"
 import sharp from "sharp"
+import type { WebResourceRequest } from "../../src/tools/web/web-acquisition.js"
 import { WebOpenError, WebPageOpener } from "../../src/tools/web/web-open.js"
 import { compactField, connectClient, startMcpHttpServer, toolText } from "./helpers.js"
 
 const LIVE_WEB_TEST_ENABLED = process.env.RUN_LIVE_WEB_TESTS === "1" && !process.env.CI
 const liveWebTest = LIVE_WEB_TEST_ENABLED ? test : test.skip
 
+test("fetch_url forwards browser selection and serves subsequent pages from cache", async (t) => {
+  const requests: WebResourceRequest[] = []
+  const webPageOpener = new WebPageOpener({
+    renderPage: async (request) => {
+      requests.push(request)
+      return { url: request.url, title: "Browser selection", content: "🙂".repeat(200) }
+    },
+  })
+  const running = await startMcpHttpServer({ webPageOpener })
+  t.after(() => running.close())
+  const connected = await connectClient(running.url, "fetch-browser-selection")
+  t.after(() => connected.client.close())
+  const url = "https://example.com/"
+  await connected.client.callTool({ name: "fetch_url", arguments: { url } })
+  assert.equal(requests[0]?.headless, true)
+
+  const first = await connected.client.callTool({
+    name: "fetch_url",
+    arguments: { url, headless: false, max_output_tokens: 64 },
+  })
+  assert.notEqual(first.isError, true)
+  assert.equal(requests[1]?.headless, false)
+  const cursor = compactField(toolText(first), "next_cursor")
+  assert.ok(cursor)
+  const next = await connected.client.callTool({
+    name: "fetch_url",
+    arguments: { url, cursor },
+  })
+  assert.notEqual(next.isError, true)
+  assert.equal(requests.length, 2, "Continuing cached content must not open another browser tab")
+})
+
 for (const toolOutput of ["compact", "structured"] as const) {
   test(`fetch_url preserves error codes in ${toolOutput} output`, {
     timeout: 10_000,
   }, async (t) => {
     const webPageOpener = new WebPageOpener({
-      renderPage: async (url) => {
+      renderPage: async ({ url }) => {
         switch (new URL(url).pathname) {
           case "/refused":
             throw new WebOpenError("connection_refused", "page.goto: net::ERR_CONNECTION_REFUSED")

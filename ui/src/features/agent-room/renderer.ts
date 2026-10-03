@@ -15,6 +15,33 @@ export const ROOM_PIXEL_SCALE = 2
 
 const imageCache = new Map<string, HTMLImageElement>()
 const imageListeners = new Set<() => void>()
+let imageRevision = 0
+const roomBackgrounds = new WeakMap<
+  RoomLayout,
+  { canvas: HTMLCanvasElement; context: CanvasRenderingContext2D; revision: number }
+>()
+
+/** Cache terrain, walls, and decor until this immutable layout or its loaded assets change. */
+export function drawRoomBackground(ctx: CanvasRenderingContext2D, layout: RoomLayout): void {
+  let background = roomBackgrounds.get(layout)
+  if (!background) {
+    const canvas = document.createElement("canvas")
+    canvas.width = ROOM_WIDTH
+    canvas.height = ROOM_HEIGHT
+    const context = canvas.getContext("2d")
+    if (!context) return
+    context.imageSmoothingEnabled = false
+    background = { canvas, context, revision: -1 }
+    roomBackgrounds.set(layout, background)
+  }
+  if (background.revision !== imageRevision) {
+    drawRoomSurface(background.context, layout)
+    drawRoomWalls(background.context, layout)
+    drawRoomFurnitureItems(background.context, layout.wallDecor)
+    background.revision = imageRevision
+  }
+  ctx.drawImage(background.canvas, 0, 0)
+}
 
 /** Static previews redraw as shared assets load, without running an animation loop. */
 export function subscribeRoomImages(listener: () => void): () => void {
@@ -179,6 +206,7 @@ export function getRoomImage(path: string): HTMLImageElement {
   image.addEventListener(
     "load",
     () => {
+      imageRevision += 1
       for (const listener of imageListeners) listener()
     },
     { once: true }

@@ -65,6 +65,8 @@ const STATIONS = stationsForLayout(ROOM_LAYOUT as unknown as RoomLayout)
 const WALK_SPEED = 86
 const MAX_DELTA_TIME_SEC = 0.1
 const MIN_ACTIVITY_DURATION_SEC = 3
+// Approximately 30 FPS, allowing for fractional animation-frame timestamps.
+const ACTIVE_FRAME_INTERVAL_MS = 33
 
 export function createAgentRoomState(stations: AgentStationMap = STATIONS): AgentRoomState {
   const home = stations.home
@@ -240,9 +242,17 @@ function finishActivity(state: AgentRoomState, stations: AgentStationMap): void 
   state.returningHome = false
 }
 
+/**
+ * Animate visible rooms at 30 FPS, with at most four idle redraws per second for pets.
+ * Offscreen/hidden rooms pause without accumulating elapsed time; disposal releases all work.
+ */
 export function startAgentRoomLoop(
   canvas: HTMLCanvasElement,
-  callbacks: { update: (dt: number) => void; render: (ctx: CanvasRenderingContext2D) => void }
+  callbacks: {
+    update: (dt: number) => void
+    render: (ctx: CanvasRenderingContext2D) => void
+    isIdle: () => boolean
+  }
 ): () => void {
   const ctx = canvas.getContext("2d")
   if (!ctx) return () => undefined
@@ -250,22 +260,50 @@ export function startAgentRoomLoop(
 
   let lastTime = 0
   let frameId = 0
+  let idleTimer = 0
+  let visible = false
   let stopped = false
+
+  const scheduleFrame = () => {
+    if (!stopped && visible && !document.hidden) frameId = requestAnimationFrame(frame)
+  }
 
   const frame = (time: number) => {
     if (stopped) return
+    if (lastTime !== 0 && time - lastTime < ACTIVE_FRAME_INTERVAL_MS) {
+      scheduleFrame()
+      return
+    }
     const dt = lastTime === 0 ? 0 : Math.min((time - lastTime) / 1000, MAX_DELTA_TIME_SEC)
     lastTime = time
     callbacks.update(dt)
     ctx.imageSmoothingEnabled = false
     callbacks.render(ctx)
-    frameId = requestAnimationFrame(frame)
+    if (callbacks.isIdle()) idleTimer = window.setTimeout(scheduleFrame, 250)
+    else scheduleFrame()
   }
 
-  frameId = requestAnimationFrame(frame)
+  const pause = () => {
+    cancelAnimationFrame(frameId)
+    window.clearTimeout(idleTimer)
+    lastTime = 0
+  }
+  const resumeIfVisible = () => {
+    pause()
+    scheduleFrame()
+  }
+  const observer = new IntersectionObserver(([entry]) => {
+    visible = entry?.isIntersecting ?? false
+    resumeIfVisible()
+  })
+  observer.observe(canvas)
+  document.addEventListener("visibilitychange", resumeIfVisible)
+
   return () => {
     stopped = true
-    cancelAnimationFrame(frameId)
+    pause()
+    observer.disconnect()
+    document.removeEventListener("visibilitychange", resumeIfVisible)
   }
 }
 

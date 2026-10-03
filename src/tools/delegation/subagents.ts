@@ -1,5 +1,4 @@
 /** biome-ignore-all lint/style/noExcessiveLinesPerFile: This is the full subagent module.  */
-import { randomUUID } from "node:crypto"
 import { join } from "node:path"
 import type { Browser, BrowserContext, Page } from "playwright-core"
 
@@ -16,6 +15,7 @@ import {
   findComposer,
   isChatGptUrl,
   navigateAndCaptureConversationPayload,
+  readConversationPayload,
   submitComposer,
   throwIfAborted,
   waitForPromise,
@@ -129,8 +129,8 @@ interface TurnState {
   agentId: string
   parentAgent?: AgentIdentity
   status: (typeof agentResponseStatuses)[number]
-  /** A quiet turn gets one non-destructive history check, independently of failure recovery. */
-  idleHistoryChecked: boolean
+  /** Quiet checks are paced independently of upstream activity and failure recovery. */
+  lastHistoryCheckAt?: number
   recoveryAttempted: boolean
   lastActivityAt: number
   response?: string
@@ -550,7 +550,7 @@ export function createSubagents(): Subagents {
   }
 
   /**
-   * Check this submitted message once through its existing page, without disturbing
+   * Check this submitted message through its existing page, without disturbing
    * the live observation. Missing, pending, or unavailable history is not a failure.
    */
   async function readSavedTurnAnswer(turn: TurnState) {
@@ -570,14 +570,7 @@ export function createSubagents(): Subagents {
     ) {
       return
     }
-    const payload = await page
-      .evaluate(async (id) => {
-        const response = await fetch(`/backend-api/conversations/${encodeURIComponent(id)}`, {
-          signal: AbortSignal.timeout(10_000),
-        })
-        return response.ok ? response.json() : undefined
-      }, conversationId)
-      .catch(() => undefined)
+    const payload = await readConversationPayload(page, conversationId)
     return findLatestAssistantAfterMessage(extractConversationMessages(payload), submittedMessageId)
   }
 
@@ -852,12 +845,11 @@ export function createSubagents(): Subagents {
   ): TurnState {
     const settlement = createTurnSettlement()
     return {
-      // The ordinal is local bookkeeping. Lost counters must never alias an old polling ID.
-      turnId: `${agent.agentId}_turn_${agent.turnCount + 1}_${randomUUID()}`,
+      // Saved counters continue across restarts; losing the counter restarts numbering at 1.
+      turnId: `${agent.agentId}_turn_${agent.turnCount + 1}`,
       agentId: agent.agentId,
       parentAgent,
       status: "running",
-      idleHistoryChecked: false,
       recoveryAttempted: false,
       lastActivityAt: now,
       settled: settlement.promise,
@@ -989,7 +981,7 @@ export function createSubagents(): Subagents {
     return scope.pendingEvents.splice(0)
   }
 
-  /** Claim each idle history check once per turn; overlapping cleanup passes cannot repeat it. */
+  /** Claim due history checks before awaiting them so cleanup passes cannot duplicate a check. */
   function idleCleanupActions(now: number): IdleCleanupAction[] {
     const actions: IdleCleanupAction[] = []
     for (const scope of scopes.values()) {
@@ -1054,12 +1046,13 @@ export function createSubagents(): Subagents {
         }
       }
       if (
-        !activeTurn.idleHistoryChecked &&
         !activeTurn.recoveryAttempted &&
-        idleMs >= IDLE_HISTORY_CHECK_MS
+        idleMs >= IDLE_HISTORY_CHECK_MS &&
+        now - (activeTurn.lastHistoryCheckAt ?? 0) >= IDLE_HISTORY_CHECK_MS
       ) {
-        // Reading history is not upstream activity and must not reset the clock.
-        activeTurn.idleHistoryChecked = true
+        // A turn can finish after a pending/failed read without another live event.
+        // Repeat quiet checks without resetting the upstream inactivity deadline.
+        activeTurn.lastHistoryCheckAt = now
         return { kind: "check-history", turn: activeTurn }
       }
       return

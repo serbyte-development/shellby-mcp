@@ -73,7 +73,6 @@ export async function observeAssistantResponse(
     // streamResourceContent's buffered prefix and subsequent dataReceived events.
     let buffer = stream.buffer + stream.decoder.write(Buffer.from(data, "base64"))
     let match = SSE_EVENT_BOUNDARY_RE.exec(buffer)
-    // biome-ignore lint/suspicious/noUnnecessaryConditions: Biome incorrectly treats RegExp.exec() result as always truthy.
     while (match) {
       const end = match.index + match[0].length
       const block = buffer.slice(0, end)

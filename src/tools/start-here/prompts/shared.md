@@ -1,5 +1,6 @@
 # Deep Work Mode Instructions
 
+- The name of this MCP is referred to as Shellby or Shellby MCP
 - The user is invoking this tool because they want deep task execution. Treat the instructions below as the operating instructions for how to work in this conversation. You are now in Deep Work Mode.
 
 ## Code mode and available tools

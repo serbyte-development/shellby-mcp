@@ -1,8 +1,10 @@
+import { setTimeout as sleep } from "node:timers/promises"
 import { stripVTControlCharacters } from "node:util"
 
-import type { CDPSession } from "playwright-core"
+import type { CDPSession, Page } from "playwright-core"
 import { MCP_CONFIG } from "../../config.js"
 import { type EncodedMcpImage, encodeImageForMcp } from "../image/image-encoding.js"
+import { withWebPage } from "./web-browser.js"
 import { WebOpenError } from "./web-error.js"
 
 export type WebsiteContentFormat = "markdown" | "html"
@@ -32,6 +34,8 @@ const HIDDEN_STYLE_PATTERN =
   /(?:^|;)\s*(?:display\s*:\s*none|visibility\s*:\s*hidden)(?:\s*!important)?\s*(?:;|$)/iu
 const PDF_PAGE_LIMIT = 500
 const CONNECTION_REFUSED_PATTERN = /^page\.goto: net::ERR_CONNECTION_REFUSED\b/u
+const HEADED_JITTER_MIN_MS = 2_000
+const HEADED_JITTER_MAX_MS = 30_000
 
 type CapturedResourceKind = "pdf" | "image" | "text" | "unsupported"
 type MediaKind = "html" | CapturedResourceKind | "generic"
@@ -58,191 +62,38 @@ interface CdpFetchRequestPaused {
   responseHeaders?: CdpFetchHeader[]
 }
 
-export async function acquireWebResource(
-  url: string,
-  format: WebsiteContentFormat,
-  compact: boolean,
-  signal?: AbortSignal,
-  resourceByteLimit = MCP_CONFIG.web.resourceByteLimit
-): Promise<AcquiredResource> {
-  if (signal?.aborted) {
-    throw new WebOpenError("open_failed", "The web request was aborted.")
-  }
+export interface WebResourceRequest {
+  url: string
+  format: WebsiteContentFormat
+  compact: boolean
+  /** False reads through the running Chrome profile; true launches disposable headless Chrome. */
+  headless?: boolean
+  signal?: AbortSignal
+  resourceByteLimit?: number
+}
 
-  const { launch } = await import("cloakbrowser")
+/** @internal Exported for focused tests. */
+export function headedJitterDelayMs(
+  request: Pick<WebResourceRequest, "headless">,
+  random: () => number = Math.random
+): number | undefined {
+  if (request.headless !== false) return undefined
+  return (
+    HEADED_JITTER_MIN_MS + Math.floor(random() * (HEADED_JITTER_MAX_MS - HEADED_JITTER_MIN_MS + 1))
+  )
+}
 
-  // Deliberately launch per fetch: web reads are infrequent, and startup cost is preferable to keeping a background Chromium process alive.
-  const browser = await launch({ headless: true })
+/** Acquire and convert one resource, releasing the fetch's browser tab before returning. */
+export async function acquireWebResource(request: WebResourceRequest): Promise<AcquiredResource> {
   try {
-    const page = await browser.newPage()
-    const cdp = await page.context().newCDPSession(page)
-    const frameTree = await cdp.send("Page.getFrameTree")
-    const mainFrameId = frameTree.frameTree.frame.id
-    let capturedResource: CapturedRawResource | undefined
-    let capturedError: unknown
-    let captureTask: Promise<void> | undefined
-
-    await cdp.send("Fetch.enable", {
-      patterns: [{ urlPattern: "*", requestStage: "Response" }],
-    })
-    cdp.on("Fetch.requestPaused", (event) => {
-      const task = handlePausedResponse(event)
-      captureTask = task
-      void task.catch(() => undefined)
-    })
-
-    // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: The CDP Fetch handler mirrors mutually exclusive HTTP response outcomes and must resolve each paused request exactly once.
-    async function handlePausedResponse(event: CdpFetchRequestPaused): Promise<void> {
-      try {
-        if (!event.responseStatusCode) {
-          await cdp.send("Fetch.continueRequest", { requestId: event.requestId })
-          return
-        }
-        if (event.frameId !== mainFrameId || event.resourceType !== "Document") {
-          await cdp.send("Fetch.continueResponse", { requestId: event.requestId })
-          return
-        }
-
-        const headers = cdpHeaders(event.responseHeaders ?? [])
-        const status = event.responseStatusCode
-        const contentType = headers.get("content-type")?.trim()
-        if (isRedirectStatus(status)) {
-          await cdp.send("Fetch.continueResponse", { requestId: event.requestId })
-          return
-        }
-
-        const declaredLength = Number(headers.get("content-length"))
-        if (status === 204 || status === 205 || declaredLength === 0) {
-          capturedResource = {
-            kind: "text",
-            url: event.request.url,
-            status,
-            ...(contentType ? { contentType } : {}),
-            body: Buffer.alloc(0),
-          }
-          await cdp.send("Fetch.failRequest", {
-            requestId: event.requestId,
-            errorReason: "Aborted",
-          })
-          return
-        }
-
-        if (Number.isFinite(declaredLength) && declaredLength > resourceByteLimit) {
-          throw new WebOpenError(
-            "resource_too_large",
-            `Resource is ${declaredLength} bytes; the fetch limit is ${resourceByteLimit} bytes.`
-          )
-        }
-
-        const mediaKind = classifyMediaType(normalizedMediaType(contentType))
-        if (mediaKind === "html") {
-          await cdp.send("Fetch.continueResponse", { requestId: event.requestId })
-          return
-        }
-        if (mediaKind === "unsupported") {
-          capturedResource = {
-            kind: "unsupported",
-            url: event.request.url,
-            status,
-            ...(contentType ? { contentType } : {}),
-            body: Buffer.alloc(0),
-          }
-          await cdp.send("Fetch.failRequest", {
-            requestId: event.requestId,
-            errorReason: "Aborted",
-          })
-          return
-        }
-
-        const body = await readBoundedCdpBody(cdp, event.requestId, resourceByteLimit, signal)
-        const kind = mediaKind === "generic" ? sniffGenericResource(body) : mediaKind
-        if (kind === "html") {
-          await cdp.send("Fetch.fulfillRequest", {
-            requestId: event.requestId,
-            responseCode: status,
-            responseHeaders: event.responseHeaders,
-            body: body.toString("base64"),
-          })
-          return
-        }
-
-        capturedResource = {
-          kind,
-          url: event.request.url,
-          status,
-          ...(contentType ? { contentType } : {}),
-          body,
-        }
-        await cdp.send("Fetch.failRequest", { requestId: event.requestId, errorReason: "Aborted" })
-      } catch (error) {
-        capturedError = error
-        try {
-          await cdp.send("Fetch.failRequest", {
-            requestId: event.requestId,
-            errorReason: "Aborted",
-          })
-        } catch {
-          // The request may already be resolved after a streaming failure.
-        }
-      }
+    const jitterDelayMs = headedJitterDelayMs(request)
+    if (jitterDelayMs !== undefined) {
+      await sleep(jitterDelayMs, undefined, { signal: request.signal })
     }
-
-    await page.route("**/*", async (route) => {
-      const resourceType = route.request().resourceType()
-      if (resourceType === "image" || resourceType === "media" || resourceType === "font") {
-        await route.abort()
-        return
-      }
-      await route.continue()
-    })
-    let response: Awaited<ReturnType<typeof page.goto>> | undefined
-    let navigationError: unknown
-    try {
-      response = await page.goto(url, {
-        waitUntil: "commit",
-        timeout: 30_000,
-      })
-    } catch (error) {
-      navigationError = error
-    }
-
-    if (captureTask) await captureTask
-    if (capturedError) throw capturedError
-    if (capturedResource) return await convertCapturedResource(capturedResource)
-
-    if (navigationError) throw navigationFailure(navigationError)
-    if (!response) throw new Error("Navigation completed without an HTTP response.")
-
-    await page.waitForLoadState("domcontentloaded", { timeout: 30_000 })
-    await waitForRenderedPageToSettle(page)
-
-    if (signal?.aborted) throw new WebOpenError("open_failed", "The web request was aborted.")
-
-    const finalUrl = page.url()
-    const browserTitle = await page.title()
-    const html = await page.content()
-    const outputHtml = compact ? await compactRenderedHtml(html) : html
-    const status = response.status()
-    const contentType = response.headers()["content-type"]?.trim()
-
-    if (format === "html") {
-      return {
-        url: finalUrl,
-        title: browserTitle,
-        content: outputHtml,
-        status,
-        ...(contentType ? { contentType } : {}),
-      }
-    }
-
-    const { NodeHtmlMarkdown } = await import("node-html-markdown")
-    return {
-      url: finalUrl,
-      title: browserTitle,
-      content: NodeHtmlMarkdown.translate(outputHtml),
-      status,
-      ...(contentType ? { contentType } : {}),
-    }
+    return await withWebPage(
+      { headless: request.headless ?? true, signal: request.signal },
+      (page) => readWebResource(page, request)
+    )
   } catch (error) {
     if (error instanceof WebOpenError) throw error
     throw webOpenError(
@@ -250,8 +101,181 @@ export async function acquireWebResource(
       stripVTControlCharacters(error instanceof Error ? error.message : String(error)),
       error
     )
-  } finally {
-    await browser.close()
+  }
+}
+
+async function readWebResource(
+  page: Page,
+  {
+    url,
+    format,
+    compact,
+    signal,
+    resourceByteLimit = MCP_CONFIG.web.resourceByteLimit,
+  }: WebResourceRequest
+): Promise<AcquiredResource> {
+  const cdp = await page.context().newCDPSession(page)
+  const frameTree = await cdp.send("Page.getFrameTree")
+  const mainFrameId = frameTree.frameTree.frame.id
+  let capturedResource: CapturedRawResource | undefined
+  let capturedError: unknown
+  let captureTask: Promise<void> | undefined
+
+  await cdp.send("Fetch.enable", {
+    patterns: [{ resourceType: "Document", requestStage: "Response" }],
+  })
+  cdp.on("Fetch.requestPaused", (event) => {
+    const task = handlePausedResponse(event)
+    captureTask = task
+    void task.catch(() => undefined)
+  })
+
+  // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: The CDP Fetch handler mirrors mutually exclusive HTTP response outcomes and must resolve each paused request exactly once.
+  async function handlePausedResponse(event: CdpFetchRequestPaused): Promise<void> {
+    try {
+      if (!event.responseStatusCode) {
+        await cdp.send("Fetch.continueRequest", { requestId: event.requestId })
+        return
+      }
+      if (event.frameId !== mainFrameId || event.resourceType !== "Document") {
+        await cdp.send("Fetch.continueResponse", { requestId: event.requestId })
+        return
+      }
+
+      const headers = cdpHeaders(event.responseHeaders ?? [])
+      const status = event.responseStatusCode
+      const contentType = headers.get("content-type")?.trim()
+      if (isRedirectStatus(status)) {
+        await cdp.send("Fetch.continueResponse", { requestId: event.requestId })
+        return
+      }
+
+      const declaredLength = Number(headers.get("content-length"))
+      if (status === 204 || status === 205 || declaredLength === 0) {
+        capturedResource = {
+          kind: "text",
+          url: event.request.url,
+          status,
+          ...(contentType ? { contentType } : {}),
+          body: Buffer.alloc(0),
+        }
+        await cdp.send("Fetch.failRequest", {
+          requestId: event.requestId,
+          errorReason: "Aborted",
+        })
+        return
+      }
+
+      if (Number.isFinite(declaredLength) && declaredLength > resourceByteLimit) {
+        throw new WebOpenError(
+          "resource_too_large",
+          `Resource is ${declaredLength} bytes; the fetch limit is ${resourceByteLimit} bytes.`
+        )
+      }
+
+      const mediaKind = classifyMediaType(normalizedMediaType(contentType))
+      if (mediaKind === "html") {
+        await cdp.send("Fetch.continueResponse", { requestId: event.requestId })
+        return
+      }
+      if (mediaKind === "unsupported") {
+        capturedResource = {
+          kind: "unsupported",
+          url: event.request.url,
+          status,
+          ...(contentType ? { contentType } : {}),
+          body: Buffer.alloc(0),
+        }
+        await cdp.send("Fetch.failRequest", {
+          requestId: event.requestId,
+          errorReason: "Aborted",
+        })
+        return
+      }
+
+      const body = await readBoundedCdpBody(cdp, event.requestId, resourceByteLimit, signal)
+      const kind = mediaKind === "generic" ? sniffGenericResource(body) : mediaKind
+      if (kind === "html") {
+        await cdp.send("Fetch.fulfillRequest", {
+          requestId: event.requestId,
+          responseCode: status,
+          responseHeaders: event.responseHeaders,
+          body: body.toString("base64"),
+        })
+        return
+      }
+
+      capturedResource = {
+        kind,
+        url: event.request.url,
+        status,
+        ...(contentType ? { contentType } : {}),
+        body,
+      }
+      await cdp.send("Fetch.failRequest", {
+        requestId: event.requestId,
+        errorReason: "Aborted",
+      })
+    } catch (error) {
+      capturedError = error
+      try {
+        await cdp.send("Fetch.failRequest", {
+          requestId: event.requestId,
+          errorReason: "Aborted",
+        })
+      } catch {
+        // The request may already be resolved after a streaming failure.
+      }
+    }
+  }
+
+  let response: Awaited<ReturnType<typeof page.goto>> | undefined
+  let navigationError: unknown
+  try {
+    response = await page.goto(url, {
+      waitUntil: "commit",
+      timeout: 30_000,
+    })
+  } catch (error) {
+    navigationError = error
+  }
+
+  if (captureTask) await captureTask
+  if (capturedError) throw capturedError
+  if (capturedResource) return await convertCapturedResource(capturedResource)
+
+  if (navigationError) throw navigationFailure(navigationError)
+  if (!response) throw new Error("Navigation completed without an HTTP response.")
+
+  await page.waitForLoadState("domcontentloaded", { timeout: 30_000 })
+  await waitForRenderedPageToSettle(page)
+
+  if (signal?.aborted) throw new WebOpenError("open_failed", "The web request was aborted.")
+
+  const finalUrl = page.url()
+  const browserTitle = await page.title()
+  const html = await page.content()
+  const outputHtml = compact ? await compactRenderedHtml(html) : html
+  const status = response.status()
+  const contentType = response.headers()["content-type"]?.trim()
+
+  if (format === "html") {
+    return {
+      url: finalUrl,
+      title: browserTitle,
+      content: outputHtml,
+      status,
+      ...(contentType ? { contentType } : {}),
+    }
+  }
+
+  const { NodeHtmlMarkdown } = await import("node-html-markdown")
+  return {
+    url: finalUrl,
+    title: browserTitle,
+    content: NodeHtmlMarkdown.translate(outputHtml),
+    status,
+    ...(contentType ? { contentType } : {}),
   }
 }
 
@@ -383,7 +407,6 @@ function looksLikeText(body: Buffer): boolean {
 
 function decodeTextResource(body: Buffer, contentType?: string): string {
   const charsetMatch = CHARSET_PATTERN.exec(contentType ?? "")
-  // biome-ignore lint/suspicious/noUnnecessaryConditions: Biome thinks the regex match is guaranteed; TypeScript correctly treats it as nullable.
   const capturedCharset = charsetMatch?.[1]
   const detectedCharset = capturedCharset === undefined ? undefined : capturedCharset.trim()
   const charset = detectedCharset ? detectedCharset : "utf-8"

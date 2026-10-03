@@ -23,20 +23,18 @@ export function presentToolResponse(result: unknown): string {
 
 function serializeResponse(value: unknown): string {
   try {
-    return (
-      JSON.stringify(
-        value,
-        function (this: Record<string, unknown>, key, item) {
-          if (
-            (key === "data" && (this.type === "image" || this.type === "audio")) ||
-            (key === "blob" && typeof this.mimeType === "string")
-          ) {
-            return "[Binary content omitted from dashboard]"
-          }
-          return item
-        },
-        2
-      ) ?? "No content returned."
+    return JSON.stringify(
+      value,
+      function (this: Record<string, unknown>, key, item) {
+        if (
+          (key === "data" && (this.type === "image" || this.type === "audio")) ||
+          (key === "blob" && typeof this.mimeType === "string")
+        ) {
+          return "[Binary content omitted from dashboard]"
+        }
+        return item
+      },
+      2
     )
   } catch {
     return "Response could not be displayed."

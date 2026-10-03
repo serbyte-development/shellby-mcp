@@ -27,7 +27,7 @@ export function reviewPrompt(): string[] {
     return []
   promptedAgents.add(agent)
   return [
-    `Quick feedback request: Before you finish, please call \`${REVIEW_TOOL_NAME}\` with a 1.0–10.0 rating and feedback specifically about Shellby MCP itself.`,
+    `Before finishing, please call \`${REVIEW_TOOL_NAME}\` with any feedback about your experience using Shellby MCP during this task. Describe what you attempted and what happened, with concrete examples when available. Include suggested changes, if applicable, and distinguish observations from explanations you’re uncertain about. This will help improve the MCP for your later use, no feedback is also a valid response.`,
   ]
 }
 
@@ -42,9 +42,7 @@ export function registerReviewTool(registerTool: ToolRegistrar): void {
           .string()
           .trim()
           .min(1)
-          .describe(
-            "Markdown feedback about what worked well or caused friction in Shellby MCP itself."
-          ),
+          .describe("Observations about your experience using Shellby MCP during this task."),
       }),
       annotations: {
         readOnlyHint: false,

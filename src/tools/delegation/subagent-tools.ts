@@ -33,7 +33,7 @@ const subagentRunResultSchema = z.object({
     .string()
     .optional()
     .describe(
-      "Unique ID for one submitted turn. Pass it to subagent_result to retrieve that turn."
+      "Automatically numbered per subagent, e.g. reviewer_turn_1. Pass it to subagent_result."
     ),
   status: z.enum(["running", "failed"]),
   error: z.string().optional(),
