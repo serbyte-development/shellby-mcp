@@ -239,7 +239,8 @@ export async function callUntilComplete(
 export function snapshotFromResult(result: Awaited<ReturnType<Client["callTool"]>>): ToolSnapshot {
   assert.equal(result.isError, undefined)
   const text = toolText(result)
-  const status = compactField(text, "status")
+  const exitCode = compactNumberField(text, "exit_code")
+  const status = compactField(text, "status") ?? (exitCode !== undefined ? "completed" : undefined)
   const cwd = compactField(text, "cwd")
   const output = compactField(text, "output")
   assert.ok(
@@ -252,7 +253,6 @@ export function snapshotFromResult(result: Awaited<ReturnType<Client["callTool"]
   assert.ok(output !== undefined)
 
   const nextCursor = compactNumberField(text, "next_cursor")
-  const exitCode = compactNumberField(text, "exit_code")
   const droppedOutputBytes = compactNumberField(text, "dropped_output_bytes")
   return {
     status,

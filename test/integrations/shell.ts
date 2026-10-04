@@ -73,7 +73,7 @@ test("returns incremental shell output through MCP before the command finishes",
     },
   })
   assert.notEqual(completed.isError, true)
-  assert.equal(compactField(toolText(completed), "status"), "completed")
+  assert.equal(compactField(toolText(completed), "status"), undefined)
   assert.equal(compactField(toolText(completed), "output"), "DONE")
   assert.equal(compactField(toolText(completed), "exit_code"), "0")
   assert.equal(compactField(toolText(completed), "next_cursor"), undefined)

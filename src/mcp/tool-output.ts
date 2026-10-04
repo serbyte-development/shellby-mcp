@@ -44,21 +44,29 @@ function renderToolStructuredContent(toolName: string, value: unknown): string {
 }
 
 function renderShellResult(value: unknown): string {
-  if (!isRecord(value) || !Array.isArray(value.commands) || !value.commands.every(isRecord))
-    return renderStructuredContent(value)
+  if (!isRecord(value)) return renderStructuredContent(value)
+  const compact = omitCompletedShellStatus(value)
+  if (!Array.isArray(compact.commands) || !compact.commands.every(isRecord))
+    return renderStructuredContent(compact)
 
-  const { commands, output, ...metadata } = value
+  const { commands, output, ...metadata } = compact
   return renderStructuredContent({
     ...metadata,
     commands: commands.map(({ run, status, exit_code, command, ...details }) => ({
       run,
-      ...(status === "completed" && typeof exit_code === "number" ? {} : { status }),
-      ...(exit_code === null ? {} : { exit_code }),
+      ...omitCompletedShellStatus({ status, ...(exit_code === null ? {} : { exit_code }) }),
       command,
       ...details,
     })),
     output,
   })
+}
+
+/** A numeric exit code conveys normal completion; preserve exceptional states. */
+function omitCompletedShellStatus(value: Record<string, unknown>): Record<string, unknown> {
+  if (value.status !== "completed" || typeof value.exit_code !== "number") return value
+  const { status, ...remaining } = value
+  return remaining
 }
 
 function renderApplyPatchResult(value: unknown): string {

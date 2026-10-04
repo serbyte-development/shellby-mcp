@@ -118,6 +118,43 @@ test("compact result preserves existing content and removes structuredContent", 
   ])
 })
 
+for (const tool of ["shell_run", "shell_poll"]) {
+  test(`${tool} omits completed status when an exit code conveys completion`, () => {
+    for (const exitCode of [0, 7]) {
+      const structured = Object.freeze({
+        status: "completed",
+        exit_code: exitCode,
+        output: "command output",
+        next_cursor: 42,
+      })
+      const result = compactToolResult(tool, { structuredContent: structured, content: [] }) as {
+        content: Array<{ text: string }>
+      }
+      const text = result.content[0]!.text
+      assert.doesNotMatch(text, /status=/u)
+      assert.ok(text.includes(`exit_code=${exitCode}`))
+      assert.match(text, /next_cursor=42/u)
+      assert.match(text, /command output/u)
+      assert.equal(structured.status, "completed", "Rendering must preserve the structured result")
+    }
+  })
+
+  test(`${tool} preserves status when completion cannot be inferred from the exit code`, () => {
+    for (const structured of [
+      { status: "running" },
+      { status: "completed" },
+      { status: "completed", exit_code: null },
+      { status: "shell_exited", exit_code: 0 },
+      { status: "reset", exit_code: 7 },
+    ]) {
+      const result = compactToolResult(tool, { structuredContent: structured, content: [] }) as {
+        content: Array<{ text: string }>
+      }
+      assert.ok(result.content[0]!.text.includes(`status=${structured.status}`))
+    }
+  })
+}
+
 test("compact fetch_url image results preserve native image content while rendering metadata", () => {
   const result = compactToolResult("fetch_url", {
     structuredContent: {
@@ -189,7 +226,7 @@ const toolFamilyCases: Array<{ tool: string; structuredContent: unknown; expecte
       ],
     },
     expected:
-      'status=completed cwd=/workspace exit_code=1\n\ncommands:\n\n- run=1 exit_code=0 command="npm run lint"\n- run=2 exit_code=1 command="npm run typecheck…" path=./api\n\noutput:\n\nline one\nline two',
+      'cwd=/workspace exit_code=1\n\ncommands:\n\n- run=1 exit_code=0 command="npm run lint"\n- run=2 exit_code=1 command="npm run typecheck…" path=./api\n\noutput:\n\nline one\nline two',
   },
   {
     tool: "shell_poll",
