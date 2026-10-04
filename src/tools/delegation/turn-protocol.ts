@@ -10,7 +10,8 @@ export interface ChatGptTurnCompletion {
 }
 
 export interface ChatGptTurnEvents {
-  onActivity?: (activity?: AgentActivity) => void
+  /** Observed messages, output, or execution-state changes; excludes transport keepalives. */
+  onActivity?: (activity: AgentActivity) => void
   onConversationId?: (conversationId: string) => void
   /** Plain MCP result text from the submitted turn only; transports may repeat it. */
   onToolResponse?: (text: string) => void
@@ -89,6 +90,9 @@ export class ChatGptTurnTracker {
     sourceId: string,
     turnId?: string
   ): ChatGptTurnCompletion | undefined {
+    // Only decoded message activity counts. ChatGPT can keep sending heartbeats
+    // and safety metadata after a turn stalls; treating raw traffic as progress
+    // makes activity_age_ms misleading and postpones history checks/recovery.
     for (const item of parseResponsePayloads(text)) {
       const record = asRecord(item)
       if (!record) continue
@@ -116,8 +120,6 @@ export class ChatGptTurnTracker {
       this.reportToolResponse()
       if (record.type === "message_stream_complete") this.complete = true
     }
-
-    if (this.sourceId === sourceId && text.length > 0) this.events.onActivity?.()
 
     return this.result()
   }
@@ -172,23 +174,32 @@ export class ChatGptTurnTracker {
     const target = `${operation ?? ""}:${path}`
     if (
       (target === "append:/message/content/parts/0" || target === "append:/message/content/text") &&
-      typeof value === "string"
+      typeof value === "string" &&
+      value.length > 0
     ) {
       this.message.text += value
-      this.events.onActivity?.(classifyActivity(this.message))
-      return
-    }
-    if (target === "replace:/message/status" && typeof value === "string") {
+    } else if (
+      target === "replace:/message/status" &&
+      typeof value === "string" &&
+      value !== this.message.status
+    ) {
       this.message.status = value
-      return
-    }
-    if (target === "replace:/message/end_turn" && typeof value === "boolean") {
+    } else if (
+      target === "replace:/message/end_turn" &&
+      typeof value === "boolean" &&
+      value !== this.message.endTurn
+    ) {
       this.message.endTurn = value
+    } else if (
+      target === "replace:/message/recipient" &&
+      (typeof value === "string" || value === null) &&
+      value !== this.message.recipient
+    ) {
+      this.message.recipient = value
+    } else {
       return
     }
-    if (target === "replace:/message/recipient" && (typeof value === "string" || value === null)) {
-      this.message.recipient = value
-    }
+    this.events.onActivity?.(classifyActivity(this.message))
   }
 
   private reportToolResponse(): void {

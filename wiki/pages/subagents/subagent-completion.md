@@ -15,13 +15,13 @@ paths:
 
 [turn-protocol.ts](../../../src/tools/delegation/turn-protocol.ts) distinguishes final assistant answers from tool calls and partial text. HTTP and WebSocket trackers race; first valid completion wins. DOM text and an idle-looking composer are not completion authority.
 
-After binding, any nonempty turn stream traffic refreshes activity, including heartbeats and safety updates without new text or a new status label. Pre-binding traffic does not. [CDP Transport](./chatgpt-cdp-transport.md) owns acquisition and probes.
+After binding, observed messages, nonempty output deltas and execution-state changes refresh activity. Heartbeats, safety metadata and unchanged state do not: a stalled turn can keep its connection alive, so counting transport traffic would mask inactivity and postpone recovery. [CDP Transport](./chatgpt-cdp-transport.md) owns acquisition and probes.
 
 ## Bounded recovery
 
 [subagents.ts](../../../src/tools/delegation/subagents.ts) separates two decisions:
 
-- Three minutes without observed activity: check saved history once. Keep the observer and original tab alive; missing/pending history is not failure. The check does not reset the activity clock.
+- Three minutes without observed activity: check saved history, repeating at that interval while quiet. Keep the observer and original tab alive; missing/pending history is not failure. The check does not reset the activity clock.
 - Page/observer failure or thirty minutes without activity: detach observation and attempt bounded recovery once, if saved identity exists. Check current history, then one replacement tab if necessary. Never resend the prompt.
 
 Unconfirmed recovery fails locally and marks the agent `uncertain`; upstream work may still be running. Reuse returns `AGENT_BUSY`, and the identity still consumes [capacity](./browser-chatgpt-subagents.md#identity-and-lifetime).

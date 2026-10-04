@@ -460,30 +460,43 @@ test("delegation contracts over a real Chrome CDP connection", {
       assert.fail(`Timed out: ${label}; submissions=${users.length}; historyReads=${historyReads}`)
     }
 
-    await lifecycleTest.test("heartbeats keep a long turn alive without recovery", async () => {
-      const turn = await sendAgentMessage(agentService, request, {})
-      await until(() => streams.has(1), "first submission")
-      for (let interval = 0; interval < 5; interval += 1) {
-        lifecycleTest.mock.timers.tick(120_000)
-        streams.get(1)!.write(": heartbeat\n\n")
-        await until(
-          async () => (await getAgentResponse(agentService, turn, 0)).activityAgeMs === 0,
-          "heartbeat reaches the lifecycle"
-        )
-        assert.equal((await getAgentResponse(agentService, turn, 0)).status, "running")
-        assert.equal(historyReads, 0)
+    await lifecycleTest.test(
+      "message progress keeps a long turn alive without recovery",
+      async () => {
+        const turn = await sendAgentMessage(agentService, request, {})
+        await until(() => streams.has(1), "first submission")
+        for (let interval = 0; interval < 5; interval += 1) {
+          lifecycleTest.mock.timers.tick(120_000)
+          streams.get(1)!.write(
+            `data: ${JSON.stringify({
+              v: {
+                message: {
+                  ...completedMessage(`Working on step ${interval}`),
+                  status: "in_progress",
+                  end_turn: false,
+                },
+              },
+            })}\n\n`
+          )
+          await until(
+            async () => (await getAgentResponse(agentService, turn, 0)).activityAgeMs === 0,
+            "message progress reaches the lifecycle"
+          )
+          assert.equal((await getAgentResponse(agentService, turn, 0)).status, "running")
+          assert.equal(historyReads, 0)
+        }
+        await assertCompletionLatency(turn, "first completed", () => {
+          savedAnswers.set(1, "first completed")
+          // Keep HTTP open: receiving the final answer, not socket closure, must release polling.
+          streams.get(1)!.write(completedStream("first completed", users[0]!.id))
+        })
+        assert.equal(streams.get(1)!.writableEnded, false)
+        assert.equal(users.length, 1)
       }
-      await assertCompletionLatency(turn, "first completed", () => {
-        savedAnswers.set(1, "first completed")
-        // Keep HTTP open: receiving the final answer, not socket closure, must release polling.
-        streams.get(1)!.write(completedStream("first completed", users[0]!.id))
-      })
-      assert.equal(streams.get(1)!.writableEnded, false)
-      assert.equal(users.length, 1)
-    })
+    )
 
     await lifecycleTest.test(
-      "idle recovery reads a saved final answer without resubmission",
+      "heartbeats cannot postpone activity age or saved-answer recovery",
       async () => {
         lifecycleTest.mock.timers.tick(60_000)
         const turn = await sendAgentMessage(
@@ -496,7 +509,14 @@ test("delegation contracts over a real Chrome CDP connection", {
           savedAnswers.set(2, "recovered completed answer")
           for (let minute = 0; minute < 3; minute += 1) {
             lifecycleTest.mock.timers.tick(60_000)
+            streams.get(2)!.write(": heartbeat\n\n")
             await delay(100)
+            if (minute < 2)
+              assert.equal(
+                (await getAgentResponse(agentService, turn, 0)).activityAgeMs,
+                (minute + 1) * 60_000,
+                "Heartbeats must not reset the time since observed progress"
+              )
           }
         })
         assert.equal(historyReads, 1)

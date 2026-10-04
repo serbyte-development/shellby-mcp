@@ -132,6 +132,7 @@ interface TurnState {
   /** Quiet checks are paced independently of upstream activity and failure recovery. */
   lastHistoryCheckAt?: number
   recoveryAttempted: boolean
+  /** Last observed turn progress in epoch milliseconds; connection keepalives do not count. */
   lastActivityAt: number
   response?: string
   errorCode?: string
@@ -860,11 +861,11 @@ export function createSubagents(): Subagents {
   function recordActivity(
     agent: AgentState,
     turn: TurnState,
-    activity: AgentActivity | undefined,
+    activity: AgentActivity,
     now: number
   ): void {
     if (turn.status !== "running") return
-    if (activity) agent.status = activity
+    agent.status = activity
     turn.lastActivityAt = now
   }
 

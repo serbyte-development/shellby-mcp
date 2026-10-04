@@ -123,7 +123,7 @@ export function registerSubagentTools(registerTool: ToolRegistrar, subagents: Su
           .max(MCP_CONFIG.chatGpt.maxPollWaitMs)
           .default(MCP_CONFIG.chatGpt.defaultPollWaitMs)
           .describe(
-            "How long to wait for subagent responses to finish. If still running when this call returns, poll again or continue other work. A completion notice is included in your next tool response, regardless of which tool you call."
+            "How long to wait for subagent responses to finish. If still running when this call returns, poll again with longer yield_time_ms or continue other work. Upon completion, you will be notified via a global tool response."
           ),
       }),
       outputSchema: z.object({

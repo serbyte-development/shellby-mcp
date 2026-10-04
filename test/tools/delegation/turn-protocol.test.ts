@@ -214,9 +214,7 @@ test("CDP tracker binds only the submitted user-message ID and reconstructs exac
   const activities: string[] = []
   const conversationIds: string[] = []
   const tracker = new ChatGptTurnTracker("user-1", {
-    onActivity: (activity) => {
-      if (activity) activities.push(activity)
-    },
+    onActivity: (activity) => activities.push(activity),
     onConversationId: (conversationId) => conversationIds.push(conversationId),
   })
   const topic = "conversation-turn-turn-1"
@@ -290,50 +288,64 @@ test("HTTP SSE tracker reconstructs the same final assistant response", () => {
   })
 })
 
-test("HTTP SSE tracker counts bound heartbeats and safety review updates as activity without changing the status label", () => {
-  const activities: Array<string | undefined> = []
+for (const transport of ["http", "websocket"] as const) {
+  test(`${transport} heartbeats and metadata cannot masquerade as turn activity`, () => {
+    const activities: string[] = []
+    const tracker = new ChatGptTurnTracker("user-1", {
+      onActivity: (activity) => activities.push(activity),
+    })
+    const ingest = (payload: string) =>
+      transport === "http"
+        ? tracker.ingestSse(payload)
+        : tracker.ingestFrame(turnFrame("conversation-turn-current", payload))
+
+    ingest(": ping - before-bind\r\n\r\n")
+    assert.deepEqual(activities, [])
+    ingest(message("user", "review"))
+    ingest(message("assistant", "", { status: "in_progress" }))
+    ingest('data: {"p":"/message/content/parts/0","o":"append","v":"Working"}\n\n')
+    const observed = [...activities]
+
+    for (let heartbeat = 0; heartbeat < 3; heartbeat += 1) {
+      ingest(": ping - transport-only\r\n\r\n")
+      ingest('data: {"type":"safety_review_update","active":true}\n\n')
+      ingest('data: {"type":"metadata","conversation_id":"conversation-current"}\n\n')
+      ingest('data: {"p":"/message/content/parts/0","o":"append","v":""}\n\n')
+    }
+    assert.deepEqual(activities, observed, "Connection traffic must not refresh activity age")
+
+    ingest('data: {"p":"/message/content/parts/0","o":"append","v":" on the task"}\n\n')
+    assert.deepEqual(activities, [...observed, "Generating response"])
+  })
+}
+
+test("message and execution-state changes count as activity, unchanged state does not", () => {
+  const activities: string[] = []
   const tracker = new ChatGptTurnTracker("user-1", {
     onActivity: (activity) => activities.push(activity),
   })
-
-  tracker.ingestSse(": ping - before-bind\r\n\r\n")
-  assert.deepEqual(activities, [])
-
   tracker.ingestSse(message("user", "review"))
-  const labeledActivities = activities.filter((activity) => activity !== undefined)
-  const activityCount = activities.length
+  activities.length = 0
+  tracker.ingestSse(message("assistant", "query", { recipient: "web.run", status: "in_progress" }))
+  tracker.ingestSse('data: {"p":"/message/status","o":"replace","v":"finished_successfully"}\n\n')
+  tracker.ingestSse('data: {"p":"/message/recipient","o":"replace","v":"all"}\n\n')
+  tracker.ingestSse('data: {"p":"/message/end_turn","o":"replace","v":true}\n\n')
+  assert.deepEqual(activities, [
+    "Searching the web",
+    "Searching the web",
+    "Generating response",
+    "Generating response",
+  ])
+  const observed = [...activities]
+  tracker.ingestSse('data: {"p":"/message/status","o":"replace","v":"finished_successfully"}\n\n')
+  tracker.ingestSse('data: {"p":"/message/recipient","o":"replace","v":"all"}\n\n')
+  tracker.ingestSse('data: {"p":"/message/end_turn","o":"replace","v":true}\n\n')
+  assert.deepEqual(activities, observed)
 
-  tracker.ingestSse(": ping - 2026-09-04 04:04:39.098910+00:00\r\n\r\n")
   tracker.ingestSse(
-    `data: ${JSON.stringify({
-      type: "safety_review_update",
-      conversation_id: "conversation-http",
-      active: true,
-      protection_type: "cyber",
-      message: "Our systems are thinking a bit more about this request before responding.",
-    })}\n\n`
+    `data: ${JSON.stringify({ v: { message: mcpToolResponse("tool", "result") } })}\n\n`
   )
-
-  assert.equal(activities.length, activityCount + 2)
-  assert.deepEqual(
-    activities.filter((activity) => activity !== undefined),
-    labeledActivities
-  )
-})
-
-test("CDP tracker counts bound turn stream traffic as activity even when it has no status label", () => {
-  const activities: Array<string | undefined> = []
-  const tracker = new ChatGptTurnTracker("user-1", {
-    onActivity: (activity) => activities.push(activity),
-  })
-  const topic = "conversation-turn-turn-progress"
-
-  tracker.ingestFrame(turnFrame(topic, message("user", "review")))
-  const activityCount = activities.length
-  tracker.ingestFrame(turnFrame(topic, ": ping - transport-only\n\n"))
-
-  assert.equal(activities.length, activityCount + 1)
-  assert.equal(activities.at(-1), undefined)
+  assert.deepEqual(activities, [...observed, "Working"])
 })
 
 test("CDP tracker accepts composer serialization through the submitted user-message ID", () => {

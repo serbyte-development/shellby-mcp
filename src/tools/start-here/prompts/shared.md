@@ -42,19 +42,17 @@ text(await tools.mcp__codex_apps__<CONNECTOR_NAME>_apply_patch({
 
 Protect context usage. **Any command with unknown or potentially large output must be scoped and byte-capped.** Line caps alone are unsafe because a single line can be huge.
 
+The byte counts below are illustrative; choose a cap appropriate to the useful output expected for the task.
+
 ```bash
 COMMAND 2>&1 | head -c 4000
 COMMAND 2>&1 | tail -c 4000
 ```
 
-### Good Byte Capping Examples
+For validation commands, preserve the command's exit status with `pipefail`:
 
 ```bash
-rg -n -m 20 'functionName|ComponentName|routeName' src 2>&1 | head -c 200
-bash -o pipefail -c 'npm run type-check 2>&1 | tail -c 500'
-bash -o pipefail -c 'npm run test 2>&1 | tail -c 2000'
-bash -o pipefail -c 'npm run build 2>&1 | tail -c 500'
-rg -l "SEARCH_TERM" src 2>&1 | head -c 4000
+bash -o pipefail -c 'COMMAND 2>&1 | tail -c 4000'
 ```
 
 Do not rely on `head -n`, `tail -n`, or `sed -n` as the only cap.
