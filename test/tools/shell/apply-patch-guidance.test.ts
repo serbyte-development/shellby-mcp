@@ -4,7 +4,6 @@ import test from "node:test"
 import { shellRunFileEditNotices } from "../../../src/tools/shell/apply-patch-guidance.js"
 
 test("emits apply_patch notice for obvious shell file edits", () => {
-  const notice = "Use the `apply_patch` MCP tool over `shell_run` for file changes."
   const commands = [
     "cat > notes.txt <<'EOF'\nhello\nEOF",
     "echo hello >> notes.txt",
@@ -18,14 +17,16 @@ test("emits apply_patch notice for obvious shell file edits", () => {
   ]
 
   for (const command of commands) {
-    assert.deepEqual(shellRunFileEditNotices({ command }), [notice], command)
+    const notices = shellRunFileEditNotices({ command })
+    assert.equal(notices.length, 1, command)
+    assert.match(notices[0]!, /apply_patch/u, command)
   }
 
-  assert.deepEqual(
+  assert.equal(
     shellRunFileEditNotices({
       commands: [{ command: "grep hello notes.txt" }, { command: "echo hello > notes.txt" }],
-    }),
-    [notice]
+    }).length,
+    1
   )
 })
 

@@ -1,7 +1,6 @@
-const APPLY_PATCH_TOOL_GUIDANCE =
-  "`apply_patch` is a separate MCP tool and cannot be used through `shell_run`. For local file changes, including creating, updating, deleting, moving, or renaming files, use the `apply_patch` MCP tool directly."
-
-const SHELL_FILE_EDIT_NOTICE = "Use the `apply_patch` MCP tool over `shell_run` for file changes."
+const SHELL_FILE_EDIT_NOTICE =
+  "Use the `apply_patch` MCP tool for text edits. Use `shell_run` with `mv` or `cp` for whole-file moves, renames, and copies."
+const APPLY_PATCH_TOOL_GUIDANCE = `\`apply_patch\` is a separate MCP tool and cannot be used through \`shell_run\`. ${SHELL_FILE_EDIT_NOTICE}`
 const APPLY_PATCH_COMMAND_NOT_FOUND_LINE =
   /(^|\n)[^\n]*command not found:\s*apply_patch[^\n]*(?=\n|$)/giu
 const SHELL_FILE_WRITE_PATTERN =

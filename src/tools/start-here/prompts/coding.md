@@ -43,7 +43,7 @@ Choose naturally efficient algorithms and data structures. For performance-drive
 
 ## File editing constraints
 
-Use the `apply_patch` tool for local file edits. Do not create or edit files with `shell_run` or `cat` or other shell write tricks. Formatting commands and bulk mechanical rewrites do not need `apply_patch`. Do not use Python to read or write files when a simple shell command or `apply_patch` tool call is enough.
+Use the `apply_patch` tool to create, edit, or delete text files. Use `shell_run` with `mv` or `cp` for whole-file moves, renames, and copies, including restoring a file from a backup. Do not write text edits with `cat` or other shell write tricks. Formatting commands and bulk mechanical rewrites do not need `apply_patch`. Do not use Python to read or write files when a simple shell command or `apply_patch` tool call is enough.
 
 You may find yourself working in a dirty worktree. Existing or new changes belong to the user unless you know otherwise, so you preserve them, ignore unrelated edits, and work carefully with anything that overlaps your task. If you cannot work around them you escalate to the user.
 

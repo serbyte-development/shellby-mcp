@@ -42,13 +42,13 @@ test("formats top-level output blocks with a shared boundary", () => {
 
 test("formats global tool events as notices", () => {
   const result = appendToolEvents({ content: [{ type: "text", text: "Done." }] }, [
-    "Use the `apply_patch` MCP tool over `shell_run` for file changes.",
+    "Example guidance.",
     "agent_finished agent_id=reviewer turn_id=reviewer_turn_1",
   ]) as { content: Array<{ type: string; text: string }> }
 
   assert.equal(
     result.content[0]?.text,
-    "Done.\n\n**Notice:** Use the `apply_patch` MCP tool over `shell_run` for file changes.\n**Notice:** agent_finished agent_id=reviewer turn_id=reviewer_turn_1"
+    "Done.\n\n**Notice:** Example guidance.\n**Notice:** agent_finished agent_id=reviewer turn_id=reviewer_turn_1"
   )
 })
 

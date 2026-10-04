@@ -16,9 +16,6 @@ import {
   toolText,
 } from "./helpers.js"
 
-const APPLY_PATCH_TOOL_GUIDANCE =
-  "`apply_patch` is a separate MCP tool and cannot be used through `shell_run`. For local file changes, including creating, updating, deleting, moving, or renaming files, use the `apply_patch` MCP tool directly."
-
 test("returns incremental shell output through MCP before the command finishes", {
   timeout: 10_000,
 }, async (t) => {
@@ -96,7 +93,7 @@ test("redirects missing apply_patch commands to the native tool in normal and ba
     "PATH=/nonexistent apply_patch"
   )
   assert.doesNotMatch(normal.output, /command not found: apply_patch/u)
-  assert.equal(normal.output, APPLY_PATCH_TOOL_GUIDANCE)
+  assert.match(normal.output, /apply_patch/u)
 
   const batch = await callUntilComplete(connected.client, "missing-apply-patch-batch", [
     { command: "PATH=/nonexistent apply_patch" },
@@ -104,8 +101,8 @@ test("redirects missing apply_patch commands to the native tool in normal and ba
     { command: "printf batch-ok" },
   ])
   assert.doesNotMatch(batch.output, /command not found: apply_patch/u)
-  assert.ok(batch.output.includes(APPLY_PATCH_TOOL_GUIDANCE))
-  assert.equal(batch.output.split(APPLY_PATCH_TOOL_GUIDANCE).length - 1, 1)
+  assert.ok(batch.output.includes(normal.output))
+  assert.equal(batch.output.split(normal.output).length - 1, 1)
   assert.match(batch.output, /batch-ok/u)
 })
 

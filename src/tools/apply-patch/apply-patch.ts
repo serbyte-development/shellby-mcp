@@ -26,12 +26,12 @@ export function registerApplyPatchTool(registerTool: ToolRegistrar): void {
     "apply_patch",
     {
       description:
-        "Shellby's first-class tool for local file modifications. Use `apply_patch` to create, update, delete, move, or rename files. A patch may contain multiple file operations and multiple update hunks. Use `@@ <context>` to scope an update to a class, function, section, or other unique line when needed.",
+        "Apply text patches to create, update, or delete files. Use `shell_run` with `mv` or `cp` for whole-file moves, renames, and copies. A patch may contain multiple file operations and multiple update hunks. Use `@@ <context>` to scope an update to a class, function, section, or other unique line when needed.",
       inputSchema: z.object({
         patch: z
           .string()
           .describe(
-            "A patch beginning with `*** Begin Patch` and ending with `*** End Patch`. Use `*** Add File`, `*** Update File`, or `*** Delete File` sections. Within `*** Update File`, use `*** Move to:` to move or rename a file, `@@ <context>` to scope a hunk to a unique class, function, section, or line, and `*** End of File` when an update specifically targets the file tail. A patch may contain multiple file sections and multiple hunks per file."
+            "A patch beginning with `*** Begin Patch` and ending with `*** End Patch`. Use `*** Add File`, `*** Update File`, or `*** Delete File` sections. Within `*** Update File`, use `*** Move to:` when moving or renaming a file as part of a text edit, `@@ <context>` to scope a hunk to a unique class, function, section, or line, and `*** End of File` when an update specifically targets the file tail. A patch may contain multiple file sections and multiple hunks per file."
           ),
         cwd: z
           .string()
