@@ -6,6 +6,7 @@ paths:
   - test/tools/delegation/subagents.test.ts
   - test/live/subagent-live.test.ts
   - test/live/subagent-live-harness.ts
+  - test/live/subagent-live-harness.test.ts
   - test/live/delegation-cdp.test.ts
 ---
 
@@ -25,6 +26,8 @@ Choose evidence by failure boundary:
 `npm run test:live:subagent` reuses the ignored saved conversation fixture; missing identity fails rather than silently creating a chat. Requires logged-in managed Chrome without competing delegation. The [harness](../../../test/live/subagent-live-harness.ts) uses disposable local state and an isolated MCP server, closes owned tabs, and preserves saved conversations. It never restarts production MCP/PM2.
 
 The sequence checks a real 4.5-minute tool wait, busy rejection, client reconnection, same-tab follow-up, tab reopening, and restart with only a saved URL. Assertions verify prior context, result isolation and one submission per step. A long wall-clock duration alone is insufficient: reopened authenticated history must prove the timer invocation and result.
+
+The harness also compares saved final-answer time with the first completed MCP poll, accounting for server-clock uncertainty. Generation duration alone cannot establish result-delivery latency. Timing extraction/calibration has [focused tests](../../../test/live/subagent-live-harness.test.ts); thresholds remain in the harness.
 
 `test:live:subagent:fork` adds a new branch, then checks its follow-up, reopening, restart and isolation from the source. `test:live:subagent:fresh` creates a source and fork. Reserve these modes for startup/fork changes: repeated conversation creation has triggered account limits in real use.
 

@@ -8,6 +8,7 @@ paths:
   - src/tools/start-here/
   - src/agent/load-deduper.ts
   - src/tools/review/review-tool.ts
+  - src/mcp/tool-call-tracker.ts
 ---
 
 # MCP Tool Surface
@@ -26,13 +27,13 @@ Use `npm run schemas -- <tool-name>` for the actual configured contract. [Tool D
 
 Discovery happens on MCP server registration; contents load at call time. Changes can appear on later `tools/list` calls without restarting, although a caching client may need refresh. Startup does not interpolate workspace or read its `AGENTS.md` automatically.
 
-For callers with `X-OpenAI-Session`, successful loading sets `AgentIdentity.taskSlug` from `task_id`, unlocking ordinary tools. Failed loading leaves the caller gated. Headerless callers are ungated. Task IDs are nonempty strings; kebab-case is not enforced. [Agent Context](./agent-context.md) owns identity lifetime.
+For callers with `X-OpenAI-Session`, successful loading sets `AgentIdentity.taskSlug` from `task_id`, unlocking ordinary tools. Failed loading leaves the caller gated. Headerless callers are ungated. Task IDs are nonempty strings; kebab-case is not enforced. Successful identified responses also carry the identity header used by [Agent Context](./agent-context.md#observed-parent-links) for parent linkage; preserve it when changing startup output.
 
 [load-deduper.ts](../../src/agent/load-deduper.ts) shares recent same-agent/same-key loads for `start_here` and `skill_use`; repeat calls return reuse guidance. Failures remain retryable; headerless callers are not deduplicated.
 
 ## Review feedback
 
-[review-tool.ts](../../src/tools/review/review-tool.ts) owns `submit_review`, the process-local usage trigger, and `.shellby/reviews.jsonl`. Factory shares one tracker across requests. This records optional product feedback; it is independent of runtime correctness and authorization.
+[review-tool.ts](../../src/tools/review/review-tool.ts) owns `submit_review`, once-per-identity prompt state and `.shellby/reviews.jsonl`. Its trigger reads cumulative usage from the shared [call lifecycle](./mcp-tool-registration-boundary.md#call-lifecycle), including rejected attempts. The prompt appears on an eligible dispatched response. This records optional product feedback; it is independent of runtime correctness and authorization.
 
 Review `created_at` and audit headings use the [shared Pacific timestamp formatter](../../src/time.ts).
 

@@ -5,7 +5,8 @@ import {
   type ChatGptTurnCompletion,
   type ChatGptTurnEvents,
   ChatGptTurnTracker,
-  submittedUserMessageId,
+  type SubmittedTurn,
+  submittedTurn,
 } from "./turn-protocol.js"
 
 export interface AssistantResponseObservation {
@@ -33,7 +34,7 @@ interface HttpStream {
 export async function observeAssistantResponse(
   page: Page,
   input: ChatGptTurnEvents & {
-    onSubmitted?: (messageId: string) => void
+    onSubmitted?: (submission: SubmittedTurn) => void
   }
 ): Promise<AssistantResponseObservation> {
   let messageId: string | undefined
@@ -102,13 +103,13 @@ export async function observeAssistantResponse(
 
   const bindRequest = (postData: string): boolean => {
     if (settled) return false
-    const submittedId = submittedUserMessageId(postData)
-    if (!submittedId || (messageId && submittedId !== messageId)) return false
+    const submission = submittedTurn(postData)
+    if (!submission || (messageId && submission.messageId !== messageId)) return false
     if (!messageId) {
-      messageId = submittedId
+      messageId = submission.messageId
       httpTracker = new ChatGptTurnTracker(messageId, input)
       webSocketTracker = new ChatGptTurnTracker(messageId, input)
-      input.onSubmitted?.(messageId)
+      input.onSubmitted?.(submission)
     }
     return true
   }

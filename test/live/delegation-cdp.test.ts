@@ -214,7 +214,7 @@ test("delegation contracts over a real Chrome CDP connection", {
               "home",
               `fetch('/backend-api/f/conversation', {
                 method: 'POST',
-                body: JSON.stringify({action: 'next', messages: [{
+                body: JSON.stringify({action: 'next', parent_message_id: 'previous-answer', messages: [{
                   id: 'cdp-user', author: {role: 'user'},
                   content: {parts: [prompt]}
                 }]})
@@ -242,9 +242,9 @@ test("delegation contracts over a real Chrome CDP connection", {
       await page.goto(origin)
       const composer = await findComposer(page)
       await enterPrompt(page, composer, "Read the local streamed response")
-      const submitted: string[] = []
+      const submitted: Array<{ messageId: string; parentMessageId?: string }> = []
       const observation = await observeAssistantResponse(page, {
-        onSubmitted: (id) => submitted.push(id),
+        onSubmitted: (submission) => submitted.push(submission),
       })
       streamTest.after(() => observation.dispose())
       await observation.submit(() => submitComposer(page, composer))
@@ -255,7 +255,7 @@ test("delegation contracts over a real Chrome CDP connection", {
         }),
       ])
       assert.equal(activeResponse?.writableEnded, false)
-      assert.deepEqual(submitted, ["cdp-user"])
+      assert.deepEqual(submitted, [{ messageId: "cdp-user", parentMessageId: "previous-answer" }])
       assert.equal(result.text, answer)
     }
   )

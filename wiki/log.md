@@ -33,3 +33,7 @@ A real `BROWSER_UNAVAILABLE` response caused the calling agent to rewrite the de
 ## 2026-09-23 — Freshness fingerprints require correct knowledge ownership
 
 A full wiki audit found stale shell limits on a page still marked current: its paths omitted the configuration/scheduler owners. Copied limits and repeated subsystem summaries amplified drift. Keep changeable values in source, give durable semantics one owning page, and use fingerprints as review prompts rather than correctness certificates. Preserve historical probes as dated evidence; they cannot establish current private-client behavior.
+
+## 2026-10-21 — Parent links use observed startup identity
+
+An earlier lineage experiment matched browser tool calls to MCP requests by tool name and timing. Repeated calls and races produced false self/parent associations; argument matching would still be heuristic. Current source supplies a deterministic join: observe the child's successful `start_here` identity header in its submitted browser turn, then bind canonical session identities. Preserve the distinction when changing startup output or stream parsing. Saved links can restore relationships, but never imply restored initialization or turn results. [Agent Context](./pages/agent-context.md#observed-parent-links) owns the current contract.

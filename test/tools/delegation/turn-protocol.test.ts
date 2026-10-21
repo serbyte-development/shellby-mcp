@@ -2,9 +2,8 @@ import assert from "node:assert/strict"
 import test from "node:test"
 import {
   ChatGptTurnTracker,
-  extractConversationMessages,
-  findLatestAssistantAfterMessage,
-  submittedUserMessageId,
+  findSavedTurnAnswer,
+  submittedTurn,
 } from "../../../src/tools/delegation/turn-protocol.js"
 import { mcpToolResponse } from "../../fixtures/chatgpt-tool-response.js"
 
@@ -108,107 +107,183 @@ test("tool deltas never modify the prior assistant response", () => {
 })
 
 test("history recovery rejects an older identical prompt before the current turn appears", () => {
-  const staleHistory = [
-    { id: "old-user", role: "user" as const, text: "repeat" },
-    { role: "assistant" as const, text: "old answer" },
-  ]
+  const staleHistory = [savedUser("old-user", "repeat"), savedAnswer("old-answer", "old answer")]
+  const submission = { messageId: "current-user", parentMessageId: "old-answer" }
 
-  assert.equal(findLatestAssistantAfterMessage(staleHistory, "current-user"), undefined)
-  assert.deepEqual(
-    findLatestAssistantAfterMessage(
-      [
-        ...staleHistory,
-        { id: "current-user", role: "user", text: "repeat" },
-        { role: "assistant", text: "new answer" },
-      ],
-      "current-user"
-    ),
-    {
-      role: "assistant",
-      text: "new answer",
-    }
+  assert.equal(findSavedTurnAnswer({ messages: staleHistory }, submission), undefined)
+  assert.equal(
+    findSavedTurnAnswer(
+      {
+        messages: [
+          ...staleHistory,
+          savedUser("current-user", "repeat"),
+          savedAnswer("new-answer", "new answer"),
+        ],
+      },
+      submission
+    )?.text,
+    "new answer"
   )
 })
 
 test("history recovery uses message identity after composer serialization", () => {
-  const messages = extractConversationMessages({
-    messages: [
-      { id: "submitted", author: { role: "user" }, content: { parts: ["Use \\`web.run\\`."] } },
-      {
-        id: "answer",
-        author: { role: "assistant" },
-        content: { parts: ["done"] },
-        status: "finished_successfully",
-        end_turn: true,
-        recipient: "all",
-      },
-    ],
-  })
-  assert.equal(findLatestAssistantAfterMessage(messages, "submitted")?.text, "done")
-  assert.equal(findLatestAssistantAfterMessage(messages, undefined), undefined)
+  const payload = {
+    messages: [savedUser("submitted", "Use \\`web.run\\`."), savedAnswer("answer", "done")],
+  }
+  assert.equal(findSavedTurnAnswer(payload, { messageId: "submitted" })?.text, "done")
+  assert.equal(findSavedTurnAnswer(payload, undefined), undefined)
 })
 
-test("history recovery ignores inherited turns and never borrows an answer from a later user turn", () => {
+test("history recovery includes manual follow-ups but waits for the latest user to be answered", () => {
   const inherited = Array.from({ length: 10 }, (_, index) => [
-    { id: `inherited-${index}`, role: "user" as const, text: "old prompt" },
-    { role: "assistant" as const, text: "old answer" },
+    savedUser(`inherited-user-${index}`),
+    savedAnswer(`inherited-answer-${index}`),
   ]).flat()
-  const submitted = { id: "submitted", role: "user" as const, text: "new prompt" }
-  const answer = { role: "assistant" as const, text: "new answer" }
-  const later = [
-    { id: "later", role: "user" as const, text: "another prompt" },
-    { role: "assistant" as const, text: "another answer" },
-  ]
-  assert.deepEqual(
-    findLatestAssistantAfterMessage([...inherited, submitted, answer, ...later], "submitted"),
-    answer
-  )
+  const submission = { messageId: "submitted", parentMessageId: "inherited-answer-9" }
+  const messages = [...inherited, savedUser("submitted"), savedAnswer("initial-answer")]
+  messages.push(savedUser("manual-continue", "continue"))
+  assert.equal(findSavedTurnAnswer({ messages }, submission), undefined)
+  messages.push(savedAnswer("recovered-answer", "recovered answer"))
+  assert.equal(findSavedTurnAnswer({ messages }, submission)?.text, "recovered answer")
+  messages.push(savedUser("manual-follow-up", "one more thing"))
+  assert.equal(findSavedTurnAnswer({ messages }, submission), undefined)
+})
+
+test("history recovery preserves image-only user boundaries and requires a completed final reply", () => {
+  const payload = {
+    messages: [
+      savedUser("submitted"),
+      savedAnswer("old-answer"),
+      { id: "image", author: { role: "user" }, content: { parts: [{ image: "attachment" }] } },
+    ],
+  }
+  const submission = { messageId: "submitted" }
+  for (const incomplete of [
+    { status: "in_progress" },
+    { end_turn: false },
+    { recipient: "web.run" },
+    { content: { parts: [""] } },
+  ]) {
+    assert.equal(
+      findSavedTurnAnswer(
+        {
+          messages: [
+            ...payload.messages,
+            {
+              ...savedAnswer("partial"),
+              ...incomplete,
+            },
+          ],
+        },
+        submission
+      ),
+      undefined
+    )
+  }
   assert.equal(
-    findLatestAssistantAfterMessage([...inherited, submitted, ...later], "submitted"),
+    findSavedTurnAnswer(
+      { messages: [...payload.messages, savedAnswer("image-answer")] },
+      submission
+    )?.id,
+    "image-answer"
+  )
+})
+
+test("an edited submission uses its captured parent, even when the answer text is unchanged", () => {
+  const submission = { messageId: "original-user", parentMessageId: "previous-answer" }
+  const messages = [
+    savedUser("previous-user"),
+    savedAnswer("previous-answer", "same text"),
+    savedUser("edited-user"),
+    savedAnswer("edited-answer", "same text"),
+  ]
+  assert.equal(findSavedTurnAnswer({ messages }, submission)?.id, "edited-answer")
+  assert.equal(findSavedTurnAnswer({ messages: messages.slice(0, 2) }, submission), undefined)
+  assert.equal(findSavedTurnAnswer({ messages: messages.slice(0, 3) }, submission), undefined)
+  for (const parentMessageId of [undefined, "unknown-parent"]) {
+    assert.equal(findSavedTurnAnswer({ messages }, { ...submission, parentMessageId }), undefined)
+  }
+  // Prefer the original user ID when it is still present, regardless of parent history.
+  assert.equal(
+    findSavedTurnAnswer({ messages: [...messages, savedUser("original-user")] }, submission),
     undefined
   )
 })
 
-test("history recovery preserves image-only user boundaries and excludes incomplete assistant messages", () => {
-  const messages = extractConversationMessages({
-    messages: [
-      { id: "submitted", author: { role: "user" }, content: { parts: ["prompt"] } },
-      {
-        author: { role: "assistant" },
-        content: { parts: ["partial"] },
-        status: "in_progress",
-        end_turn: true,
+test("fresh-chat edits accept the captured root sentinel, and system parents remain usable", () => {
+  // Observed first-send parent is client-created-root; saved history has a real
+  // system root instead, and editing replaces the original user ID entirely.
+  const root = { id: "saved-root", author: { role: "system" } }
+  const messages = [root, savedUser("edited-user"), savedAnswer("edited-answer")]
+  for (const parentMessageId of ["client-created-root", "saved-root"]) {
+    const submission = { messageId: "original-user", parentMessageId }
+    assert.equal(findSavedTurnAnswer({ messages }, submission)?.id, "edited-answer")
+    assert.equal(findSavedTurnAnswer({ messages: [root] }, submission), undefined)
+  }
+})
+
+test("edited fork recovery follows the active branch and ignores abandoned original answers", () => {
+  const payload = {
+    current_node: "edited-answer",
+    mapping: {
+      parent: { parent: null, message: savedAnswer("parent", "inherited") },
+      original: { parent: "parent", message: savedUser("original") },
+      abandoned: { parent: "original", message: savedAnswer("abandoned", "wrong branch") },
+      edited: { parent: "parent", message: savedUser("edited") },
+      "edited-answer": {
+        parent: "edited",
+        message: savedAnswer("edited-answer", "correct branch"),
       },
-      { id: "image", author: { role: "user" }, content: { parts: [{ image: "attachment" }] } },
-      {
-        author: { role: "assistant" },
-        content: { parts: ["answer to the image"] },
-        status: "finished_successfully",
-        end_turn: true,
-      },
-    ],
-  })
-  assert.equal(findLatestAssistantAfterMessage(messages, "submitted"), undefined)
-  assert.equal(findLatestAssistantAfterMessage(messages, "image")?.text, "answer to the image")
+    },
+  }
+  const submission = { messageId: "original", parentMessageId: "parent" }
+  assert.equal(findSavedTurnAnswer(payload, submission)?.text, "correct branch")
+  assert.equal(findSavedTurnAnswer({ ...payload, current_node: "edited" }, submission), undefined)
+  assert.equal(findSavedTurnAnswer({ ...payload, current_node: "parent" }, submission), undefined)
 })
 
 test("outgoing request identity ignores malformed requests and non-submission actions", () => {
   const user = { id: "submitted", author: { role: "user" } }
   const assistant = { id: "assistant", author: { role: "assistant" } }
-  assert.equal(submittedUserMessageId("not JSON"), undefined)
-  assert.equal(
-    submittedUserMessageId(JSON.stringify({ action: "continue", messages: [user] })),
-    undefined
+  assert.equal(submittedTurn("not JSON"), undefined)
+  assert.equal(submittedTurn(JSON.stringify({ action: "continue", messages: [user] })), undefined)
+  assert.equal(submittedTurn(JSON.stringify({ action: "next", messages: [assistant] })), undefined)
+  for (const parentMessageId of [undefined, "client-created-root", "fork-parent"]) {
+    assert.deepEqual(
+      submittedTurn(
+        JSON.stringify({
+          action: "next",
+          parent_message_id: parentMessageId,
+          messages: [assistant, user],
+        })
+      ),
+      { messageId: "submitted", parentMessageId }
+    )
+  }
+  assert.deepEqual(
+    submittedTurn(JSON.stringify({ action: "next", parent_message_id: 12, messages: [user] })),
+    { messageId: "submitted", parentMessageId: undefined }
   )
   assert.equal(
-    submittedUserMessageId(JSON.stringify({ action: "next", messages: [assistant] })),
+    submittedTurn(JSON.stringify({ action: "next", messages: [{ author: { role: "user" } }] })),
     undefined
-  )
-  assert.equal(
-    submittedUserMessageId(JSON.stringify({ action: "next", messages: [assistant, user] })),
-    "submitted"
   )
 })
+
+function savedUser(id: string, text = "prompt") {
+  return { id, author: { role: "user" }, content: { parts: [text] } }
+}
+
+function savedAnswer(id: string, text = "answer") {
+  return {
+    id,
+    author: { role: "assistant" },
+    content: { parts: [text] },
+    status: "finished_successfully",
+    end_turn: true,
+    recipient: "all",
+  }
+}
 
 test("CDP tracker binds only the submitted user-message ID and reconstructs exact final Markdown", () => {
   const activities: string[] = []

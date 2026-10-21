@@ -25,7 +25,7 @@ import { DelegationDiagnostics } from "./diagnostics.js"
 import { type AssistantResponseObservation, observeAssistantResponse } from "./response-observer.js"
 import { createDelegationStore, DelegationStoreError } from "./store.js"
 import { ChatGptDelegationError } from "./subagent-error.js"
-import { extractConversationMessages, findLatestAssistantAfterMessage } from "./turn-protocol.js"
+import { findSavedTurnAnswer, type SubmittedTurn } from "./turn-protocol.js"
 
 const CLEANUP_INTERVAL_MS = 60_000
 const CONNECT_TIMEOUT_MS = 3_000
@@ -137,8 +137,8 @@ interface TurnState {
   response?: string
   errorCode?: string
   errorMessage?: string
-  /** ChatGPT's outgoing user-message ID, shared by streaming and history recovery. */
-  submittedMessageId?: string
+  /** Outgoing user ID for streaming; its parent also anchors history after manual edits. */
+  submission?: SubmittedTurn
   settledAt?: number
   observation?: AssistantResponseObservation
   settled: Promise<void>
@@ -313,9 +313,9 @@ export function createSubagents(): Subagents {
 
       diagnostics.stage("install-response-observer")
       observation = await observeAssistantResponse(page, {
-        onSubmitted: (messageId) => {
-          if (turn.status === "running") turn.submittedMessageId = messageId
-          diagnostics.submitted(turn.turnId, messageId)
+        onSubmitted: (submission) => {
+          if (turn.status === "running") turn.submission = submission
+          diagnostics.submitted(turn.turnId, submission.messageId)
         },
         onConversationId: (conversationId) =>
           recordConversation(parentAgent, agent, conversationId),
@@ -537,10 +537,7 @@ export function createSubagents(): Subagents {
       adoptConversationTab(agent, page, Date.now())
       await closePageIfOpen(oldPage)
 
-      const answer = findLatestAssistantAfterMessage(
-        extractConversationMessages(payload),
-        turn.submittedMessageId
-      )
+      const answer = findSavedTurnAnswer(payload, turn.submission)
       if (!answer) return false
       completeTurn(turn, answer.text)
       return true
@@ -561,18 +558,18 @@ export function createSubagents(): Subagents {
     const conversationId = extractConversationId(agent?.conversationUrl ?? "")
     // Capture identity before awaiting: the live stream may settle the turn and
     // allow a follow-up while this read is still in flight.
-    const submittedMessageId = turn.submittedMessageId
+    const submission = turn.submission
     if (
       !page ||
       page.isClosed() ||
       !conversationId ||
-      !submittedMessageId ||
+      !submission ||
       extractConversationId(page.url()) !== conversationId
     ) {
       return
     }
     const payload = await readConversationPayload(page, conversationId)
-    return findLatestAssistantAfterMessage(extractConversationMessages(payload), submittedMessageId)
+    return findSavedTurnAnswer(payload, submission)
   }
 
   async function disposeSubagents(): Promise<void> {
@@ -1107,7 +1104,7 @@ export function createSubagents(): Subagents {
     if (scope?.activeOperations.get(turn.agentId)?.turnId === turn.turnId) {
       scope.activeOperations.delete(turn.agentId)
     }
-    turn.submittedMessageId = undefined
+    turn.submission = undefined
     turn.settledAt = now
     turn.settle()
     if (scope) {

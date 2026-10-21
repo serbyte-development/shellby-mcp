@@ -26,7 +26,7 @@ Agent IDs belong to the calling `AgentIdentity`; headerless calls share one scop
 
 Reserve before browser work. Unsent first-start failures release the new identity and owned tab; failed follow-ups retain established identity. A submitted turn keeps its reservation until settlement, independently of the originating MCP request or polling. Returning a turn ID must not unlock the agent.
 
-SQLite preserves caller/agent → conversation mappings. Tabs, active turns and results are process-local. Idle tab cleanup retains saved identity; later submissions reopen it. Persistence failure blocks new work, but a write failure after Send must not invalidate submitted work.
+SQLite preserves caller/agent → conversation mappings and optional observed child session IDs. [Agent Context](../agent-context.md#observed-parent-links) owns parent-link evidence/restoration. Tabs, active turns and results are process-local. Idle tab cleanup retains saved identity; later submissions reopen it. Persistence failure blocks new work, but a write failure after Send must not invalidate submitted work. [Hard restart](../operations/runtime-recovery.md) deliberately clears saved mappings.
 
 Keep mutable records inside the factory. The MCP adapter translates contracts and audits failures; it does not schedule browser work or manage lifecycle state. [Architecture](../architecture-map.md) explains why the factory outlives individual MCP servers.
 

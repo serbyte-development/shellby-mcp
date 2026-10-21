@@ -35,7 +35,7 @@ Configuration is read at startup. [Audit Logging](./audit-logging.md) owns tool 
 
 Managed [start.ts](../../../scripts/start.ts) requires config/workspace, runs preflight, builds, prepares dedicated Chrome when delegation is enabled, reconciles ngrok, then reloads MCP through [pm2.ts](../../../scripts/pm2.ts). The runtime delegation service itself is attach-only. [src/index.ts](../../../src/index.ts) owns service construction and disposal; [Architecture Map](../architecture-map.md) owns request/state flow.
 
-`ui.enabled` composes the observer and serves `ui/dist`. Root setup/build/start do not install or build UI dependencies; use `ui:install`/`ui:build`, or `ui:dev` with its API proxy. Frontend: [UI wiki](../../../ui/wiki/AGENTS.md).
+`ui.enabled` composes the observer and serves `ui/dist` at `/` with `/editor` and `/api/*`. Root setup/build/start do not install or build UI dependencies; use `ui:install`/`ui:build`, or `ui:dev` with its API proxy. Frontend: [UI wiki](../../../ui/wiki/AGENTS.md). Optional `ui:phone` exposure belongs to [HTTP Transport](../http-transport.md).
 
 ## Isolation and local-only mode
 

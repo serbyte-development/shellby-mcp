@@ -4,6 +4,7 @@ paths:
   - src/mcp/tool-schema-presentation.ts
   - src/mcp/tool-output.ts
   - src/tools/shell/shell-contracts.ts
+  - scripts/tool-schemas.ts
 ---
 
 # Tool Naming and Schema Design
@@ -26,4 +27,4 @@ A concrete regression: adding model-facing `oneOf` metadata to `shell_run`'s `co
 
 Keep constraints that change planning visible. Avoid prose repeating defaults, types, or ranges already advertised. If pruning hides a rule callers need to construct valid values, describe that rule briefly.
 
-Output mode and native-content exceptions belong to [Registration Boundary](./mcp-tool-registration-boundary.md). Check `npm run schemas -- <tool-name>` plus [schema tests](../../test/mcp/tool-schema-presentation.test.ts); schemas alone cannot prove ChatGPT rendering. Fix observed confusion in the smallest responsible layer: name, description, parameter semantics, validation, or result presentation.
+Output mode and native-content exceptions belong to [Registration Boundary](./mcp-tool-registration-boundary.md). `npm run schemas -- <tool-name>` uses `json-schema-to-openai-typescript` to render configured tool signatures; `npm run schemas:json -- <tool-name>` shows JSON. These local representations and [schema tests](../../test/mcp/tool-schema-presentation.test.ts) do not prove current ChatGPT rendering. Script lifecycle constraints: [Build and Test](./operations/build-and-test.md). Fix observed confusion in the smallest responsible layer: name, description, parameter semantics, validation, or result presentation.

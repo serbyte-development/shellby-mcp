@@ -5,6 +5,7 @@ import { setImmediate } from "node:timers/promises"
 import type { Page } from "playwright-core"
 
 import { observeAssistantResponse } from "../../../src/tools/delegation/response-observer.js"
+import type { SubmittedTurn } from "../../../src/tools/delegation/turn-protocol.js"
 import { mcpToolResponse } from "../../fixtures/chatgpt-tool-response.js"
 
 for (const inlinePostData of [true, false]) {
@@ -12,11 +13,12 @@ for (const inlinePostData of [true, false]) {
     test(`observer correlates ${transport} completion with ${inlinePostData ? "inline" : "retrieved"} submitted message identity`, {
       timeout: 2_000,
     }, async (t) => {
-      const submitted: string[] = []
+      const submitted: SubmittedTurn[] = []
       const toolResponses: string[] = []
       const calls: string[] = []
       const postData = JSON.stringify({
         action: "next",
+        parent_message_id: "previous-answer",
         messages: [{ id: "submitted-user", author: { role: "user" } }],
       })
       const toolText = "MCP response"
@@ -39,7 +41,7 @@ for (const inlinePostData of [true, false]) {
         context: () => ({ newCDPSession: async () => cdp }),
       }) as unknown as Page
       const observation = await observeAssistantResponse(page, {
-        onSubmitted: (id) => submitted.push(id),
+        onSubmitted: (submission) => submitted.push(submission),
         onToolResponse: (text) => toolResponses.push(text),
       })
       t.after(() => observation.dispose())
@@ -59,6 +61,20 @@ for (const inlinePostData of [true, false]) {
         data: Buffer.from(
           completedStream("old-user", "Wrong result", "stale tool result")
         ).toString("base64"),
+      })
+      await setImmediate()
+      // Manual recovery must not overwrite the task's originally captured boundary.
+      cdp.emit("Network.requestWillBeSent", {
+        requestId: "manual-request",
+        request: {
+          method: "POST",
+          url: "https://chatgpt.com/backend-api/f/conversation",
+          postData: JSON.stringify({
+            action: "next",
+            parent_message_id: "another-parent",
+            messages: [{ id: "manual-user", author: { role: "user" } }],
+          }),
+        },
       })
 
       if (transport === "http") {
@@ -87,7 +103,9 @@ for (const inlinePostData of [true, false]) {
 
       const result = await observation.response
       assert.equal(result.text, "Exact result")
-      assert.deepEqual(submitted, ["submitted-user"])
+      assert.deepEqual(submitted, [
+        { messageId: "submitted-user", parentMessageId: "previous-answer" },
+      ])
       assert.deepEqual(toolResponses, [toolText])
       assert.equal(calls.includes("Network.getRequestPostData"), !inlinePostData)
     })

@@ -324,13 +324,23 @@ function stringValue(value: unknown): string | undefined {
   return typeof value === "string" ? value : undefined
 }
 
-/** Identify the newly submitted user message in a conversation POST; ignore other actions. */
-export function submittedUserMessageId(postData: string): string | undefined {
+/** Captured once at Send; the parent anchors recovery when an edit replaces the user ID. */
+export interface SubmittedTurn {
+  readonly messageId: string
+  readonly parentMessageId?: string
+}
+
+/** Identify a new user submission and its history boundary; ignore other POST actions. */
+export function submittedTurn(postData: string): SubmittedTurn | undefined {
   const request = asRecord(tryParseJson(postData))
   if (request?.action !== "next" || !Array.isArray(request.messages)) return undefined
   for (let index = request.messages.length - 1; index >= 0; index -= 1) {
     const message = asRecord(request.messages[index])
-    if (asRecord(message?.author)?.role === "user") return stringValue(message?.id)
+    if (asRecord(message?.author)?.role !== "user") continue
+    const messageId = stringValue(message?.id)
+    return messageId
+      ? { messageId, parentMessageId: stringValue(request.parent_message_id) }
+      : undefined
   }
   return undefined
 }
@@ -341,33 +351,61 @@ export interface ConversationMessage {
   text: string
 }
 
-/** Find this submission's final answer on the active branch, stopping at the next user turn. */
-export function findLatestAssistantAfterMessage(
-  messages: readonly ConversationMessage[],
-  submittedMessageId: string | undefined
+/**
+ * Recover the latest completed reply on the active branch after this submission,
+ * including manual follow-ups or an edited/resubmitted prompt. Missing boundaries
+ * or an unanswered latest user message leave the turn pending.
+ */
+export function findSavedTurnAnswer(
+  payload: unknown,
+  submission: SubmittedTurn | undefined
 ): ConversationMessage | undefined {
-  if (!submittedMessageId) return undefined
-  const promptIndex = messages.findIndex(
-    (message) => message.role === "user" && message.id === submittedMessageId
+  if (!submission) return undefined
+  const messages = activeBranchMessages(payload)
+  let promptIndex = messages.findIndex(
+    (message) => asRecord(message.author)?.role === "user" && message.id === submission.messageId
   )
-  if (promptIndex < 0) return undefined
+  if (promptIndex < 0) {
+    // Editing replaces the original user ID on the active branch. Start strictly
+    // after its captured parent, never an older answer or an abandoned branch.
+    const parentId = submission.parentMessageId
+    const parentIndex = messages.findIndex((message) => message.id === parentId)
+    // A fresh chat's first POST uses this sentinel, absent from saved history.
+    // Forks also omit conversation_id but have a real parent: never infer fresh
+    // history from a missing conversation ID or an unrecognized parent.
+    if (parentId !== "client-created-root" && (!parentId || parentIndex < 0)) return undefined
+    promptIndex = messages.findIndex(
+      (message, index) => index > parentIndex && asRecord(message.author)?.role === "user"
+    )
+    if (promptIndex < 0) return undefined
+  }
 
   let answer: ConversationMessage | undefined
   for (let index = promptIndex + 1; index < messages.length; index += 1) {
-    const message = messages[index]
-    if (message?.role === "user") break
+    const message = messageFromRaw(messages[index])
+    // A manual "continue" may finish the task, but while it is unanswered an
+    // earlier completed reply must not prematurely release the running agent.
+    if (message?.role === "user") answer = undefined
     if (message?.role === "assistant" && message.text) answer = message
   }
   return answer
 }
 
-/** Normalize conversation history for the one-shot recovery check and frozen fixtures. */
+/** Normalize active history to user boundaries and completed answers for frozen fixtures. */
 export function extractConversationMessages(payload: unknown): ConversationMessage[] {
+  return activeBranchMessages(payload)
+    .map(messageFromRaw)
+    .filter((value): value is ConversationMessage => value !== undefined)
+}
+
+function activeBranchMessages(payload: unknown): Record<string, unknown>[] {
+  // Keep system roots and other non-answer messages: their IDs can be a
+  // submission's parent. Filter answer eligibility only after locating its boundary.
   const root = asRecord(payload)
   if (Array.isArray(root?.messages))
     return root.messages
-      .map(messageFromRaw)
-      .filter((value): value is ConversationMessage => value !== undefined)
+      .map(asRecord)
+      .filter((value): value is Record<string, unknown> => value !== undefined)
   const current = stringValue(root?.current_node)
   const mapping = asRecord(root?.mapping)
   if (!current || !mapping) return []
@@ -383,8 +421,8 @@ export function extractConversationMessages(payload: unknown): ConversationMessa
   }
   return branch
     .reverse()
-    .map((node) => messageFromRaw(node.message))
-    .filter((value): value is ConversationMessage => value !== undefined)
+    .map((node) => asRecord(node.message))
+    .filter((value): value is Record<string, unknown> => value !== undefined)
 }
 
 function messageFromRaw(value: unknown): ConversationMessage | undefined {

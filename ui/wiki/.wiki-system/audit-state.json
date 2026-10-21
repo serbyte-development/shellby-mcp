@@ -2,10 +2,10 @@
   "version": 1,
   "pages": {
     "pages/agent-room.md": {
-      "fingerprint": "sha256:f6c8fa8a2c70bfa5ae545c8be19bf971c22c8ee9e27ede29435260c20d727882"
+      "fingerprint": "sha256:9d82b70abcacb8b29e85067446b8e480265b89881c4e6bb9160d1c1cdf7de802"
     },
     "pages/architecture.md": {
-      "fingerprint": "sha256:c449b875aa95eefde8ea76a8aa2eeff954d6ca245fc088c4044edeb7c26344b3"
+      "fingerprint": "sha256:adabd25e33105c5ec1427595f98f05e9f1582d7e98d52b978083aa62a95e6970"
     }
   }
 }

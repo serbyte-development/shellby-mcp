@@ -1,31 +1,35 @@
 ---
-summary: "Explicit tool registrar, SDK validation, compact/native results, notices, and audit correlation."
+summary: "Tool registration, SDK validation, final-response tracking, compact/native output, and notices."
 paths:
   - src/mcp/server-factory.ts
   - src/mcp/tool-registration-boundary.ts
   - src/mcp/tool-schema-presentation.ts
   - src/mcp/tool-output.ts
   - src/mcp/tool-error.ts
-  - src/server/audit/audit-request.ts
+  - src/mcp/observed-server.ts
+  - src/mcp/tool-call-tracker.ts
+  - src/server/http-server.ts
 ---
 
 # MCP Tool Registration Boundary
 
 ## Registration contract
 
-[server-factory.ts](../../src/mcp/server-factory.ts) creates a fresh `McpServer` and obtains a typed `ToolRegistrar` from [createToolRegistrar](../../src/mcp/tool-registration-boundary.ts). Every capability receives that function and uses `registerTool(name, config, handler)`.
+[server-factory.ts](../../src/mcp/server-factory.ts) creates a fresh [ObservedMcpServer](../../src/mcp/observed-server.ts) and obtains a typed `ToolRegistrar` from [createToolRegistrar](../../src/mcp/tool-registration-boundary.ts). Every capability receives that function and uses `registerTool(name, config, handler)`.
 
-The registrar owns Shellby dispatch policy and delegates registration to the unchanged SDK server. Capability modules need no server or installation-order knowledge. Register native image/resource tools with `nativeContent: true`; this local policy flag is removed before SDK registration and is independent of the tool name.
+The registrar owns Shellby dispatch policy; SDK owns registration and validation. `ObservedMcpServer` observes final transport responses without replacing SDK validation. Capability modules need no server or installation-order knowledge. Register native image/resource tools with `nativeContent: true`; this local policy flag is removed before SDK registration and is independent of the tool name.
 
-## Call flow
+## Call lifecycle
 
-1. SDK resolves tool and validates input.
-2. Wrapper claims audit entry by request ID/tool name, starts observation, and checks startup initialization.
-3. Handler receives original validated arguments and context. Inputless handlers receive context alone.
-4. Wrapper projects the result or formats a thrown error, appends notices, then finalizes observer and audit exactly once. Returned `isError: true` means failed observation.
-5. SDK validates any published output schema.
+1. HTTP seeds one [ToolCallTracker](../../src/mcp/tool-call-tracker.ts) from raw request IDs, before SDK dispatch. This includes unknown tools and invalid inputs; remote authorization failures happen earlier.
+2. SDK resolves tool and validates input. Registrar runs the handler inside the tracker's diagnostic scope and checks startup initialization. Non-HTTP dispatch can start a record here.
+3. Handler receives validated arguments and context; inputless handlers receive context alone. Registrar projects results or formats errors, then appends notices.
+4. SDK validates any published output schema. `ObservedMcpServer` passes the final result/error to the tracker at transport handoff, including SDK rejection after a successful handler.
+5. Tracker completes observer and audit once. Cancellation or HTTP termination settles unfinished calls; late handler results cannot complete them again.
 
-HTTP auth and audit records for calls rejected before dispatch stay outside this wrapper. See [HTTP Transport](./http-transport.md) and [Audit Logging](./operations/audit-logging.md).
+Tracker owns call IDs, timing, original diagnostics and token counts; observer and audit consume snapshots. Consumer failures are isolated from execution and each other. Transport handoff is not proof of client receipt. [HTTP Transport](./http-transport.md) owns request lifetime; [Audit Logging](./operations/audit-logging.md) owns retained data.
+
+Cumulative usage belongs to canonical [agent identity](./agent-context.md) across request trackers. Attempts count at registration, including rejected calls; output counts at response handoff. History eviction does not reset totals. Restart does. Review prompts and dashboard totals consume the same usage owner.
 
 ## Representation owners
 
@@ -39,8 +43,8 @@ Tool adapters throw [ToolError](../../src/mcp/tool-error.ts) with a public code,
 
 Notice order: shell file-edit guidance → delegated events → human steering → optional review prompt. Every dispatched call collects notices, including returned failures, thrown handlers, and startup rejections. SDK input-validation failures bypass dispatch and do not drain notices.
 
-Initialization rejection, thrown handlers, and returned `isError` results all fail observation and audit. Delegation and patch results retain useful per-item or partial-operation data; their owners classify aggregate failure. Delegation catches call `recordToolError` before replacing original errors with recovery guidance. Dispatch scopes those diagnostics to the current audit call; concurrent polls stay isolated. [Audit Logging](./operations/audit-logging.md) owns retention and formatting.
+Initialization rejection, thrown handlers, returned `isError` results and SDK rejection all fail observation and audit. Input-validation failures bypass notice collection but remain tracked on HTTP. Delegation and patch results retain useful per-item or partial-operation data; their owners classify aggregate failure. Delegation catches call `recordToolError` before replacing original errors with recovery guidance. Tracker scopes those diagnostics to the current call; concurrent polls stay isolated.
 
-Audit receives both handler result and final projection, including notices, without inspecting serialized HTTP output. Capability processes and caches belong to shared services, not these wrappers.
+Audit receives handler metadata and final SDK output without buffering HTTP serialization. SDK-rejected successful output is replaced by the rejection in the completed record. Capability processes and caches belong to shared services, not these wrappers.
 
-Validate with [boundary tests](../../test/mcp/tool-registration-boundary.test.ts), [schema tests](../../test/mcp/tool-schema-presentation.test.ts), [output tests](../../test/mcp/tool-output.test.ts), and MCP integration cases for initialization/audit.
+Validate with [tracker tests](../../test/mcp/tool-call-tracker.test.ts), [boundary tests](../../test/mcp/tool-registration-boundary.test.ts), [schema tests](../../test/mcp/tool-schema-presentation.test.ts), [output tests](../../test/mcp/tool-output.test.ts), and MCP integration cases for initialization/audit.

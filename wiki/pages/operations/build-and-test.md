@@ -26,15 +26,15 @@ Run focused suites with `node --import tsx --test <test-file>`. `npm test` uses 
 | --- | --- |
 | Config/startup/isolation | `config.test.ts`, `setup-workspace.test.ts`, `start.test.ts`, `instance-isolation.test.ts`, `preflight.test.ts` |
 | Shell process/cache/batches | `shell-session.test.ts`, `shell-session-manager.test.ts`, `shell-parallel.test.ts`, `rtk.test.ts` |
-| MCP/auth/tool contracts | `mcp-integration.test.ts`; focused `mcp/` suites for registration, schema, output |
+| MCP/auth/tool contracts | `mcp-integration.test.ts`; focused `mcp/` suites for call tracking, registration, schema, output |
 | Audit/identity/steering | `server/audit-log.test.ts`, `agent/context.test.ts`, `agent/observer.test.ts` |
 | Delegation | `tools/delegation/` protocol, lifecycle, capacity, and persistence suites |
 | Resource adapters | `web-fetch.test.ts`, `peekaboo.test.ts`, image/patch suites, vendor smoke tests |
 | Wiki decision-log ordering | `wiki-log.test.ts` |
 
-Use `npm run typecheck` and `npm run lint` for shared TypeScript changes. `lint` checks lint rules, and `lint:fix` applies their safe fixes. `npm run format` owns formatting; finish file-writing commands before running checks. Import organization belongs to Biome assists and is separate from these lint commands.
+Use `npm run typecheck` and `npm run lint` for shared TypeScript changes. `lint` runs `biome check`, including lint, formatting and enabled assists. `lint:fix` runs `biome check --write --unsafe`; review its edits. `npm run format` writes formatting only. Finish file-writing commands before checks; [package.json](../../../package.json) and [biome.json](../../../biome.json) own exact commands/rules.
 
-`npm run schemas -- <tool-name>` lists published schemas through an isolated ephemeral HTTP listener; it does not restart production. It uses configured services/state, so do not mistake it for a wholly mocked runtime.
+`npm run schemas -- <tool-name>` renders published tools through an isolated ephemeral HTTP listener; it does not restart production. `schemas:json` exposes JSON instead. [Tool Design](../tool-naming-and-schema-design.md) explains presentation. The script uses configured services/state, so do not mistake it for a wholly mocked runtime.
 
 Tests use temporary directories, local listeners, and real child shells. Some adapters use fake executables; vendored binary suites require supported macOS. [CI](../../../.github/workflows/ci.yml) runs install, config-only setup, lint, typecheck, tests, and backend build on arm64/x64 macOS.
 

@@ -15,6 +15,7 @@ export function browserFixture(
     submissionError?: Error
     serializePrompt?: boolean
     inlinePostData?: boolean
+    parentMessageId?: string
     branchInSamePage?: boolean
     branchError?: Error
     branchConversationId?: string
@@ -207,7 +208,11 @@ export function browserFixture(
                     data: Buffer.from(body).toString("base64"),
                   })
                 })
-                requestPostData = JSON.stringify({ action: "next", messages: [userMessage] })
+                requestPostData = JSON.stringify({
+                  action: "next",
+                  parent_message_id: options.parentMessageId,
+                  messages: [userMessage],
+                })
                 cdp.emit("Network.requestWillBeSent", {
                   requestId: "turn",
                   request: {

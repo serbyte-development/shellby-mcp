@@ -77,6 +77,55 @@ for (const firstRead of ["pending", "unavailable"] as const) {
   })
 }
 
+for (const recovery of ["manual follow-up", "edited prompt", "edited first prompt"] as const) {
+  test(`history recovery adopts a ${recovery} and keeps the recovered result immutable`, async (t) => {
+    const { service, browser, send } = createFixture(
+      t,
+      recovery === "edited first prompt" ? "client-created-root" : "previous-answer"
+    )
+    const turn = await send("worker")
+    const answer = (id: string, text: string) => ({
+      id,
+      author: { role: "assistant" },
+      content: { parts: [text] },
+      status: "finished_successfully",
+      end_turn: true,
+    })
+    const messages: unknown[] =
+      recovery === "edited first prompt"
+        ? [{ id: "saved-root", author: { role: "system" } }]
+        : [
+            { id: "previous-user", author: { role: "user" } },
+            answer("previous-answer", "previous task's answer"),
+          ]
+    if (recovery === "manual follow-up") {
+      messages.push(
+        { id: "submitted-user-1", author: { role: "user" } },
+        answer("original-answer", "incomplete work")
+      )
+    }
+    messages.push({ id: "manual-user", author: { role: "user" } })
+    t.mock.method(browser.pages[0]!, "evaluate", async () => ({ messages }))
+
+    t.mock.timers.tick(4 * 60_000)
+    await setImmediate()
+    assert.equal((await getAgentResponse(service, turn, 0)).status, "running")
+    messages.push(answer("manual-answer", "manually recovered answer"))
+    t.mock.timers.tick(3 * 60_000)
+    await setImmediate()
+    assert.equal((await getAgentResponse(service, turn, 0)).response, "manually recovered answer")
+    assert.equal(browser.pages.length, 1)
+    assert.equal(browser.submissions, 1, "History recovery must never resend the prompt")
+
+    const nextTurn = await send("worker")
+    assert.equal(browser.submissions, 2, "Recovered completion releases the agent")
+    browser.completeTurn(2, "next task's answer")
+    await setImmediate()
+    assert.equal((await getAgentResponse(service, nextTurn, 0)).response, "next task's answer")
+    assert.equal((await getAgentResponse(service, turn, 0)).response, "manually recovered answer")
+  })
+}
+
 test("navigation during prompt entry prevents Send and leaves the saved agent reusable", async (t) => {
   const { service, browser, send } = createFixture(t)
   const first = await send("worker")
@@ -261,14 +310,18 @@ test("result polling is concurrent, caller-scoped, and cancellation does not can
   )
 })
 
-function createFixture(t: TestContext) {
+function createFixture(t: TestContext, parentMessageId?: string) {
   const directory = mkdtempSync(join(tmpdir(), "shellby-subagent-lifecycle-"))
   const previousStateDir = MCP_CONFIG.stateDir
   MCP_CONFIG.stateDir = directory
   t.mock.timers.enable({ apis: ["Date", "setTimeout", "setInterval"], now: 1_000_000 })
   syncBuiltinESMExports()
   t.mock.method(console, "warn", () => {})
-  const browser = browserFixture({ completeOnSubmit: false, stableUrlOnSubmit: true })
+  const browser = browserFixture({
+    completeOnSubmit: false,
+    stableUrlOnSubmit: true,
+    parentMessageId,
+  })
   t.mock.method(chromium, "connectOverCDP", async () => browser.browser)
   const service = createSubagents()
   t.after(async () => {

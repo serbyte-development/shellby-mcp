@@ -21,7 +21,7 @@ Dashboard is observer, and visualization layer. Server-side `AgentObserver` owns
 
 ## Global Invariants
 
-- All browser paths live under `/ui/`; API lives under `/ui/api/`.
+- Dashboard lives at `/`, editor at `/editor`, and API under `/api/` on the same server.
 - UI availability follows server `ui.enabled`. Disabled server UI means no observer, API, SSE, or static dashboard.
 - Initial agent state comes from HTTP snapshot; live changes come from SSE. UI must tolerate reconnect without treating Canvas animation state as source of truth.
 - Production build output is `ui/dist`; Shellby server serves it directly.

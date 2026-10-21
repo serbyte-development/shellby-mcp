@@ -13,7 +13,7 @@ import { extractConversationId } from "../../src/tools/delegation/chatgpt-browse
 import { DelegationDiagnostics } from "../../src/tools/delegation/diagnostics.js"
 import { createDelegationStore } from "../../src/tools/delegation/store.js"
 import { createSubagents } from "../../src/tools/delegation/subagents.js"
-import { submittedUserMessageId } from "../../src/tools/delegation/turn-protocol.js"
+import { submittedTurn } from "../../src/tools/delegation/turn-protocol.js"
 import { asRecord } from "../../src/utils.js"
 import { startMcpHttpServer, toolText } from "../integrations/helpers.js"
 
@@ -174,7 +174,7 @@ export async function openLiveSubagentHarness(t: TestContext, deadline: number) 
       if (request.method() !== "POST") return
       const body = request.postData()
       if (!body?.includes(runId)) return
-      const messageId = submittedUserMessageId(body)
+      const messageId = submittedTurn(body)?.messageId
       if (!messageId) return
       const page = request.frame().page()
       ownedPages.add(page)

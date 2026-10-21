@@ -9,11 +9,11 @@ paths:
 
 # fetch_url
 
-[web-tool.ts](../../../src/tools/web/web-tool.ts) owns MCP schema and domain-error translation; the [registration boundary](../mcp-tool-registration-boundary.md) owns failure rendering. [web-acquisition.ts](../../../src/tools/web/web-acquisition.ts) owns browser/CDP acquisition, conversion, and cleanup. [web-open.ts](../../../src/tools/web/web-open.ts) owns retained documents and cursor paging. One opener is shared across short-lived MCP servers.
+[web-tool.ts](../../../src/tools/web/web-tool.ts) owns MCP schema and domain-error translation; the [registration boundary](../mcp-tool-registration-boundary.md) owns failure rendering. [web-browser.ts](../../../src/tools/web/web-browser.ts) owns browser/tab lifetime; [web-acquisition.ts](../../../src/tools/web/web-acquisition.ts) owns CDP acquisition and conversion. [web-open.ts](../../../src/tools/web/web-open.ts) owns retained documents and cursor paging. One opener is shared across short-lived MCP servers.
 
-HTML uses a separate headless CloakBrowser render, not authenticated delegation Chrome. Non-HTML interception consumes the original Chromium response once, preserving cookies/redirects rather than refetching through another client. PDFs extract text with page headings; images use the [shared encoder](./files-and-images.md); common text media decode without reparsing values. Unsupported binary types fail explicitly. Empty/bodyless responses retain HTTP metadata.
+Default acquisition uses disposable headless CloakBrowser. Non-HTML interception consumes the original Chromium response once, preserving cookies/redirects rather than refetching through another client. PDFs extract text with page headings; images use the [shared encoder](./files-and-images.md); common text media decode without reparsing values. Unsupported binary types fail explicitly. Empty/bodyless responses retain HTTP metadata.
 
-`headless: false` attaches to the managed Chrome profile and reuses `createBackgroundPage` from [chatgpt-browser.ts](../../../src/tools/delegation/chatgpt-browser.ts), so fetch tabs open without taking browser focus. This is a temporary shared dependency. If background-tab creation gains more consumers or broader browser ownership, move that helper into a shared browser module and keep both delegation and web acquisition on the same implementation.
+`headless: false` requires running Chrome at the configured CDP endpoint. It reuses authenticated profile cookies and normal resource loading, with an abortable delay before acquisition. `web-browser.ts` reuses `createBackgroundPage` from [chatgpt-browser.ts](../../../src/tools/delegation/chatgpt-browser.ts) without taking focus. Each fetch owns its tab/connection; cleanup disconnects from shared Chrome without shutting it down. If background-tab creation gains broader consumers, give it a shared browser owner rather than duplicating mechanics.
 
 ## Retention and errors
 

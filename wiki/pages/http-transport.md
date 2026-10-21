@@ -3,6 +3,8 @@ summary: "HTTP authorization, ngrok trust boundary, protocol compatibility, and 
 paths:
   - src/server/http-server.ts
   - src/auth/
+  - src/agent/dashboard-routes.ts
+  - scripts/ui-phone.ts
   - ngrok-traffic-policy.yml
   - test/integrations/http-transport.ts
 ---
@@ -23,9 +25,11 @@ For marked POST requests containing a named `tools/call`, [auth/store.ts](../../
 
 - Exact `/mcp` uses a regex route because Express was initialized before strict routing could be enabled; `/mcp/` stays distinct.
 - `/healthz` returns health plus `X-Shellby-Instance`, derived from repository and state directory. Startup uses it to reject another copy on the selected port; it is not authentication.
-- Optional `/ui` routes share loopback guards but have no subject binding. Checked-in ngrok policy excludes them. Dashboard details: [Agent Context](./agent-context.md).
+- Optional dashboard routes at `/`, `/editor` and `/api/*` share loopback guards but have no subject binding. Legacy `/ui/*` paths redirect. Checked-in ngrok policy excludes dashboard routes. Details: [Agent Context](./agent-context.md).
 
-`createMcpHandler` obtains short-lived servers from the bound factory. Its modern path supports MCP `2026-07-28`; explicit `legacy: "stateless"` keeps the older protocol path on the same registrations. SDK owns serving, streaming, and teardown. HTTP owns request context, auth, and [audit correlation](./operations/audit-logging.md); [composition](./architecture-map.md) owns capability lifetime.
+`createMcpHandler` obtains short-lived servers from the bound factory. SDK's modern protocol and explicit `legacy: "stateless"` path use the same registrations. SDK owns serving, streaming and teardown. HTTP owns auth, caller context and request-scoped [call tracking](./mcp-tool-registration-boundary.md#call-lifecycle); [composition](./architecture-map.md) owns capability lifetime.
+
+The optional [ui:phone proxy](../../scripts/ui-phone.ts) listens on all interfaces and forwards allowlisted dashboard assets/API requests to loopback with a rewritten Host. It blocks `/mcp` but adds no authentication: LAN clients can observe and steer agents. This is a separate manually launched process, outside the ngrok policy and PM2 lifecycle; use only on a trusted network. UI build/setup routes live in the [UI wiki](../../ui/wiki/AGENTS.md).
 
 No retained MCP HTTP session ID is required. Integration tests exercise an existing client after an isolated restart at the same URL. Process-local capabilities and `start_here` state still reset; changed schemas/instructions may require client refresh.
 

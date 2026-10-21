@@ -14,6 +14,8 @@ paths:
 
 Public schema describes the patch envelope, add/update/delete sections, move modifier, context anchors, and EOF anchor. See `npm run schemas -- apply_patch` and [native integration cases](../../../test/integrations/apply-patch.ts) rather than treating undocumented parser tolerance as syntax.
 
+Tool guidance routes whole-file moves, renames and copies through `shell_run` with `mv`/`cp`. `*** Move to:` remains supported when relocation accompanies a text edit; guidance does not remove native compatibility.
+
 ## Partial failure matters
 
 Native sections execute in order and stop at first failure. Earlier successful sections remain applied; later sections are not attempted. A single update section is atomic across its hunks, but the whole patch is not atomic.

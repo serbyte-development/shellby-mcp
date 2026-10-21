@@ -10,7 +10,7 @@ paths:
 
 [subagent-tools.ts](../../../src/tools/delegation/subagent-tools.ts) owns schemas, wire results and error projection. [createSubagents](../../../src/tools/delegation/subagents.ts) owns execution. Inspect source or `npm run schemas -- subagent_run subagent_result` for exact arguments and limits.
 
-`agent_id` is a caller-scoped agent name; reuse it for follow-ups in its saved conversation. A returned `turn_id` identifies one submitted turn and belongs in `subagent_result`.
+`agent_id` is a caller-scoped agent name; reuse it for follow-ups in its saved conversation. A returned `turn_id` identifies one submitted turn and belongs in `subagent_result`. Turn numbering follows the saved per-agent counter; clearing saved state can reuse numbers. Treat returned IDs as scoped polling handles, not durable globally unique identities.
 
 For a new agent, `start_from` supplies a ChatGPT conversation URL: create a branch from that conversation, then submit the prompt into it. Without a source, start a new conversation at the configured project. Existing agents resume their own saved conversation even when `start_from` is supplied. All conversations use the same saved-identity lifecycle. Unknown per-agent fields are rejected rather than silently changing the requested operation.
 
@@ -18,7 +18,7 @@ For a new agent, `start_from` supplies a ChatGPT conversation URL: create a bran
 
 ## Results and failures
 
-Polling waits on local results concurrently; `wait_ms` is not a generation deadline. [Completion](../subagents/subagent-completion.md) owns retention, notices and restart consequences.
+Polling waits on local results concurrently; `yield_time_ms` is not a generation deadline. [Completion](../subagents/subagent-completion.md) owns retention, notices and restart consequences.
 
 Any failed entry sets top-level `isError=true`; mixed batches still retain successful entries. Never retry an entire mixed batch blindly.
 

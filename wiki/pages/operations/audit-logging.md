@@ -3,7 +3,8 @@ summary: "Audit correlation, retained sensitive data, model I/O token counts, an
 paths:
   - src/server/audit/
   - src/server/http-server.ts
-  - src/mcp/tool-registration-boundary.ts
+  - src/mcp/tool-call-tracker.ts
+  - src/mcp/observed-server.ts
   - src/time.ts
   - src/tokenizer.ts
 ---
@@ -14,7 +15,7 @@ Audit headings and review timestamps use [time.ts](../../../src/time.ts): Pacifi
 
 [audit-log.ts](../../../src/server/audit/audit-log.ts) appends completed tool calls and timestamped `tools/list` lines to gitignored `agent-commands.yaml`, with owner-only file permissions. Writes are best effort and must not change dispatch behavior. Other protocol requests are ignored.
 
-[audit-request.ts](../../../src/server/audit/audit-request.ts) creates calls at HTTP entry; dispatch claims each by request ID/tool name. HTTP completion settles unclaimed calls using transport state. Remote authorization failures happen before audit creation. [Registration Boundary](../mcp-tool-registration-boundary.md) supplies original handler result and final model projection directly; audit does not buffer HTTP output.
+[ToolCallTracker](../../../src/mcp/tool-call-tracker.ts) creates calls at HTTP entry and correlates dispatch/final SDK responses by request ID. It settles each once and supplies completed records to `McpAuditLogger`; audit owns persistence, not execution lifetime. Remote authorization failures happen before tracking. SDK input/output rejections remain visible. [Registration Boundary](../mcp-tool-registration-boundary.md#call-lifecycle) owns the lifecycle; audit does not buffer HTTP output.
 
 Failed entries carry one bounded `error:` line. Thrown exceptions use their underlying cause code/message; delegation catches record original failures before formatting recovery guidance. Async call scope keeps concurrent diagnostics separate, and finished entries ignore late diagnostics. Returned failures retain their error/output details. Nonzero shell exits retain available output, with an exit-code fallback when output is empty. Audit entries omit stack traces and do not create separate runtime event files.
 
@@ -32,7 +33,7 @@ Delegation startup/submission failures additionally emit `[delegation]` JSON to 
 - File-write input retains destination and file metadata, excluding the temporary download URL. Embedded binary resource output is excluded.
 - Generic arguments are bounded; successful tool output is counted without persistence. Failure diagnostics have their own bound and escape embedded newlines onto one physical line.
 
-`in` counts serialized tool arguments. `out` counts final model-facing text/structured results after notices, excluding image/audio/binary resource payloads. Token counts use [tokenizer.ts](../../../src/tokenizer.ts); they measure MCP I/O, not model inference usage. Persistence truncation does not impose a token-accounting cap.
+Tracker counts `in` from serialized tool arguments and `out` from final SDK text/structured results after notices, excluding image/audio/binary resource payloads. Counts use [tokenizer.ts](../../../src/tokenizer.ts) before display/persistence truncation and also feed cumulative dashboard usage. They measure captured MCP I/O, not model inference usage or confirmed peer receipt. Counting failure leaves counts unavailable without interrupting execution.
 
 Identity labels come from [Agent Context](../agent-context.md). A call captures its label when it starts, so `start_here`'s own entry may lack the task slug it sets. Raw session values are omitted.
 

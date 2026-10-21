@@ -21,9 +21,9 @@ Follow the restart approval rule in [wiki/AGENTS.md](../../AGENTS.md). Configura
 
 - `npm start`: build and start/reload managed services.
 - `npm run restart`: also clear the current audit log; retain the PM2 daemon.
-- `npm run restart -- --hard`: build, kill the dedicated daemon/apps, clear audit, then start fresh. Refuses when PM2 metadata identifies the caller as an MCP descendant; run from a healthy external Terminal session.
+- `npm run restart -- --hard`: build, kill the dedicated daemon/apps, delete saved subagent mappings and SQLite sidecars, remove the instance's PM2 runtime directory, clear audit, then start fresh. Delegation state is cleared even when subagents are disabled. Refuses when PM2 metadata identifies the caller as an MCP descendant; run from a healthy external Terminal session.
 
-Build must succeed before service mutation or audit deletion. Hard shutdown must succeed before clearing audit. Ordinary restart prepares Chrome and reconciles ngrok before MCP reload because MCP shutdown can kill the initiating CLI. PM2's surviving daemon completes the reload even if that tool call disconnects. Use a fresh call after recovery; its old shell record is gone. See [restart rationale](../../log.md).
+Build must succeed before service mutation or audit deletion. Hard shutdown must stop writers before state cleanup. Ordinary restart prepares Chrome and reconciles ngrok before MCP reload because MCP shutdown can kill the initiating CLI. PM2's surviving daemon completes the reload even if that tool call disconnects. Use a fresh call after recovery; its old shell record is gone. See [restart rationale](../../log.md).
 
 A failed `/healthz` check identifies failed observation, not root cause. Inspect instance identity/port and PM2 logs with `npm run logs`. Tool failures have diagnostics in [audit entries](./audit-logging.md). [start tests](../../../test/start.test.ts) verify command ordering with fixtures; they do not prove every live recovery scenario.
 
@@ -35,6 +35,6 @@ Startup does not install a LaunchAgent. Migrating older installations from defau
 
 ## Shutdown and persistence
 
-[src/index.ts](../../../src/index.ts) closes HTTP, then shared shell/Peekaboo/delegation/cursor-host services on signals. PM2's configured stop grace bounds that cleanup. Browser profile/auth binding persist; named shells, fetched pages, snapshots, initialization, steering, and detached turn results do not.
+[src/index.ts](../../../src/index.ts) closes HTTP, then shared shell/Peekaboo/delegation/cursor-host services on signals. PM2's configured stop grace bounds that cleanup. Browser profile/auth binding persist; named shells, fetched pages, snapshots, initialization, tool usage, steering and detached turn results do not. Saved conversations and parent links survive routine restart, but hard restart removes their local mappings without deleting upstream chats.
 
 `auth:reset` clears the bound subject through its confirmation flow; it does not rotate a tunnel URL. `reset-agents` deletes delegated conversation mappings and SQLite sidecars, not upstream ChatGPT conversations. These are different recovery operations. [Delegation runtime](../subagents/browser-chatgpt-subagents.md) explains which agent state can restore.
